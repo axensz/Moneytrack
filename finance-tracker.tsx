@@ -221,7 +221,7 @@ const FinanceTracker = () => {
       setNewCategory({ type: 'expense', name: '' });
       setShowCategoryForm(false);
     } catch (error) {
-      alert(`⚠️ ${error.message}`);
+      alert(`⚠️ ${(error as Error).message}`);
     }
   };
 

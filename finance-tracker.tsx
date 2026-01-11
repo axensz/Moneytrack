@@ -26,11 +26,13 @@ const FinanceTracker = () => {
   const { user } = useAuth();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
-  // Hooks personalizados
-  const { transactions, addTransaction, deleteTransaction, togglePaid, duplicateTransaction, stats } = useTransactions();
-  const { accounts, addAccount, updateAccount, deleteAccount, setDefaultAccount, getAccountBalance, totalBalance, defaultAccount } = useAccounts(transactions);
+  // Hooks personalizados con Firestore
+  const { transactions, addTransaction, deleteTransaction, togglePaid, duplicateTransaction, stats, loading: transactionsLoading } = useTransactions(user?.uid || null);
+  const { accounts, addAccount, updateAccount, deleteAccount, setDefaultAccount, getAccountBalance, totalBalance, defaultAccount, loading: accountsLoading } = useAccounts(user?.uid || null, transactions);
   const { categories, addCategory, deleteCategory } = useCategories(transactions);
   const { monthlyData, yearlyData, categoryData } = useStats(transactions);
+
+  const loading = transactionsLoading || accountsLoading;
 
   // Estados locales de UI
   const [showForm, setShowForm] = useState(false);

@@ -1,17 +1,19 @@
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../db/db';
+import { useMemo } from 'react';
+import { useFirestore } from './useFirestore';
 import type { Transaction } from '../types/finance';
 
-export function useTransactions() {
-  // Consulta reactiva de todas las transacciones
-  const transactions = useLiveQuery(() => 
-    db.transactions.orderBy('date').reverse().toArray()
-  ) ?? [];
+export function useTransactions(userId: string | null) {
+  const { 
+    transactions, 
+    loading, 
+    addTransaction: firestoreAddTransaction,
+    deleteTransaction: firestoreDeleteTransaction,
+    updateTransaction 
+  } = useFirestore(userId);
 
-  // Estadísticas calculadas reactivamente
-  const stats = useLiveQuery(async () => {
-    const allTransactions = await db.transactions.toArray();
-    const paidTransactions = allTransactions.filter(t => t.paid);
+  // Estadísticas calculadas
+  const stats = useMemo(() => {
+    const paidTransactions = transactions.filter(t => t.paid);
     
     const totalIncome = paidTransactions
       .filter(t => t.type === 'income')
@@ -21,28 +23,25 @@ export function useTransactions() {
       .filter(t => t.type === 'expense')
       .reduce((sum, t) => sum + t.amount, 0);
     
-    const pendingExpenses = allTransactions
+    const pendingExpenses = transactions
       .filter(t => t.type === 'expense' && !t.paid)
       .reduce((sum, t) => sum + t.amount, 0);
     
     return { totalIncome, totalExpenses, pendingExpenses };
-  }) ?? { totalIncome: 0, totalExpenses: 0, pendingExpenses: 0 };
+  }, [transactions]);
 
   const addTransaction = async (transaction: Omit<Transaction, 'id' | 'createdAt'>) => {
-    await db.transactions.add({
-      ...transaction,
-      createdAt: new Date()
-    });
+    await firestoreAddTransaction(transaction);
   };
 
-  const deleteTransaction = async (id: number) => {
-    await db.transactions.delete(id);
+  const deleteTransaction = async (id: string) => {
+    await firestoreDeleteTransaction(id);
   };
 
-  const togglePaid = async (id: number) => {
-    const transaction = await db.transactions.get(id);
+  const togglePaid = async (id: string) => {
+    const transaction = transactions.find(t => t.id === id);
     if (transaction) {
-      await db.transactions.update(id, { paid: !transaction.paid });
+      await updateTransaction(id, { paid: !transaction.paid });
     }
   };
 
@@ -50,13 +49,14 @@ export function useTransactions() {
     const { id, createdAt, ...transactionData } = transaction;
     await addTransaction({
       ...transactionData,
-      date: new Date(), // Fecha actual
+      date: new Date(),
       paid: false
     });
   };
 
   return {
     transactions,
+    loading,
     stats,
     addTransaction,
     deleteTransaction,

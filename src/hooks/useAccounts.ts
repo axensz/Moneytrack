@@ -1,26 +1,29 @@
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../db/db';
+import { useMemo, useEffect } from 'react';
+import { useFirestore } from './useFirestore';
 import type { Account, Transaction } from '../types/finance';
 
-export function useAccounts(transactions: Transaction[]) {
-  // Consulta reactiva de todas las cuentas
-  const accounts = useLiveQuery(() => db.accounts.toArray()) ?? [];
+export function useAccounts(userId: string | null, transactions: Transaction[]) {
+  const { 
+    accounts, 
+    loading,
+    addAccount: firestoreAddAccount,
+    deleteAccount: firestoreDeleteAccount,
+    updateAccount: firestoreUpdateAccount 
+  } = useFirestore(userId);
 
-  // Inicializar cuenta por defecto
-  useLiveQuery(async () => {
-    const count = await db.accounts.count();
-    if (count === 0) {
-      await db.accounts.add({
+  // Crear cuenta por defecto si no existe y hay usuario
+  useEffect(() => {
+    if (userId && accounts.length === 0 && !loading) {
+      firestoreAddAccount({
         name: 'Cuenta Principal',
         type: 'savings',
         isDefault: true,
-        initialBalance: 0,
-        createdAt: new Date()
+        initialBalance: 0
       });
     }
-  });
+  }, [userId, accounts.length, loading, firestoreAddAccount]);
 
-  const getAccountBalance = (accountId: number) => {
+  const getAccountBalance = (accountId: string) => {
     const account = accounts.find(a => a.id === accountId);
     if (!account) return 0;
 
@@ -54,53 +57,49 @@ export function useAccounts(transactions: Transaction[]) {
     }
   };
 
-  const totalBalance = useLiveQuery(async () => {
-    const allAccounts = await db.accounts.toArray();
-    return allAccounts.reduce((sum, acc) => sum + getAccountBalance(acc.id!), 0);
-  }) ?? 0;
+  const totalBalance = useMemo(() => {
+    return accounts.reduce((sum, acc) => sum + getAccountBalance(acc.id!), 0);
+  }, [accounts, transactions]);
 
   const addAccount = async (newAcc: Omit<Account, 'id' | 'createdAt'>) => {
-    const count = await db.accounts.count();
-    await db.accounts.add({
+    const isFirst = accounts.length === 0;
+    await firestoreAddAccount({
       ...newAcc,
-      isDefault: count === 0,
-      createdAt: new Date()
+      isDefault: isFirst
     });
   };
 
-  const updateAccount = async (id: number, updates: Partial<Account>) => {
-    await db.accounts.update(id, updates);
+  const updateAccount = async (id: string, updates: Partial<Account>) => {
+    await firestoreUpdateAccount(id, updates);
   };
 
-  const deleteAccount = async (id: number) => {
-    const account = await db.accounts.get(id);
+  const deleteAccount = async (id: string) => {
+    const account = accounts.find(a => a.id === id);
     if (account?.isDefault) {
       throw new Error('No puedes eliminar la cuenta por defecto');
     }
     
-    const hasTransactions = await db.transactions
-      .where('accountId').equals(id)
-      .or('toAccountId').equals(id)
-      .count();
-    
-    if (hasTransactions > 0) {
+    const hasTransactions = transactions.some(t => t.accountId === id || t.toAccountId === id);
+    if (hasTransactions) {
       throw new Error('No puedes eliminar una cuenta con transacciones');
     }
     
-    await db.accounts.delete(id);
+    await firestoreDeleteAccount(id);
   };
 
-  const setDefaultAccount = async (id: number) => {
-    await db.transaction('rw', db.accounts, async () => {
-      await db.accounts.toCollection().modify({ isDefault: false });
-      await db.accounts.update(id, { isDefault: true });
-    });
+  const setDefaultAccount = async (id: string) => {
+    // Actualizar todas las cuentas
+    const updates = accounts.map(account => 
+      updateAccount(account.id!, { isDefault: account.id === id })
+    );
+    await Promise.all(updates);
   };
 
   const defaultAccount = accounts.find(a => a.isDefault);
 
   return {
     accounts,
+    loading,
     addAccount,
     updateAccount,
     deleteAccount,

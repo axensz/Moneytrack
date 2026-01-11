@@ -1,18 +1,18 @@
 export interface Transaction {
-  id?: number; // Auto-increment en Dexie
+  id?: string; // Firestore usa string IDs
   type: 'income' | 'expense' | 'transfer';
   amount: number;
   category: string;
   description: string;
-  date: Date; // Cambio de string a Date
+  date: Date;
   paid: boolean;
-  accountId: number;
-  toAccountId?: number;
-  createdAt?: Date; // Nuevo campo
+  accountId: string; // Cambio a string
+  toAccountId?: string; // Cambio a string
+  createdAt?: Date;
 }
 
 export interface Account {
-  id?: number; // Auto-increment en Dexie
+  id?: string; // Firestore usa string IDs
   name: string;
   type: 'savings' | 'credit' | 'cash';
   isDefault: boolean;
@@ -20,11 +20,11 @@ export interface Account {
   creditLimit?: number;
   cutoffDay?: number;
   paymentDay?: number;
-  createdAt?: Date; // Cambio de string a Date
+  createdAt?: Date;
 }
 
 export interface Category {
-  id?: number; // Nueva interfaz para Dexie
+  id?: string; // Firestore usa string IDs
   type: 'expense' | 'income';
   name: string;
 }

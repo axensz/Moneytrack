@@ -134,14 +134,14 @@ const FinanceTracker = () => {
         setEditingAccount(null);
       } else {
         if (newAccount.type === 'credit') {
-          const creditLimit = parseFloat(newAccount.creditLimit);
+          const creditLimit = parseFloat(newAccount.creditLimit.toString());
           if (!newAccount.creditLimit || isNaN(creditLimit) || creditLimit <= 0) {
             alert('⚠️ El cupo total debe ser mayor a 0 para tarjetas de crédito');
             return;
           }
 
-          const cutoffDay = parseInt(newAccount.cutoffDay);
-          const paymentDay = parseInt(newAccount.paymentDay);
+          const cutoffDay = parseInt(newAccount.cutoffDay.toString());
+          const paymentDay = parseInt(newAccount.paymentDay.toString());
 
           if (cutoffDay < 1 || cutoffDay > 31) {
             alert('⚠️ El día de corte debe estar entre 1 y 31');
@@ -158,7 +158,7 @@ const FinanceTracker = () => {
             return;
           }
         } else {
-          const initialBalance = parseFloat(newAccount.initialBalance);
+          const initialBalance = parseFloat(newAccount.initialBalance.toString());
           if (newAccount.initialBalance && isNaN(initialBalance)) {
             alert('⚠️ El saldo inicial debe ser un número válido');
             return;
@@ -168,10 +168,10 @@ const FinanceTracker = () => {
         await addAccount({
           name: newAccount.name.trim(),
           type: newAccount.type,
-          initialBalance: parseFloat(newAccount.initialBalance) || 0,
-          creditLimit: parseFloat(newAccount.creditLimit) || 0,
-          cutoffDay: parseInt(newAccount.cutoffDay) || 1,
-          paymentDay: parseInt(newAccount.paymentDay) || 10
+          initialBalance: parseFloat(newAccount.initialBalance.toString()) || 0,
+          creditLimit: parseFloat(newAccount.creditLimit.toString()) || 0,
+          cutoffDay: parseInt(newAccount.cutoffDay.toString()) || 1,
+          paymentDay: parseInt(newAccount.paymentDay.toString()) || 10
         });
       }
 

@@ -11,6 +11,7 @@ import { useAccounts } from './src/hooks/useAccounts';
 import { useCategories } from './src/hooks/useCategories';
 import { useStats } from './src/hooks/useStats';
 import { migrateFromLocalStorage } from './src/db/migration';
+import { analytics } from './src/lib/firebase';
 import type { NewTransaction, NewAccount, ViewType, FilterValue } from './src/types/finance';
 
 const FinanceTracker = () => {

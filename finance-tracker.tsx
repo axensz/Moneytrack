@@ -177,6 +177,7 @@ const FinanceTracker = () => {
         await addAccount({
           name: newAccount.name.trim(),
           type: newAccount.type,
+          isDefault: false,
           initialBalance: parseFloat(newAccount.initialBalance.toString()) || 0,
           creditLimit: parseFloat(newAccount.creditLimit.toString()) || 0,
           cutoffDay: parseInt(newAccount.cutoffDay.toString()) || 1,
@@ -277,7 +278,7 @@ const FinanceTracker = () => {
     if (filterCategory !== 'all' && t.category !== filterCategory) return false;
     if (filterStatus === 'paid' && !t.paid) return false;
     if (filterStatus === 'pending' && t.paid) return false;
-    if (filterAccount !== 'all' && t.accountId !== parseInt(filterAccount)) return false;
+    if (filterAccount !== 'all' && t.accountId !== filterAccount) return false;
     return true;
   });
 
@@ -585,7 +586,7 @@ const FinanceTracker = () => {
                     <label className="label-base">Cuenta</label>
                     <select
                       value={newTransaction.accountId}
-                      onChange={(e) => setNewTransaction({...newTransaction, accountId: parseInt(e.target.value)})}
+                      onChange={(e) => setNewTransaction({...newTransaction, accountId: e.target.value})}
                       className="input-base"
                     >
                       {accounts.map(acc => (
@@ -658,7 +659,7 @@ const FinanceTracker = () => {
                       >
                         <option value="">Seleccionar cuenta destino...</option>
                         {accounts
-                          .filter(acc => acc.id !== parseInt(newTransaction.accountId))
+                          .filter(acc => acc.id !== newTransaction.accountId)
                           .map(acc => (
                             <option key={acc.id} value={acc.id}>{acc.name}</option>
                           ))}

@@ -110,8 +110,8 @@ const FinanceTracker = () => {
         description: newTransaction.description.trim(),
         date: new Date(newTransaction.date),
         paid: newTransaction.paid,
-        accountId: parseInt(newTransaction.accountId) || defaultAccount?.id || 0,
-        toAccountId: newTransaction.toAccountId ? parseInt(newTransaction.toAccountId) : undefined
+        accountId: newTransaction.accountId || defaultAccount?.id || '',
+        toAccountId: newTransaction.toAccountId || undefined
       });
 
       setNewTransaction({
@@ -121,7 +121,7 @@ const FinanceTracker = () => {
         description: '',
         date: new Date().toISOString().split('T')[0],
         paid: false,
-        accountId: defaultAccount?.id?.toString() || '',
+        accountId: defaultAccount?.id || '',
         toAccountId: ''
       });
       setShowForm(false);

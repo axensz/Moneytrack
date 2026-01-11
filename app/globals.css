@@ -1,26 +1,252 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* 1. Variante para detectar modo oscuro manualmente */
+@variant dark (&:where(.dark, .dark *));
 
-@theme inline {
+/* 2. Definición del Tema con Variables Nativas */
+@theme {
+  /* Colores Semánticos */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  
+  --color-success: var(--success);
+  --color-success-muted: var(--success-muted);
+  
+  --color-destructive: var(--destructive);
+  --color-destructive-muted: var(--destructive-muted);
+  
+  --color-warning: var(--warning);
+  --color-warning-muted: var(--warning-muted);
+  
+  --color-info: var(--info);
+  --color-info-muted: var(--info-muted);
+  
+  --color-balance-accent: var(--balance-accent);
+  --color-balance-accent-foreground: var(--balance-accent-foreground);
+  --color-balance-foreground: var(--balance-foreground);
+  --color-balance-value: var(--balance-value);
+  
+  --color-border: var(--border);
+  --color-input: var(--input);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* 3. Variables CSS (Paleta Personalizada) */
+:root {
+  /* BASE LIGHT */
+  --background: #f0efe9;
+  --foreground: #171717;
+
+  /* CARDS */
+  --card: #ffffff;
+  --card-foreground: #171717;
+  
+  /* MUTED */
+  --muted: #f5f5f5;
+  --muted-foreground: #737373;
+
+  /* PRIMARY */
+  --primary: #7c3aed;
+  --primary-foreground: #ffffff;
+
+  /* SUCCESS (Verde) */
+  --success: #059669;
+  --success-muted: #d1fae5;
+
+  /* DESTRUCTIVE (Rojo) */
+  --destructive: #dc2626;
+  --destructive-muted: #fee2e2;
+
+  /* WARNING (Amarillo) */
+  --warning: #d97706;
+  --warning-muted: #fef3c7;
+
+  /* INFO (Azul) */
+  --info: #2563eb;
+  --info-muted: #dbeafe;
+
+  /* BALANCE (Morado especial) */
+  --balance-accent: #e9d5ff;
+  --balance-accent-foreground: #7c3aed;
+  --balance-foreground: #581c87;
+  --balance-value: #7c3aed;
+
+  /* BORDERS & INPUTS */
+  --border: #e9d5ff;
+  --input: #ffffff;
 }
 
+.dark {
+  /* BASE DARK */
+  --background: #0a0a0a;
+  --foreground: #ededed;
+
+  /* CARDS DARK */
+  --card: #1f2937;
+  --card-foreground: #ededed;
+
+  /* MUTED DARK */
+  --muted: #262626;
+  --muted-foreground: #a3a3a3;
+
+  /* PRIMARY DARK */
+  --primary: #8b5cf6;
+  --primary-foreground: #ffffff;
+
+  /* SUCCESS DARK */
+  --success: #10b981;
+  --success-muted: #064e3b;
+
+  /* DESTRUCTIVE DARK */
+  --destructive: #ef4444;
+  --destructive-muted: #7f1d1d;
+
+  /* WARNING DARK */
+  --warning: #f59e0b;
+  --warning-muted: #78350f;
+
+  /* INFO DARK */
+  --info: #3b82f6;
+  --info-muted: #1e3a8a;
+
+  /* BALANCE DARK */
+  --balance-accent: #581c87;
+  --balance-accent-foreground: #c4b5fd;
+  --balance-foreground: #d8b4fe;
+  --balance-value: #c4b5fd;
+
+  /* BORDERS & INPUTS DARK */
+  --border: #4c1d95;
+  --input: #1f2937;
+}
+
+/* 4. Estilos Globales Base */
 body {
-  background: var(--background);
+  background-color: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* 5. Componentes con Variables Nativas */
+@layer components {
+  .card-balance {
+    @apply p-6 rounded-xl border transition-all;
+    background-color: var(--balance-accent);
+    border-color: var(--border);
+    box-shadow: 0 4px 6px -1px rgba(124, 58, 237, 0.05), 0 2px 4px -1px rgba(124, 58, 237, 0.03);
+  }
+
+  .card-stat {
+    @apply p-6 rounded-xl border transition-all;
+    background-color: var(--card);
+    border-color: var(--border);
+    box-shadow: 0 4px 6px -1px rgba(124, 58, 237, 0.05), 0 2px 4px -1px rgba(124, 58, 237, 0.03);
+  }
+  
+  .card-stat:hover {
+    box-shadow: 0 10px 15px -3px rgba(124, 58, 237, 0.1), 0 4px 6px -2px rgba(124, 58, 237, 0.05);
+  }
+
+  .card {
+    @apply rounded-xl p-6 border transition-colors;
+    background-color: var(--card);
+    color: var(--card-foreground);
+    border-color: var(--border);
+    box-shadow: 0 4px 6px -1px rgba(124, 58, 237, 0.05), 0 2px 4px -1px rgba(124, 58, 237, 0.03);
+  }
+
+  .form-container {
+    @apply rounded-xl p-5 border;
+    background: linear-gradient(to bottom right, var(--muted), var(--card));
+    border-color: var(--border);
+  }
+
+  .input-base {
+    @apply w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-colors;
+    background-color: var(--input);
+    color: var(--foreground);
+    border-color: var(--border);
+  }
+
+  .label-base {
+    @apply block mb-1.5 text-sm font-medium;
+    color: var(--muted-foreground);
+  }
+
+  .icon-badge {
+    @apply p-2 rounded-lg;
+  }
+
+  .btn-type {
+    @apply flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors border-2;
+  }
+
+  .btn-type-inactive {
+    background-color: var(--muted);
+    color: var(--muted-foreground);
+    border-color: var(--border);
+  }
+
+  .btn-type-active-destructive {
+    background-color: var(--destructive-muted);
+    color: var(--destructive);
+    border-color: var(--destructive);
+  }
+
+  .btn-type-active-success {
+    background-color: var(--success-muted);
+    color: var(--success);
+    border-color: var(--success);
+  }
+
+  .btn-type-active-info {
+    background-color: var(--info-muted);
+    color: var(--info);
+    border-color: var(--info);
+  }
+
+  .btn-primary {
+    @apply flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium shadow-md hover:shadow-lg transition-all;
+    background: linear-gradient(to right, var(--primary), #8b5cf6);
+    color: var(--primary-foreground);
+  }
+
+  .btn-secondary {
+    @apply flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium shadow-md hover:shadow-lg transition-all;
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  .btn-cancel {
+    @apply px-5 py-2 rounded-lg font-medium transition-colors;
+    background-color: var(--muted);
+    color: var(--muted-foreground);
+  }
+
+  .btn-submit {
+    @apply px-5 py-2 rounded-lg font-medium transition-colors shadow-md;
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  .btn-edit {
+    @apply flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors;
+    background-color: var(--info-muted);
+    color: var(--info);
+  }
+
+  .select-filter {
+    @apply px-4 py-2.5 border-2 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent shadow-sm transition-all cursor-pointer;
+    background-color: var(--input);
+    color: var(--foreground);
+    border-color: var(--border);
+  }
 }

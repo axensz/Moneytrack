@@ -14,7 +14,7 @@ import { useStats } from './src/hooks/useStats';
 import { useAuth } from './src/hooks/useAuth';
 import { migrateFromLocalStorage } from './src/db/migration';
 import { analytics, logoutFirebase } from './src/lib/firebase';
-import type { NewTransaction, NewAccount, ViewType, FilterValue } from './src/types/finance';
+import type { NewTransaction, NewAccount, ViewType, FilterValue, Account } from './src/types/finance';
 
 const FinanceTracker = () => {
   // Migración automática al iniciar
@@ -200,7 +200,7 @@ const FinanceTracker = () => {
     }
   };
 
-  const editAccount = (account) => {
+  const editAccount = (account: Account) => {
     setEditingAccount(account);
     setNewAccount({
       name: account.name,
@@ -227,7 +227,7 @@ const FinanceTracker = () => {
 
 
 
-  const handleDuplicateTransaction = async (transaction) => {
+  const handleDuplicateTransaction = async (transaction: any) => {
     try {
       await duplicateTransaction(transaction);
       setShowForm(true);
@@ -238,7 +238,7 @@ const FinanceTracker = () => {
     }
   };
 
-  const getCreditUsed = (accountId) => {
+  const getCreditUsed = (accountId: string) => {
     const account = accounts.find(a => a.id === accountId);
     if (!account || account.type !== 'credit') return 0;
 
@@ -248,7 +248,7 @@ const FinanceTracker = () => {
     return expenses - payments;
   };
 
-  const getNextCutoffDate = (account) => {
+  const getNextCutoffDate = (account: Account) => {
     if (account.type !== 'credit') return null;
 
     const today = new Date();
@@ -261,7 +261,7 @@ const FinanceTracker = () => {
     return cutoffDate;
   };
 
-  const getNextPaymentDate = (account) => {
+  const getNextPaymentDate = (account: Account) => {
     if (account.type !== 'credit') return null;
 
     const today = new Date();
@@ -286,7 +286,7 @@ const FinanceTracker = () => {
 
 
 
-  const formatCurrency = (amount) => {
+  const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-CO', {
       style: 'currency',
       currency: 'COP',
@@ -315,7 +315,7 @@ const FinanceTracker = () => {
     URL.revokeObjectURL(url);
   };
 
-  const importData = (event) => {
+  const importData = (event: any) => {
     const file = event.target.files[0];
     if (!file) return;
 
@@ -379,7 +379,7 @@ const FinanceTracker = () => {
   const COLORS = ['#8b5cf6', '#a78bfa', '#c4b5fd', '#d8b4fe', '#e9d5ff', '#f3e8ff', '#7c3aed', '#6d28d9'];
 
   // Custom tooltip para los gráficos
-  const CustomTooltip = ({ active, payload, label }) => {
+  const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-white/95 backdrop-blur-sm border border-purple-200 rounded-lg p-3 shadow-lg">

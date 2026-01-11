@@ -1,17 +1,19 @@
 'use client';
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { PlusCircle, TrendingUp, TrendingDown, Calendar, Wallet, Plus, Trash2, Edit2, CreditCard, Banknote, X, BarChart3, PieChart as PieChartIcon, Activity, Copy } from 'lucide-react';
+import { PlusCircle, TrendingUp, TrendingDown, Calendar, Wallet, Plus, Trash2, Edit2, CreditCard, Banknote, X, BarChart3, PieChart as PieChartIcon, Activity, Copy, LogIn, LogOut, User as UserIcon } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { ThemeToggle } from './src/components/ThemeToggle';
 import { StatsCards } from './src/components/StatsCards';
 import { TransactionForm } from './src/components/TransactionForm';
+import { AuthModal } from './src/components/AuthModal';
 import { useTransactions } from './src/hooks/useTransactions';
 import { useAccounts } from './src/hooks/useAccounts';
 import { useCategories } from './src/hooks/useCategories';
 import { useStats } from './src/hooks/useStats';
+import { useAuth } from './src/hooks/useAuth';
 import { migrateFromLocalStorage } from './src/db/migration';
-import { analytics } from './src/lib/firebase';
+import { analytics, logoutFirebase } from './src/lib/firebase';
 import type { NewTransaction, NewAccount, ViewType, FilterValue } from './src/types/finance';
 
 const FinanceTracker = () => {
@@ -19,6 +21,10 @@ const FinanceTracker = () => {
   useEffect(() => {
     migrateFromLocalStorage().catch(console.error);
   }, []);
+
+  // Auth
+  const { user } = useAuth();
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   // Hooks personalizados
   const { transactions, addTransaction, deleteTransaction, togglePaid, duplicateTransaction, stats } = useTransactions();
@@ -388,10 +394,16 @@ const FinanceTracker = () => {
 
   return (
     <div className="min-h-screen bg-background bg-gradient-to-br from-stone-50/50 via-amber-50/30 to-orange-50/20 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+      {/* Auth Modal */}
+      <AuthModal 
+        isOpen={isAuthModalOpen} 
+        onClose={() => setIsAuthModalOpen(false)} 
+      />
+
       {/* Header con fondo */}
       <header className="w-full py-4 mb-8 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-start">
+          <div className="flex justify-between items-center">
             <div>
               <h1 className="text-3xl sm:text-4xl font-bold mb-2">
                 <span className="text-purple-700 dark:text-purple-400">Money</span>
@@ -401,7 +413,52 @@ const FinanceTracker = () => {
                 Control financiero personal
               </p>
             </div>
-            <ThemeToggle />
+            
+            {/* Zona derecha del header */}
+            <div className="flex items-center gap-4">
+              <ThemeToggle />
+              
+              {user ? (
+                <div className="flex items-center gap-3 pl-4 border-l border-gray-200 dark:border-gray-700">
+                  {user.photoURL ? (
+                    <img 
+                      src={user.photoURL} 
+                      alt={user.displayName || 'Usuario'} 
+                      className="w-9 h-9 rounded-full border border-purple-200"
+                    />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">
+                      <UserIcon size={20} />
+                    </div>
+                  )}
+                  
+                  <button
+                    onClick={logoutFirebase}
+                    className="p-2 text-gray-500 hover:text-rose-600 transition-colors"
+                    title="Cerrar sesión"
+                  >
+                    <LogOut size={20} />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setIsAuthModalOpen(true)}
+                    className="hidden sm:flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg font-medium hover:opacity-90 transition-opacity"
+                  >
+                    <LogIn size={18} />
+                    <span>Acceder</span>
+                  </button>
+                  
+                  <button
+                    onClick={() => setIsAuthModalOpen(true)}
+                    className="sm:hidden p-2 text-gray-600 dark:text-gray-300"
+                  >
+                    <LogIn size={24} />
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>

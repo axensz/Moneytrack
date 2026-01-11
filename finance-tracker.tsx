@@ -249,12 +249,13 @@ const FinanceTracker = () => {
   };
 
   const getNextCutoffDate = (account: Account) => {
-    if (account.type !== 'credit') return null;
+    if (account.type !== 'credit' || !account.cutoffDay) return null;
 
     const today = new Date();
-    const cutoffDate = new Date(today.getFullYear(), today.getMonth(), account.cutoffDay);
+    const cutoffDay = account.cutoffDay;
+    const cutoffDate = new Date(today.getFullYear(), today.getMonth(), cutoffDay);
 
-    if (today.getDate() >= account.cutoffDay) {
+    if (today.getDate() >= cutoffDay) {
       cutoffDate.setMonth(cutoffDate.getMonth() + 1);
     }
 
@@ -262,12 +263,13 @@ const FinanceTracker = () => {
   };
 
   const getNextPaymentDate = (account: Account) => {
-    if (account.type !== 'credit') return null;
+    if (account.type !== 'credit' || !account.paymentDay) return null;
 
     const today = new Date();
-    const paymentDate = new Date(today.getFullYear(), today.getMonth(), account.paymentDay);
+    const paymentDay = account.paymentDay;
+    const paymentDate = new Date(today.getFullYear(), today.getMonth(), paymentDay);
 
-    if (today.getDate() >= account.paymentDay) {
+    if (today.getDate() >= paymentDay) {
       paymentDate.setMonth(paymentDate.getMonth() + 1);
     }
 

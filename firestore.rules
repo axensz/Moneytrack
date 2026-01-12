@@ -1,0 +1,86 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidAmount(amount) {
+      return amount is number && amount > 0 && amount <= 1000000000;
+    }
+
+    function isValidString(str, minLength, maxLength) {
+      return str is string && str.size() >= minLength && str.size() <= maxLength;
+    }
+
+    // User data collections
+    match /users/{userId} {
+      // Only authenticated users can read/write their own data
+      allow read, write: if isOwner(userId);
+
+      // Transactions subcollection
+      match /transactions/{transactionId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId)
+          && request.resource.data.type in ['income', 'expense', 'transfer']
+          && isValidAmount(request.resource.data.amount)
+          && isValidString(request.resource.data.description, 1, 500)
+          && request.resource.data.category is string
+          && request.resource.data.paid is bool
+          && request.resource.data.accountId is string
+          && request.resource.data.date is timestamp
+          && request.resource.data.createdAt is timestamp;
+
+        allow update: if isOwner(userId)
+          && request.resource.data.type == resource.data.type
+          && request.resource.data.amount == resource.data.amount
+          && request.resource.data.accountId == resource.data.accountId;
+
+        allow delete: if isOwner(userId);
+      }
+
+      // Accounts subcollection
+      match /accounts/{accountId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId)
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.type in ['savings', 'credit', 'cash']
+          && request.resource.data.isDefault is bool
+          && request.resource.data.initialBalance is number
+          && request.resource.data.initialBalance >= -1000000000
+          && request.resource.data.initialBalance <= 1000000000;
+
+        allow update: if isOwner(userId);
+        allow delete: if isOwner(userId);
+      }
+
+      // Categories subcollection
+      match /categories/{categoryId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId)
+          && request.resource.data.type in ['expense', 'income']
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 100;
+
+        allow update: if isOwner(userId);
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

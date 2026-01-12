@@ -62,7 +62,7 @@
   --success-muted: #d1fae5;
 
   /* DESTRUCTIVE (Rojo) */
-  --destructive: #dc2626;
+  --destructive: #b91c1c;
   --destructive-muted: #fee2e2;
 
   /* WARNING (Amarillo) */
@@ -165,7 +165,7 @@ body {
 
   .form-container {
     @apply rounded-xl p-5 border;
-    background: linear-gradient(to bottom right, var(--muted), var(--card));
+    background-color: var(--card);
     border-color: var(--border);
   }
 

@@ -4,14 +4,21 @@ import { getAuth, signInWithPopup, GoogleAuthProvider, signOut } from "firebase/
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "",
-  authDomain: "moneytrack-889fe.firebaseapp.com",
-  projectId: "moneytrack-889fe",
-  storageBucket: "moneytrack-889fe.firebasestorage.app",
-  messagingSenderId: "319647072250",
-  appId: "1:319647072250:web:f664bfa98a3890185f2e43",
-  measurementId: "G-QVPGHKX7EM"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
+
+// Validate Firebase configuration
+if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+  throw new Error(
+    'Firebase configuration is missing. Please check your .env.local file and ensure all required variables are set.'
+  );
+}
 
 const app = initializeApp(firebaseConfig);
 const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;

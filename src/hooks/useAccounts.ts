@@ -1,76 +1,110 @@
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useRef, useState, useCallback } from 'react';
 import { useFirestore } from './useFirestore';
+import { useLocalStorage } from './useLocalStorage';
+import { BalanceCalculator } from '../utils/balanceCalculator';
 import type { Account, Transaction } from '../types/finance';
 
 export function useAccounts(userId: string | null, transactions: Transaction[]) {
-  const { 
-    accounts, 
-    loading,
+  const {
+    accounts: firestoreAccounts,
+    loading: firestoreLoading,
     addAccount: firestoreAddAccount,
     deleteAccount: firestoreDeleteAccount,
-    updateAccount: firestoreUpdateAccount 
+    updateAccount: firestoreUpdateAccount
   } = useFirestore(userId);
 
-  // Crear cuenta por defecto si no existe y hay usuario
+  const [localAccounts, setLocalAccounts] = useLocalStorage<Account[]>('accounts', []);
+  
+  // Usar Firebase si hay usuario, localStorage si no
+  const accounts = userId ? firestoreAccounts : localAccounts;
+  const loading = userId ? firestoreLoading : false;
+
+  // Ref para evitar crear múltiples cuentas por defecto
+  const defaultAccountCreated = useRef<string | null>(null);
+
+  // Generar ID único para localStorage
+  const generateId = () => Date.now().toString() + Math.random().toString(36).substr(2, 9);
+
+  // Crear cuenta por defecto si no existe
   useEffect(() => {
-    if (userId && accounts.length === 0 && !loading) {
+    // Solo ejecutar si hay cuentas cargadas (no loading)
+    if (loading) return;
+
+    // Determinar la clave para el ref (userId o 'local')
+    const key = userId || 'local';
+    
+    // Si ya se creó la cuenta por defecto para este usuario, no hacerlo de nuevo
+    if (defaultAccountCreated.current === key) return;
+    
+    // Solo crear si no hay cuentas
+    if (accounts.length > 0) {
+      // Marcar como creado aunque no lo hagamos (ya existen cuentas)
+      defaultAccountCreated.current = key;
+      return;
+    }
+
+    // Marcar como creado antes de ejecutar la lógica asíncrona
+    defaultAccountCreated.current = key;
+    
+    const defaultAccount = {
+      id: generateId(),
+      name: 'Cuenta Principal',
+      type: 'savings' as const,
+      isDefault: true,
+      initialBalance: 0,
+      createdAt: new Date()
+    };
+
+    if (userId) {
       firestoreAddAccount({
         name: 'Cuenta Principal',
         type: 'savings',
         isDefault: true,
         initialBalance: 0
       });
+    } else {
+      setLocalAccounts([defaultAccount]);
     }
-  }, [userId, accounts.length, loading, firestoreAddAccount]);
+  }, [userId, loading]);
 
-  const getAccountBalance = (accountId: string) => {
+  const getAccountBalance = (accountId: string): number => {
     const account = accounts.find(a => a.id === accountId);
     if (!account) return 0;
 
-    const accountTx = transactions.filter(t => t.paid);
-    let balance = account.initialBalance;
-
-    if (account.type === 'credit') {
-      accountTx.forEach(t => {
-        if (t.accountId === accountId) {
-          if (t.type === 'expense') balance -= t.amount;
-          if (t.type === 'income') balance += t.amount;
-          if (t.type === 'transfer') balance -= t.amount;
-        }
-        if (t.toAccountId === accountId && t.type === 'transfer') {
-          balance += t.amount;
-        }
-      });
-      return (account.creditLimit || 0) + balance;
-    } else {
-      accountTx.forEach(t => {
-        if (t.accountId === accountId) {
-          if (t.type === 'income') balance += t.amount;
-          if (t.type === 'expense') balance -= t.amount;
-          if (t.type === 'transfer') balance -= t.amount;
-        }
-        if (t.toAccountId === accountId && t.type === 'transfer') {
-          balance += t.amount;
-        }
-      });
-      return balance;
-    }
+    return BalanceCalculator.calculateAccountBalance(account, transactions);
   };
 
   const totalBalance = useMemo(() => {
-    return accounts.reduce((sum, acc) => sum + getAccountBalance(acc.id!), 0);
+    return BalanceCalculator.calculateTotalBalance(accounts, transactions);
   }, [accounts, transactions]);
 
   const addAccount = async (newAcc: Omit<Account, 'id' | 'createdAt'>) => {
     const isFirst = accounts.length === 0;
-    await firestoreAddAccount({
+    const accountData = {
       ...newAcc,
       isDefault: isFirst
-    });
+    };
+
+    if (userId) {
+      await firestoreAddAccount(accountData);
+    } else {
+      const newAccount = {
+        ...accountData,
+        id: generateId(),
+        createdAt: new Date()
+      };
+      setLocalAccounts(prev => [...prev, newAccount]);
+    }
   };
 
   const updateAccount = async (id: string, updates: Partial<Account>) => {
-    await firestoreUpdateAccount(id, updates);
+    if (userId) {
+      await firestoreUpdateAccount(id, updates);
+    } else {
+      setLocalAccounts(prev => 
+        prev.map(acc => acc.id === id ? { ...acc, ...updates } : acc)
+      );
+    }
   };
 
   const deleteAccount = async (id: string) => {
@@ -84,15 +118,26 @@ export function useAccounts(userId: string | null, transactions: Transaction[]) 
       throw new Error('No puedes eliminar una cuenta con transacciones');
     }
     
-    await firestoreDeleteAccount(id);
+    if (userId) {
+      await firestoreDeleteAccount(id);
+    } else {
+      setLocalAccounts(prev => prev.filter(acc => acc.id !== id));
+    }
   };
 
   const setDefaultAccount = async (id: string) => {
-    // Actualizar todas las cuentas
-    const updates = accounts.map(account => 
-      updateAccount(account.id!, { isDefault: account.id === id })
-    );
-    await Promise.all(updates);
+    if (userId) {
+      // Actualizar todas las cuentas en Firebase
+      const updates = accounts.map(account => 
+        updateAccount(account.id!, { isDefault: account.id === id })
+      );
+      await Promise.all(updates);
+    } else {
+      // Actualizar en localStorage
+      setLocalAccounts(prev => 
+        prev.map(acc => ({ ...acc, isDefault: acc.id === id }))
+      );
+    }
   };
 
   const defaultAccount = accounts.find(a => a.isDefault);

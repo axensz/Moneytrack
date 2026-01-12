@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { PlusCircle, Activity, Copy, X } from 'lucide-react';
 import type { Transaction, Account, FilterValue } from '../../types/finance';
 
@@ -42,10 +42,15 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   handleDuplicateTransaction,
   formatCurrency
 }) => {
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+  const handleDeleteTransaction = async (id: string) => {
+    await deleteTransaction(id);
+    setDeleteConfirm(null);
+  };
+
   const filteredTransactions = transactions.filter(t => {
     if (filterCategory !== 'all' && t.category !== filterCategory) return false;
-    if (filterStatus === 'paid' && !t.paid) return false;
-    if (filterStatus === 'pending' && t.paid) return false;
     if (filterAccount !== 'all' && t.accountId !== filterAccount) return false;
     return true;
   });
@@ -83,16 +88,6 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
               <option key={`${cat}-${index}`} value={cat}>{cat}</option>
             ))}
           </select>
-
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="select-filter"
-          >
-            <option value="all">Todos</option>
-            <option value="paid">Pagados</option>
-            <option value="pending">Pendientes</option>
-          </select>
         </div>
       </div>
 
@@ -113,22 +108,11 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
               return (
                 <div
                   key={transaction.id}
-                  className={`border rounded-lg p-4 flex justify-between items-center transition-all ${
-                    transaction.paid
-                      ? 'bg-white dark:bg-gray-800 border-purple-100 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md'
-                      : 'bg-purple-50/50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-700'
-                  }`}
+                  className="border rounded-lg p-4 flex justify-between items-center transition-all bg-white dark:bg-gray-800 border-purple-100 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md"
                 >
                   <div className="flex items-center gap-4 flex-1">
-                    <input
-                      type="checkbox"
-                      checked={transaction.paid}
-                      onChange={() => togglePaid(transaction.id!)}
-                      className="w-4 h-4 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
-                    />
-
                     <div className="flex-1">
-                      <div className={`font-medium text-gray-900 dark:text-gray-100 ${transaction.paid ? 'line-through opacity-60' : ''}`}>
+                      <div className="font-medium text-gray-900 dark:text-gray-100">
                         {transaction.description}
                       </div>
                       <div className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
@@ -152,13 +136,40 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                         <Copy size={16} />
                       </button>
                       <button
-                        onClick={() => deleteTransaction(transaction.id!)}
+                        onClick={() => setDeleteConfirm(transaction.id!)}
                         className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
                       >
                         <X size={18} />
                       </button>
                     </div>
                   </div>
+
+                  {deleteConfirm === transaction.id && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 max-w-sm w-full">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                          ¿Eliminar transacción?
+                        </h3>
+                        <p className="text-gray-600 dark:text-gray-400 mb-6">
+                          Esta acción no se puede deshacer. Se eliminará la transacción permanentemente.
+                        </p>
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => handleDeleteTransaction(transaction.id!)}
+                            className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                          >
+                            Eliminar
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm(null)}
+                            className="flex-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 font-medium py-2 px-4 rounded-lg transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

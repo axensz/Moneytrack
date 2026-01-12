@@ -2,6 +2,9 @@
 
 import React, { useState } from 'react';
 import { Plus, Edit2, Trash2, Wallet, CreditCard, Banknote, X } from 'lucide-react';
+import { showToast } from '../../utils/toastHelpers';
+import { formatNumberForInput } from '../../utils/formatters';
+import { PROTECTED_CATEGORIES, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../../config/constants';
 import type { Account, Transaction, NewAccount } from '../../types/finance';
 
 interface AccountsViewProps {
@@ -19,6 +22,7 @@ interface AccountsViewProps {
   };
   addCategory: (type: 'expense' | 'income', name: string) => void;
   deleteCategory: (type: 'expense' | 'income', name: string) => void;
+  addTransaction: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
 }
 
 export const AccountsView: React.FC<AccountsViewProps> = ({
@@ -32,12 +36,15 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   formatCurrency,
   categories,
   addCategory,
-  deleteCategory
+  deleteCategory,
+  addTransaction
 }) => {
   // Estados locales movidos desde el componente padre
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [deleteConfirmName, setDeleteConfirmName] = useState('');
   
   const [newAccount, setNewAccount] = useState<NewAccount>({
     name: '',
@@ -55,6 +62,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     type: 'expense',
     name: ''
   });
+
+  const [balanceAdjustment, setBalanceAdjustment] = useState<string>('');
 
   const accountTypes = [
     { value: 'savings' as const, label: 'Cuenta de Ahorros', icon: Wallet },
@@ -102,19 +111,60 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
 
   const addOrUpdateAccount = async (): Promise<void> => {
     if (!newAccount.name.trim()) {
-      alert('⚠️ El nombre de la cuenta no puede estar vacío');
+      showToast.error(ERROR_MESSAGES.EMPTY_ACCOUNT_NAME);
       return;
     }
 
     try {
       if (editingAccount) {
+        // Actualizar nombre de la cuenta
         await updateAccount(editingAccount.id!, { name: newAccount.name.trim() });
+        
+        let balanceAdjusted = false;
+        
+        // Procesar ajuste de saldo si se ingresó un valor
+        if (balanceAdjustment.trim() !== '') {
+          const inputValue = balanceAdjustment.replace(/[^\d.]/g, '');
+          const newBalance = parseFloat(inputValue);
+          
+          if (!isNaN(newBalance) && newBalance >= 0) {
+            const currentBalance = getAccountBalance(editingAccount.id!);
+            const adjustment = newBalance - currentBalance;
+            
+            if (Math.abs(adjustment) >= 0.01) { // Solo ajustar si hay diferencia >= 1 centavo
+              await addTransaction({
+                type: adjustment > 0 ? 'income' : 'expense',
+                amount: Math.abs(adjustment),
+                category: 'Otros',
+                description: `Ajuste de saldo: ${adjustment > 0 ? '+' : ''}${formatCurrency(adjustment)}`,
+                date: new Date(),
+                paid: true,
+                accountId: editingAccount.id!
+              });
+              balanceAdjusted = true;
+            }
+          } else {
+            showToast.error('Ingresa un saldo válido (debe ser un número positivo)');
+            return;
+          }
+        }
+        
+        // Limpiar estados
         setEditingAccount(null);
+        setBalanceAdjustment('');
+        setShowAccountForm(false);
+        
+        // Mostrar mensaje apropiado después de limpiar estados
+        if (balanceAdjusted) {
+          showToast.success('Cuenta actualizada y saldo ajustado correctamente');
+        } else {
+          showToast.success(SUCCESS_MESSAGES.ACCOUNT_UPDATED);
+        }
       } else {
         if (newAccount.type === 'credit') {
           const creditLimit = parseFloat(newAccount.creditLimit.toString());
           if (!newAccount.creditLimit || isNaN(creditLimit) || creditLimit <= 0) {
-            alert('⚠️ El cupo total debe ser mayor a 0 para tarjetas de crédito');
+            showToast.error(ERROR_MESSAGES.INVALID_CREDIT_LIMIT);
             return;
           }
 
@@ -122,23 +172,24 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
           const paymentDay = parseInt(newAccount.paymentDay.toString());
 
           if (cutoffDay < 1 || cutoffDay > 31) {
-            alert('⚠️ El día de corte debe estar entre 1 y 31');
+            showToast.error(ERROR_MESSAGES.INVALID_CUTOFF_DAY);
             return;
           }
 
           if (paymentDay < 1 || paymentDay > 31) {
-            alert('⚠️ El día de pago debe estar entre 1 y 31');
+            showToast.error(ERROR_MESSAGES.INVALID_PAYMENT_DAY);
+      setBalanceAdjustment('');
             return;
           }
 
           if (paymentDay <= cutoffDay) {
-            alert('⚠️ El día de pago debe ser posterior al día de corte');
+            showToast.error(ERROR_MESSAGES.PAYMENT_BEFORE_CUTOFF);
             return;
           }
         } else {
           const initialBalance = parseFloat(newAccount.initialBalance.toString());
           if (newAccount.initialBalance && isNaN(initialBalance)) {
-            alert('⚠️ El saldo inicial debe ser un número válido');
+            showToast.error(ERROR_MESSAGES.INVALID_INITIAL_BALANCE);
             return;
           }
         }
@@ -162,9 +213,13 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
         cutoffDay: 1,
         paymentDay: 10
       });
-      setShowAccountForm(false);
+      
+      if (!editingAccount) {
+        setShowAccountForm(false);
+        showToast.success(SUCCESS_MESSAGES.ACCOUNT_ADDED);
+      }
     } catch (error) {
-      alert('❌ Error al guardar cuenta');
+      showToast.error(ERROR_MESSAGES.ADD_ACCOUNT_ERROR);
       console.error(error);
     }
   };
@@ -187,8 +242,29 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       addCategory(newCategory.type, newCategory.name);
       setNewCategory({ type: 'expense', name: '' });
       setShowCategoryForm(false);
+      showToast.success(SUCCESS_MESSAGES.CATEGORY_ADDED);
     } catch (error) {
-      alert(`⚠️ ${(error as Error).message}`);
+      showToast.error((error as Error).message);
+    }
+  };
+
+  const handleDeleteAccount = async (accountId: string): Promise<void> => {
+    const account = accounts.find(a => a.id === accountId);
+    if (!account) return;
+
+    if (deleteConfirmName.trim() !== account.name) {
+      showToast.error('El nombre no coincide');
+      return;
+    }
+
+    try {
+      await deleteAccount(accountId);
+      setShowDeleteConfirm(null);
+      setDeleteConfirmName('');
+      showToast.success('Cuenta eliminada correctamente');
+    } catch (error) {
+      showToast.error('Error al eliminar la cuenta');
+      console.error(error);
     }
   };
 
@@ -200,16 +276,30 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
         <div className="flex gap-3">
           <button
             onClick={() => {
-              setEditingAccount(null);
-              setNewAccount({
-                name: '',
-                type: 'savings',
-                initialBalance: 0,
-                creditLimit: 0,
-                cutoffDay: 1,
-                paymentDay: 10
-              });
-              setShowAccountForm(!showAccountForm);
+              if (showAccountForm) {
+                setBalanceAdjustment('');
+                setNewAccount({
+                  name: '',
+                  type: 'savings',
+                  initialBalance: 0,
+                  creditLimit: 0,
+                  cutoffDay: 1,
+                  paymentDay: 10
+                });
+              } else {
+                setShowCategoryForm(false);
+                setEditingAccount(null);
+                setBalanceAdjustment('');
+                setNewAccount({
+                  name: '',
+                  type: 'savings',
+                  initialBalance: 0,
+                  creditLimit: 0,
+                  cutoffDay: 1,
+                  paymentDay: 10
+                });
+                setShowAccountForm(true);
+              }
             }}
             className="btn-primary"
           >
@@ -218,7 +308,15 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
           </button>
 
           <button
-            onClick={() => setShowCategoryForm(!showCategoryForm)}
+            onClick={() => {
+              if (showCategoryForm) {
+                setShowCategoryForm(false);
+              } else {
+                setShowAccountForm(false);
+                setEditingAccount(null);
+                setShowCategoryForm(true);
+              }
+            }}
             className="btn-secondary"
           >
             <Plus size={18} />
@@ -228,10 +326,48 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       </div>
 
       {showAccountForm && (
-        <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-xl p-5 mb-6 border border-purple-200">
-          <h4 className="text-base font-semibold mb-4 text-gray-900 dark:text-gray-100">
-            {editingAccount ? 'Editar Cuenta' : 'Nueva Cuenta'}
-          </h4>
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowAccountForm(false);
+              setEditingAccount(null);
+              setNewAccount({
+                name: '',
+                type: 'savings',
+                initialBalance: 0,
+                creditLimit: 0,
+                cutoffDay: 1,
+                paymentDay: 10
+              });
+            }
+          }}
+        >
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  {editingAccount ? 'Editar Cuenta' : 'Nueva Cuenta'}
+                </h4>
+                <button
+                  onClick={() => {
+                    setShowAccountForm(false);
+                    setEditingAccount(null);
+                    setBalanceAdjustment('');
+                    setNewAccount({
+                      name: '',
+                      type: 'savings',
+                      initialBalance: 0,
+                      creditLimit: 0,
+                      cutoffDay: 1,
+                      paymentDay: 10
+                    });
+                  }}
+                  className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+                >
+                  <X size={24} />
+                </button>
+              </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
@@ -244,6 +380,30 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                 className="input-base"
               />
             </div>
+
+            {editingAccount && (
+              <div>
+                <label className="label-base">Ajustar saldo (opcional)</label>
+                <input
+                  type="text"
+                  value={balanceAdjustment}
+                  placeholder={`Saldo actual: ${formatCurrency(getAccountBalance(editingAccount.id!))}`}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/[^\d.]/g, '');
+                    // Evitar múltiples puntos decimales
+                    const parts = value.split('.');
+                    if (parts.length > 2) {
+                      return;
+                    }
+                    setBalanceAdjustment(value);
+                  }}
+                  className="input-base"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Ingresa el nuevo saldo deseado. Se creará un ajuste automático.
+                </p>
+              </div>
+            )}
 
             {!editingAccount && (
               <>
@@ -313,37 +473,56 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
             )}
           </div>
 
-          <div className="flex gap-3 mt-4">
-            <button
-              onClick={addOrUpdateAccount}
-              className="btn-submit"
-            >
-              {editingAccount ? 'Actualizar' : 'Crear'}
-            </button>
-            <button
-              onClick={() => {
-                setShowAccountForm(false);
-                setEditingAccount(null);
-                setNewAccount({
-                  name: '',
-                  type: 'savings',
-                  initialBalance: 0,
-                  creditLimit: 0,
-                  cutoffDay: 1,
-                  paymentDay: 10
-                });
-              }}
-              className="btn-cancel"
-            >
-              Cancelar
-            </button>
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={addOrUpdateAccount}
+                  className="btn-submit"
+                >
+                  {editingAccount ? 'Actualizar' : 'Crear'}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowAccountForm(false);
+                    setEditingAccount(null);
+                    setNewAccount({
+                      name: '',
+                      type: 'savings',
+                      initialBalance: 0,
+                      creditLimit: 0,
+                      cutoffDay: 1,
+                      paymentDay: 10
+                    });
+                  }}
+                  className="btn-cancel"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
       {showCategoryForm && (
-        <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-xl p-5 mb-6 border border-purple-200">
-          <h4 className="text-base font-semibold mb-4 text-gray-900 dark:text-gray-100">Nueva Categoría</h4>
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowCategoryForm(false);
+            }
+          }}
+        >
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Nueva Categoría</h4>
+                <button
+                  onClick={() => setShowCategoryForm(false)}
+                  className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+                >
+                  <X size={24} />
+                </button>
+              </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -370,19 +549,21 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
             </div>
           </div>
 
-          <div className="flex gap-3 mt-4">
-            <button
-              onClick={handleAddCategory}
-              className="btn-submit"
-            >
-              Crear
-            </button>
-            <button
-              onClick={() => setShowCategoryForm(false)}
-              className="btn-cancel"
-            >
-              Cancelar
-            </button>
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={handleAddCategory}
+                  className="btn-submit"
+                >
+                  Crear
+                </button>
+                <button
+                  onClick={() => setShowCategoryForm(false)}
+                  className="btn-cancel"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -458,11 +639,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                         </div>
                       </div>
                     </div>
-                  ) : (
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                      Saldo inicial: {formatCurrency(account.initialBalance)}
-                    </p>
-                  )}
+                  ) : null}
                 </div>
 
                 <div className="text-right ml-6">
@@ -497,8 +674,11 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                           Principal
                         </button>
                         <button
-                          onClick={() => deleteAccount(account.id!)}
-                          className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                          onClick={() => {
+                            setShowDeleteConfirm(account.id!);
+                            setDeleteConfirmName('');
+                          }}
+                          className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
                         >
                           <Trash2 size={16} />
                         </button>
@@ -525,7 +705,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                   className="flex justify-between items-center p-2.5 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/30 transition-colors"
                 >
                   <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{cat}</span>
-                  {!['Alimentación', 'Transporte', 'Servicios', 'Vivienda', 'Salud', 'Entretenimiento', 'Educación', 'Otros'].includes(cat) && (
+                  {!(PROTECTED_CATEGORIES.expense as readonly string[]).includes(cat) && (
                     <button
                       onClick={() => deleteCategory('expense', cat)}
                       className="p-1 text-gray-400 hover:text-rose-600 rounded transition-colors"
@@ -547,7 +727,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                   className="flex justify-between items-center p-2.5 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
                 >
                   <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{cat}</span>
-                  {!['Salario', 'Freelance', 'Inversiones', 'Otros'].includes(cat) && (
+                  {!(PROTECTED_CATEGORIES.income as readonly string[]).includes(cat) && (
                     <button
                       onClick={() => deleteCategory('income', cat)}
                       className="p-1 text-gray-400 hover:text-rose-600 rounded transition-colors"
@@ -561,6 +741,58 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowDeleteConfirm(null);
+              setDeleteConfirmName('');
+            }
+          }}
+        >
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                Eliminar Cuenta
+              </h3>
+              <p className="text-gray-600 dark:text-gray-300 mb-4">
+                Para confirmar la eliminación, escribe el nombre de la cuenta:
+              </p>
+              <p className="font-medium text-gray-900 dark:text-white mb-4">
+                {accounts.find(a => a.id === showDeleteConfirm)?.name}
+              </p>
+              <input
+                type="text"
+                value={deleteConfirmName}
+                onChange={(e) => setDeleteConfirmName(e.target.value)}
+                placeholder="Nombre de la cuenta"
+                className="input-base mb-6"
+              />
+              <div className="flex gap-3">
+                <button
+                  onClick={() => handleDeleteAccount(showDeleteConfirm)}
+                  disabled={deleteConfirmName.trim() !== accounts.find(a => a.id === showDeleteConfirm)?.name}
+                  className="flex-1 bg-rose-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Eliminar
+                </button>
+                <button
+                  onClick={() => {
+                    setShowDeleteConfirm(null);
+                    setDeleteConfirmName('');
+                  }}
+                  className="flex-1 btn-cancel"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

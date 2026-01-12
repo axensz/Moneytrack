@@ -1,4 +1,6 @@
 import { useCallback } from 'react';
+import { showToast } from '../utils/toastHelpers';
+import { SUCCESS_MESSAGES } from '../config/constants';
 import type { Transaction, Account, Categories } from '../types/finance';
 
 interface UseBackupProps {
@@ -74,9 +76,9 @@ export const useBackup = ({ transactions, accounts, categories }: UseBackupProps
           }
         }
         
-        alert('✅ Datos importados correctamente');
+        showToast.success(SUCCESS_MESSAGES.DATA_IMPORTED);
       } catch (error) {
-        alert(`⚠️ Error al importar: ${(error as Error).message}`);
+        showToast.error(`Error al importar: ${(error as Error).message}`);
       }
     };
     reader.readAsText(file);

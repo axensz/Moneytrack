@@ -1,4 +1,7 @@
 import React from 'react';
+import { X } from 'lucide-react';
+import { UI_LABELS } from '../config/constants';
+import { formatNumberForInput, unformatNumber } from '../utils/formatters';
 import type { NewTransaction, Account, Categories } from '../types/finance';
 
 interface TransactionFormProps {
@@ -21,8 +24,25 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   onCancel
 }) => {
   return (
-    <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-xl p-5 mb-6 border border-purple-200">
-      <h3 className="text-lg font-semibold mb-4 text-gray-900">Nueva Transacción</h3>
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onCancel();
+        }
+      }}
+    >
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Nueva Transacción</h3>
+            <button
+              onClick={onCancel}
+              className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+            >
+              <X size={24} />
+            </button>
+          </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <div>
@@ -34,7 +54,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
           >
             {accounts.map(acc => (
               <option key={acc.id} value={acc.id}>
-                {acc.name} {acc.isDefault ? '(Por defecto)' : ''}
+                {acc.name} {acc.isDefault ? UI_LABELS.forms.defaultAccount : ''}
               </option>
             ))}
           </select>
@@ -46,35 +66,35 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
             <button
               type="button"
               onClick={() => setNewTransaction({...newTransaction, type: 'expense', category: '', toAccountId: ''})}
-              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`btn-type ${
                 newTransaction.type === 'expense'
-                  ? 'bg-rose-100 text-rose-700 border-2 border-rose-300'
-                  : 'bg-gray-100 text-gray-600 border-2 border-gray-200 hover:bg-gray-200'
+                  ? 'btn-type-active-destructive'
+                  : 'btn-type-inactive'
               }`}
             >
-              Gasto
+              {UI_LABELS.transactionTypes.expense}
             </button>
             <button
               type="button"
               onClick={() => setNewTransaction({...newTransaction, type: 'income', category: '', toAccountId: ''})}
-              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`btn-type ${
                 newTransaction.type === 'income'
-                  ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-300'
-                  : 'bg-gray-100 text-gray-600 border-2 border-gray-200 hover:bg-gray-200'
+                  ? 'btn-type-active-success'
+                  : 'btn-type-inactive'
               }`}
             >
-              Ingreso
+              {UI_LABELS.transactionTypes.income}
             </button>
             <button
               type="button"
               onClick={() => setNewTransaction({...newTransaction, type: 'transfer', category: 'Transferencia', toAccountId: ''})}
-              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`btn-type ${
                 newTransaction.type === 'transfer'
-                  ? 'bg-blue-100 text-blue-700 border-2 border-blue-300'
-                  : 'bg-gray-100 text-gray-600 border-2 border-gray-200 hover:bg-gray-200'
+                  ? 'btn-type-active-info'
+                  : 'btn-type-inactive'
               }`}
             >
-              Transferencia
+              {UI_LABELS.transactionTypes.transfer}
             </button>
           </div>
         </div>
@@ -82,9 +102,12 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
         <div>
           <label className="label-base">Monto</label>
           <input
-            type="number"
-            value={newTransaction.amount}
-            onChange={(e) => setNewTransaction({...newTransaction, amount: e.target.value})}
+            type="text"
+            value={formatNumberForInput(newTransaction.amount)}
+            onChange={(e) => {
+              const unformatted = unformatNumber(e.target.value);
+              setNewTransaction({...newTransaction, amount: unformatted});
+            }}
             placeholder="0"
             className="input-base"
           />
@@ -100,12 +123,16 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
               onChange={(e) => setNewTransaction({...newTransaction, toAccountId: e.target.value})}
               className="input-base"
             >
-              <option value="">Seleccionar cuenta destino...</option>
-              {accounts
-                .filter(acc => acc.id !== newTransaction.accountId)
-                .map(acc => (
-                  <option key={acc.id} value={acc.id}>{acc.name}</option>
-                ))}
+              <option value="">{UI_LABELS.forms.selectDestination}</option>
+              {accounts.filter(acc => acc.id !== newTransaction.accountId).length === 0 ? (
+                <option value="" disabled>No hay otras cuentas disponibles</option>
+              ) : (
+                accounts
+                  .filter(acc => acc.id !== newTransaction.accountId)
+                  .map(acc => (
+                    <option key={acc.id} value={acc.id}>{acc.name}</option>
+                  ))
+              )}
             </select>
           ) : (
             <select
@@ -113,7 +140,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
               onChange={(e) => setNewTransaction({...newTransaction, category: e.target.value})}
               className="input-base"
             >
-              <option value="">Seleccionar...</option>
+              <option value="">{UI_LABELS.forms.selectCategory}</option>
               {categories[newTransaction.type].map(cat => (
                 <option key={cat} value={cat}>{cat}</option>
               ))}
@@ -133,23 +160,25 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
       </div>
 
       <div className="mt-4">
-        <label className="block mb-1.5 text-sm font-medium text-gray-700">Descripción</label>
+        <label className="label-base">Descripción</label>
         <input
           type="text"
           value={newTransaction.description}
           onChange={(e) => setNewTransaction({...newTransaction, description: e.target.value})}
           placeholder="Ej: Compra en supermercado"
-          className="w-full px-3 py-2 border border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+          className="input-base"
         />
       </div>
 
-      <div className="flex gap-3 mt-4">
-        <button onClick={onSubmit} className="btn-submit">
-          Agregar
-        </button>
-        <button onClick={onCancel} className="btn-cancel">
-          Cancelar
-        </button>
+          <div className="flex gap-3 mt-6">
+            <button onClick={onSubmit} className="btn-submit">
+              Agregar
+            </button>
+            <button onClick={onCancel} className="btn-cancel">
+              Cancelar
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

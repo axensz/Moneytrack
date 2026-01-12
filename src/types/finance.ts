@@ -64,3 +64,33 @@ export interface BackupData {
   exportDate: string;
   version: string;
 }
+
+// Tipos para estadísticas
+export interface MonthlyStats {
+  month: string;
+  ingresos: number;
+  gastos: number;
+  neto: number;
+}
+
+export interface YearlyStats {
+  año: string;
+  ingresos: number;
+  gastos: number;
+}
+
+export interface CategoryStats {
+  name: string;
+  value: number;
+}
+
+export interface TransactionStats {
+  totalIncome: number;
+  totalExpenses: number;
+  pendingExpenses: number;
+}
+
+export interface ValidationResult {
+  isValid: boolean;
+  errors: string[];
+}

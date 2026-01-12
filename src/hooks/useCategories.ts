@@ -1,24 +1,23 @@
 import { useCallback } from 'react';
 import { useLocalStorage } from './useLocalStorage';
+import { DEFAULT_CATEGORIES, ERROR_MESSAGES } from '../config/constants';
 import type { Categories, Transaction } from '../types/finance';
 
-const defaultCategories: Categories = {
-  expense: ['Alimentación', 'Transporte', 'Servicios', 'Vivienda', 'Salud', 'Entretenimiento', 'Educación', 'Otros'],
-  income: ['Salario', 'Freelance', 'Inversiones', 'Otros']
-};
-
 export function useCategories(transactions: Transaction[]) {
-  const [categories, setCategories] = useLocalStorage<Categories>('financeCategories', defaultCategories);
+  const [categories, setCategories] = useLocalStorage<Categories>('financeCategories', {
+    expense: [...DEFAULT_CATEGORIES.expense],
+    income: [...DEFAULT_CATEGORIES.income]
+  });
 
   const addCategory = useCallback((type: 'expense' | 'income', name: string) => {
     const trimmedName = name.trim();
-    
+
     if (!trimmedName) {
-      throw new Error('El nombre de la categoría no puede estar vacío');
+      throw new Error(ERROR_MESSAGES.EMPTY_CATEGORY_NAME);
     }
-    
+
     if (categories[type].includes(trimmedName)) {
-      throw new Error('Esta categoría ya existe');
+      throw new Error(ERROR_MESSAGES.DUPLICATE_CATEGORY);
     }
 
     setCategories(prev => ({
@@ -29,7 +28,7 @@ export function useCategories(transactions: Transaction[]) {
 
   const deleteCategory = useCallback((type: 'expense' | 'income', category: string) => {
     if (transactions.some(t => t.category === category)) {
-      throw new Error('No puedes eliminar una categoría con transacciones');
+      throw new Error(ERROR_MESSAGES.DELETE_CATEGORY_WITH_TRANSACTIONS);
     }
 
     setCategories(prev => ({

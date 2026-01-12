@@ -1,5 +1,6 @@
 import { X } from 'lucide-react';
 import { loginWithGoogle } from '../lib/firebase';
+import { showToast } from '../utils/toastHelpers';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -13,9 +14,10 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     try {
       await loginWithGoogle();
       onClose();
+      showToast.success('Sesión iniciada correctamente');
     } catch (error) {
       console.error("Error al iniciar sesión", error);
-      alert("Error al iniciar sesión");
+      showToast.error("Error al iniciar sesión. Por favor, intenta de nuevo.");
     }
   };
 

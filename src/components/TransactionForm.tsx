@@ -6,6 +6,7 @@ interface TransactionFormProps {
   setNewTransaction: (tx: NewTransaction) => void;
   accounts: Account[];
   categories: Categories;
+  defaultAccount: Account | null;
   onSubmit: () => void;
   onCancel: () => void;
 }
@@ -15,12 +16,13 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   setNewTransaction,
   accounts,
   categories,
+  defaultAccount,
   onSubmit,
   onCancel
 }) => {
   return (
-    <div className="form-container">
-      <h3 className="text-lg font-semibold mb-4 text-foreground">Nueva Transacción</h3>
+    <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-xl p-5 mb-6 border border-purple-200">
+      <h3 className="text-lg font-semibold mb-4 text-gray-900">Nueva Transacción</h3>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <div>
@@ -44,21 +46,33 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
             <button
               type="button"
               onClick={() => setNewTransaction({...newTransaction, type: 'expense', category: '', toAccountId: ''})}
-              className={`btn-type ${newTransaction.type === 'expense' ? 'btn-type-active-destructive' : 'btn-type-inactive'}`}
+              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                newTransaction.type === 'expense'
+                  ? 'bg-rose-100 text-rose-700 border-2 border-rose-300'
+                  : 'bg-gray-100 text-gray-600 border-2 border-gray-200 hover:bg-gray-200'
+              }`}
             >
               Gasto
             </button>
             <button
               type="button"
               onClick={() => setNewTransaction({...newTransaction, type: 'income', category: '', toAccountId: ''})}
-              className={`btn-type ${newTransaction.type === 'income' ? 'btn-type-active-success' : 'btn-type-inactive'}`}
+              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                newTransaction.type === 'income'
+                  ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-300'
+                  : 'bg-gray-100 text-gray-600 border-2 border-gray-200 hover:bg-gray-200'
+              }`}
             >
               Ingreso
             </button>
             <button
               type="button"
               onClick={() => setNewTransaction({...newTransaction, type: 'transfer', category: 'Transferencia', toAccountId: ''})}
-              className={`btn-type ${newTransaction.type === 'transfer' ? 'btn-type-active-info' : 'btn-type-inactive'}`}
+              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                newTransaction.type === 'transfer'
+                  ? 'bg-blue-100 text-blue-700 border-2 border-blue-300'
+                  : 'bg-gray-100 text-gray-600 border-2 border-gray-200 hover:bg-gray-200'
+              }`}
             >
               Transferencia
             </button>
@@ -88,7 +102,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
             >
               <option value="">Seleccionar cuenta destino...</option>
               {accounts
-                .filter(acc => acc.id !== parseInt(newTransaction.accountId))
+                .filter(acc => acc.id !== newTransaction.accountId)
                 .map(acc => (
                   <option key={acc.id} value={acc.id}>{acc.name}</option>
                 ))}
@@ -119,13 +133,13 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
       </div>
 
       <div className="mt-4">
-        <label className="label-base">Descripción</label>
+        <label className="block mb-1.5 text-sm font-medium text-gray-700">Descripción</label>
         <input
           type="text"
           value={newTransaction.description}
           onChange={(e) => setNewTransaction({...newTransaction, description: e.target.value})}
           placeholder="Ej: Compra en supermercado"
-          className="input-base"
+          className="w-full px-3 py-2 border border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
         />
       </div>
 

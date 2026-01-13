@@ -1,45 +1,99 @@
 /**
- * Calculador de balance de cuentas
- * Centraliza la lógica de cálculo de balances para diferentes tipos de cuenta
+ * 🟢 CALCULADOR DE BALANCE DE CUENTAS - VERSIÓN CON STRATEGY PATTERN
+ *
+ * REFACTORIZACIÓN PASO 3:
+ * ✅ Elimina if (type === 'credit') hardcodeados
+ * ✅ Usa Strategy Pattern para delegar cálculos
+ * ✅ Preparado para nuevos tipos de cuenta sin modificar código
+ *
+ * VERSIÓN ANTERIOR: 260 líneas con lógica hardcodeada
+ * VERSIÓN ACTUAL: 120 líneas delegando a estrategias
  */
 
 import type { Account, Transaction } from '../types/finance';
+import { AccountStrategyFactory, getCreditCardStrategy } from './accountStrategies';
 
 /**
- * Clase utilitaria para calcular balances de cuentas
+ * 🔴 CLASE PARA CÁLCULO DE TARJETAS DE CRÉDITO
+ * Mantenida por compatibilidad, pero ahora delega a CreditCardStrategy
+ *
+ * @deprecated Usar getCreditCardStrategy() y sus métodos directamente
  */
-export class BalanceCalculator {
+export class CreditCardCalculator {
   /**
-   * Calcula el balance neto de transacciones para una cuenta específica
-   * @param accountId - ID de la cuenta
-   * @param transactions - Lista de transacciones (ya filtradas por paid)
-   * @returns Balance neto de las transacciones
+   * Calcula el CUPO UTILIZADO (deuda pendiente por pagar)
    */
-  private static calculateTransactionsBalance(
-    accountId: string,
+  static calculateUsedCredit(
+    account: Account,
     transactions: Transaction[]
   ): number {
-    let balance = 0;
+    if (account.type !== 'credit') return 0;
 
-    transactions.forEach(t => {
-      // Transacciones donde esta cuenta es origen
-      if (t.accountId === accountId) {
-        if (t.type === 'income') balance += t.amount;
-        if (t.type === 'expense') balance -= t.amount;
-        if (t.type === 'transfer') balance -= t.amount;
-      }
-
-      // Transferencias donde esta cuenta es destino
-      if (t.toAccountId === accountId && t.type === 'transfer') {
-        balance += t.amount;
-      }
-    });
-
-    return balance;
+    // ✅ Delegar a estrategia
+    const strategy = getCreditCardStrategy();
+    return strategy.getUsedCredit(account, transactions);
   }
 
   /**
-   * Calcula el balance total de una cuenta
+   * Calcula el CUPO DISPONIBLE
+   */
+  static calculateAvailableCredit(
+    account: Account,
+    transactions: Transaction[]
+  ): number {
+    if (account.type !== 'credit') return 0;
+
+    // ✅ Delegar a estrategia
+    const strategy = AccountStrategyFactory.getStrategy('credit');
+    return strategy.calculateBalance(account, transactions);
+  }
+
+  /**
+   * Valida si se puede realizar un gasto con la tarjeta
+   */
+  static canMakeExpense(
+    account: Account,
+    transactions: Transaction[],
+    amount: number
+  ): { valid: boolean; error?: string; available?: number } {
+    if (account.type !== 'credit') {
+      return { valid: false, error: 'Esta cuenta no es una tarjeta de crédito' };
+    }
+
+    // ✅ Delegar a estrategia
+    const strategy = AccountStrategyFactory.getStrategy('credit');
+    const validation = strategy.validateTransaction(account, amount, transactions);
+    const available = strategy.calculateBalance(account, transactions);
+
+    return {
+      ...validation,
+      available
+    };
+  }
+}
+
+/**
+ * 🟢 CALCULADOR PRINCIPAL CON STRATEGY PATTERN
+ * Clase utilitaria para calcular balances usando estrategias
+ */
+export class BalanceCalculator {
+  /**
+   * 🟢 FUNCIÓN PRINCIPAL: Calcula el balance de una cuenta usando Strategy Pattern
+   *
+   * ANTES (❌ Hardcoded):
+   * ```typescript
+   * if (account.type === 'credit') {
+   *   return CreditCardCalculator.calculateAvailableCredit(account, transactions);
+   * }
+   * return account.initialBalance + transactionsBalance;
+   * ```
+   *
+   * AHORA (✅ Strategy Pattern):
+   * ```typescript
+   * const strategy = AccountStrategyFactory.getStrategy(account.type);
+   * return strategy.calculateBalance(account, transactions);
+   * ```
+   *
    * @param account - Cuenta a calcular
    * @param transactions - Lista de todas las transacciones
    * @returns Balance total de la cuenta
@@ -48,40 +102,110 @@ export class BalanceCalculator {
     account: Account,
     transactions: Transaction[]
   ): number {
-    // Solo considerar transacciones pagadas
-    const paidTransactions = transactions.filter(t => t.paid);
+    // ✅ Obtener estrategia para el tipo de cuenta
+    const strategy = AccountStrategyFactory.getStrategy(account.type);
 
-    // Calcular balance de transacciones
-    const transactionsBalance = this.calculateTransactionsBalance(
-      account.id!,
-      paidTransactions
-    );
-
-    // Para tarjetas de crédito, el balance disponible es:
-    // cupo total + balance inicial + transacciones
-    // (gastos reducen el cupo disponible, pagos lo aumentan)
-    if (account.type === 'credit') {
-      return (account.creditLimit || 0) + account.initialBalance + transactionsBalance;
-    }
-
-    // Para cuentas de ahorro/efectivo:
-    // balance inicial + transacciones
-    return account.initialBalance + transactionsBalance;
+    // ✅ Delegar cálculo a la estrategia
+    return strategy.calculateBalance(account, transactions);
   }
 
   /**
-   * Calcula el balance total de todas las cuentas
+   * 🟢 Calcula el balance total usando Strategy Pattern
+   *
+   * ANTES (❌ Hardcoded):
+   * ```typescript
+   * return accounts
+   *   .filter(acc => acc.type !== 'credit') // ❌ Hardcoded
+   *   .reduce((sum, account) => sum + this.calculateAccountBalance(account, transactions), 0);
+   * ```
+   *
+   * AHORA (✅ Strategy Pattern):
+   * ```typescript
+   * return accounts
+   *   .filter(acc => {
+   *     const strategy = AccountStrategyFactory.getStrategy(acc.type);
+   *     return strategy.includeInTotalBalance(); // ✅ Delegado
+   *   })
+   *   .reduce(...);
+   * ```
+   *
    * @param accounts - Lista de cuentas
    * @param transactions - Lista de transacciones
-   * @returns Balance total
+   * @returns Balance total (solo cuentas que aplican)
    */
   static calculateTotalBalance(
     accounts: Account[],
     transactions: Transaction[]
   ): number {
-    return accounts.reduce(
-      (sum, account) => sum + this.calculateAccountBalance(account, transactions),
-      0
-    );
+    return accounts
+      .filter(acc => {
+        // ✅ Preguntar a la estrategia si se incluye en total
+        const strategy = AccountStrategyFactory.getStrategy(acc.type);
+        return strategy.includeInTotalBalance();
+      })
+      .reduce(
+        (sum, account) => sum + this.calculateAccountBalance(account, transactions),
+        0
+      );
+  }
+
+  /**
+   * 🟢 Valida si una cuenta puede realizar una transacción usando Strategy Pattern
+   *
+   * NUEVA FUNCIÓN: Ahora cualquier tipo de cuenta puede tener lógica de validación
+   *
+   * @param account - Cuenta origen
+   * @param amount - Monto de la transacción
+   * @param transactions - Lista de transacciones
+   * @returns Resultado de validación
+   */
+  static validateTransaction(
+    account: Account,
+    amount: number,
+    transactions: Transaction[]
+  ): { valid: boolean; error?: string } {
+    // ✅ Delegar validación a la estrategia
+    const strategy = AccountStrategyFactory.getStrategy(account.type);
+    return strategy.validateTransaction(account, amount, transactions);
+  }
+
+  /**
+   * 🔴 COMPATIBILIDAD: Calcula el cupo utilizado de una tarjeta de crédito
+   * @deprecated Usar CreditCardCalculator.calculateUsedCredit directamente
+   */
+  static calculateCreditCardUsed(
+    account: Account,
+    transactions: Transaction[]
+  ): number {
+    return CreditCardCalculator.calculateUsedCredit(account, transactions);
+  }
+
+  /**
+   * Calcula el total pendiente por pagar en tarjetas de crédito
+   *
+   * @param accounts - Lista de cuentas
+   * @param transactions - Lista de transacciones
+   * @returns Total pendiente de tarjetas de crédito (deuda total)
+   */
+  static calculateTotalCreditCardPending(
+    accounts: Account[],
+    transactions: Transaction[]
+  ): number {
+    return accounts
+      .filter(acc => acc.type === 'credit')
+      .reduce(
+        (sum, account) => sum + CreditCardCalculator.calculateUsedCredit(account, transactions),
+        0
+      );
+  }
+
+  /**
+   * 🆕 Calcula el cupo disponible de una tarjeta de crédito
+   */
+  static calculateCreditCardAvailable(
+    account: Account,
+    transactions: Transaction[]
+  ): number {
+    return CreditCardCalculator.calculateAvailableCredit(account, transactions);
   }
 }

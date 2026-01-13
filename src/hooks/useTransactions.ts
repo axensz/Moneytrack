@@ -1,47 +1,68 @@
-import { useMemo } from 'react';
+/**
+ * 🟡 HOOK REFACTORIZADO: useTransactions
+ *
+ * CAMBIOS:
+ * ❌ Eliminada lógica duplicada de cálculo de estadísticas (líneas 15-42)
+ * ✅ Ahora solo maneja operaciones CRUD de transacciones (responsabilidad única)
+ * ✅ Las estadísticas se calculan en useGlobalStats (DRY)
+ * ✅ Usa localStorage para usuarios no autenticados
+ *
+ * RESPONSABILIDAD: Gestión de transacciones (CRUD + operaciones)
+ */
+
 import { useFirestore } from './useFirestore';
+import { useLocalStorage } from './useLocalStorage';
 import type { Transaction } from '../types/finance';
 
 export function useTransactions(userId: string | null) {
-  const { 
-    transactions, 
-    loading, 
+  const {
+    transactions: firestoreTransactions,
+    loading: firestoreLoading,
     addTransaction: firestoreAddTransaction,
     deleteTransaction: firestoreDeleteTransaction,
-    updateTransaction 
+    updateTransaction: firestoreUpdateTransaction
   } = useFirestore(userId);
 
-  // Estadísticas calculadas
-  const stats = useMemo(() => {
-    const paidTransactions = transactions.filter(t => t.paid);
-    
-    const totalIncome = paidTransactions
-      .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
-    
-    const totalExpenses = paidTransactions
-      .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
-    
-    const pendingExpenses = transactions
-      .filter(t => t.type === 'expense' && !t.paid)
-      .reduce((sum, t) => sum + t.amount, 0);
-    
-    return { totalIncome, totalExpenses, pendingExpenses };
-  }, [transactions]);
+  const [localTransactions, setLocalTransactions] = useLocalStorage<Transaction[]>('transactions', []);
+
+  // Usar Firebase si hay usuario, localStorage si no
+  const transactions = userId ? firestoreTransactions : localTransactions;
+  const loading = userId ? firestoreLoading : false;
+
+  // Generar ID único para localStorage
+  const generateId = () => Date.now().toString() + Math.random().toString(36).substr(2, 9);
 
   const addTransaction = async (transaction: Omit<Transaction, 'id' | 'createdAt'>) => {
-    await firestoreAddTransaction(transaction);
+    if (userId) {
+      await firestoreAddTransaction(transaction);
+    } else {
+      const newTransaction: Transaction = {
+        ...transaction,
+        id: generateId(),
+        createdAt: new Date()
+      };
+      setLocalTransactions(prev => [newTransaction, ...prev]);
+    }
   };
 
   const deleteTransaction = async (id: string) => {
-    await firestoreDeleteTransaction(id);
+    if (userId) {
+      await firestoreDeleteTransaction(id);
+    } else {
+      setLocalTransactions(prev => prev.filter(t => t.id !== id));
+    }
   };
 
   const togglePaid = async (id: string) => {
     const transaction = transactions.find(t => t.id === id);
     if (transaction) {
-      await updateTransaction(id, { paid: !transaction.paid });
+      if (userId) {
+        await firestoreUpdateTransaction(id, { paid: !transaction.paid });
+      } else {
+        setLocalTransactions(prev =>
+          prev.map(t => t.id === id ? { ...t, paid: !t.paid } : t)
+        );
+      }
     }
   };
 
@@ -57,7 +78,6 @@ export function useTransactions(userId: string | null) {
   return {
     transactions,
     loading,
-    stats,
     addTransaction,
     deleteTransaction,
     togglePaid,

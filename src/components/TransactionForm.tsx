@@ -1,13 +1,15 @@
-import React from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { UI_LABELS } from '../config/constants';
-import { formatNumberForInput, unformatNumber } from '../utils/formatters';
-import type { NewTransaction, Account, Categories } from '../types/finance';
+import { formatNumberForInput, unformatNumber, formatCurrency } from '../utils/formatters';
+import { BalanceCalculator } from '../utils/balanceCalculator';
+import type { NewTransaction, Account, Categories, Transaction } from '../types/finance';
 
 interface TransactionFormProps {
   newTransaction: NewTransaction;
   setNewTransaction: (tx: NewTransaction) => void;
   accounts: Account[];
+  transactions: Transaction[];
   categories: Categories;
   defaultAccount: Account | null;
   onSubmit: () => void;
@@ -18,11 +20,35 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   newTransaction,
   setNewTransaction,
   accounts,
+  transactions,
   categories,
   defaultAccount,
   onSubmit,
   onCancel
 }) => {
+  // Obtener cuenta seleccionada para validar restricciones
+  const selectedAccount = accounts.find(acc => acc.id === newTransaction.accountId);
+  const isCreditCard = selectedAccount?.type === 'credit';
+
+  // Calcular cupo usado si es TC y está pagando
+  const creditUsed = useMemo(() => {
+    if (isCreditCard && newTransaction.type === 'income' && selectedAccount) {
+      return BalanceCalculator.calculateCreditCardUsed(selectedAccount, transactions);
+    }
+    return 0;
+  }, [isCreditCard, newTransaction.type, selectedAccount, transactions]);
+
+  // Efecto: Si cambia a TC y está en "transfer", cambiar a "expense"
+  useEffect(() => {
+    if (isCreditCard && newTransaction.type === 'transfer') {
+      setNewTransaction({
+        ...newTransaction,
+        type: 'expense',
+        toAccountId: ''
+      });
+    }
+  }, [isCreditCard, newTransaction, setNewTransaction]);
+
   return (
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
@@ -83,19 +109,21 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                   : 'btn-type-inactive'
               }`}
             >
-              {UI_LABELS.transactionTypes.income}
+              {isCreditCard ? 'Pagar TC' : UI_LABELS.transactionTypes.income}
             </button>
-            <button
-              type="button"
-              onClick={() => setNewTransaction({...newTransaction, type: 'transfer', category: 'Transferencia', toAccountId: ''})}
-              className={`btn-type ${
-                newTransaction.type === 'transfer'
-                  ? 'btn-type-active-info'
-                  : 'btn-type-inactive'
-              }`}
-            >
-              {UI_LABELS.transactionTypes.transfer}
-            </button>
+            {!isCreditCard && (
+              <button
+                type="button"
+                onClick={() => setNewTransaction({...newTransaction, type: 'transfer', category: 'Transferencia', toAccountId: ''})}
+                className={`btn-type ${
+                  newTransaction.type === 'transfer'
+                    ? 'btn-type-active-info'
+                    : 'btn-type-inactive'
+                }`}
+              >
+                {UI_LABELS.transactionTypes.transfer}
+              </button>
+            )}
           </div>
         </div>
 
@@ -111,6 +139,11 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
             placeholder="0"
             className="input-base"
           />
+          {isCreditCard && newTransaction.type === 'income' && creditUsed > 0 && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+              Deuda pendiente: {formatCurrency(creditUsed)}
+            </p>
+          )}
         </div>
 
         <div>

@@ -1,5 +1,10 @@
 /**
- * Sistema de validación centralizado
+ * 🔵 SISTEMA DE VALIDACIÓN CENTRALIZADO - VERSIÓN CON STRATEGY PATTERN
+ *
+ * PASO 4: INTEGRACIÓN CON ESTRATEGIAS
+ * ✅ Usa AccountStrategyFactory para validaciones específicas por tipo
+ * ✅ Valida cupo disponible en tarjetas de crédito
+ * ✅ Validación consistente con la lógica de negocio
  */
 
 import {
@@ -8,29 +13,40 @@ import {
   ERROR_MESSAGES,
   TRANSFER_CATEGORY
 } from '../config/constants';
+import { AccountStrategyFactory } from './accountStrategies';
 import type {
   NewTransaction,
   NewAccount,
-  ValidationResult
+  ValidationResult,
+  Account,
+  Transaction
 } from '../types/finance';
 
 /**
- * Validador de transacciones
+ * 🔵 VALIDADOR DE TRANSACCIONES CON STRATEGY PATTERN
  */
 export class TransactionValidator {
   /**
-   * Valida una transacción completa
+   * 🔵 Valida una transacción completa usando Strategy Pattern
+   *
+   * MEJORAS PASO 4:
+   * - ✅ Valida cupo en TC usando CreditCardStrategy
+   * - ✅ Valida saldo en cuentas normales usando SavingsAccountStrategy
+   * - ✅ Usa estrategias en lugar de if (accountType === 'credit')
+   *
    * @param transaction - Transacción a validar
-   * @param accountBalance - Saldo actual de la cuenta (opcional)
-   * @param accountType - Tipo de cuenta (opcional)
+   * @param account - Cuenta completa (para usar estrategia)
+   * @param transactions - Lista de transacciones (para calcular balance actual)
    * @returns Resultado de validación con errores si los hay
    */
   static validate(
-    transaction: NewTransaction, 
-    accountBalance?: number, 
-    accountType?: 'savings' | 'credit' | 'cash'
+    transaction: NewTransaction,
+    account?: Account,
+    transactions?: Transaction[]
   ): ValidationResult {
     const errors: string[] = [];
+
+    // ===== VALIDACIONES BÁSICAS =====
 
     // Validar descripción
     if (!transaction.description.trim()) {
@@ -60,7 +76,8 @@ export class TransactionValidator {
       errors.push(ERROR_MESSAGES.SAME_ACCOUNT_TRANSFER);
     }
 
-    // Validar monto
+    // ===== VALIDACIÓN DE MONTO =====
+
     const amount = parseFloat(transaction.amount);
     if (!transaction.amount || isNaN(amount)) {
       errors.push(ERROR_MESSAGES.INVALID_AMOUNT);
@@ -72,10 +89,80 @@ export class TransactionValidator {
       );
     }
 
-    // Validar saldo insuficiente para gastos y transferencias
+    // ===== 🔵 VALIDACIÓN CON STRATEGY PATTERN =====
+
+    // Validar según tipo de transacción y cuenta
+    if (account && transactions && !isNaN(amount)) {
+      try {
+        // ✅ Obtener estrategia para el tipo de cuenta
+        const strategy = AccountStrategyFactory.getStrategy(account.type);
+
+        // ✅ Delegar validación a la estrategia (pasando el tipo de transacción)
+        const validation = strategy.validateTransaction(
+          account,
+          amount,
+          transactions,
+          transaction.type
+        );
+
+        if (!validation.valid && validation.error) {
+          errors.push(validation.error);
+        }
+      } catch (error) {
+        // Si no existe estrategia (tipo inválido), agregar error genérico
+        errors.push('Tipo de cuenta no válido');
+      }
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  }
+
+  /**
+   * 🔴 MÉTODO LEGACY: Validación sin estrategias (backward compatibility)
+   * @deprecated Usar validate(transaction, account, transactions) con estrategias
+   */
+  static validateLegacy(
+    transaction: NewTransaction,
+    accountBalance?: number,
+    accountType?: 'savings' | 'credit' | 'cash'
+  ): ValidationResult {
+    const errors: string[] = [];
+
+    // Validaciones básicas (igual que antes)
+    if (!transaction.description.trim()) {
+      errors.push(ERROR_MESSAGES.EMPTY_DESCRIPTION);
+    }
+
+    if (transaction.type !== 'transfer' && !transaction.category) {
+      errors.push(ERROR_MESSAGES.EMPTY_CATEGORY);
+    }
+
+    if (transaction.type === 'transfer' && !transaction.toAccountId) {
+      errors.push(ERROR_MESSAGES.EMPTY_TO_ACCOUNT);
+    }
+
+    if (
+      transaction.type === 'transfer' &&
+      transaction.accountId === transaction.toAccountId
+    ) {
+      errors.push(ERROR_MESSAGES.SAME_ACCOUNT_TRANSFER);
+    }
+
+    const amount = parseFloat(transaction.amount);
+    if (!transaction.amount || isNaN(amount)) {
+      errors.push(ERROR_MESSAGES.INVALID_AMOUNT);
+    } else if (amount <= TRANSACTION_VALIDATION.amount.min) {
+      errors.push(TRANSACTION_VALIDATION.amount.errorMessage);
+    }
+
+    // ❌ Validación legacy (sin estrategias)
     if (
       (transaction.type === 'expense' || transaction.type === 'transfer') &&
       accountBalance !== undefined &&
+      accountBalance !== null &&
       accountType !== 'credit' &&
       amount > accountBalance
     ) {
@@ -174,11 +261,6 @@ export class AccountValidator {
         ) {
           errors.push(ERROR_MESSAGES.INVALID_PAYMENT_DAY);
         }
-
-        // Validar que el día de pago sea después del día de corte
-        if (!isNaN(cutoffDay) && !isNaN(paymentDay) && paymentDay <= cutoffDay) {
-          errors.push(ERROR_MESSAGES.PAYMENT_BEFORE_CUTOFF);
-        }
       } else {
         // Validar saldo inicial para cuentas de ahorro/efectivo
         const initialBalance = parseFloat(account.initialBalance.toString());
@@ -243,10 +325,6 @@ export class AccountValidator {
       paymentDay > ACCOUNT_VALIDATION.paymentDay.max
     ) {
       errors.push(ERROR_MESSAGES.INVALID_PAYMENT_DAY);
-    }
-
-    if (paymentDay <= cutoffDay) {
-      errors.push(ERROR_MESSAGES.PAYMENT_BEFORE_CUTOFF);
     }
 
     return {

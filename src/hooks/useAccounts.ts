@@ -19,53 +19,44 @@ export function useAccounts(userId: string | null, transactions: Transaction[]) 
   const accounts = userId ? firestoreAccounts : localAccounts;
   const loading = userId ? firestoreLoading : false;
 
-  // Ref para evitar crear múltiples cuentas por defecto
-  const defaultAccountCreated = useRef<string | null>(null);
-
   // Generar ID único para localStorage
   const generateId = () => Date.now().toString() + Math.random().toString(36).substr(2, 9);
 
   // Crear cuenta por defecto si no existe
   useEffect(() => {
-    // Solo ejecutar si hay cuentas cargadas (no loading)
+    // Solo ejecutar si no está cargando y hay cuentas disponibles (vacías o no)
     if (loading) return;
 
-    // Determinar la clave para el ref (userId o 'local')
-    const key = userId || 'local';
-    
-    // Si ya se creó la cuenta por defecto para este usuario, no hacerlo de nuevo
-    if (defaultAccountCreated.current === key) return;
-    
-    // Solo crear si no hay cuentas
-    if (accounts.length > 0) {
-      // Marcar como creado aunque no lo hagamos (ya existen cuentas)
-      defaultAccountCreated.current = key;
-      return;
-    }
+    // Si ya hay al menos una cuenta, no crear nada
+    if (accounts.length > 0) return;
 
-    // Marcar como creado antes de ejecutar la lógica asíncrona
-    defaultAccountCreated.current = key;
-    
-    const defaultAccount = {
-      id: generateId(),
-      name: 'Cuenta Principal',
-      type: 'savings' as const,
-      isDefault: true,
-      initialBalance: 0,
-      createdAt: new Date()
-    };
+    // Verificar que no se haya creado ya (usando un setTimeout para evitar ejecuciones múltiples)
+    const timeoutId = setTimeout(() => {
+      // Verificar de nuevo por si se creó mientras esperábamos
+      if (accounts.length > 0) return;
+      
+      if (userId) {
+        firestoreAddAccount({
+          name: 'Cuenta Principal',
+          type: 'savings',
+          isDefault: true,
+          initialBalance: 0
+        });
+      } else {
+        const defaultAccount = {
+          id: generateId(),
+          name: 'Cuenta Principal',
+          type: 'savings' as const,
+          isDefault: true,
+          initialBalance: 0,
+          createdAt: new Date()
+        };
+        setLocalAccounts([defaultAccount]);
+      }
+    }, 100);
 
-    if (userId) {
-      firestoreAddAccount({
-        name: 'Cuenta Principal',
-        type: 'savings',
-        isDefault: true,
-        initialBalance: 0
-      });
-    } else {
-      setLocalAccounts([defaultAccount]);
-    }
-  }, [userId, loading]);
+    return () => clearTimeout(timeoutId);
+  }, [userId, accounts.length, loading]);
 
   const getAccountBalance = (accountId: string): number => {
     const account = accounts.find(a => a.id === accountId);

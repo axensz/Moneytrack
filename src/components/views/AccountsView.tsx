@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Plus, Edit2, Trash2, Wallet, CreditCard, Banknote, X } from 'lucide-react';
 import { showToast } from '../../utils/toastHelpers';
-import { formatNumberForInput } from '../../utils/formatters';
+import { formatNumberForInput, unformatNumber } from '../../utils/formatters';
+import { BalanceCalculator } from '../../utils/balanceCalculator';
 import { PROTECTED_CATEGORIES, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../../config/constants';
 import type { Account, Transaction, NewAccount } from '../../types/finance';
 
@@ -52,7 +53,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     initialBalance: 0,
     creditLimit: 0,
     cutoffDay: 1,
-    paymentDay: 10
+    paymentDay: 10,
+    bankAccountId: undefined
   });
   
   const [newCategory, setNewCategory] = useState<{
@@ -65,6 +67,31 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
 
   const [balanceAdjustment, setBalanceAdjustment] = useState<string>('');
 
+  // Estados temporales para formateo de números (string mientras se escribe, number al guardar)
+  const [initialBalanceInput, setInitialBalanceInput] = useState<string>('');
+  const [creditLimitInput, setCreditLimitInput] = useState<string>('');
+
+  // Filtrar cuentas de ahorro para asociación con TC
+  const savingsAccounts: Account[] = accounts.filter(acc => acc.type === 'savings');
+
+  // ⚡ Función optimizada para cerrar modal rápidamente
+  const closeAccountModal = useCallback(() => {
+    setShowAccountForm(false);
+    setEditingAccount(null);
+    setBalanceAdjustment('');
+    setInitialBalanceInput('');
+    setCreditLimitInput('');
+    setNewAccount({
+      name: '',
+      type: 'savings',
+      initialBalance: 0,
+      creditLimit: 0,
+      cutoffDay: 1,
+      paymentDay: 10,
+      bankAccountId: undefined
+    });
+  }, []);
+
   const accountTypes = [
     { value: 'savings' as const, label: 'Cuenta de Ahorros', icon: Wallet },
     { value: 'credit' as const, label: 'Tarjeta de Crédito', icon: CreditCard },
@@ -74,11 +101,12 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   const getCreditUsed = (accountId: string): number => {
     const account = accounts.find(a => a.id === accountId);
     if (!account || account.type !== 'credit') return 0;
-
-    const accountTx = transactions.filter(t => t.accountId === accountId && t.paid);
-    const expenses = accountTx.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-    const payments = accountTx.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-    return expenses - payments;
+    
+    // Debug: verificar transacciones de esta TC
+    const accountTransactions = transactions.filter(t => t.accountId === accountId);
+    
+    // Usar BalanceCalculator para obtener el cupo utilizado (pendiente)
+    return BalanceCalculator.calculateCreditCardUsed(account, transactions);
   };
 
   const getNextCutoffDate = (account: Account): Date | null => {
@@ -86,10 +114,12 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
 
     const today = new Date();
     const cutoffDay = account.cutoffDay;
+    // El corte siempre debe mostrar el mes anterior si aún no ha llegado el día de corte
     const cutoffDate = new Date(today.getFullYear(), today.getMonth(), cutoffDay);
 
-    if (today.getDate() >= cutoffDay) {
-      cutoffDate.setMonth(cutoffDate.getMonth() + 1);
+    if (today.getDate() < cutoffDay) {
+      // Si no hemos llegado al día de corte, el último corte fue el mes anterior
+      cutoffDate.setMonth(cutoffDate.getMonth() - 1);
     }
 
     return cutoffDate;
@@ -99,12 +129,19 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     if (account.type !== 'credit' || !account.paymentDay) return null;
 
     const today = new Date();
+    const cutoffDay = account.cutoffDay || 1;
     const paymentDay = account.paymentDay;
-    const paymentDate = new Date(today.getFullYear(), today.getMonth(), paymentDay);
-
-    if (today.getDate() >= paymentDay) {
-      paymentDate.setMonth(paymentDate.getMonth() + 1);
+    
+    // Si aún no hemos llegado al día de corte, el pago es de este mes
+    // Si ya pasamos el día de corte, el pago es del siguiente mes
+    let paymentMonth = today.getMonth();
+    
+    if (today.getDate() >= cutoffDay) {
+      // Ya pasó el corte de este mes, el pago es para el siguiente mes
+      paymentMonth = today.getMonth() + 1;
     }
+    
+    const paymentDate = new Date(today.getFullYear(), paymentMonth, paymentDay);
 
     return paymentDate;
   };
@@ -117,50 +154,59 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
 
     try {
       if (editingAccount) {
-        // Actualizar nombre de la cuenta
-        await updateAccount(editingAccount.id!, { name: newAccount.name.trim() });
-        
-        let balanceAdjusted = false;
-        
-        // Procesar ajuste de saldo si se ingresó un valor
+        // Validar ajuste de saldo ANTES de cerrar modal
+        let needsBalanceAdjustment = false;
+        let adjustmentData = null;
+
         if (balanceAdjustment.trim() !== '') {
-          const inputValue = balanceAdjustment.replace(/[^\d.]/g, '');
-          const newBalance = parseFloat(inputValue);
-          
-          if (!isNaN(newBalance) && newBalance >= 0) {
-            const currentBalance = getAccountBalance(editingAccount.id!);
-            const adjustment = newBalance - currentBalance;
-            
-            if (Math.abs(adjustment) >= 0.01) { // Solo ajustar si hay diferencia >= 1 centavo
-              await addTransaction({
-                type: adjustment > 0 ? 'income' : 'expense',
-                amount: Math.abs(adjustment),
-                category: 'Otros',
-                description: `Ajuste de saldo: ${adjustment > 0 ? '+' : ''}${formatCurrency(adjustment)}`,
-                date: new Date(),
-                paid: true,
-                accountId: editingAccount.id!
-              });
-              balanceAdjusted = true;
-            }
-          } else {
+          const cleanValue = balanceAdjustment.trim().replace(/\./g, '').replace(',', '.');
+          const newBalance = parseFloat(cleanValue);
+
+          if (isNaN(newBalance) || newBalance < 0) {
             showToast.error('Ingresa un saldo válido (debe ser un número positivo)');
             return;
           }
+
+          const currentBalance = getAccountBalance(editingAccount.id!);
+          const adjustment = newBalance - currentBalance;
+
+          if (Math.abs(adjustment) >= 0.01) {
+            needsBalanceAdjustment = true;
+            adjustmentData = {
+              type: adjustment > 0 ? 'income' as const : 'expense' as const,
+              amount: Math.abs(adjustment),
+              category: 'Otros',
+              description: `Ajuste de saldo: ${adjustment > 0 ? '+' : ''}${formatCurrency(adjustment)}`,
+              date: new Date(),
+              paid: true,
+              accountId: editingAccount.id!
+            };
+          }
         }
-        
-        // Limpiar estados
-        setEditingAccount(null);
-        setBalanceAdjustment('');
-        setShowAccountForm(false);
-        
-        // Mostrar mensaje apropiado después de limpiar estados
-        if (balanceAdjusted) {
+
+        // ⚡ CERRAR MODAL INMEDIATAMENTE (UX optimizada)
+        const accountId = editingAccount.id!;
+        closeAccountModal();
+
+        // Preparar actualizaciones
+        const updates: Partial<Account> = { name: newAccount.name.trim() };
+
+        // Si es tarjeta de crédito, permitir actualizar el límite
+        if (editingAccount.type === 'credit' && newAccount.creditLimit) {
+          updates.creditLimit = newAccount.creditLimit;
+        }
+
+        // Ejecutar operaciones asíncronas después del cierre
+        await updateAccount(accountId, updates);
+
+        if (needsBalanceAdjustment && adjustmentData) {
+          await addTransaction(adjustmentData);
           showToast.success('Cuenta actualizada y saldo ajustado correctamente');
         } else {
           showToast.success(SUCCESS_MESSAGES.ACCOUNT_UPDATED);
         }
       } else {
+        // Validaciones previas
         if (newAccount.type === 'credit') {
           const creditLimit = parseFloat(newAccount.creditLimit.toString());
           if (!newAccount.creditLimit || isNaN(creditLimit) || creditLimit <= 0) {
@@ -178,12 +224,6 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
 
           if (paymentDay < 1 || paymentDay > 31) {
             showToast.error(ERROR_MESSAGES.INVALID_PAYMENT_DAY);
-      setBalanceAdjustment('');
-            return;
-          }
-
-          if (paymentDay <= cutoffDay) {
-            showToast.error(ERROR_MESSAGES.PAYMENT_BEFORE_CUTOFF);
             return;
           }
         } else {
@@ -194,28 +234,23 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
           }
         }
 
-        await addAccount({
+        // Preparar datos de la cuenta
+        const accountData = {
           name: newAccount.name.trim(),
           type: newAccount.type,
           isDefault: false,
           initialBalance: parseFloat(newAccount.initialBalance.toString()) || 0,
           creditLimit: parseFloat(newAccount.creditLimit.toString()) || 0,
           cutoffDay: parseInt(newAccount.cutoffDay.toString()) || 1,
-          paymentDay: parseInt(newAccount.paymentDay.toString()) || 10
-        });
-      }
+          paymentDay: parseInt(newAccount.paymentDay.toString()) || 10,
+          bankAccountId: newAccount.bankAccountId
+        };
 
-      setNewAccount({
-        name: '',
-        type: 'savings',
-        initialBalance: 0,
-        creditLimit: 0,
-        cutoffDay: 1,
-        paymentDay: 10
-      });
-      
-      if (!editingAccount) {
-        setShowAccountForm(false);
+        // ⚡ CERRAR MODAL INMEDIATAMENTE (UX optimizada)
+        closeAccountModal();
+
+        // Ejecutar operación asíncrona después del cierre
+        await addAccount(accountData);
         showToast.success(SUCCESS_MESSAGES.ACCOUNT_ADDED);
       }
     } catch (error) {
@@ -232,8 +267,12 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       initialBalance: account.initialBalance,
       creditLimit: account.creditLimit || 0,
       cutoffDay: account.cutoffDay || 1,
-      paymentDay: account.paymentDay || 10
+      paymentDay: account.paymentDay || 10,
+      bankAccountId: account.bankAccountId
     });
+    // Inicializar inputs de formateo con valores actuales
+    setInitialBalanceInput(account.initialBalance.toString());
+    setCreditLimitInput((account.creditLimit || 0).toString());
     setShowAccountForm(true);
   };
 
@@ -338,7 +377,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                 initialBalance: 0,
                 creditLimit: 0,
                 cutoffDay: 1,
-                paymentDay: 10
+                paymentDay: 10,
+                bankAccountId: undefined
               });
             }
           }}
@@ -360,7 +400,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                       initialBalance: 0,
                       creditLimit: 0,
                       cutoffDay: 1,
-                      paymentDay: 10
+                      paymentDay: 10,
+                      bankAccountId: undefined
                     });
                   }}
                   className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
@@ -380,22 +421,33 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                 className="input-base"
               />
             </div>
-
-            {editingAccount && (
+            {editingAccount && editingAccount.type === 'credit' && (
+              <div>
+                <label className="label-base">Límite de Crédito</label>
+                <input
+                  type="text"
+                  value={formatNumberForInput(creditLimitInput)}
+                  onChange={(e) => {
+                    const unformatted = unformatNumber(e.target.value);
+                    setCreditLimitInput(unformatted);
+                    const numValue = parseFloat(unformatted.replace(',', '.')) || 0;
+                    setNewAccount({...newAccount, creditLimit: numValue});
+                  }}
+                  placeholder="0"
+                  className="input-base"
+                />
+              </div>
+            )}
+            {editingAccount && editingAccount.type !== 'credit' && (
               <div>
                 <label className="label-base">Ajustar saldo (opcional)</label>
                 <input
                   type="text"
-                  value={balanceAdjustment}
+                  value={formatNumberForInput(balanceAdjustment)}
                   placeholder={`Saldo actual: ${formatCurrency(getAccountBalance(editingAccount.id!))}`}
                   onChange={(e) => {
-                    const value = e.target.value.replace(/[^\d.]/g, '');
-                    // Evitar múltiples puntos decimales
-                    const parts = value.split('.');
-                    if (parts.length > 2) {
-                      return;
-                    }
-                    setBalanceAdjustment(value);
+                    const unformatted = unformatNumber(e.target.value);
+                    setBalanceAdjustment(unformatted);
                   }}
                   className="input-base"
                 />
@@ -424,9 +476,15 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                   <div>
                     <label className="label-base">Saldo inicial</label>
                     <input
-                      type="number"
-                      value={newAccount.initialBalance}
-                      onChange={(e) => setNewAccount({...newAccount, initialBalance: parseFloat(e.target.value) || 0})}
+                      type="text"
+                      value={formatNumberForInput(initialBalanceInput)}
+                      onChange={(e) => {
+                        const unformatted = unformatNumber(e.target.value);
+                        setInitialBalanceInput(unformatted);
+                        // Convertir a número para el estado
+                        const numValue = parseFloat(unformatted.replace(',', '.')) || 0;
+                        setNewAccount({...newAccount, initialBalance: numValue});
+                      }}
                       placeholder="0"
                       className="input-base"
                     />
@@ -434,11 +492,39 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                 ) : (
                   <>
                     <div>
+                      <label className="label-base">Banco asociado (opcional)</label>
+                      <select
+                        value={newAccount.bankAccountId || ''}
+                        onChange={(e) => setNewAccount({...newAccount, bankAccountId: e.target.value || undefined})}
+                        className="input-base"
+                      >
+                        <option value="">Sin asociar</option>
+                        {savingsAccounts.map((acc: Account) => {
+                          const editId = (editingAccount as Account | null)?.id;
+                          if (acc.id && acc.id !== editId) {
+                            return (
+                              <option key={acc.id} value={acc.id}>
+                                {acc.name}
+                              </option>
+                            );
+                          }
+                          return null;
+                        })}
+                      </select>
+                    </div>
+
+                    <div>
                       <label className="label-base">Cupo total</label>
                       <input
-                        type="number"
-                        value={newAccount.creditLimit}
-                        onChange={(e) => setNewAccount({...newAccount, creditLimit: parseFloat(e.target.value) || 0})}
+                        type="text"
+                        value={formatNumberForInput(creditLimitInput)}
+                        onChange={(e) => {
+                          const unformatted = unformatNumber(e.target.value);
+                          setCreditLimitInput(unformatted);
+                          // Convertir a número para el estado
+                          const numValue = parseFloat(unformatted.replace(',', '.')) || 0;
+                          setNewAccount({...newAccount, creditLimit: numValue});
+                        }}
                         placeholder="0"
                         className="input-base"
                       />
@@ -490,7 +576,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                       initialBalance: 0,
                       creditLimit: 0,
                       cutoffDay: 1,
-                      paymentDay: 10
+                      paymentDay: 10,
+                      bankAccountId: undefined
                     });
                   }}
                   className="btn-cancel"
@@ -605,6 +692,11 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                   </div>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
                     {accountTypeInfo?.label}
+                    {account.type === 'credit' && account.bankAccountId && (
+                      <span className="ml-2 text-purple-600 dark:text-purple-400">
+                        • {accounts.find(acc => acc.id === account.bankAccountId)?.name}
+                      </span>
+                    )}
                   </p>
 
                   {account.type === 'credit' ? (

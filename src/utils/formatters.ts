@@ -11,13 +11,21 @@ class CurrencyFormatter {
   private static _formatter: Intl.NumberFormat | null = null;
   private static _compactFormatter: Intl.NumberFormat | null = null;
 
+  /**
+   * Resetea el formateador (útil después de cambiar configuración)
+   */
+  static reset(): void {
+    this._formatter = null;
+    this._compactFormatter = null;
+  }
+
   private static get formatter(): Intl.NumberFormat {
     if (!this._formatter) {
       this._formatter = new Intl.NumberFormat(APP_CONFIG.locale, {
         style: 'currency',
         currency: APP_CONFIG.currency,
         minimumFractionDigits: 0,
-        maximumFractionDigits: 0
+        maximumFractionDigits: 2
       });
     }
     return this._formatter;
@@ -138,21 +146,53 @@ class NumberFormatter {
   /**
    * Formatea un número para mostrar en input con separadores de miles
    * @param value - Valor a formatear
-   * @returns String formateado con separadores (ej: "1.234.567")
+   * @returns String formateado con separadores (ej: "1.234.567" o "1.234,56")
    */
   static formatForInput(value: string | number): string {
-    const numStr = value.toString().replace(/[^\d]/g, '');
+    if (!value && value !== 0) return '';
+
+    const strValue = value.toString();
+    // Reemplazar punto decimal por coma (en caso de que sea número)
+    const normalized = strValue.replace('.', ',');
+    // Remover puntos de miles existentes y espacios
+    const numStr = normalized.replace(/[^\d,]/g, '');
+
     if (!numStr) return '';
-    return new Intl.NumberFormat('es-CO').format(parseInt(numStr));
+
+    // Verificar si el usuario acaba de escribir una coma (termina con coma sin decimales)
+    const endsWithComma = numStr.endsWith(',') && !numStr.includes(',', 0);
+
+    // Separar parte entera y decimal
+    const parts = numStr.split(',');
+    const integerPart = parts[0].replace(/\./g, '');
+    const decimalPart = parts[1] !== undefined ? parts[1] : '';
+
+    // Si no hay parte entera válida, retornar vacío
+    if (!integerPart || integerPart === '') return '';
+
+    // Formatear parte entera con separador de miles
+    const formattedInteger = new Intl.NumberFormat('es-CO').format(parseInt(integerPart) || 0);
+
+    // Si el usuario escribió coma pero aún no hay decimales, preservar la coma
+    if (endsWithComma) {
+      return `${formattedInteger},`;
+    }
+
+    // Combinar con parte decimal si existe
+    if (decimalPart !== '') {
+      return `${formattedInteger},${decimalPart}`;
+    }
+
+    return formattedInteger;
   }
 
   /**
    * Remueve formato de un string para obtener el número
    * @param value - String formateado
-   * @returns Número sin formato
+   * @returns Número sin formato pero preservando coma decimal
    */
   static unformat(value: string): string {
-    return value.replace(/[^\d]/g, '');
+    return value.replace(/[^\d,]/g, '');
   }
   /**
    * Parsea un string a número de forma segura

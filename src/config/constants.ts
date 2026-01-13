@@ -179,7 +179,7 @@ export const UI_LABELS = {
 
 // Configuración de Toast notifications
 export const TOAST_CONFIG = {
-  position: 'top-right' as const,
+  position: 'top-center' as const,
   duration: 3000,
   style: {
     background: '#363636',
@@ -215,7 +215,7 @@ export const INITIAL_TRANSACTION = {
   category: '',
   description: '',
   date: new Date().toISOString().split('T')[0],
-  paid: false,
+  paid: true, // ✅ Por defecto las transacciones están pagadas (más intuitivo)
   accountId: '',
   toAccountId: ''
 } as const;

@@ -20,6 +20,7 @@ export interface Account {
   creditLimit?: number;
   cutoffDay?: number;
   paymentDay?: number;
+  bankAccountId?: string; // ID de cuenta bancaria asociada (para tarjetas de crédito)
   createdAt?: Date;
 }
 
@@ -52,6 +53,7 @@ export interface NewAccount {
   creditLimit: number;
   cutoffDay: number;
   paymentDay: number;
+  bankAccountId?: string;
 }
 
 export type FilterValue = 'all' | string;

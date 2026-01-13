@@ -391,9 +391,9 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       </div>
 
       {showAccountForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               <div className="flex justify-between items-center mb-4">
                 <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                   {editingAccount ? 'Editar Cuenta' : 'Nueva Cuenta'}
@@ -690,8 +690,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                   : 'border border-purple-100 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md'
               }`}
             >
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
+              <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                <div className="flex-1 w-full sm:w-auto">
                   <div className="flex items-center gap-2 mb-2">
                     {accountTypeInfo && React.createElement(accountTypeInfo.icon, {
                       size: 20,
@@ -734,7 +734,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                         />
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3 mt-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mt-3">
                         <div className="text-sm">
                           <div className="text-gray-500 dark:text-gray-400">Corte</div>
                           <div className="font-medium text-gray-900 dark:text-gray-100">
@@ -752,7 +752,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                   ) : null}
                 </div>
 
-                <div className="text-right ml-6">
+                <div className="text-right ml-0 sm:ml-6 mt-3 sm:mt-0">
                   <div className={`text-2xl font-bold mb-3 ${
                     account.type === 'credit'
                       ? (balance >= 0 ? 'text-purple-600' : 'text-rose-600')
@@ -766,7 +766,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                     {formatCurrency(balance)}
                   </div>
 
-                  <div className="flex gap-2 justify-end">
+                  <div className="flex flex-wrap gap-2 justify-end">
                     <button
                       onClick={() => editAccount(account)}
                       className="btn-edit"

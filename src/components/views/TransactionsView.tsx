@@ -108,26 +108,31 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
               return (
                 <div
                   key={transaction.id}
-                  className="border rounded-lg p-4 flex justify-between items-center transition-all bg-white dark:bg-gray-800 border-purple-100 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md"
+                  className="border rounded-lg p-3 sm:p-4 transition-all bg-white dark:bg-gray-800 border-purple-100 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md"
                 >
-                  <div className="flex items-center gap-4 flex-1">
-                    <div className="flex-1">
-                      <div className="font-medium text-gray-900 dark:text-gray-100">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-gray-900 dark:text-gray-100 truncate">
                         {transaction.description}
                       </div>
-                      <div className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                        {transaction.category} • {account?.name} • {new Date(transaction.date).toLocaleDateString('es-CO')}
+                      <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 flex flex-wrap gap-1">
+                        <span>{transaction.category}</span>
+                        <span className="hidden sm:inline">•</span>
+                        <span className="hidden sm:inline">{account?.name}</span>
+                        <span className="hidden sm:inline">•</span>
+                        <span>{new Date(transaction.date).toLocaleDateString('es-CO')}</span>
                       </div>
                     </div>
 
-                    <div className={`text-lg font-semibold ${
-                      transaction.type === 'income' ? 'text-emerald-600' : 
-                      transaction.type === 'expense' ? 'text-rose-600' : 'text-blue-600'
-                    }`}>
-                      {transaction.type === 'income' ? '+' : transaction.type === 'expense' ? '-' : '→'} {formatCurrency(transaction.amount)}
-                    </div>
+                    <div className="flex items-center justify-between sm:justify-end gap-3">
+                      <div className={`text-base sm:text-lg font-semibold whitespace-nowrap ${
+                        transaction.type === 'income' ? 'text-emerald-600' :
+                        transaction.type === 'expense' ? 'text-rose-600' : 'text-blue-600'
+                      }`}>
+                        {transaction.type === 'income' ? '+' : transaction.type === 'expense' ? '-' : '→'} {formatCurrency(transaction.amount)}
+                      </div>
 
-                    <div className="flex gap-1">
+                      <div className="flex gap-1">
                       <button
                         onClick={() => handleDuplicateTransaction(transaction)}
                         className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
@@ -142,11 +147,12 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                         <X size={18} />
                       </button>
                     </div>
+                    </div>
                   </div>
 
                   {deleteConfirm === transaction.id && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 max-w-sm w-full">
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm">
+                      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-4 sm:p-6 max-w-sm w-full">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
                           ¿Eliminar transacción?
                         </h3>

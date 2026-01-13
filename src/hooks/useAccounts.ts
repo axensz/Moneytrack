@@ -27,6 +27,8 @@ export function useAccounts(
   const generateId = () => Date.now().toString() + Math.random().toString(36).substr(2, 9);
 
   // Crear cuenta por defecto si no existe
+  const hasCreatedDefault = useRef(false);
+
   useEffect(() => {
     // Solo ejecutar si no está cargando y hay cuentas disponibles (vacías o no)
     if (loading) return;
@@ -34,11 +36,17 @@ export function useAccounts(
     // Si ya hay al menos una cuenta, no crear nada
     if (accounts.length > 0) return;
 
+    // Si ya se creó la cuenta default en esta sesión, no crear otra
+    if (hasCreatedDefault.current) return;
+
+    // Marcar que se va a crear
+    hasCreatedDefault.current = true;
+
     // Verificar que no se haya creado ya (usando un setTimeout para evitar ejecuciones múltiples)
     const timeoutId = setTimeout(() => {
       // Verificar de nuevo por si se creó mientras esperábamos
       if (accounts.length > 0) return;
-      
+
       if (userId) {
         firestoreAddAccount({
           name: 'Cuenta Principal',
@@ -60,7 +68,7 @@ export function useAccounts(
     }, 100);
 
     return () => clearTimeout(timeoutId);
-  }, [userId, accounts.length, loading]);
+  }, [userId, accounts.length, loading, firestoreAddAccount]);
 
   const getAccountBalance = (accountId: string): number => {
     const account = accounts.find(a => a.id === accountId);

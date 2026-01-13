@@ -16,6 +16,7 @@ interface AccountsViewProps {
   deleteAccount: (id: string) => Promise<void>;
   setDefaultAccount: (id: string) => Promise<void>;
   getAccountBalance: (id: string) => number;
+  getTransactionCountForAccount: (id: string) => number;
   formatCurrency: (amount: number) => string;
   categories: {
     expense: string[];
@@ -34,6 +35,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   deleteAccount,
   setDefaultAccount,
   getAccountBalance,
+  getTransactionCountForAccount,
   formatCurrency,
   categories,
   addCategory,
@@ -46,6 +48,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [deleteConfirmName, setDeleteConfirmName] = useState('');
+  const [confirmDeleteWithTransactions, setConfirmDeleteWithTransactions] = useState(false);
   
   const [newAccount, setNewAccount] = useState<NewAccount>({
     name: '',
@@ -54,7 +57,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     creditLimit: 0,
     cutoffDay: 1,
     paymentDay: 10,
-    bankAccountId: undefined
+    bankAccountId: undefined,
+    interestRate: 0
   });
   
   const [newCategory, setNewCategory] = useState<{
@@ -88,7 +92,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       creditLimit: 0,
       cutoffDay: 1,
       paymentDay: 10,
-      bankAccountId: undefined
+      bankAccountId: undefined,
+      interestRate: 0
     });
   }, []);
 
@@ -243,7 +248,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
           creditLimit: parseFloat(newAccount.creditLimit.toString()) || 0,
           cutoffDay: parseInt(newAccount.cutoffDay.toString()) || 1,
           paymentDay: parseInt(newAccount.paymentDay.toString()) || 10,
-          bankAccountId: newAccount.bankAccountId
+          bankAccountId: newAccount.bankAccountId,
+          interestRate: parseFloat(newAccount.interestRate.toString()) || 0
         };
 
         // ⚡ CERRAR MODAL INMEDIATAMENTE (UX optimizada)
@@ -268,7 +274,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       creditLimit: account.creditLimit || 0,
       cutoffDay: account.cutoffDay || 1,
       paymentDay: account.paymentDay || 10,
-      bankAccountId: account.bankAccountId
+      bankAccountId: account.bankAccountId,
+      interestRate: account.interestRate || 0
     });
     // Inicializar inputs de formateo con valores actuales
     setInitialBalanceInput(account.initialBalance.toString());
@@ -292,7 +299,15 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     if (!account) return;
 
     if (deleteConfirmName.trim() !== account.name) {
-      showToast.error('El nombre no coincide');
+      showToast.error('El nombre ingresado no coincide con el nombre de la cuenta');
+      return;
+    }
+
+    const transactionCount = getTransactionCountForAccount(accountId);
+
+    // Validar checkbox si hay transacciones
+    if (transactionCount > 0 && !confirmDeleteWithTransactions) {
+      showToast.error('Debes confirmar que deseas eliminar las transacciones asociadas');
       return;
     }
 
@@ -300,9 +315,18 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       await deleteAccount(accountId);
       setShowDeleteConfirm(null);
       setDeleteConfirmName('');
-      showToast.success('Cuenta eliminada correctamente');
+      setConfirmDeleteWithTransactions(false);
+
+      if (transactionCount > 0) {
+        showToast.success(
+          `Cuenta "${account.name}" eliminada correctamente junto con ${transactionCount} transacción${transactionCount !== 1 ? 'es' : ''} asociada${transactionCount !== 1 ? 's' : ''}`
+        );
+      } else {
+        showToast.success(`Cuenta "${account.name}" eliminada correctamente`);
+      }
     } catch (error) {
-      showToast.error('Error al eliminar la cuenta');
+      const errorMessage = (error as Error).message || 'Error desconocido al eliminar la cuenta';
+      showToast.error(`Error: ${errorMessage}`);
       console.error(error);
     }
   };
@@ -323,7 +347,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                   initialBalance: 0,
                   creditLimit: 0,
                   cutoffDay: 1,
-                  paymentDay: 10
+                  paymentDay: 10,
+                  interestRate: 0
                 });
               } else {
                 setShowCategoryForm(false);
@@ -335,7 +360,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                   initialBalance: 0,
                   creditLimit: 0,
                   cutoffDay: 1,
-                  paymentDay: 10
+                  paymentDay: 10,
+                  interestRate: 0
                 });
                 setShowAccountForm(true);
               }
@@ -365,24 +391,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       </div>
 
       {showAccountForm && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowAccountForm(false);
-              setEditingAccount(null);
-              setNewAccount({
-                name: '',
-                type: 'savings',
-                initialBalance: 0,
-                creditLimit: 0,
-                cutoffDay: 1,
-                paymentDay: 10,
-                bankAccountId: undefined
-              });
-            }
-          }}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
@@ -401,7 +410,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                       creditLimit: 0,
                       cutoffDay: 1,
                       paymentDay: 10,
-                      bankAccountId: undefined
+                      bankAccountId: undefined,
+                      interestRate: 0
                     });
                   }}
                   className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
@@ -531,6 +541,20 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                     </div>
 
                     <div>
+                      <label className="label-base">Tasa de Interés E.A. (%)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="200"
+                        value={newAccount.interestRate}
+                        onChange={(e) => setNewAccount({...newAccount, interestRate: parseFloat(e.target.value) || 0})}
+                        placeholder="23.99"
+                        className="input-base"
+                      />
+                    </div>
+
+                    <div>
                       <label className="label-base">Día de corte</label>
                       <input
                         type="number"
@@ -577,7 +601,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                       creditLimit: 0,
                       cutoffDay: 1,
                       paymentDay: 10,
-                      bankAccountId: undefined
+                      bankAccountId: undefined,
+                      interestRate: 0
                     });
                   }}
                   className="btn-cancel"
@@ -591,14 +616,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       )}
 
       {showCategoryForm && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowCategoryForm(false);
-            }
-          }}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md">
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
@@ -835,56 +853,87 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       </div>
 
       {/* Delete Confirmation Modal */}
-      {showDeleteConfirm && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowDeleteConfirm(null);
-              setDeleteConfirmName('');
-            }
-          }}
-        >
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md">
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                Eliminar Cuenta
-              </h3>
-              <p className="text-gray-600 dark:text-gray-300 mb-4">
-                Para confirmar la eliminación, escribe el nombre de la cuenta:
-              </p>
-              <p className="font-medium text-gray-900 dark:text-white mb-4">
-                {accounts.find(a => a.id === showDeleteConfirm)?.name}
-              </p>
-              <input
-                type="text"
-                value={deleteConfirmName}
-                onChange={(e) => setDeleteConfirmName(e.target.value)}
-                placeholder="Nombre de la cuenta"
-                className="input-base mb-6"
-              />
-              <div className="flex gap-3">
-                <button
-                  onClick={() => handleDeleteAccount(showDeleteConfirm)}
-                  disabled={deleteConfirmName.trim() !== accounts.find(a => a.id === showDeleteConfirm)?.name}
-                  className="flex-1 bg-rose-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Eliminar
-                </button>
-                <button
-                  onClick={() => {
-                    setShowDeleteConfirm(null);
-                    setDeleteConfirmName('');
-                  }}
-                  className="flex-1 btn-cancel"
-                >
-                  Cancelar
-                </button>
+      {showDeleteConfirm && (() => {
+        const accountToDelete = accounts.find(a => a.id === showDeleteConfirm);
+        const transactionCount = getTransactionCountForAccount(showDeleteConfirm);
+
+        const handleClose = () => {
+          setShowDeleteConfirm(null);
+          setDeleteConfirmName('');
+          setConfirmDeleteWithTransactions(false);
+        };
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md">
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-rose-600 dark:text-rose-400 mb-4">
+                  ⚠️ Eliminar Cuenta
+                </h3>
+
+                {transactionCount > 0 && (
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mb-4">
+                    <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                      Esta cuenta tiene {transactionCount} transacción{transactionCount !== 1 ? 'es' : ''} asociada{transactionCount !== 1 ? 's' : ''}.
+                    </p>
+                    <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                      Al eliminar la cuenta, todas las transacciones también serán eliminadas permanentemente.
+                    </p>
+                  </div>
+                )}
+
+                <p className="text-gray-600 dark:text-gray-300 mb-2">
+                  Para confirmar la eliminación, escribe el nombre de la cuenta:
+                </p>
+                <p className="font-semibold text-lg text-gray-900 dark:text-white mb-4">
+                  {accountToDelete?.name}
+                </p>
+                <input
+                  type="text"
+                  value={deleteConfirmName}
+                  onChange={(e) => setDeleteConfirmName(e.target.value)}
+                  placeholder="Nombre de la cuenta"
+                  className="input-base mb-4"
+                  autoFocus
+                />
+
+                {transactionCount > 0 && (
+                  <label className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg mb-6 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={confirmDeleteWithTransactions}
+                      onChange={(e) => setConfirmDeleteWithTransactions(e.target.checked)}
+                      className="mt-0.5 h-5 w-5 rounded border-gray-300 text-rose-600 focus:ring-rose-500 dark:border-gray-600 dark:bg-gray-700"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300 leading-tight">
+                      Entiendo que al eliminar esta cuenta, también se eliminarán permanentemente las <strong>{transactionCount} transacción{transactionCount !== 1 ? 'es' : ''}</strong> asociada{transactionCount !== 1 ? 's' : ''}.
+                    </span>
+                  </label>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => handleDeleteAccount(showDeleteConfirm)}
+                    disabled={
+                      deleteConfirmName.trim() !== accountToDelete?.name ||
+                      (transactionCount > 0 && !confirmDeleteWithTransactions)
+                    }
+                    className="flex-1 bg-rose-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Eliminar {transactionCount > 0 ? `cuenta y ${transactionCount} transacción${transactionCount !== 1 ? 'es' : ''}` : 'cuenta'}
+                  </button>
+                  <button
+                    onClick={handleClose}
+                    className="flex-1 btn-cancel"
+                  >
+                    Cancelar
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };

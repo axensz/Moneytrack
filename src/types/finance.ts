@@ -9,6 +9,13 @@ export interface Transaction {
   accountId: string; // Cambio a string
   toAccountId?: string; // Cambio a string
   createdAt?: Date;
+
+  // 🆕 Campos para manejo de intereses en TC
+  hasInterest?: boolean; // Si la compra genera intereses
+  installments?: number; // Número de cuotas (1, 3, 6, 12, 24, 36)
+  monthlyInstallmentAmount?: number; // Cuota mensual calculada (guardada)
+  totalInterestAmount?: number; // Total de intereses calculados (guardada)
+  interestRate?: number; // Tasa E.A. usada en el momento de la compra (snapshot)
 }
 
 export interface Account {
@@ -22,6 +29,9 @@ export interface Account {
   paymentDay?: number;
   bankAccountId?: string; // ID de cuenta bancaria asociada (para tarjetas de crédito)
   createdAt?: Date;
+
+  // 🆕 Tasa de interés para TC
+  interestRate?: number; // Tasa de Interés Efectiva Anual (E.A.) en porcentaje (ej: 23.99)
 }
 
 export interface Category {
@@ -44,6 +54,10 @@ export interface NewTransaction {
   paid: boolean;
   accountId: string;
   toAccountId: string;
+
+  // 🆕 Campos para intereses (usado en formulario)
+  hasInterest: boolean;
+  installments: number;
 }
 
 export interface NewAccount {
@@ -54,6 +68,7 @@ export interface NewAccount {
   cutoffDay: number;
   paymentDay: number;
   bankAccountId?: string;
+  interestRate: number; // 🆕 Tasa E.A. para TC
 }
 
 export type FilterValue = 'all' | string;

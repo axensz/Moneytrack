@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { UI_LABELS } from '../config/constants';
 import { formatNumberForInput, unformatNumber, formatCurrency } from '../utils/formatters';
 import { BalanceCalculator } from '../utils/balanceCalculator';
+import { INSTALLMENT_OPTIONS } from '../utils/interestCalculator';
 import type { NewTransaction, Account, Categories, Transaction } from '../types/finance';
 
 interface TransactionFormProps {
@@ -27,7 +28,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   onCancel
 }) => {
   // Obtener cuenta seleccionada para validar restricciones
-  const selectedAccount = accounts.find(acc => acc.id === newTransaction.accountId);
+  const selectedAccount = accounts.find(acc => acc.id === newTransaction.accountId) || defaultAccount;
   const isCreditCard = selectedAccount?.type === 'credit';
 
   // Calcular cupo usado si es TC y está pagando
@@ -50,14 +51,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   }, [isCreditCard, newTransaction, setNewTransaction]);
 
   return (
-    <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          onCancel();
-        }
-      }}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <div className="flex justify-between items-center mb-4">
@@ -202,6 +196,70 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
           className="input-base"
         />
       </div>
+
+      {/* Campos de cuotas e intereses - solo para gastos en TC */}
+      {isCreditCard && newTransaction.type === 'expense' && (
+        <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-3">
+            💳 Configuración de cuotas
+          </h4>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="label-base">Número de cuotas</label>
+              <select
+                value={newTransaction.installments}
+                onChange={(e) => {
+                  const installments = parseInt(e.target.value);
+                  setNewTransaction({
+                    ...newTransaction,
+                    installments,
+                    hasInterest: installments === 1 ? false : newTransaction.hasInterest
+                  });
+                }}
+                className="input-base"
+              >
+                {INSTALLMENT_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="label-base">Tipo de compra</label>
+              <div className="flex items-center gap-4 h-[42px]">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newTransaction.hasInterest}
+                    onChange={(e) => setNewTransaction({...newTransaction, hasInterest: e.target.checked})}
+                    disabled={newTransaction.installments === 1}
+                    className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Con intereses
+                  </span>
+                </label>
+              </div>
+              {newTransaction.installments === 1 && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Las compras de 1 cuota no generan intereses
+                </p>
+              )}
+            </div>
+          </div>
+
+          {newTransaction.hasInterest && newTransaction.installments > 1 && selectedAccount?.interestRate && (
+            <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+              <p className="text-xs text-amber-800 dark:text-amber-200">
+                <strong>Nota:</strong> Esta compra se financiará a <strong>{newTransaction.installments} cuotas</strong> con una tasa E.A. del <strong>{selectedAccount.interestRate}%</strong>. Los intereses se calcularán automáticamente al guardar.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
           <div className="flex gap-3 mt-6">
             <button onClick={onSubmit} className="btn-submit">

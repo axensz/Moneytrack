@@ -217,8 +217,10 @@ export const INITIAL_TRANSACTION = {
   date: new Date().toISOString().split('T')[0],
   paid: true, // ✅ Por defecto las transacciones están pagadas (más intuitivo)
   accountId: '',
-  toAccountId: ''
-} as const;
+  toAccountId: '',
+  hasInterest: false, // 🆕 Por defecto sin intereses
+  installments: 1 // 🆕 Por defecto 1 cuota
+};
 
 // Estado inicial para nueva cuenta
 export const INITIAL_ACCOUNT = {
@@ -228,5 +230,6 @@ export const INITIAL_ACCOUNT = {
   isDefault: false,
   creditLimit: 0,
   cutoffDay: 1,
-  paymentDay: 1
-} as const;
+  paymentDay: 1,
+  interestRate: 0 // 🆕 Tasa E.A. por defecto
+};

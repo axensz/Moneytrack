@@ -20,6 +20,7 @@ import { useBackup } from './src/hooks/useBackup';
 import { useGlobalStats } from './src/hooks/useGlobalStats';
 import { TransactionValidator } from './src/utils/validators';
 import { formatCurrency } from './src/utils/formatters';
+import { calculateInterest } from './src/utils/interestCalculator';
 import { SUCCESS_MESSAGES, ERROR_MESSAGES, TRANSFER_CATEGORY, TOAST_CONFIG, INITIAL_TRANSACTION } from './src/config/constants';
 import type { NewTransaction, ViewType, FilterValue, Transaction } from './src/types/finance';
 
@@ -37,7 +38,7 @@ const FinanceTracker = () => {
   const { transactions, addTransaction, deleteTransaction, togglePaid, duplicateTransaction, loading: transactionsLoading } = useTransactions(user?.uid || null);
 
   // Cargar cuentas con transacciones
-  const { accounts, addAccount, updateAccount, deleteAccount, setDefaultAccount, getAccountBalance, totalBalance, defaultAccount, loading: accountsLoading } = useAccounts(user?.uid || null, transactions);
+  const { accounts, addAccount, updateAccount, deleteAccount, setDefaultAccount, getAccountBalance, getTransactionCountForAccount, totalBalance, defaultAccount, loading: accountsLoading } = useAccounts(user?.uid || null, transactions, deleteTransaction);
 
   // 🟡 REFACTORIZADO: Usar hook centralizado de estadísticas (elimina duplicidad)
   const stats = useGlobalStats(transactions, accounts);
@@ -96,7 +97,7 @@ const FinanceTracker = () => {
       }
 
       // Preparar datos de la transacción
-      const transactionData = {
+      const transactionData: Omit<Transaction, 'id' | 'createdAt'> = {
         type: newTransaction.type,
         amount: amount,
         category: newTransaction.type === 'transfer' ? TRANSFER_CATEGORY : newTransaction.category,
@@ -106,6 +107,29 @@ const FinanceTracker = () => {
         accountId: newTransaction.accountId || defaultAccount?.id || '',
         toAccountId: newTransaction.toAccountId || undefined
       };
+
+      // 🆕 CALCULAR INTERESES: Si es un gasto en TC con cuotas/intereses
+      if (
+        selectedAccount.type === 'credit' &&
+        newTransaction.type === 'expense' &&
+        newTransaction.installments &&
+        newTransaction.installments > 0
+      ) {
+        const annualRate = selectedAccount.interestRate || 0;
+        const interestResult = calculateInterest(
+          amount,
+          annualRate,
+          newTransaction.installments,
+          newTransaction.hasInterest
+        );
+
+        // Agregar campos calculados a la transacción
+        transactionData.hasInterest = newTransaction.hasInterest;
+        transactionData.installments = newTransaction.installments;
+        transactionData.monthlyInstallmentAmount = interestResult.monthlyInstallmentAmount;
+        transactionData.totalInterestAmount = interestResult.totalInterestAmount;
+        transactionData.interestRate = annualRate; // Snapshot de la tasa
+      }
 
       // ⚡ CERRAR MODAL INMEDIATAMENTE (UX optimizada)
       setNewTransaction({
@@ -229,6 +253,7 @@ const FinanceTracker = () => {
                 deleteAccount={deleteAccount}
                 setDefaultAccount={setDefaultAccount}
                 getAccountBalance={getAccountBalance}
+                getTransactionCountForAccount={getTransactionCountForAccount}
                 formatCurrency={formatCurrency}
                 categories={categories}
                 addCategory={addCategory}

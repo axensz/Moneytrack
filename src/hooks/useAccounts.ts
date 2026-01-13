@@ -4,7 +4,11 @@ import { useLocalStorage } from './useLocalStorage';
 import { BalanceCalculator } from '../utils/balanceCalculator';
 import type { Account, Transaction } from '../types/finance';
 
-export function useAccounts(userId: string | null, transactions: Transaction[]) {
+export function useAccounts(
+  userId: string | null,
+  transactions: Transaction[],
+  deleteTransactionFn: (id: string) => Promise<void>
+) {
   const {
     accounts: firestoreAccounts,
     loading: firestoreLoading,
@@ -103,17 +107,27 @@ export function useAccounts(userId: string | null, transactions: Transaction[]) 
     if (account?.isDefault) {
       throw new Error('No puedes eliminar la cuenta por defecto');
     }
-    
-    const hasTransactions = transactions.some(t => t.accountId === id || t.toAccountId === id);
-    if (hasTransactions) {
-      throw new Error('No puedes eliminar una cuenta con transacciones');
-    }
-    
+
+    // 🔴 ELIMINACIÓN EN CASCADA: Eliminar todas las transacciones asociadas
+    const relatedTransactions = transactions.filter(
+      t => t.accountId === id || t.toAccountId === id
+    );
+
+    // Eliminar transacciones en paralelo
+    await Promise.all(
+      relatedTransactions.map(t => deleteTransactionFn(t.id!))
+    );
+
+    // Luego eliminar la cuenta
     if (userId) {
       await firestoreDeleteAccount(id);
     } else {
       setLocalAccounts(prev => prev.filter(acc => acc.id !== id));
     }
+  };
+
+  const getTransactionCountForAccount = (accountId: string): number => {
+    return transactions.filter(t => t.accountId === accountId || t.toAccountId === accountId).length;
   };
 
   const setDefaultAccount = async (id: string) => {
@@ -141,6 +155,7 @@ export function useAccounts(userId: string | null, transactions: Transaction[]) 
     deleteAccount,
     setDefaultAccount,
     getAccountBalance,
+    getTransactionCountForAccount,
     totalBalance,
     defaultAccount
   };

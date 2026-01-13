@@ -37,7 +37,7 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
             }`}
           >
             <tab.icon size={16} className="sm:w-[18px] sm:h-[18px]" />
-            <span className="hidden xs:inline">{tab.label}</span>
+            <span className="hidden sm:inline">{tab.label}</span>
           </button>
         ))}
       </div>

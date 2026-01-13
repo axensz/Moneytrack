@@ -39,6 +39,16 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
     return 0;
   }, [isCreditCard, newTransaction.type, selectedAccount, transactions]);
 
+  // Efecto: Inicializar accountId con defaultAccount si está vacío
+  useEffect(() => {
+    if (!newTransaction.accountId && defaultAccount?.id) {
+      setNewTransaction({
+        ...newTransaction,
+        accountId: defaultAccount.id
+      });
+    }
+  }, [newTransaction.accountId, defaultAccount, newTransaction, setNewTransaction]);
+
   // Efecto: Si cambia a TC y está en "transfer", cambiar a "expense"
   useEffect(() => {
     if (isCreditCard && newTransaction.type === 'transfer') {

@@ -219,7 +219,7 @@ export function validateInterestConfig(
  * Opciones de cuotas disponibles comúnmente en Colombia
  */
 export const INSTALLMENT_OPTIONS = [
-  { value: 1, label: '1 cuota (sin intereses)' },
+  { value: 1, label: '1 cuota' },
   { value: 2, label: '2 cuotas' },
   { value: 3, label: '3 cuotas' },
   { value: 6, label: '6 cuotas' },

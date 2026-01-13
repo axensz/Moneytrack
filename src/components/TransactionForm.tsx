@@ -211,7 +211,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
       {isCreditCard && newTransaction.type === 'expense' && (
         <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
           <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-3">
-            💳 Configuración de cuotas
+            Configuración de cuotas
           </h4>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -253,21 +253,16 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
                   </span>
                 </label>
               </div>
-              {newTransaction.installments === 1 && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Las compras de 1 cuota no generan intereses
-                </p>
-              )}
             </div>
           </div>
 
-          {newTransaction.hasInterest && newTransaction.installments > 1 && selectedAccount?.interestRate && (
+          {newTransaction.hasInterest && newTransaction.installments > 1 && selectedAccount?.interestRate ? (
             <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
               <p className="text-xs text-amber-800 dark:text-amber-200">
                 <strong>Nota:</strong> Esta compra se financiará a <strong>{newTransaction.installments} cuotas</strong> con una tasa E.A. del <strong>{selectedAccount.interestRate}%</strong>. Los intereses se calcularán automáticamente al guardar.
               </p>
             </div>
-          )}
+          ) : null}
         </div>
       )}
 

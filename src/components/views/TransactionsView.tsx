@@ -60,7 +60,11 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
       <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
         <button
           onClick={() => setShowForm(!showForm)}
-          className="btn-primary"
+          disabled={accounts.length === 0}
+          className={`btn-primary ${
+            accounts.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
+          }`}
+          title={accounts.length === 0 ? 'Crea una cuenta primero' : 'Crear transacción'}
         >
           <PlusCircle size={18} />
           Nueva Transacción

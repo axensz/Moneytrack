@@ -74,6 +74,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   // Estados temporales para formateo de números (string mientras se escribe, number al guardar)
   const [initialBalanceInput, setInitialBalanceInput] = useState<string>('');
   const [creditLimitInput, setCreditLimitInput] = useState<string>('');
+  const [interestRateInput, setInterestRateInput] = useState<string>('');
 
   // Filtrar cuentas de ahorro para asociación con TC
   const savingsAccounts: Account[] = accounts.filter(acc => acc.type === 'savings');
@@ -85,6 +86,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     setBalanceAdjustment('');
     setInitialBalanceInput('');
     setCreditLimitInput('');
+    setInterestRateInput('');
     setNewAccount({
       name: '',
       type: 'savings',
@@ -280,6 +282,15 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     // Inicializar inputs de formateo con valores actuales
     setInitialBalanceInput(account.initialBalance.toString());
     setCreditLimitInput((account.creditLimit || 0).toString());
+    
+    // Formatear interestRate: convertir 23.99 a "2399" y luego a "23,99"
+    const rate = account.interestRate || 0;
+    const rateAsInteger = Math.round(rate * 100).toString().padStart(1, '0');
+    const formattedRate = rateAsInteger.length > 2 
+      ? rateAsInteger.slice(0, -2) + ',' + rateAsInteger.slice(-2)
+      : rateAsInteger;
+    setInterestRateInput(formattedRate);
+    
     setShowAccountForm(true);
   };
 
@@ -543,13 +554,36 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                     <div>
                       <label className="label-base">Tasa de Interés E.A. (%)</label>
                       <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        max="200"
-                        value={newAccount.interestRate}
-                        onChange={(e) => setNewAccount({...newAccount, interestRate: parseFloat(e.target.value) || 0})}
-                        placeholder="23.99"
+                        type="text"
+                        inputMode="numeric"
+                        value={interestRateInput}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          // Eliminar todo excepto números
+                          const numericOnly = value.replace(/[^0-9]/g, '');
+                          
+                          // Limitar a 4 dígitos (máximo 99,99)
+                          const limited = numericOnly.slice(0, 4);
+                          
+                          // Formatear con coma automáticamente
+                          let formatted = limited;
+                          if (limited.length > 2) {
+                            // Insertar coma antes de los últimos 2 dígitos
+                            formatted = limited.slice(0, -2) + ',' + limited.slice(-2);
+                          }
+                          
+                          setInterestRateInput(formatted);
+                          
+                          // Convertir a número decimal para guardar
+                          if (limited === '') {
+                            setNewAccount({...newAccount, interestRate: 0});
+                          } else {
+                            // Dividir por 100 para obtener el valor decimal
+                            const decimalValue = parseInt(limited, 10) / 100;
+                            setNewAccount({...newAccount, interestRate: decimalValue});
+                          }
+                        }}
+                        placeholder="23,99"
                         className="input-base"
                       />
                     </div>
@@ -674,132 +708,263 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       )}
 
       <div className="space-y-4">
-        {accounts.map(account => {
-          const balance = getAccountBalance(account.id!);
-          const creditUsed = getCreditUsed(account.id!);
-          const nextCutoff = getNextCutoffDate(account);
-          const nextPayment = getNextPaymentDate(account);
-          const accountTypeInfo = accountTypes.find(t => t.value === account.type);
+        {accounts
+          .filter(account => account.type !== 'credit' || !account.bankAccountId)
+          .map(account => {
+            const balance = getAccountBalance(account.id!);
+            const creditUsed = getCreditUsed(account.id!);
+            const nextCutoff = getNextCutoffDate(account);
+            const nextPayment = getNextPaymentDate(account);
+            const accountTypeInfo = accountTypes.find(t => t.value === account.type);
+            
+            // Buscar tarjetas asociadas a esta cuenta
+            const associatedCards = accounts.filter(acc => 
+              acc.type === 'credit' && acc.bankAccountId === account.id
+            );
 
-          return (
-            <div
-              key={account.id}
-              className={`rounded-xl p-5 transition-all ${
-                account.isDefault
-                  ? 'border-2 border-purple-500 bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20 shadow-md'
-                  : 'border border-purple-100 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                <div className="flex-1 w-full sm:w-auto">
-                  <div className="flex items-center gap-2 mb-2">
-                    {accountTypeInfo && React.createElement(accountTypeInfo.icon, {
-                      size: 20,
-                      className: "text-purple-600 dark:text-purple-400"
-                    })}
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-semibold text-gray-900 dark:text-gray-100">
-                        {account.name}
-                      </h4>
-                      {account.isDefault && (
-                        <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded-full font-medium">
-                          Principal
-                        </span>
-                      )}
+            return (
+              <div key={account.id}>
+                {/* Cuenta principal */}
+                <div
+                  className={`rounded-xl p-5 transition-all ${
+                    account.isDefault
+                      ? 'border-2 border-purple-500 bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20 shadow-md'
+                      : 'border border-purple-100 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md'
+                  }`}
+                >
+                  <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                    <div className="flex-1 w-full sm:w-auto">
+                      <div className="flex items-center gap-2 mb-2">
+                        {accountTypeInfo && React.createElement(accountTypeInfo.icon, {
+                          size: 20,
+                          className: "text-purple-600 dark:text-purple-400"
+                        })}
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-semibold text-gray-900 dark:text-gray-100">
+                            {account.name}
+                          </h4>
+                          {account.isDefault && (
+                            <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded-full font-medium">
+                              Principal
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        {accountTypeInfo?.label}
+                        {account.type === 'credit' && account.bankAccountId && (
+                          <span className="ml-2 text-purple-600 dark:text-purple-400">
+                            • {accounts.find(acc => acc.id === account.bankAccountId)?.name}
+                          </span>
+                        )}
+                      </p>
+
+                      {account.type === 'credit' ? (
+                        <div className="mt-3">
+                          <div className="flex justify-between text-sm mb-1.5">
+                            <span className="text-gray-600 dark:text-gray-400">Cupo utilizado</span>
+                            <span className="font-medium text-gray-900 dark:text-gray-100">
+                              {formatCurrency(creditUsed)} / {formatCurrency(account.creditLimit!)}
+                            </span>
+                          </div>
+                          <div className="w-full h-2 bg-purple-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full transition-all ${
+                                creditUsed > (account.creditLimit || 0) * 0.8 ? 'bg-rose-500' : 'bg-purple-600'
+                              }`}
+                              style={{ width: `${Math.min((creditUsed / account.creditLimit!) * 100, 100)}%` }}
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mt-3">
+                            <div className="text-sm">
+                              <div className="text-gray-500 dark:text-gray-400">Corte</div>
+                              <div className="font-medium text-gray-900 dark:text-gray-100">
+                                {nextCutoff?.toLocaleDateString('es-CO')}
+                              </div>
+                            </div>
+                            <div className="text-sm">
+                              <div className="text-gray-500 dark:text-gray-400">Pago</div>
+                              <div className="font-medium text-gray-900 dark:text-gray-100">
+                                {nextPayment?.toLocaleDateString('es-CO')}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="text-right ml-0 sm:ml-6 mt-3 sm:mt-0">
+                      <div className={`text-2xl font-bold mb-3 ${
+                        account.type === 'credit'
+                          ? (balance >= 0 ? 'text-purple-600' : 'text-rose-600')
+                          : (balance >= 0 ? 'text-purple-600' : 'text-rose-600')
+                      }`}>
+                        {account.type === 'credit' && (
+                          <div className="text-xs font-normal text-gray-500 mb-1">
+                            Disponible
+                          </div>
+                        )}
+                        {formatCurrency(balance)}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 justify-end">
+                        <button
+                          onClick={() => editAccount(account)}
+                          className="btn-edit"
+                        >
+                          <Edit2 size={14} />
+                          Editar
+                        </button>
+
+                        {!account.isDefault && (
+                          <>
+                            <button
+                              onClick={() => setDefaultAccount(account.id!)}
+                              className="bg-purple-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
+                            >
+                              Principal
+                            </button>
+                            <button
+                              onClick={() => {
+                                setShowDeleteConfirm(account.id!);
+                                setDeleteConfirmName('');
+                              }}
+                              className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {accountTypeInfo?.label}
-                    {account.type === 'credit' && account.bankAccountId && (
-                      <span className="ml-2 text-purple-600 dark:text-purple-400">
-                        • {accounts.find(acc => acc.id === account.bankAccountId)?.name}
-                      </span>
-                    )}
-                  </p>
+                </div>
 
-                  {account.type === 'credit' ? (
-                    <div className="mt-3">
-                      <div className="flex justify-between text-sm mb-1.5">
-                        <span className="text-gray-600 dark:text-gray-400">Cupo utilizado</span>
-                        <span className="font-medium text-gray-900 dark:text-gray-100">
-                          {formatCurrency(creditUsed)} / {formatCurrency(account.creditLimit!)}
-                        </span>
-                      </div>
-                      <div className="w-full h-2 bg-purple-100 rounded-full overflow-hidden">
+                {/* Tarjetas asociadas - renderizadas debajo */}
+                {associatedCards.length > 0 && (
+                  <div className="ml-4 sm:ml-8 mt-3 space-y-3 border-l-2 border-purple-200 dark:border-purple-800 pl-4">
+                    {associatedCards.map(card => {
+                      const cardBalance = getAccountBalance(card.id!);
+                      const cardCreditUsed = getCreditUsed(card.id!);
+                      const cardNextCutoff = getNextCutoffDate(card);
+                      const cardNextPayment = getNextPaymentDate(card);
+                      const cardTypeInfo = accountTypes.find(t => t.value === card.type);
+
+                      return (
                         <div
-                          className={`h-full transition-all ${
-                            creditUsed > (account.creditLimit || 0) * 0.8 ? 'bg-rose-500' : 'bg-purple-600'
+                          key={card.id}
+                          className={`rounded-xl p-4 sm:p-5 transition-all border border-purple-100 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md ${
+                            card.isDefault ? 'ring-2 ring-purple-400' : ''
                           }`}
-                          style={{ width: `${Math.min((creditUsed / account.creditLimit!) * 100, 100)}%` }}
-                        />
-                      </div>
+                        >
+                          <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                            <div className="flex-1 w-full sm:w-auto">
+                              <div className="flex items-center gap-2 mb-2">
+                                {cardTypeInfo && React.createElement(cardTypeInfo.icon, {
+                                  size: 18,
+                                  className: "text-purple-600 dark:text-purple-400"
+                                })}
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-sm sm:text-base">
+                                    {card.name}
+                                  </h4>
+                                  {card.isDefault && (
+                                    <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded-full font-medium">
+                                      Principal
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                                {cardTypeInfo?.label}
+                                <span className="ml-2 text-purple-600 dark:text-purple-400">
+                                  • {account.name}
+                                </span>
+                              </p>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mt-3">
-                        <div className="text-sm">
-                          <div className="text-gray-500 dark:text-gray-400">Corte</div>
-                          <div className="font-medium text-gray-900 dark:text-gray-100">
-                            {nextCutoff?.toLocaleDateString('es-CO')}
+                              <div className="mt-3">
+                                <div className="flex justify-between text-xs sm:text-sm mb-1.5">
+                                  <span className="text-gray-600 dark:text-gray-400">Cupo utilizado</span>
+                                  <span className="font-medium text-gray-900 dark:text-gray-100">
+                                    {formatCurrency(cardCreditUsed)} / {formatCurrency(card.creditLimit!)}
+                                  </span>
+                                </div>
+                                <div className="w-full h-2 bg-purple-100 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full transition-all ${
+                                      cardCreditUsed > (card.creditLimit || 0) * 0.8 ? 'bg-rose-500' : 'bg-purple-600'
+                                    }`}
+                                    style={{ width: `${Math.min((cardCreditUsed / card.creditLimit!) * 100, 100)}%` }}
+                                  />
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mt-3">
+                                  <div className="text-xs sm:text-sm">
+                                    <div className="text-gray-500 dark:text-gray-400">Corte</div>
+                                    <div className="font-medium text-gray-900 dark:text-gray-100">
+                                      {cardNextCutoff?.toLocaleDateString('es-CO')}
+                                    </div>
+                                  </div>
+                                  <div className="text-xs sm:text-sm">
+                                    <div className="text-gray-500 dark:text-gray-400">Pago</div>
+                                    <div className="font-medium text-gray-900 dark:text-gray-100">
+                                      {cardNextPayment?.toLocaleDateString('es-CO')}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="text-right ml-0 sm:ml-6 mt-3 sm:mt-0">
+                              <div className={`text-xl sm:text-2xl font-bold mb-3 ${
+                                cardBalance >= 0 ? 'text-purple-600' : 'text-rose-600'
+                              }`}>
+                                <div className="text-xs font-normal text-gray-500 mb-1">
+                                  Disponible
+                                </div>
+                                {formatCurrency(cardBalance)}
+                              </div>
+
+                              <div className="flex flex-wrap gap-2 justify-end">
+                                <button
+                                  onClick={() => editAccount(card)}
+                                  className="btn-edit"
+                                >
+                                  <Edit2 size={14} />
+                                  Editar
+                                </button>
+
+                                {!card.isDefault && (
+                                  <>
+                                    <button
+                                      onClick={() => setDefaultAccount(card.id!)}
+                                      className="bg-purple-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
+                                    >
+                                      Principal
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setShowDeleteConfirm(card.id!);
+                                        setDeleteConfirmName('');
+                                      }}
+                                      className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
-                        <div className="text-sm">
-                          <div className="text-gray-500 dark:text-gray-400">Pago</div>
-                          <div className="font-medium text-gray-900 dark:text-gray-100">
-                            {nextPayment?.toLocaleDateString('es-CO')}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="text-right ml-0 sm:ml-6 mt-3 sm:mt-0">
-                  <div className={`text-2xl font-bold mb-3 ${
-                    account.type === 'credit'
-                      ? (balance >= 0 ? 'text-purple-600' : 'text-rose-600')
-                      : (balance >= 0 ? 'text-purple-600' : 'text-rose-600')
-                  }`}>
-                    {account.type === 'credit' && (
-                      <div className="text-xs font-normal text-gray-500 mb-1">
-                        Disponible
-                      </div>
-                    )}
-                    {formatCurrency(balance)}
+                      );
+                    })}
                   </div>
-
-                  <div className="flex flex-wrap gap-2 justify-end">
-                    <button
-                      onClick={() => editAccount(account)}
-                      className="btn-edit"
-                    >
-                      <Edit2 size={14} />
-                      Editar
-                    </button>
-
-                    {!account.isDefault && (
-                      <>
-                        <button
-                          onClick={() => setDefaultAccount(account.id!)}
-                          className="bg-purple-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
-                        >
-                          Principal
-                        </button>
-                        <button
-                          onClick={() => {
-                            setShowDeleteConfirm(account.id!);
-                            setDeleteConfirmName('');
-                          }}
-                          className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
+                )}
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
       </div>
 
       <div className="mt-8">

@@ -26,7 +26,16 @@ export function useTransactions(userId: string | null) {
   const [localTransactions, setLocalTransactions] = useLocalStorage<Transaction[]>('transactions', []);
 
   // Usar Firebase si hay usuario, localStorage si no
-  const transactions = userId ? firestoreTransactions : localTransactions;
+  const rawTransactions = userId ? firestoreTransactions : localTransactions;
+
+  // Garantizar orden por fecha descendente (más reciente primero)
+  // Maneja tanto objetos Date (Firestore) como strings (LocalStorage)
+  const transactions = [...rawTransactions].sort((a, b) => {
+    const dateA = new Date(a.date).getTime();
+    const dateB = new Date(b.date).getTime();
+    return dateB - dateA;
+  });
+
   const loading = userId ? firestoreLoading : false;
 
   // Generar ID único para localStorage

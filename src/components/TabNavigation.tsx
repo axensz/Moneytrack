@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Activity, BarChart3, Wallet } from 'lucide-react';
+import { Activity, BarChart3, Wallet, Download, Upload } from 'lucide-react';
 import type { ViewType } from '../types/finance';
 
 interface TabNavigationProps {
@@ -24,53 +24,99 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
   ];
 
   return (
-    <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 mb-6 sm:mb-8">
-      <div className="flex gap-1 sm:gap-2 border-b border-purple-200 dark:border-purple-800 overflow-x-auto">
-        {tabs.map(tab => (
+    <>
+      {/* Desktop Navigation - Hidden on mobile */}
+      <div className="hidden sm:flex justify-between items-center gap-4 mb-6 sm:mb-8">
+        <div className="flex gap-2 border-b border-purple-200 dark:border-purple-800">
+          {tabs.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setView(tab.key)}
+              className={`flex items-center gap-2 px-4 py-3 text-base font-medium transition-all whitespace-nowrap ${
+                view === tab.key
+                  ? 'text-purple-600 dark:text-purple-400 border-b-2 border-purple-600 dark:border-purple-400'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-purple-500 dark:hover:text-purple-300'
+              }`}
+            >
+              <tab.icon size={18} />
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-2">
           <button
-            key={tab.key}
-            onClick={() => setView(tab.key)}
-            className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base font-medium transition-all whitespace-nowrap ${
-              view === tab.key
-                ? 'text-purple-600 border-b-2 border-purple-600'
-                : 'text-gray-500 hover:text-purple-500'
-            }`}
+            onClick={exportData}
+            className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+            title="Exportar datos"
           >
-            <tab.icon size={16} className="sm:w-[18px] sm:h-[18px]" />
-            <span className="hidden sm:inline">{tab.label}</span>
+            <Download size={16} />
+            <span>Exportar</span>
           </button>
-        ))}
+          <input
+            type="file"
+            accept=".json"
+            onChange={importData}
+            className="hidden"
+            id="import-file"
+          />
+          <label
+            htmlFor="import-file"
+            className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+            title="Importar datos"
+          >
+            <Upload size={16} />
+            <span>Importar</span>
+          </label>
+        </div>
       </div>
 
-      <div className="flex gap-2 justify-end">
+      {/* Mobile Bottom Navigation - Fixed at bottom */}
+      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 shadow-2xl">
+        <div className="flex justify-around items-center px-2 py-2 pb-safe">
+          {tabs.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setView(tab.key)}
+              className={`flex flex-col items-center justify-center gap-1 px-4 py-2.5 min-w-[80px] rounded-xl transition-all ${
+                view === tab.key
+                  ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 scale-105'
+                  : 'text-gray-500 dark:text-gray-400 active:scale-95 active:bg-gray-100 dark:active:bg-gray-800'
+              }`}
+            >
+              <tab.icon size={22} strokeWidth={view === tab.key ? 2.5 : 2} />
+              <span className="text-[10px] font-semibold">{tab.label}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      {/* Mobile Top Actions - Export/Import */}
+      <div className="sm:hidden flex gap-2 justify-end mb-4">
         <button
           onClick={exportData}
-          className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 text-xs sm:text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-2 text-xs bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg active:bg-gray-200 dark:active:bg-gray-700 transition-colors"
           title="Exportar datos"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <span className="hidden sm:inline">Exportar</span>
+          <Download size={14} />
+          <span>Exportar</span>
         </button>
+        <label
+          htmlFor="import-file-mobile"
+          className="flex items-center gap-1.5 px-3 py-2 text-xs bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg active:bg-gray-200 dark:active:bg-gray-700 transition-colors cursor-pointer"
+          title="Importar datos"
+        >
+          <Upload size={14} />
+          <span>Importar</span>
+        </label>
         <input
           type="file"
           accept=".json"
           onChange={importData}
           className="hidden"
-          id="import-file"
+          id="import-file-mobile"
         />
-        <label
-          htmlFor="import-file"
-          className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 text-xs sm:text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
-          title="Importar datos"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
-          </svg>
-          <span className="hidden sm:inline">Importar</span>
-        </label>
       </div>
-    </div>
+    </>
   );
 };

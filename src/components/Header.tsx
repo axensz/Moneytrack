@@ -29,11 +29,11 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
   return (
-    <header className="w-full py-3 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 sticky top-0 z-20">
-      <div className="px-4 sm:px-6 lg:px-8">
+    <header className="w-full py-3 sm:py-4 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 sticky top-0 z-20">
+      <div className="px-3 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center">
           <div className="flex-1">
-            <h1 className="text-2xl sm:text-3xl font-bold">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold">
               <span className="text-purple-700 dark:text-purple-400">Money</span>
               <span className="text-gray-900 dark:text-gray-100">Track</span>
             </h1>
@@ -43,25 +43,25 @@ export const Header: React.FC<HeaderProps> = ({
             <ThemeToggle />
             
             {user ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 {user.photoURL ? (
                   <img 
                     src={user.photoURL} 
                     alt={user.displayName || 'Usuario'} 
-                    className="w-8 h-8 rounded-full border border-purple-200"
+                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-purple-200 dark:border-purple-700"
                   />
                 ) : (
-                  <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">
-                    <UserIcon size={16} />
+                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400">
+                    <UserIcon size={18} />
                   </div>
                 )}
-                <span className="hidden sm:inline text-xs font-medium text-gray-900 dark:text-gray-100 max-w-20 truncate">
+                <span className="hidden md:inline text-sm font-medium text-gray-900 dark:text-gray-100 max-w-24 truncate">
                   {user.displayName?.split(' ')[0] || 'Usuario'}
                 </span>
                 
                 <button
                   onClick={handleLogout}
-                  className="p-1.5 text-gray-500 hover:text-rose-600 transition-colors"
+                  className="p-2 sm:p-2.5 text-gray-500 hover:text-rose-600 dark:hover:text-rose-400 active:bg-gray-100 dark:active:bg-gray-800 rounded-lg transition-colors"
                   title="Cerrar sesión"
                 >
                   <LogOut size={18} />
@@ -70,9 +70,9 @@ export const Header: React.FC<HeaderProps> = ({
             ) : (
               <button
                 onClick={() => setIsAuthModalOpen(true)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+                className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg text-sm font-medium active:opacity-80 transition-opacity"
               >
-                <LogIn size={16} />
+                <LogIn size={16} className="sm:w-[18px] sm:h-[18px]" />
                 <span className="hidden sm:inline">Acceder</span>
               </button>
             )}

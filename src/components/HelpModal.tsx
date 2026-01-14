@@ -30,7 +30,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
       <div 
         // MEJORA UX 1: stopPropagation evita que clicks dentro cierren el modal
         onClick={(e) => e.stopPropagation()} 
-        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl h-[85vh] sm:h-[600px] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
       >
         {/* Header - Sticky */}
         <div className="flex items-center justify-between p-5 sm:p-6 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shrink-0">
@@ -75,8 +75,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
           </div>
         </div>
 
-        {/* Content - Scrollable */}
-        <div className="flex-1 overflow-y-auto p-5 sm:p-6 scroll-smooth">
+        {/* Content - Scrollable con altura fija para evitar cambios de tamaño */}
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6 scroll-smooth min-h-0">
           {activeTab === 'basics' && (
              <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 fade-in">
                 <div>

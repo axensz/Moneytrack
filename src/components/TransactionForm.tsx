@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo } from 'react';
-import { X } from 'lucide-react';
+import { X, Repeat } from 'lucide-react';
 import { UI_LABELS } from '../config/constants';
 import { formatNumberForInput, unformatNumber, formatCurrency } from '../utils/formatters';
 import { BalanceCalculator } from '../utils/balanceCalculator';
 import { INSTALLMENT_OPTIONS } from '../utils/interestCalculator';
-import type { NewTransaction, Account, Categories, Transaction } from '../types/finance';
+import type { NewTransaction, Account, Categories, Transaction, RecurringPayment } from '../types/finance';
 
 interface TransactionFormProps {
   newTransaction: NewTransaction;
@@ -13,6 +13,7 @@ interface TransactionFormProps {
   transactions: Transaction[];
   categories: Categories;
   defaultAccount: Account | null;
+  recurringPayments?: RecurringPayment[];
   onSubmit: () => void;
   onCancel: () => void;
 }
@@ -24,6 +25,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   transactions,
   categories,
   defaultAccount,
+  recurringPayments = [],
   onSubmit,
   onCancel
 }) => {
@@ -263,6 +265,55 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
               </p>
             </div>
           ) : null}
+        </div>
+      )}
+
+      {/* 🆕 Asociar a pago periódico - Destacado visualmente */}
+      {newTransaction.type === 'expense' && recurringPayments.length > 0 && (
+        <div className={`mt-4 p-4 rounded-xl border-2 transition-all ${
+          newTransaction.recurringPaymentId 
+            ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-700' 
+            : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 border-dashed'
+        }`}>
+          <label className="label-base flex items-center gap-2 mb-2">
+            <Repeat size={18} className={newTransaction.recurringPaymentId ? 'text-purple-600' : 'text-gray-400'} />
+            <span className={newTransaction.recurringPaymentId ? 'text-purple-700 dark:text-purple-300' : ''}>
+              ¿Es un pago periódico?
+            </span>
+          </label>
+          <select
+            value={newTransaction.recurringPaymentId || ''}
+            onChange={(e) => {
+              const paymentId = e.target.value || undefined;
+              const payment = recurringPayments.find(p => p.id === paymentId);
+              setNewTransaction({
+                ...newTransaction,
+                recurringPaymentId: paymentId,
+                // Auto-completar campos si selecciona un pago (excepto cuenta - el usuario elige)
+                ...(payment && {
+                  category: payment.category,
+                  description: payment.name,
+                  amount: payment.amount.toString()
+                })
+              });
+            }}
+            className="input-base"
+          >
+            <option value="">No, es un gasto normal</option>
+            <optgroup label="Mis pagos periódicos">
+              {recurringPayments.filter(p => p.isActive).map(payment => (
+                <option key={payment.id} value={payment.id}>
+                  🔄 {payment.name} ({formatCurrency(payment.amount)}/mes)
+                </option>
+              ))}
+            </optgroup>
+          </select>
+          {newTransaction.recurringPaymentId && (
+            <div className="mt-2 flex items-center gap-2 text-sm text-purple-600 dark:text-purple-400">
+              <span className="inline-block w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
+              Se marcará como pagado para este mes
+            </div>
+          )}
         </div>
       )}
 

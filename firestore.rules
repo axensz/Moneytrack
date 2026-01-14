@@ -76,6 +76,27 @@ service cloud.firestore {
         allow update: if isOwner(userId);
         allow delete: if isOwner(userId);
       }
+
+      // Recurring payments subcollection
+      match /recurringPayments/{paymentId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId)
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 200
+          && isValidAmount(request.resource.data.amount)
+          && request.resource.data.category is string
+          && request.resource.data.dueDay is int
+          && request.resource.data.dueDay >= 1
+          && request.resource.data.dueDay <= 31
+          && request.resource.data.frequency in ['monthly', 'yearly']
+          && request.resource.data.isActive is bool
+          && request.resource.data.createdAt is timestamp;
+
+        allow update: if isOwner(userId);
+        allow delete: if isOwner(userId);
+      }
     }
 
     // Deny all other access

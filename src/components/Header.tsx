@@ -54,17 +54,51 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
   return (
-    <header className="w-full py-3 sm:py-4 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 sticky top-0 z-20">
+    <header className="w-full py-3 sm:py-4 bg-white/90 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200/80 dark:border-gray-800 sticky top-0 z-20 shadow-sm">
       <div className="px-3 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center">
           <div className="flex-1">
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold">
-              <span className="text-purple-700 dark:text-purple-400">Money</span>
-              <span className="text-gray-900 dark:text-gray-100">Track</span>
+              <span className="text-purple-600 dark:text-purple-400">Money</span>
+              <span className="text-gray-800 dark:text-gray-100">Track</span>
             </h1>
           </div>
           
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Usuario logueado - Nombre primero */}
+            {user ? (
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                {user.photoURL ? (
+                  <img 
+                    src={user.photoURL} 
+                    alt={user.displayName || 'Usuario'} 
+                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-purple-200 dark:border-purple-700"
+                  />
+                ) : (
+                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400">
+                    <UserIcon size={18} />
+                  </div>
+                )}
+                <span className="hidden md:inline text-sm font-medium text-gray-900 dark:text-gray-100 max-w-24 truncate">
+                  {user.displayName?.split(' ')[0] || 'Usuario'}
+                </span>
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsAuthModalOpen(true)}
+                className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg text-sm font-medium active:opacity-80 transition-opacity"
+              >
+                <LogIn size={16} className="sm:w-[18px] sm:h-[18px]" />
+                <span className="hidden sm:inline">Acceder</span>
+              </button>
+            )}
+
+            {/* Divisor */}
+            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600"></div>
+
+            {/* Theme Toggle */}
+            <ThemeToggle />
+
             {/* Menú de Configuración */}
             <div className="relative" ref={settingsMenuRef}>
               <button
@@ -92,40 +126,14 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </div>
 
-            <ThemeToggle />
-            
-            {user ? (
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                {user.photoURL ? (
-                  <img 
-                    src={user.photoURL} 
-                    alt={user.displayName || 'Usuario'} 
-                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-purple-200 dark:border-purple-700"
-                  />
-                ) : (
-                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400">
-                    <UserIcon size={18} />
-                  </div>
-                )}
-                <span className="hidden md:inline text-sm font-medium text-gray-900 dark:text-gray-100 max-w-24 truncate">
-                  {user.displayName?.split(' ')[0] || 'Usuario'}
-                </span>
-                
-                <button
-                  onClick={handleLogout}
-                  className="p-2 sm:p-2.5 text-gray-500 hover:text-rose-600 dark:hover:text-rose-400 active:bg-gray-100 dark:active:bg-gray-800 rounded-lg transition-colors"
-                  title="Cerrar sesión"
-                >
-                  <LogOut size={18} />
-                </button>
-              </div>
-            ) : (
+            {/* Botón de salir - solo si está logueado */}
+            {user && (
               <button
-                onClick={() => setIsAuthModalOpen(true)}
-                className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg text-sm font-medium active:opacity-80 transition-opacity"
+                onClick={handleLogout}
+                className="p-2 sm:p-2.5 text-gray-500 hover:text-rose-600 dark:hover:text-rose-400 active:bg-gray-100 dark:active:bg-gray-800 rounded-lg transition-colors"
+                title="Cerrar sesión"
               >
-                <LogIn size={16} className="sm:w-[18px] sm:h-[18px]" />
-                <span className="hidden sm:inline">Acceder</span>
+                <LogOut size={18} />
               </button>
             )}
           </div>

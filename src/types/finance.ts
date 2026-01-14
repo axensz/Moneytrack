@@ -16,6 +16,34 @@ export interface Transaction {
   monthlyInstallmentAmount?: number; // Cuota mensual calculada (guardada)
   totalInterestAmount?: number; // Total de intereses calculados (guardada)
   interestRate?: number; // Tasa E.A. usada en el momento de la compra (snapshot)
+
+  // 🆕 Asociación con pago periódico
+  recurringPaymentId?: string; // ID del pago periódico asociado
+}
+
+// 🆕 PAGOS PERIÓDICOS (Suscripciones, Servicios, etc.)
+export interface RecurringPayment {
+  id?: string;
+  name: string; // Ej: "Netflix", "Spotify", "Arriendo"
+  amount: number; // Valor esperado del pago
+  category: string; // Categoría asociada (Ej: "Entretenimiento", "Hogar")
+  accountId?: string; // Cuenta preferida (opcional - puede pagarse desde cualquier cuenta)
+  dueDay: number; // Día del mes en que vence (1-31)
+  frequency: 'monthly' | 'yearly'; // Frecuencia del pago
+  isActive: boolean; // Si está activo o pausado
+  notes?: string; // Notas opcionales
+  createdAt?: Date;
+  lastPaidDate?: Date; // Última fecha de pago registrada
+  lastPaidAmount?: number; // Último monto pagado (puede variar)
+}
+
+// Rango de fechas para filtros
+export type DateRangePreset = 'all' | 'today' | 'this-week' | 'this-month' | 'last-month' | 'this-year' | 'last-year' | 'custom';
+
+export interface DateRange {
+  preset: DateRangePreset;
+  startDate?: Date;
+  endDate?: Date;
 }
 
 export interface Account {
@@ -59,6 +87,9 @@ export interface NewTransaction {
   // 🆕 Campos para intereses (usado en formulario)
   hasInterest: boolean;
   installments: number;
+  
+  // 🆕 Asociación con pago periódico
+  recurringPaymentId?: string;
 }
 
 export interface NewAccount {
@@ -73,7 +104,7 @@ export interface NewAccount {
 }
 
 export type FilterValue = 'all' | string;
-export type ViewType = 'transactions' | 'stats' | 'accounts';
+export type ViewType = 'transactions' | 'stats' | 'accounts' | 'recurring';
 
 export interface BackupData {
   transactions: Transaction[];

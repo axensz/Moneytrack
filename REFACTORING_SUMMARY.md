@@ -291,3 +291,11 @@ El proyecto ahora tiene:
 - âœ… CÃ³digo mÃ¡s mantenible
 
 **El siguiente paso mÃ¡s importante es desplegar las Firestore Rules.**
+
+##  3. Mejoras de UX (User Experience)
+
+Se implementaron mejoras visuales y funcionales solicitadas en las Historias de Usuario:
+
+- **HU-02 Estados Vacíos Inteligentes**: Mensajes contextuales cuando no hay resultados de filtrado, con botón de limpiar filtros.
+- **HU-03 Skeleton Loading**: Indicadores de carga visuales (esqueletos) en el listado de transacciones.
+- **HU-04 Deshacer Eliminación**: Toast interactivo que permite restaurar una transacción eliminada accidentalmente (Optimistic UI).

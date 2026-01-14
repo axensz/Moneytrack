@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
+import { Activity, BarChart3, Wallet, Repeat } from 'lucide-react';
 import { Header } from './src/components/Header';
 import { TabNavigation } from './src/components/TabNavigation';
 import { StatsCards } from './src/components/StatsCards';
@@ -13,6 +14,7 @@ import { HelpModal } from './src/components/HelpModal';
 import { StatsView } from './src/components/views/StatsView';
 import { AccountsView } from './src/components/views/AccountsView';
 import { TransactionsView } from './src/components/views/TransactionsView';
+import { RecurringPaymentsView } from './src/components/views/RecurringPaymentsView';
 import { useTransactions } from './src/hooks/useTransactions';
 import { useAccounts } from './src/hooks/useAccounts';
 import { useCategories } from './src/hooks/useCategories';
@@ -20,6 +22,7 @@ import { useStats } from './src/hooks/useStats';
 import { useAuth } from './src/hooks/useAuth';
 import { useBackup } from './src/hooks/useBackup';
 import { useGlobalStats } from './src/hooks/useGlobalStats';
+import { useRecurringPayments } from './src/hooks/useRecurringPayments';
 import { TransactionValidator } from './src/utils/validators';
 import { formatCurrency } from './src/utils/formatters';
 import { calculateInterest } from './src/utils/interestCalculator';
@@ -28,6 +31,7 @@ import type { NewTransaction, ViewType, FilterValue, Transaction } from './src/t
 
 const FinanceTracker = () => {
   const [mounted, setMounted] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -44,6 +48,19 @@ const FinanceTracker = () => {
 
   // Cargar cuentas con transacciones
   const { accounts, addAccount, updateAccount, deleteAccount, setDefaultAccount, getAccountBalance, getTransactionCountForAccount, totalBalance, defaultAccount, loading: accountsLoading } = useAccounts(user?.uid || null, transactions, deleteTransaction);
+
+  // 🆕 Hook de pagos periódicos
+  const {
+    recurringPayments,
+    addRecurringPayment,
+    updateRecurringPayment,
+    deleteRecurringPayment,
+    isPaidForMonth,
+    getNextDueDate,
+    getDaysUntilDue,
+    getPaymentHistory,
+    stats: recurringStats
+  } = useRecurringPayments(user?.uid || null, transactions);
 
   // 🟡 REFACTORIZADO: Usar hook centralizado de estadísticas (elimina duplicidad)
   const stats = useGlobalStats(transactions, accounts);
@@ -162,16 +179,26 @@ const FinanceTracker = () => {
         return;
       }
 
+      // 🆕 Si es un pago periódico con monto diferente, actualizar el monto base
+      if (newTransaction.recurringPaymentId) {
+        const recurringPayment = recurringPayments.find(p => p.id === newTransaction.recurringPaymentId);
+        if (recurringPayment && recurringPayment.amount !== amount) {
+          // Actualizar el monto del pago periódico al monto real pagado
+          await updateRecurringPayment(newTransaction.recurringPaymentId, { amount });
+        }
+      }
+
       // Preparar datos de la transacción
       const transactionData: Omit<Transaction, 'id' | 'createdAt'> = {
         type: newTransaction.type,
         amount: amount,
         category: newTransaction.type === 'transfer' ? TRANSFER_CATEGORY : newTransaction.category,
         description: newTransaction.description.trim(),
-        date: new Date(newTransaction.date),
+        date: new Date(), // 🆕 Siempre usar fecha actual, no la fecha de vencimiento
         paid: newTransaction.paid,
         accountId: newTransaction.accountId || defaultAccount?.id || '',
-        toAccountId: newTransaction.toAccountId || undefined
+        toAccountId: newTransaction.toAccountId || undefined,
+        recurringPaymentId: newTransaction.recurringPaymentId || undefined // 🆕 Asociar a pago periódico
       };
 
       // 🆕 CALCULAR INTERESES: Si es un gasto en TC con cuotas/intereses
@@ -214,7 +241,35 @@ const FinanceTracker = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-background bg-gradient-to-br from-stone-50/50 via-amber-50/30 to-orange-50/20 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <div className="flex flex-col h-screen bg-background bg-gradient-to-br from-violet-50/30 via-purple-50/20 to-fuchsia-50/10 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+      {/* Mobile Bottom Navigation - Fixed at bottom, FUERA del contenedor scrollable */}
+      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 shadow-lg safe-area-bottom">
+        <div className="flex justify-around items-center px-2 py-2 pb-2">
+          {[
+            { key: 'transactions' as ViewType, label: 'Transacciones', icon: Activity },
+            { key: 'accounts' as ViewType, label: 'Cuentas', icon: Wallet },
+            { key: 'recurring' as ViewType, label: 'Periódicos', icon: Repeat },
+            { key: 'stats' as ViewType, label: 'Estadísticas', icon: BarChart3 }
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => {
+                setView(tab.key);
+                scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className={`flex flex-col items-center justify-center gap-1 px-3 py-2 min-w-[70px] rounded-xl transition-all ${
+                view === tab.key
+                  ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 scale-105'
+                  : 'text-gray-500 dark:text-gray-400 active:scale-95 active:bg-gray-100 dark:active:bg-gray-800'
+              }`}
+            >
+              <tab.icon size={22} strokeWidth={view === tab.key ? 2.5 : 2} />
+              <span className="text-[10px] font-semibold">{tab.label}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
+
       <Toaster
         position={TOAST_CONFIG.position}
         toastOptions={{
@@ -250,8 +305,8 @@ const FinanceTracker = () => {
         onOpenHelp={() => setShowHelpModal(true)}
       />
 
-      <div className="flex-1 overflow-auto pb-20 sm:pb-0">
-        <div className="w-full h-full px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6">
+      <div ref={scrollContainerRef} className="flex-1 overflow-auto">
+        <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 pb-24 sm:pb-6">
           <div className="max-w-7xl mx-auto">
             <TabNavigation 
               view={view}
@@ -279,6 +334,7 @@ const FinanceTracker = () => {
                     transactions={mounted ? transactions : []}
                     categories={categories}
                     defaultAccount={defaultAccount || null}
+                    recurringPayments={mounted ? recurringPayments : []}
                     onSubmit={handleAddTransaction}
                     onCancel={() => setShowForm(false)}
                   />
@@ -287,6 +343,7 @@ const FinanceTracker = () => {
                 <TransactionsView
                   transactions={mounted ? transactions : []}
                   accounts={mounted ? accounts : []}
+                  recurringPayments={mounted ? recurringPayments : []}
                   showForm={showForm}
                   setShowForm={setShowForm}
                   filterCategory={filterCategory}
@@ -300,8 +357,28 @@ const FinanceTracker = () => {
                   deleteTransaction={deleteTransaction}
                   updateTransaction={updateTransaction}
                   formatCurrency={formatCurrency}
+                  loading={transactionsLoading || accountsLoading}
+                  onRestore={(t) => addTransaction(t)}
                 />
               </>
+            )}
+
+            {view === 'recurring' && (
+              <RecurringPaymentsView
+                recurringPayments={mounted ? recurringPayments : []}
+                accounts={mounted ? accounts : []}
+                transactions={mounted ? transactions : []}
+                categories={categories}
+                formatCurrency={formatCurrency}
+                addRecurringPayment={addRecurringPayment}
+                updateRecurringPayment={updateRecurringPayment}
+                deleteRecurringPayment={deleteRecurringPayment}
+                isPaidForMonth={isPaidForMonth}
+                getNextDueDate={getNextDueDate}
+                getDaysUntilDue={getDaysUntilDue}
+                getPaymentHistory={getPaymentHistory}
+                stats={recurringStats}
+              />
             )}
 
             {view === 'stats' && (
@@ -310,6 +387,8 @@ const FinanceTracker = () => {
                 yearlyData={mounted ? yearlyData : []}
                 categoryData={mounted ? categoryData : []}
                 formatCurrency={formatCurrency}
+                transactions={mounted ? transactions : []}
+                accounts={mounted ? accounts : []}
               />
             )}
 

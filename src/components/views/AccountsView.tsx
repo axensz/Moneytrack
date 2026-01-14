@@ -139,15 +139,39 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       return;
     }
 
-    // Obtener todas las cuentas principales (no tarjetas asociadas)
-    const mainAccounts = accounts.filter(acc => acc.type !== 'credit' || !acc.bankAccountId);
-    const draggedAccount = mainAccounts.find(acc => acc.id === draggedAccountId);
-    const targetAccount = mainAccounts.find(acc => acc.id === targetAccountId);
+    const draggedAccount = accounts.find(acc => acc.id === draggedAccountId);
+    const targetAccount = accounts.find(acc => acc.id === targetAccountId);
 
     if (!draggedAccount || !targetAccount) return;
 
+    // Determinar si estamos reordenando cuentas principales o asociadas
+    const isMain = (acc: Account) => acc.type !== 'credit' || !acc.bankAccountId;
+    
+    // Verificar si son "hermanos" (mismo contexto)
+    const areSiblings = (acc1: Account, acc2: Account) => {
+      // Caso 1: Ambas son principales
+      if (isMain(acc1) && isMain(acc2)) return true;
+      // Caso 2: Ambas son asociadas al MISMO banco
+      if (acc1.bankAccountId && acc2.bankAccountId && acc1.bankAccountId === acc2.bankAccountId) return true;
+      return false;
+    };
+
+    if (!areSiblings(draggedAccount, targetAccount)) {
+      setDraggedAccountId(null);
+      setDragOverAccountId(null);
+      return;
+    }
+
+    // Obtener la lista relevante para reordenar
+    let relevantAccounts: Account[];
+    if (isMain(draggedAccount)) {
+      relevantAccounts = accounts.filter(acc => isMain(acc));
+    } else {
+      relevantAccounts = accounts.filter(acc => acc.bankAccountId === draggedAccount.bankAccountId);
+    }
+
     // Reordenar
-    const sortedAccounts = [...mainAccounts].sort((a, b) => (a.order || 0) - (b.order || 0));
+    const sortedAccounts = [...relevantAccounts].sort((a, b) => (a.order || 0) - (b.order || 0));
     const draggedIndex = sortedAccounts.findIndex(acc => acc.id === draggedAccountId);
     const targetIndex = sortedAccounts.findIndex(acc => acc.id === targetAccountId);
 
@@ -158,7 +182,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     const [removed] = newOrder.splice(draggedIndex, 1);
     newOrder.splice(targetIndex, 0, removed);
 
-    // Actualizar el order de todas las cuentas
+    // Actualizar el order de las cuentas del grupo
     await Promise.all(
       newOrder.map((account, index) => updateAccount(account.id!, { order: index }))
     );
@@ -207,20 +231,46 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       return;
     }
 
-    // Reordenar usando la misma lógica que handleDrop
-    const mainAccounts = accounts.filter(acc => acc.type !== 'credit' || !acc.bankAccountId);
-    const sortedAccounts = [...mainAccounts].sort((a, b) => (a.order || 0) - (b.order || 0));
-    const draggedIndex = sortedAccounts.findIndex(acc => acc.id === draggedAccountId);
-    const targetIndex = sortedAccounts.findIndex(acc => acc.id === dragOverAccountId);
+    const draggedAccount = accounts.find(acc => acc.id === draggedAccountId);
+    const targetAccount = accounts.find(acc => acc.id === dragOverAccountId);
 
-    if (draggedIndex !== -1 && targetIndex !== -1) {
-      const newOrder = [...sortedAccounts];
-      const [removed] = newOrder.splice(draggedIndex, 1);
-      newOrder.splice(targetIndex, 0, removed);
+    if (!draggedAccount || !targetAccount) {
+        setDraggedAccountId(null);
+        setDragOverAccountId(null);
+        setTouchStartY(null);
+        setTouchCurrentY(null);
+        return;
+    }
 
-      await Promise.all(
-        newOrder.map((account, index) => updateAccount(account.id!, { order: index }))
-      );
+    // Lógica idéntica a handleDrop para validar hermanos
+    const isMain = (acc: Account) => acc.type !== 'credit' || !acc.bankAccountId;
+    const areSiblings = (acc1: Account, acc2: Account) => {
+      if (isMain(acc1) && isMain(acc2)) return true;
+      if (acc1.bankAccountId && acc2.bankAccountId && acc1.bankAccountId === acc2.bankAccountId) return true;
+      return false;
+    };
+
+    if (areSiblings(draggedAccount, targetAccount)) {
+        let relevantAccounts: Account[];
+        if (isMain(draggedAccount)) {
+            relevantAccounts = accounts.filter(acc => isMain(acc));
+        } else {
+            relevantAccounts = accounts.filter(acc => acc.bankAccountId === draggedAccount.bankAccountId);
+        }
+
+        const sortedAccounts = [...relevantAccounts].sort((a, b) => (a.order || 0) - (b.order || 0));
+        const draggedIndex = sortedAccounts.findIndex(acc => acc.id === draggedAccountId);
+        const targetIndex = sortedAccounts.findIndex(acc => acc.id === dragOverAccountId);
+
+        if (draggedIndex !== -1 && targetIndex !== -1) {
+            const newOrder = [...sortedAccounts];
+            const [removed] = newOrder.splice(draggedIndex, 1);
+            newOrder.splice(targetIndex, 0, removed);
+
+            await Promise.all(
+                newOrder.map((account, index) => updateAccount(account.id!, { order: index }))
+            );
+        }
     }
 
     setDraggedAccountId(null);
@@ -328,9 +378,13 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
         // Preparar actualizaciones
         const updates: Partial<Account> = { name: newAccount.name.trim() };
 
-        // Si es tarjeta de crédito, permitir actualizar el límite
-        if (editingAccount.type === 'credit' && newAccount.creditLimit) {
-          updates.creditLimit = newAccount.creditLimit;
+        // Si es tarjeta de crédito, permitir actualizar el límite y la tasa de interés
+        if (editingAccount.type === 'credit') {
+          if (newAccount.creditLimit) {
+            updates.creditLimit = newAccount.creditLimit;
+          }
+          // Siempre actualizar interestRate (puede ser 0 si lo quitan)
+          updates.interestRate = newAccount.interestRate || 0;
         }
 
         // Ejecutar operaciones asíncronas después del cierre
@@ -573,21 +627,52 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
               />
             </div>
             {editingAccount && editingAccount.type === 'credit' && (
-              <div>
-                <label className="label-base">Límite de Crédito</label>
-                <input
-                  type="text"
-                  value={formatNumberForInput(creditLimitInput)}
-                  onChange={(e) => {
-                    const unformatted = unformatNumber(e.target.value);
-                    setCreditLimitInput(unformatted);
-                    const numValue = parseFloat(unformatted.replace(',', '.')) || 0;
-                    setNewAccount({...newAccount, creditLimit: numValue});
-                  }}
-                  placeholder="0"
-                  className="input-base"
-                />
-              </div>
+              <>
+                <div>
+                  <label className="label-base">Límite de Crédito</label>
+                  <input
+                    type="text"
+                    value={formatNumberForInput(creditLimitInput)}
+                    onChange={(e) => {
+                      const unformatted = unformatNumber(e.target.value);
+                      setCreditLimitInput(unformatted);
+                      const numValue = parseFloat(unformatted.replace(',', '.')) || 0;
+                      setNewAccount({...newAccount, creditLimit: numValue});
+                    }}
+                    placeholder="0"
+                    className="input-base"
+                  />
+                </div>
+                <div>
+                  <label className="label-base">Tasa de Interés E.A. (%)</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={interestRateInput}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const numericOnly = value.replace(/[^0-9]/g, '');
+                      const limited = numericOnly.slice(0, 4);
+                      let formatted = limited;
+                      if (limited.length > 2) {
+                        formatted = limited.slice(0, -2) + ',' + limited.slice(-2);
+                      }
+                      setInterestRateInput(formatted);
+                      if (limited === '') {
+                        setNewAccount({...newAccount, interestRate: 0});
+                      } else {
+                        const decimalValue = parseInt(limited, 10) / 100;
+                        setNewAccount({...newAccount, interestRate: decimalValue});
+                      }
+                    }}
+                    placeholder="23,99"
+                    className="input-base"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Opcional. Se usa para calcular intereses en cuotas.
+                  </p>
+                </div>
+              </>
             )}
             {editingAccount && editingAccount.type !== 'credit' && (
               <div>
@@ -848,10 +933,16 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
             const nextPayment = getNextPaymentDate(account);
             const accountTypeInfo = accountTypes.find(t => t.value === account.type);
             
-            // Buscar tarjetas asociadas a esta cuenta
-            const associatedCards = accounts.filter(acc => 
-              acc.type === 'credit' && acc.bankAccountId === account.id
-            );
+            // Buscar tarjetas asociadas a esta cuenta y ordenarlas
+            const associatedCards = accounts
+              .filter(acc => acc.type === 'credit' && acc.bankAccountId === account.id)
+              .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+            // Determinar colores según tipo de cuenta
+            const isCredit = account.type === 'credit';
+            const accentColor = isCredit 
+              ? 'purple' 
+              : 'emerald';
 
             return (
               <div key={account.id}>
@@ -867,14 +958,14 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                   onTouchStart={(e) => handleTouchStart(e, account.id!)}
                   onTouchMove={handleTouchMove}
                   onTouchEnd={handleTouchEnd}
-                  className={`rounded-xl p-5 transition-all touch-none select-none ${
+                  className={`rounded-xl p-5 transition-all touch-none select-none relative overflow-hidden ${
                     draggedAccountId === account.id
                       ? 'opacity-50 scale-95 shadow-2xl'
                       : dragOverAccountId === account.id
                       ? 'border-2 border-purple-500 shadow-lg scale-102 bg-purple-50 dark:bg-purple-900/30'
                       : account.isDefault
-                      ? 'border-2 border-purple-500 bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20 shadow-md'
-                      : 'border border-purple-100 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md'
+                      ? `border-2 ${isCredit ? 'border-purple-500 bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20' : 'border-emerald-500 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20'} shadow-md`
+                      : `border ${isCredit ? 'border-purple-100 dark:border-gray-700' : 'border-emerald-100 dark:border-gray-700'} bg-white dark:bg-gray-800 ${isCredit ? 'hover:border-purple-300 dark:hover:border-purple-600' : 'hover:border-emerald-300 dark:hover:border-emerald-600'} hover:shadow-md`
                   }`}
                   style={{
                     cursor: draggedAccountId === account.id ? 'grabbing' : 'grab',
@@ -884,119 +975,145 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                     zIndex: draggedAccountId === account.id ? 50 : undefined
                   }}
                 >
-                  <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                    <div className="flex-1 w-full sm:w-auto">
-                      <div className="flex items-center gap-2 mb-2">
-                        <GripVertical size={20} className="text-gray-400 cursor-grab active:cursor-grabbing" />
-                        {accountTypeInfo && React.createElement(accountTypeInfo.icon, {
-                          size: 20,
-                          className: "text-purple-600 dark:text-purple-400"
-                        })}
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-semibold text-gray-900 dark:text-gray-100">
-                            {account.name}
-                          </h4>
-                          {account.isDefault && (
-                            <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded-full font-medium">
-                              Principal
-                            </span>
-                          )}
+                  {/* Accent Bar - Línea lateral de color */}
+                  <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${isCredit ? 'bg-purple-500' : 'bg-emerald-500'}`} />
+                  
+                  <div className="pl-2">
+                    {/* Header con nombre y saldo */}
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 sm:gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <GripVertical size={20} className="text-gray-400 cursor-grab active:cursor-grabbing flex-shrink-0" />
+                          {/* Icono con fondo de color */}
+                          <div className={`p-1.5 rounded-lg flex-shrink-0 ${isCredit ? 'bg-purple-100 dark:bg-purple-900/40' : 'bg-emerald-100 dark:bg-emerald-900/40'}`}>
+                            {accountTypeInfo && React.createElement(accountTypeInfo.icon, {
+                              size: 18,
+                              className: isCredit ? 'text-purple-600 dark:text-purple-400' : 'text-emerald-600 dark:text-emerald-400'
+                            })}
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-semibold text-gray-900 dark:text-gray-100">
+                              {account.name}
+                            </h4>
+                            {account.isDefault && (
+                              <span className={`text-xs text-white px-2 py-0.5 rounded-full font-medium ${isCredit ? 'bg-purple-600' : 'bg-emerald-600'}`}>
+                                Principal
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {accountTypeInfo?.label}
+                        {/* Badge de tipo con color */}
+                        <span className={`inline-flex items-center text-xs px-2 py-0.5 rounded-full font-medium ${
+                          isCredit 
+                            ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300' 
+                            : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                        }`}>
+                          {accountTypeInfo?.label}
+                        </span>
                         {account.type === 'credit' && account.bankAccountId && (
-                          <span className="ml-2 text-purple-600 dark:text-purple-400">
+                          <span className="ml-2 text-xs text-purple-600 dark:text-purple-400">
                             • {accounts.find(acc => acc.id === account.bankAccountId)?.name}
                           </span>
                         )}
-                      </p>
+                      </div>
+
+                      {/* Saldo - visible en todas las pantallas */}
+                      <div className="text-left sm:text-right">
+                        <div className={`text-2xl font-bold ${
+                          isCredit
+                            ? (balance >= 0 ? 'text-purple-600 dark:text-purple-400' : 'text-rose-600')
+                            : (balance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600')
+                        }`}>
+                          {account.type === 'credit' && (
+                            <div className="text-xs font-normal text-gray-500 dark:text-gray-400 mb-1">
+                              Disponible
+                            </div>
+                          )}
+                          {formatCurrency(balance)}
+                        </div>
+                      </div>
+                    </div>
 
                       {account.type === 'credit' ? (
-                        <div className="mt-3">
+                        <div className="mt-4">
                           <div className="flex justify-between text-sm mb-1.5">
                             <span className="text-gray-600 dark:text-gray-400">Cupo utilizado</span>
                             <span className="font-medium text-gray-900 dark:text-gray-100">
                               {formatCurrency(creditUsed)} / {formatCurrency(account.creditLimit!)}
                             </span>
                           </div>
-                          <div className="w-full h-2 bg-purple-100 rounded-full overflow-hidden">
+                          <div className="w-full h-2.5 bg-purple-100 dark:bg-purple-900/30 rounded-full overflow-hidden">
                             <div
                               className={`h-full transition-all ${
-                                creditUsed > (account.creditLimit || 0) * 0.8 ? 'bg-rose-500' : 'bg-purple-600'
+                                creditUsed > (account.creditLimit || 0) * 0.8 ? 'bg-gradient-to-r from-orange-500 to-rose-500' : 'bg-gradient-to-r from-purple-500 to-violet-500'
                               }`}
                               style={{ width: `${Math.min((creditUsed / account.creditLimit!) * 100, 100)}%` }}
                             />
                           </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mt-3">
-                            <div className="text-sm">
-                              <div className="text-gray-500 dark:text-gray-400">Corte</div>
-                              <div className="font-medium text-gray-900 dark:text-gray-100">
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-sm">
+                            <div>
+                              <span className="text-gray-500 dark:text-gray-400">Corte: </span>
+                              <span className="font-medium text-gray-900 dark:text-gray-100">
                                 {nextCutoff?.toLocaleDateString('es-CO')}
-                              </div>
+                              </span>
                             </div>
-                            <div className="text-sm">
-                              <div className="text-gray-500 dark:text-gray-400">Pago</div>
-                              <div className="font-medium text-gray-900 dark:text-gray-100">
+                            <div>
+                              <span className="text-gray-500 dark:text-gray-400">Pago: </span>
+                              <span className="font-medium text-gray-900 dark:text-gray-100">
                                 {nextPayment?.toLocaleDateString('es-CO')}
-                              </div>
+                              </span>
                             </div>
+                            {account.interestRate && account.interestRate > 0 && (
+                              <div>
+                                <span className="text-gray-500 dark:text-gray-400">Tasa E.A.: </span>
+                                <span className="font-medium text-purple-600 dark:text-purple-400">
+                                  {account.interestRate.toFixed(2).replace('.', ',')}%
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       ) : null}
-                    </div>
+                    
+                    {/* Botones de acción */}
+                    <div className="flex flex-wrap gap-2 mt-4">
+                      <button
+                        onClick={() => editAccount(account)}
+                        className="btn-edit"
+                      >
+                        <Edit2 size={14} />
+                        Editar
+                      </button>
 
-                    <div className="text-right ml-0 sm:ml-6 mt-3 sm:mt-0">
-                      <div className={`text-2xl font-bold mb-3 ${
-                        account.type === 'credit'
-                          ? (balance >= 0 ? 'text-purple-600' : 'text-rose-600')
-                          : (balance >= 0 ? 'text-purple-600' : 'text-rose-600')
-                      }`}>
-                        {account.type === 'credit' && (
-                          <div className="text-xs font-normal text-gray-500 mb-1">
-                            Disponible
-                          </div>
-                        )}
-                        {formatCurrency(balance)}
-                      </div>
-
-                      <div className="flex flex-wrap gap-2 justify-end">
-                        <button
-                          onClick={() => editAccount(account)}
-                          className="btn-edit"
-                        >
-                          <Edit2 size={14} />
-                          Editar
-                        </button>
-
-                        {!account.isDefault && (
-                          <>
-                            <button
-                              onClick={() => setDefaultAccount(account.id!)}
-                              className="bg-purple-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
-                            >
-                              Principal
-                            </button>
-                            <button
-                              onClick={() => {
-                                setShowDeleteConfirm(account.id!);
-                                setDeleteConfirmName('');
-                              }}
-                              className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </>
-                        )}
-                      </div>
+                      {!account.isDefault && (
+                        <>
+                          <button
+                            onClick={() => setDefaultAccount(account.id!)}
+                            className={`text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${isCredit ? 'bg-purple-600 hover:bg-purple-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                          >
+                            Principal
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowDeleteConfirm(account.id!);
+                              setDeleteConfirmName('');
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
 
                 {/* Tarjetas asociadas - renderizadas debajo */}
                 {associatedCards.length > 0 && (
-                  <div className="ml-4 sm:ml-8 mt-3 space-y-3 border-l-2 border-purple-200 dark:border-purple-800 pl-4">
+                  <div className={`ml-4 sm:ml-8 mt-3 space-y-3 border-l-2 border-purple-200 dark:border-purple-800 pl-4 transition-opacity duration-200 ${
+                    draggedAccountId === account.id ? 'opacity-50' : ''
+                  }`}>
                     {associatedCards.map(card => {
                       const cardBalance = getAccountBalance(card.id!);
                       const cardCreditUsed = getCreditUsed(card.id!);
@@ -1007,107 +1124,152 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                       return (
                         <div
                           key={card.id}
-                          className={`rounded-xl p-4 sm:p-5 transition-all border border-purple-100 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md ${
+                          data-account-id={card.id}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, card.id!)}
+                          onDragOver={(e) => handleDragOver(e, card.id!)}
+                          onDragLeave={handleDragLeave}
+                          onDrop={(e) => handleDrop(e, card.id!)}
+                          onDragEnd={handleDragEnd}
+                          onTouchStart={(e) => handleTouchStart(e, card.id!)}
+                          onTouchMove={handleTouchMove}
+                          onTouchEnd={handleTouchEnd}
+                          className={`rounded-xl p-4 sm:p-5 transition-all relative overflow-hidden border border-purple-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md ${
                             card.isDefault ? 'ring-2 ring-purple-400' : ''
+                          } ${
+                            draggedAccountId === card.id
+                              ? 'opacity-50 scale-95 shadow-lg'
+                              : dragOverAccountId === card.id
+                              ? 'border-2 border-purple-500 shadow-lg scale-102 bg-purple-50 dark:bg-purple-900/40'
+                              : ''
                           }`}
+                          style={{
+                            cursor: draggedAccountId === card.id ? 'grabbing' : 'grab',
+                            transform: draggedAccountId === card.id && touchCurrentY && touchStartY 
+                              ? `translateY(${touchCurrentY - touchStartY}px)` 
+                              : undefined,
+                            zIndex: draggedAccountId === card.id ? 50 : undefined
+                          }}
                         >
-                          <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                            <div className="flex-1 w-full sm:w-auto">
-                              <div className="flex items-center gap-2 mb-2">
-                                {cardTypeInfo && React.createElement(cardTypeInfo.icon, {
-                                  size: 18,
-                                  className: "text-purple-600 dark:text-purple-400"
-                                })}
-                                <div className="flex items-center gap-2">
-                                  <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-sm sm:text-base">
-                                    {card.name}
-                                  </h4>
-                                  {card.isDefault && (
-                                    <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded-full font-medium">
-                                      Principal
-                                    </span>
-                                  )}
+                          {/* Accent Bar - TC siempre púrpura */}
+                          <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-purple-500" />
+                          
+                          <div className="pl-2">
+                            {/* Header con nombre y saldo */}
+                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <GripVertical size={16} className="text-gray-400 cursor-grab active:cursor-grabbing flex-shrink-0" />
+                                  {/* Icono con fondo púrpura */}
+                                  <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-900/40 flex-shrink-0">
+                                    {cardTypeInfo && React.createElement(cardTypeInfo.icon, {
+                                      size: 16,
+                                      className: "text-purple-600 dark:text-purple-400"
+                                    })}
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-sm sm:text-base">
+                                      {card.name}
+                                    </h4>
+                                    {card.isDefault && (
+                                      <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded-full font-medium">
+                                        Principal
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                              <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-                                {cardTypeInfo?.label}
-                                <span className="ml-2 text-purple-600 dark:text-purple-400">
+                                {/* Badge de tipo */}
+                                <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-full font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+                                  {cardTypeInfo?.label}
+                                </span>
+                                <span className="ml-2 text-xs text-purple-600 dark:text-purple-400">
                                   • {account.name}
                                 </span>
-                              </p>
+                              </div>
 
-                              <div className="mt-3">
-                                <div className="flex justify-between text-xs sm:text-sm mb-1.5">
-                                  <span className="text-gray-600 dark:text-gray-400">Cupo utilizado</span>
-                                  <span className="font-medium text-gray-900 dark:text-gray-100">
-                                    {formatCurrency(cardCreditUsed)} / {formatCurrency(card.creditLimit!)}
-                                  </span>
-                                </div>
-                                <div className="w-full h-2 bg-purple-100 rounded-full overflow-hidden">
-                                  <div
-                                    className={`h-full transition-all ${
-                                      cardCreditUsed > (card.creditLimit || 0) * 0.8 ? 'bg-rose-500' : 'bg-purple-600'
-                                    }`}
-                                    style={{ width: `${Math.min((cardCreditUsed / card.creditLimit!) * 100, 100)}%` }}
-                                  />
-                                </div>
-
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mt-3">
-                                  <div className="text-xs sm:text-sm">
-                                    <div className="text-gray-500 dark:text-gray-400">Corte</div>
-                                    <div className="font-medium text-gray-900 dark:text-gray-100">
-                                      {cardNextCutoff?.toLocaleDateString('es-CO')}
-                                    </div>
+                              {/* Saldo */}
+                              <div className="text-left sm:text-right">
+                                <div className={`text-xl sm:text-2xl font-bold ${
+                                  cardBalance >= 0 ? 'text-purple-600 dark:text-purple-400' : 'text-rose-600'
+                                }`}>
+                                  <div className="text-xs font-normal text-gray-500 dark:text-gray-400 mb-1">
+                                    Disponible
                                   </div>
-                                  <div className="text-xs sm:text-sm">
-                                    <div className="text-gray-500 dark:text-gray-400">Pago</div>
-                                    <div className="font-medium text-gray-900 dark:text-gray-100">
-                                      {cardNextPayment?.toLocaleDateString('es-CO')}
-                                    </div>
-                                  </div>
+                                  {formatCurrency(cardBalance)}
                                 </div>
                               </div>
                             </div>
 
-                            <div className="text-right ml-0 sm:ml-6 mt-3 sm:mt-0">
-                              <div className={`text-xl sm:text-2xl font-bold mb-3 ${
-                                cardBalance >= 0 ? 'text-purple-600' : 'text-rose-600'
-                              }`}>
-                                <div className="text-xs font-normal text-gray-500 mb-1">
-                                  Disponible
-                                </div>
-                                {formatCurrency(cardBalance)}
+                            {/* Info de cupo */}
+                            <div className="mt-4">
+                              <div className="flex justify-between text-xs sm:text-sm mb-1.5">
+                                <span className="text-gray-600 dark:text-gray-400">Cupo utilizado</span>
+                                <span className="font-medium text-gray-900 dark:text-gray-100">
+                                  {formatCurrency(cardCreditUsed)} / {formatCurrency(card.creditLimit!)}
+                                </span>
+                              </div>
+                              <div className="w-full h-2.5 bg-purple-100 dark:bg-purple-900/30 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full transition-all ${
+                                    cardCreditUsed > (card.creditLimit || 0) * 0.8 ? 'bg-gradient-to-r from-orange-500 to-rose-500' : 'bg-gradient-to-r from-purple-500 to-violet-500'
+                                  }`}
+                                  style={{ width: `${Math.min((cardCreditUsed / card.creditLimit!) * 100, 100)}%` }}
+                                />
                               </div>
 
-                              <div className="flex flex-wrap gap-2 justify-end">
-                                <button
-                                  onClick={() => editAccount(card)}
-                                  className="btn-edit"
-                                >
-                                  <Edit2 size={14} />
-                                  Editar
-                                </button>
-
-                                {!card.isDefault && (
-                                  <>
-                                    <button
-                                      onClick={() => setDefaultAccount(card.id!)}
-                                      className="bg-purple-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
-                                    >
-                                      Principal
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        setShowDeleteConfirm(card.id!);
-                                        setDeleteConfirmName('');
-                                      }}
-                                      className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
-                                    >
-                                      <Trash2 size={16} />
-                                    </button>
-                                  </>
+                              <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3 text-xs sm:text-sm">
+                                <div>
+                                  <span className="text-gray-500 dark:text-gray-400">Corte: </span>
+                                  <span className="font-medium text-gray-900 dark:text-gray-100">
+                                    {cardNextCutoff?.toLocaleDateString('es-CO')}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500 dark:text-gray-400">Pago: </span>
+                                  <span className="font-medium text-gray-900 dark:text-gray-100">
+                                    {cardNextPayment?.toLocaleDateString('es-CO')}
+                                  </span>
+                                </div>
+                                {card.interestRate && card.interestRate > 0 && (
+                                  <div>
+                                    <span className="text-gray-500 dark:text-gray-400">Tasa E.A.: </span>
+                                    <span className="font-medium text-purple-600 dark:text-purple-400">
+                                      {card.interestRate.toFixed(2).replace('.', ',')}%
+                                    </span>
+                                  </div>
                                 )}
                               </div>
+                            </div>
+
+                            {/* Botones de acción */}
+                            <div className="flex flex-wrap gap-2 mt-4">
+                              <button
+                                onClick={() => editAccount(card)}
+                                className="btn-edit"
+                              >
+                                <Edit2 size={14} />
+                                Editar
+                              </button>
+
+                              {!card.isDefault && (
+                                <>
+                                  <button
+                                    onClick={() => setDefaultAccount(card.id!)}
+                                    className="bg-purple-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
+                                  >
+                                    Principal
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setShowDeleteConfirm(card.id!);
+                                      setDeleteConfirmName('');
+                                    }}
+                                    className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>

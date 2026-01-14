@@ -29,6 +29,7 @@ export interface Account {
   paymentDay?: number;
   bankAccountId?: string; // ID de cuenta bancaria asociada (para tarjetas de crédito)
   createdAt?: Date;
+  order?: number; // Orden de visualización
 
   // 🆕 Tasa de interés para TC
   interestRate?: number; // Tasa de Interés Efectiva Anual (E.A.) en porcentaje (ej: 23.99)

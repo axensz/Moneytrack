@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
-import { Plus, Edit2, Trash2, Wallet, CreditCard, Banknote, X } from 'lucide-react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { Plus, Edit2, Trash2, Wallet, CreditCard, Banknote, X, GripVertical } from 'lucide-react';
 import { showToast } from '../../utils/toastHelpers';
 import { formatNumberForInput, unformatNumber } from '../../utils/formatters';
 import { BalanceCalculator } from '../../utils/balanceCalculator';
@@ -70,11 +70,24 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   });
 
   const [balanceAdjustment, setBalanceAdjustment] = useState<string>('');
+  const [draggedAccountId, setDraggedAccountId] = useState<string | null>(null);
+  const [dragOverAccountId, setDragOverAccountId] = useState<string | null>(null);
+  const [touchStartY, setTouchStartY] = useState<number | null>(null);
+  const [touchCurrentY, setTouchCurrentY] = useState<number | null>(null);
 
   // Estados temporales para formateo de números (string mientras se escribe, number al guardar)
   const [initialBalanceInput, setInitialBalanceInput] = useState<string>('');
   const [creditLimitInput, setCreditLimitInput] = useState<string>('');
   const [interestRateInput, setInterestRateInput] = useState<string>('');
+
+  // Inicializar order si no existe
+  useEffect(() => {
+    accounts.forEach((account, index) => {
+      if (account.order === undefined) {
+        updateAccount(account.id!, { order: index });
+      }
+    });
+  }, []);
 
   // Filtrar cuentas de ahorro para asociación con TC
   const savingsAccounts: Account[] = accounts.filter(acc => acc.type === 'savings');
@@ -98,6 +111,123 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       interestRate: 0
     });
   }, []);
+
+  // Handlers de drag and drop
+  const handleDragStart = (e: React.DragEvent, accountId: string) => {
+    setDraggedAccountId(accountId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, accountId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (draggedAccountId !== accountId) {
+      setDragOverAccountId(accountId);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDragOverAccountId(null);
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetAccountId: string) => {
+    e.preventDefault();
+    
+    if (!draggedAccountId || draggedAccountId === targetAccountId) {
+      setDraggedAccountId(null);
+      setDragOverAccountId(null);
+      return;
+    }
+
+    // Obtener todas las cuentas principales (no tarjetas asociadas)
+    const mainAccounts = accounts.filter(acc => acc.type !== 'credit' || !acc.bankAccountId);
+    const draggedAccount = mainAccounts.find(acc => acc.id === draggedAccountId);
+    const targetAccount = mainAccounts.find(acc => acc.id === targetAccountId);
+
+    if (!draggedAccount || !targetAccount) return;
+
+    // Reordenar
+    const sortedAccounts = [...mainAccounts].sort((a, b) => (a.order || 0) - (b.order || 0));
+    const draggedIndex = sortedAccounts.findIndex(acc => acc.id === draggedAccountId);
+    const targetIndex = sortedAccounts.findIndex(acc => acc.id === targetAccountId);
+
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    // Crear nuevo array con el orden actualizado
+    const newOrder = [...sortedAccounts];
+    const [removed] = newOrder.splice(draggedIndex, 1);
+    newOrder.splice(targetIndex, 0, removed);
+
+    // Actualizar el order de todas las cuentas
+    await Promise.all(
+      newOrder.map((account, index) => updateAccount(account.id!, { order: index }))
+    );
+
+    setDraggedAccountId(null);
+    setDragOverAccountId(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedAccountId(null);
+    setDragOverAccountId(null);
+  };
+
+  // Touch handlers para mobile
+  const handleTouchStart = (e: React.TouchEvent, accountId: string) => {
+    const touch = e.touches[0];
+    setTouchStartY(touch.clientY);
+    setTouchCurrentY(touch.clientY);
+    setDraggedAccountId(accountId);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!draggedAccountId || !touchStartY) return;
+    
+    const touch = e.touches[0];
+    setTouchCurrentY(touch.clientY);
+
+    // Encontrar el elemento sobre el que está el dedo
+    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+    const accountCard = element?.closest('[data-account-id]');
+    
+    if (accountCard) {
+      const targetId = accountCard.getAttribute('data-account-id');
+      if (targetId && targetId !== draggedAccountId) {
+        setDragOverAccountId(targetId);
+      }
+    }
+  };
+
+  const handleTouchEnd = async () => {
+    if (!draggedAccountId || !dragOverAccountId) {
+      setDraggedAccountId(null);
+      setDragOverAccountId(null);
+      setTouchStartY(null);
+      setTouchCurrentY(null);
+      return;
+    }
+
+    // Reordenar usando la misma lógica que handleDrop
+    const mainAccounts = accounts.filter(acc => acc.type !== 'credit' || !acc.bankAccountId);
+    const sortedAccounts = [...mainAccounts].sort((a, b) => (a.order || 0) - (b.order || 0));
+    const draggedIndex = sortedAccounts.findIndex(acc => acc.id === draggedAccountId);
+    const targetIndex = sortedAccounts.findIndex(acc => acc.id === dragOverAccountId);
+
+    if (draggedIndex !== -1 && targetIndex !== -1) {
+      const newOrder = [...sortedAccounts];
+      const [removed] = newOrder.splice(draggedIndex, 1);
+      newOrder.splice(targetIndex, 0, removed);
+
+      await Promise.all(
+        newOrder.map((account, index) => updateAccount(account.id!, { order: index }))
+      );
+    }
+
+    setDraggedAccountId(null);
+    setDragOverAccountId(null);
+    setTouchStartY(null);
+    setTouchCurrentY(null);
+  };
 
   const accountTypes = [
     { value: 'savings' as const, label: 'Cuenta de Ahorros', icon: Wallet },
@@ -710,6 +840,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       <div className="space-y-4">
         {accounts
           .filter(account => account.type !== 'credit' || !account.bankAccountId)
+          .sort((a, b) => (a.order || 0) - (b.order || 0))
           .map(account => {
             const balance = getAccountBalance(account.id!);
             const creditUsed = getCreditUsed(account.id!);
@@ -726,15 +857,37 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
               <div key={account.id}>
                 {/* Cuenta principal */}
                 <div
-                  className={`rounded-xl p-5 transition-all ${
-                    account.isDefault
+                  data-account-id={account.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, account.id!)}
+                  onDragOver={(e) => handleDragOver(e, account.id!)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, account.id!)}
+                  onDragEnd={handleDragEnd}
+                  onTouchStart={(e) => handleTouchStart(e, account.id!)}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
+                  className={`rounded-xl p-5 transition-all touch-none select-none ${
+                    draggedAccountId === account.id
+                      ? 'opacity-50 scale-95 shadow-2xl'
+                      : dragOverAccountId === account.id
+                      ? 'border-2 border-purple-500 shadow-lg scale-102 bg-purple-50 dark:bg-purple-900/30'
+                      : account.isDefault
                       ? 'border-2 border-purple-500 bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20 shadow-md'
                       : 'border border-purple-100 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md'
                   }`}
+                  style={{
+                    cursor: draggedAccountId === account.id ? 'grabbing' : 'grab',
+                    transform: draggedAccountId === account.id && touchCurrentY && touchStartY 
+                      ? `translateY(${touchCurrentY - touchStartY}px)` 
+                      : undefined,
+                    zIndex: draggedAccountId === account.id ? 50 : undefined
+                  }}
                 >
                   <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                     <div className="flex-1 w-full sm:w-auto">
                       <div className="flex items-center gap-2 mb-2">
+                        <GripVertical size={20} className="text-gray-400 cursor-grab active:cursor-grabbing" />
                         {accountTypeInfo && React.createElement(accountTypeInfo.icon, {
                           size: 20,
                           className: "text-purple-600 dark:text-purple-400"

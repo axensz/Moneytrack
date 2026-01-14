@@ -75,13 +75,14 @@ export function useTransactions(userId: string | null) {
     }
   };
 
-  const duplicateTransaction = async (transaction: Transaction) => {
-    const { id, createdAt, ...transactionData } = transaction;
-    await addTransaction({
-      ...transactionData,
-      date: new Date(),
-      paid: false
-    });
+  const updateTransaction = async (id: string, updates: Partial<Transaction>) => {
+    if (userId) {
+      await firestoreUpdateTransaction(id, updates);
+    } else {
+      setLocalTransactions(prev =>
+        prev.map(t => t.id === id ? { ...t, ...updates } : t)
+      );
+    }
   };
 
   return {
@@ -90,6 +91,6 @@ export function useTransactions(userId: string | null) {
     addTransaction,
     deleteTransaction,
     togglePaid,
-    duplicateTransaction
+    updateTransaction
   };
 }

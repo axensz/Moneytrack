@@ -8,6 +8,8 @@ import { StatsCards } from './src/components/StatsCards';
 import { TransactionForm } from './src/components/TransactionForm';
 import { AuthModal } from './src/components/AuthModal';
 import { LoadingScreen } from './src/components/LoadingScreen';
+import { WelcomeModal } from './src/components/WelcomeModal';
+import { HelpModal } from './src/components/HelpModal';
 import { StatsView } from './src/components/views/StatsView';
 import { AccountsView } from './src/components/views/AccountsView';
 import { TransactionsView } from './src/components/views/TransactionsView';
@@ -33,9 +35,12 @@ const FinanceTracker = () => {
 
   const { user, loading: authLoading } = useAuth();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+  const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
 
   // 🟡 REFACTORIZADO: Hook simplificado (ya no calcula stats, solo CRUD)
-  const { transactions, addTransaction, deleteTransaction, togglePaid, duplicateTransaction, loading: transactionsLoading } = useTransactions(user?.uid || null);
+  const { transactions, addTransaction, deleteTransaction, togglePaid, updateTransaction, loading: transactionsLoading } = useTransactions(user?.uid || null);
 
   // Cargar cuentas con transacciones
   const { accounts, addAccount, updateAccount, deleteAccount, setDefaultAccount, getAccountBalance, getTransactionCountForAccount, totalBalance, defaultAccount, loading: accountsLoading } = useAccounts(user?.uid || null, transactions, deleteTransaction);
@@ -53,9 +58,58 @@ const FinanceTracker = () => {
   const [filterStatus, setFilterStatus] = useState<FilterValue>('all');
   const [filterAccount, setFilterAccount] = useState<FilterValue>('all');
 
+  // 🔄 LOGICA DE FILTRADO PARA ESTADISTICAS DINAMICAS
+  // Calculamos las transacciones filtradas para que las tarjetas reflejen la vista actual
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter(t => {
+      // 1. Filtro por Cuenta
+      if (filterAccount !== 'all' && t.accountId !== filterAccount) return false;
+      // 2. Filtro por Categoría
+      if (filterCategory !== 'all' && t.category !== filterCategory) return false;
+      return true;
+    });
+  }, [transactions, filterAccount, filterCategory]);
+
+  // Filtramos las cuentas solo si hay un filtro de cuenta activo
+  // Esto afecta al cálculo de "Gastos Pendientes" (Deuda TC) y al Balance mostrado
+  const filteredAccounts = useMemo(() => {
+    if (filterAccount === 'all') return accounts;
+    return accounts.filter(acc => acc.id === filterAccount);
+  }, [accounts, filterAccount]);
+
+  // Usamos el hook de estadísticas con los datos FILTRADOS
+  const dynamicStats = useGlobalStats(filteredTransactions, filteredAccounts);
+
+  // Calculamos el balance total dinámico (afectado solo por filtro de cuenta, no de categoría)
+  const dynamicTotalBalance = useMemo(() => {
+    if (filterAccount === 'all') return totalBalance;
+    // Usamos el helper getAccountBalance que ya calcula el saldo usando las estrategias correctas
+    // en lugar de intentar acceder a una propiedad .currentBalance que no existe en el objeto Account
+    return getAccountBalance(filterAccount);
+  }, [totalBalance, filterAccount, getAccountBalance]);
+
+  // Etiqueta dinámica para el balance (UX Improvement)
+  const balanceLabel = useMemo(() => {
+    if (filterAccount === 'all') return 'Balance Total';
+    const account = accounts.find(acc => acc.id === filterAccount);
+    if (account?.type === 'credit') return 'Cupo Disponible';
+    return 'Balance';
+  }, [filterAccount, accounts]);
+
   const [newTransaction, setNewTransaction] = useState<NewTransaction>({
     ...INITIAL_TRANSACTION
   });
+
+  // Mostrar modal de bienvenida si no hay cuentas (solo primera vez por sesión)
+  useEffect(() => {
+    if (mounted && accounts.length === 0 && !accountsLoading) {
+      const hasSeenWelcome = sessionStorage.getItem('moneytrack_welcome_seen');
+      if (!hasSeenWelcome) {
+        setShowWelcomeModal(true);
+        sessionStorage.setItem('moneytrack_welcome_seen', 'true');
+      }
+    }
+  }, [mounted, accounts.length, accountsLoading]);
 
   // Mostrar pantalla de carga mientras verifica autenticación
   // IMPORTANTE: Debe estar DESPUÉS de todos los hooks
@@ -63,7 +117,19 @@ const FinanceTracker = () => {
     return <LoadingScreen />;
   }
 
+  const handleGoToAccounts = () => {
+    setShowWelcomeModal(false);
+    setView('accounts');
+  };
+
   const handleAddTransaction = async (): Promise<void> => {
+    // Validar que existan cuentas
+    if (accounts.length === 0) {
+      toast.error('Debes crear al menos una cuenta primero');
+      setShowWelcomeModal(true);
+      return;
+    }
+
     // Obtener información de la cuenta
     const accountId = newTransaction.accountId || defaultAccount?.id;
     const selectedAccount = accounts.find(acc => acc.id === accountId);
@@ -147,18 +213,6 @@ const FinanceTracker = () => {
     }
   };
 
-  const handleDuplicateTransaction = async (transaction: Transaction): Promise<void> => {
-    try {
-      await duplicateTransaction(transaction);
-      setShowForm(true);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      toast.success(SUCCESS_MESSAGES.TRANSACTION_DUPLICATED);
-    } catch (error) {
-      toast.error(ERROR_MESSAGES.DUPLICATE_TRANSACTION_ERROR);
-      console.error(error);
-    }
-  };
-
   return (
     <div className="flex flex-col h-screen bg-background bg-gradient-to-br from-stone-50/50 via-amber-50/30 to-orange-50/20 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
       <Toaster
@@ -176,10 +230,24 @@ const FinanceTracker = () => {
         onClose={() => setIsAuthModalOpen(false)} 
       />
 
+      <WelcomeModal
+        isOpen={showWelcomeModal}
+        onClose={() => setShowWelcomeModal(false)}
+        onGoToAccounts={handleGoToAccounts}
+      />
+
+      <HelpModal
+        isOpen={showHelpModal}
+        onClose={() => setShowHelpModal(false)}
+      />
+
       <Header 
         user={user}
         isAuthModalOpen={isAuthModalOpen}
         setIsAuthModalOpen={setIsAuthModalOpen}
+        showSettingsMenu={showSettingsMenu}
+        setShowSettingsMenu={setShowSettingsMenu}
+        onOpenHelp={() => setShowHelpModal(true)}
       />
 
       <div className="flex-1 overflow-auto pb-20 sm:pb-0">
@@ -193,11 +261,12 @@ const FinanceTracker = () => {
             />
 
             <StatsCards
-              totalBalance={mounted ? totalBalance : 0}
-              totalIncome={mounted ? stats.totalIncome : 0}
-              totalExpenses={mounted ? stats.totalExpenses : 0}
-              pendingExpenses={mounted ? stats.pendingExpenses : 0}
+              totalBalance={mounted ? dynamicTotalBalance : 0}
+              totalIncome={mounted ? dynamicStats.totalIncome : 0}
+              totalExpenses={mounted ? dynamicStats.totalExpenses : 0}
+              pendingExpenses={mounted ? dynamicStats.pendingExpenses : 0}
               formatCurrency={formatCurrency}
+              balanceLabel={balanceLabel}
             />
 
             {view === 'transactions' && (
@@ -229,7 +298,7 @@ const FinanceTracker = () => {
                   categories={categories}
                   togglePaid={togglePaid}
                   deleteTransaction={deleteTransaction}
-                  handleDuplicateTransaction={handleDuplicateTransaction}
+                  updateTransaction={updateTransaction}
                   formatCurrency={formatCurrency}
                 />
               </>

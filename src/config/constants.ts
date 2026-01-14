@@ -181,9 +181,17 @@ export const UI_LABELS = {
 export const TOAST_CONFIG = {
   position: 'top-center' as const,
   duration: 3000,
+  containerStyle: {
+    top: 80, // Debajo del header para no tapar botones
+  },
   style: {
-    background: '#363636',
+    background: '#1f2937',
     color: '#fff',
+    borderRadius: '12px',
+    padding: '12px 16px',
+    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.2)',
+    fontSize: '14px',
+    maxWidth: '380px',
   },
   success: {
     duration: 2000,

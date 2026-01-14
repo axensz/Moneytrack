@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#fcd34d"/>
+      <stop offset="50%" style="stop-color:#fbbf24"/>
+      <stop offset="100%" style="stop-color:#d97706"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Monkey Head - Fondo Transparente -->
+  <g transform="translate(64, 58)">
+    <!-- Ears -->
+    <circle cx="-40" cy="-8" r="16" fill="#78350f"/>
+    <circle cx="40" cy="-8" r="16" fill="#78350f"/>
+    <circle cx="-40" cy="-8" r="10" fill="#fde68a"/>
+    <circle cx="40" cy="-8" r="10" fill="#fde68a"/>
+    
+    <!-- Head Base -->
+    <ellipse cx="0" cy="0" rx="48" ry="42" fill="#92400e"/>
+    
+    <!-- Face Mask -->
+    <path d="M -32 -6 Q -16 -24 0 -6 Q 16 -24 32 -6 Q 40 10 32 26 Q 0 50 -32 26 Q -40 10 -32 -6" fill="#fde68a"/>
+    
+    <!-- Eyes -->
+    <ellipse cx="-16" cy="-2" rx="6" ry="8" fill="white"/>
+    <circle cx="-16" cy="-2" r="3" fill="#1f2937"/>
+    <circle cx="-14" cy="-4" r="1.5" fill="white"/>
+    
+    <ellipse cx="16" cy="-2" rx="6" ry="8" fill="white"/>
+    <circle cx="16" cy="-2" r="3" fill="#1f2937"/>
+    <circle cx="18" cy="-4" r="1.5" fill="white"/>
+
+    <!-- Nostrils -->
+    <circle cx="-6" cy="8" r="2" fill="#78350f"/>
+    <circle cx="6" cy="8" r="2" fill="#78350f"/>
+
+    <!-- Coin in Mouth -->
+    <g transform="translate(0, 32)">
+      <circle cx="0" cy="0" r="18" fill="url(#goldGradient)" stroke="#b45309" stroke-width="2"/>
+      <circle cx="0" cy="0" r="14" fill="none" stroke="#fef3c7" stroke-width="1" stroke-dasharray="2 2"/>
+      <text x="0" y="6" text-anchor="middle" font-family="Arial, sans-serif" font-weight="900" font-size="16" fill="#92400e">$</text>
+      <!-- Shine -->
+      <path d="M -8 -10 Q 0 -14 8 -10" stroke="rgba(255,255,255,0.7)" stroke-width="2" fill="none"/>
+    </g>
+  </g>
+</svg>

@@ -254,8 +254,14 @@ const FinanceTracker = () => {
             <button
               key={tab.key}
               onClick={() => {
-                setView(tab.key);
-                scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                // Solo hacer scroll al inicio si ya estamos en la misma pestaña
+                if (view === tab.key) {
+                  scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                } else {
+                  // Cambiar de pestaña sin animación de scroll
+                  scrollContainerRef.current?.scrollTo({ top: 0 });
+                  setView(tab.key);
+                }
               }}
               className={`flex flex-col items-center justify-center gap-1 px-3 py-2 min-w-[70px] rounded-xl transition-all ${
                 view === tab.key
@@ -272,6 +278,7 @@ const FinanceTracker = () => {
 
       <Toaster
         position={TOAST_CONFIG.position}
+        containerStyle={TOAST_CONFIG.containerStyle}
         toastOptions={{
           duration: TOAST_CONFIG.duration,
           style: TOAST_CONFIG.style,

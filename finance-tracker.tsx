@@ -117,14 +117,10 @@ const FinanceTracker = () => {
     ...INITIAL_TRANSACTION
   });
 
-  // Mostrar modal de bienvenida si no hay cuentas (solo primera vez por sesión)
+  // Mostrar modal de bienvenida si no hay cuentas
   useEffect(() => {
     if (mounted && accounts.length === 0 && !accountsLoading) {
-      const hasSeenWelcome = sessionStorage.getItem('moneytrack_welcome_seen');
-      if (!hasSeenWelcome) {
-        setShowWelcomeModal(true);
-        sessionStorage.setItem('moneytrack_welcome_seen', 'true');
-      }
+      setShowWelcomeModal(true);
     }
   }, [mounted, accounts.length, accountsLoading]);
 

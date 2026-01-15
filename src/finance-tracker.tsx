@@ -85,6 +85,20 @@ const FinanceTracker = () => {
     ...INITIAL_TRANSACTION
   });
 
+  // 🆕 Hook para manejar la creación de transacciones
+  // IMPORTANTE: Debe estar ANTES de cualquier return condicional
+  const { handleAddTransaction } = useAddTransaction({
+    accounts,
+    transactions,
+    recurringPayments,
+    defaultAccount: defaultAccount || null,
+    addTransaction,
+    updateRecurringPayment,
+    setNewTransaction,
+    setShowForm,
+    setShowWelcomeModal,
+  });
+
   // Mostrar modal de bienvenida si no hay cuentas
   // Esperar a que termine la autenticación Y la carga de cuentas
   const shouldShowWelcome = mounted && !authLoading && !accountsLoading && accounts.length === 0;
@@ -125,19 +139,6 @@ const FinanceTracker = () => {
     setShowWelcomeModal(false);
     setView('accounts');
   };
-
-  // 🆕 Hook para manejar la creación de transacciones
-  const { handleAddTransaction } = useAddTransaction({
-    accounts,
-    transactions,
-    recurringPayments,
-    defaultAccount: defaultAccount || null,
-    addTransaction,
-    updateRecurringPayment,
-    setNewTransaction,
-    setShowForm,
-    setShowWelcomeModal,
-  });
 
   return (
     <div className="flex flex-col h-screen bg-background bg-gradient-to-br from-violet-50/30 via-purple-50/20 to-fuchsia-50/10 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">

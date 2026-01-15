@@ -12,7 +12,7 @@ import { LoadingScreen } from './src/components/LoadingScreen';
 import { WelcomeModal } from './src/components/WelcomeModal';
 import { HelpModal } from './src/components/HelpModal';
 import { StatsView } from './src/components/views/stats';
-import { AccountsView } from './src/components/views/AccountsView';
+import { AccountsView } from './src/components/views/accounts';
 import { TransactionsView } from './src/components/views/TransactionsView';
 import { RecurringPaymentsView } from './src/components/views/RecurringPaymentsView';
 import { useTransactions } from './src/hooks/useTransactions';

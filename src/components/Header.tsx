@@ -3,8 +3,6 @@
 import React, { useRef, useEffect } from 'react';
 import { LogIn, LogOut, User as UserIcon, Settings, HelpCircle } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
-import { logoutFirebase } from '../lib/firebase';
-import { showToast } from '../utils/toastHelpers';
 import type { User } from 'firebase/auth';
 
 interface HeaderProps {
@@ -14,6 +12,7 @@ interface HeaderProps {
   showSettingsMenu: boolean;
   setShowSettingsMenu: (show: boolean) => void;
   onOpenHelp: () => void;
+  onLogout: () => Promise<void>;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -22,7 +21,8 @@ export const Header: React.FC<HeaderProps> = ({
   setIsAuthModalOpen,
   showSettingsMenu,
   setShowSettingsMenu,
-  onOpenHelp
+  onOpenHelp,
+  onLogout
 }) => {
   const settingsMenuRef = useRef<HTMLDivElement>(null);
 
@@ -43,16 +43,6 @@ export const Header: React.FC<HeaderProps> = ({
     };
   }, [showSettingsMenu]);
 
-  const handleLogout = async () => {
-    try {
-      showToast.info('Cerrando sesión...');
-      await logoutFirebase();
-      showToast.success('Sesión cerrada correctamente');
-    } catch (error) {
-      console.error('Error al cerrar sesión', error);
-      showToast.error('Error al cerrar sesión');
-    }
-  };
   return (
     <header className="w-full py-3 sm:py-4 bg-white/90 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200/80 dark:border-gray-800 sticky top-0 z-20 shadow-sm">
       <div className="px-3 sm:px-6 lg:px-8">
@@ -129,7 +119,7 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Botón de salir - solo si está logueado */}
             {user && (
               <button
-                onClick={handleLogout}
+                onClick={onLogout}
                 className="p-2 sm:p-2.5 text-gray-500 hover:text-rose-600 dark:hover:text-rose-400 active:bg-gray-100 dark:active:bg-gray-800 rounded-lg transition-colors"
                 title="Cerrar sesión"
               >

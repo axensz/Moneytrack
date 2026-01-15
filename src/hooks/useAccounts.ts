@@ -21,6 +21,9 @@ export function useAccounts(
   
   // Usar Firebase si hay usuario, localStorage si no
   const accounts = userId ? firestoreAccounts : localAccounts;
+  
+  // Loading es true si hay userId y Firestore aún está cargando
+  // Importante: confiar en el loading de useFirestore que ahora espera a que los datos lleguen
   const loading = userId ? firestoreLoading : false;
 
   // Generar ID único para localStorage

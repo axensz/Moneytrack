@@ -18,16 +18,46 @@ export function useFirestore(userId: string | null) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [internalLoading, setInternalLoading] = useState(true);
+  
+  // Track para qué userId hemos cargado los datos
+  const [loadedForUserId, setLoadedForUserId] = useState<string | null>(null);
+  
+  // Track si cada colección ha cargado al menos una vez
+  const [loadedCollections, setLoadedCollections] = useState({
+    transactions: false,
+    accounts: false,
+    categories: false
+  });
+
+  // Loading es true si:
+  // 1. internalLoading es true (cargando colecciones)
+  // 2. O si el userId actual no coincide con el userId para el que cargamos los datos
+  //    (esto maneja el caso de cambio de usuario entre renders)
+  const loading = internalLoading || (userId !== null && userId !== loadedForUserId);
+
+  // Marcar como cargado cuando TODAS las colecciones hayan cargado para este usuario
+  useEffect(() => {
+    if (loadedCollections.transactions && loadedCollections.accounts && loadedCollections.categories) {
+      setInternalLoading(false);
+      setLoadedForUserId(userId);
+    }
+  }, [loadedCollections, userId]);
 
   useEffect(() => {
     if (!userId) {
       setTransactions([]);
       setAccounts([]);
       setCategories([]);
-      setLoading(false);
+      setLoadedCollections({ transactions: true, accounts: true, categories: true });
+      setInternalLoading(false);
+      setLoadedForUserId(null);
       return;
     }
+    
+    // Reset loading state cuando cambia el usuario
+    setInternalLoading(true);
+    setLoadedCollections({ transactions: false, accounts: false, categories: false });
 
     const unsubscribes: (() => void)[] = [];
 
@@ -42,6 +72,7 @@ export function useFirestore(userId: string | null) {
         date: doc.data().date?.toDate() || new Date()
       })) as Transaction[];
       setTransactions(transactionsData);
+      setLoadedCollections(prev => ({ ...prev, transactions: true }));
     });
     unsubscribes.push(unsubTransactions);
 
@@ -53,6 +84,7 @@ export function useFirestore(userId: string | null) {
         ...doc.data()
       })) as Account[];
       setAccounts(accountsData);
+      setLoadedCollections(prev => ({ ...prev, accounts: true }));
     });
     unsubscribes.push(unsubAccounts);
 
@@ -64,10 +96,9 @@ export function useFirestore(userId: string | null) {
         ...doc.data()
       })) as Category[];
       setCategories(categoriesData);
+      setLoadedCollections(prev => ({ ...prev, categories: true }));
     });
     unsubscribes.push(unsubCategories);
-
-    setLoading(false);
 
     return () => {
       unsubscribes.forEach(unsub => unsub());

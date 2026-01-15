@@ -141,7 +141,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
           </div>
         </div>
         <ResponsiveContainer width="100%" height={320}>
-          <AreaChart data={monthlyData}>
+          <AreaChart data={monthlyData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
             <defs>
               <linearGradient id="colorIngresos" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3}/>
@@ -156,16 +156,19 @@ export const StatsView: React.FC<StatsViewProps> = ({
             <XAxis
               dataKey="month"
               stroke="#9ca3af"
-              style={{ fontSize: '12px' }}
+              style={{ fontSize: '11px' }}
+              tick={{ fontSize: 11 }}
             />
             <YAxis
               stroke="#9ca3af"
-              style={{ fontSize: '12px' }}
+              style={{ fontSize: '11px' }}
+              tick={{ fontSize: 11 }}
               tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
+              width={45}
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend
-              wrapperStyle={{ paddingTop: '20px' }}
+              wrapperStyle={{ paddingTop: '20px', fontSize: '12px' }}
               iconType="circle"
             />
             <Area
@@ -203,20 +206,23 @@ export const StatsView: React.FC<StatsViewProps> = ({
             </div>
           </div>
           <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={monthlyData}>
+            <BarChart data={monthlyData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f3e8ff" />
               <XAxis
                 dataKey="month"
                 stroke="#9ca3af"
-                style={{ fontSize: '12px' }}
+                style={{ fontSize: '11px' }}
+                tick={{ fontSize: 11 }}
               />
               <YAxis
                 stroke="#9ca3af"
-                style={{ fontSize: '12px' }}
+                style={{ fontSize: '11px' }}
+                tick={{ fontSize: 11 }}
                 tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
+                width={45}
               />
               <Tooltip content={<CustomTooltip />} />
-              <Legend iconType="circle" />
+              <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
               <Bar dataKey="ingresos" fill="#8b5cf6" name="Ingresos" radius={[6, 6, 0, 0]} />
               <Bar dataKey="gastos" fill="#f43f5e" name="Gastos" radius={[6, 6, 0, 0]} />
             </BarChart>
@@ -236,24 +242,26 @@ export const StatsView: React.FC<StatsViewProps> = ({
           </div>
           {categoryData.length > 0 ? (
             <>
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie
-                    data={categoryData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={2}
-                    dataKey="value"
-                  >
-                    {categoryData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<CustomTooltip />} />
-                </PieChart>
-              </ResponsiveContainer>
+              <div className="flex justify-center">
+                <ResponsiveContainer width="100%" height={220} className="max-w-[300px] mx-auto">
+                  <PieChart>
+                    <Pie
+                      data={categoryData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={75}
+                      paddingAngle={2}
+                      dataKey="value"
+                    >
+                      {categoryData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<CustomTooltip />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
               <div className="mt-4 space-y-2">
                 {categoryData.slice(0, 5).map((item, index) => (
                   <div key={index} className="flex items-center justify-between text-sm">
@@ -290,20 +298,23 @@ export const StatsView: React.FC<StatsViewProps> = ({
           </div>
         </div>
         <ResponsiveContainer width="100%" height={280}>
-          <LineChart data={yearlyData}>
+          <LineChart data={yearlyData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f3e8ff" />
             <XAxis
               dataKey="año"
               stroke="#9ca3af"
-              style={{ fontSize: '12px' }}
+              style={{ fontSize: '11px' }}
+              tick={{ fontSize: 11 }}
             />
             <YAxis
               stroke="#9ca3af"
-              style={{ fontSize: '12px' }}
+              style={{ fontSize: '11px' }}
+              tick={{ fontSize: 11 }}
               tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
+              width={45}
             />
             <Tooltip content={<CustomTooltip />} />
-            <Legend iconType="circle" />
+            <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
             <Line
               type="monotone"
               dataKey="ingresos"

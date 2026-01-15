@@ -11,14 +11,13 @@ import { AuthModal } from './src/components/AuthModal';
 import { LoadingScreen } from './src/components/LoadingScreen';
 import { WelcomeModal } from './src/components/WelcomeModal';
 import { HelpModal } from './src/components/HelpModal';
-import { StatsView } from './src/components/views/StatsView';
+import { StatsView } from './src/components/views/stats';
 import { AccountsView } from './src/components/views/AccountsView';
 import { TransactionsView } from './src/components/views/TransactionsView';
 import { RecurringPaymentsView } from './src/components/views/RecurringPaymentsView';
 import { useTransactions } from './src/hooks/useTransactions';
 import { useAccounts } from './src/hooks/useAccounts';
 import { useCategories } from './src/hooks/useCategories';
-import { useStats } from './src/hooks/useStats';
 import { useAuth } from './src/hooks/useAuth';
 import { useBackup } from './src/hooks/useBackup';
 import { useGlobalStats } from './src/hooks/useGlobalStats';
@@ -28,9 +27,11 @@ import { formatCurrency } from './src/utils/formatters';
 import { calculateInterest } from './src/utils/interestCalculator';
 import { SUCCESS_MESSAGES, ERROR_MESSAGES, TRANSFER_CATEGORY, TOAST_CONFIG, INITIAL_TRANSACTION } from './src/config/constants';
 import type { NewTransaction, ViewType, FilterValue, Transaction } from './src/types/finance';
+import { logoutFirebase } from './src/lib/firebase';
 
 const FinanceTracker = () => {
   const [mounted, setMounted] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -66,7 +67,6 @@ const FinanceTracker = () => {
   const stats = useGlobalStats(transactions, accounts);
 
   const { categories, addCategory, deleteCategory } = useCategories(transactions);
-  const { monthlyData, yearlyData, categoryData } = useStats(transactions);
   const { exportData, importData } = useBackup({ transactions, accounts, categories });
 
   const [showForm, setShowForm] = useState(false);
@@ -118,16 +118,39 @@ const FinanceTracker = () => {
   });
 
   // Mostrar modal de bienvenida si no hay cuentas
+  // Esperar a que termine la autenticación Y la carga de cuentas
+  const shouldShowWelcome = mounted && !authLoading && !accountsLoading && accounts.length === 0;
+  
   useEffect(() => {
-    if (mounted && accounts.length === 0 && !accountsLoading) {
+    if (shouldShowWelcome) {
       setShowWelcomeModal(true);
     }
-  }, [mounted, accounts.length, accountsLoading]);
+  }, [shouldShowWelcome]);
 
-  // Mostrar pantalla de carga mientras verifica autenticación
+  // Handler para cerrar sesión con pantalla de carga
+  const handleLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      await logoutFirebase();
+      // Pequeño delay para que se vea la pantalla de cierre de sesión
+      await new Promise(resolve => setTimeout(resolve, 800));
+      toast.success('Sesión cerrada correctamente');
+    } catch (error) {
+      console.error('Error al cerrar sesión', error);
+      toast.error('Error al cerrar sesión');
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
+  // Mostrar pantalla de carga mientras verifica autenticación o cierra sesión
   // IMPORTANTE: Debe estar DESPUÉS de todos los hooks
   if (authLoading || !mounted) {
     return <LoadingScreen />;
+  }
+  
+  if (isLoggingOut) {
+    return <LoadingScreen message="Cerrando sesión..." variant="logout" />;
   }
 
   const handleGoToAccounts = () => {
@@ -306,6 +329,7 @@ const FinanceTracker = () => {
         showSettingsMenu={showSettingsMenu}
         setShowSettingsMenu={setShowSettingsMenu}
         onOpenHelp={() => setShowHelpModal(true)}
+        onLogout={handleLogout}
       />
 
       <div ref={scrollContainerRef} className="flex-1 overflow-auto">
@@ -386,10 +410,6 @@ const FinanceTracker = () => {
 
             {view === 'stats' && (
               <StatsView
-                monthlyData={mounted ? monthlyData : []}
-                yearlyData={mounted ? yearlyData : []}
-                categoryData={mounted ? categoryData : []}
-                formatCurrency={formatCurrency}
                 transactions={mounted ? transactions : []}
                 accounts={mounted ? accounts : []}
               />

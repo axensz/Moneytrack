@@ -55,6 +55,17 @@ export function useAddTransaction({
   setShowWelcomeModal,
 }: UseAddTransactionParams) {
   /**
+   * Resetea el formulario a su estado inicial
+   */
+  const resetForm = useCallback(() => {
+    setNewTransaction({
+      ...INITIAL_TRANSACTION,
+      accountId: defaultAccount?.id || '',
+    });
+    setShowForm(false);
+  }, [defaultAccount, setNewTransaction, setShowForm]);
+
+  /**
    * Handler principal para agregar una transacción
    */
   const handleAddTransaction = useCallback(
@@ -171,19 +182,9 @@ export function useAddTransaction({
       addTransaction,
       updateRecurringPayment,
       setShowWelcomeModal,
+      resetForm,
     ]
   );
-
-  /**
-   * Resetea el formulario a su estado inicial
-   */
-  const resetForm = useCallback(() => {
-    setNewTransaction({
-      ...INITIAL_TRANSACTION,
-      accountId: defaultAccount?.id || '',
-    });
-    setShowForm(false);
-  }, [defaultAccount, setNewTransaction, setShowForm]);
 
   return {
     handleAddTransaction,

@@ -18,7 +18,6 @@ import { useTransactions } from './hooks/useTransactions';
 import { useAccounts } from './hooks/useAccounts';
 import { useCategories } from './hooks/useCategories';
 import { useAuth } from './hooks/useAuth';
-import { useBackup } from './hooks/useBackup';
 import { useRecurringPayments } from './hooks/useRecurringPayments';
 import { useAddTransaction } from './hooks/useAddTransaction';
 import { useFilteredData } from './hooks/useFilteredData';
@@ -62,7 +61,6 @@ const FinanceTracker = () => {
   } = useRecurringPayments(user?.uid || null, transactions);
 
   const { categories, addCategory, deleteCategory } = useCategories(transactions, user?.uid);
-  const { exportData } = useBackup({ transactions, accounts, categories });
 
   const [showForm, setShowForm] = useState(false);
   const [view, setView] = useState<ViewType>('transactions');
@@ -218,7 +216,6 @@ const FinanceTracker = () => {
             <TabNavigation 
               view={view}
               setView={setView}
-              exportData={exportData}
             />
 
             <StatsCards

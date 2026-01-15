@@ -15,9 +15,6 @@ export { useRecurringPayments } from './useRecurringPayments';
 export { useFilteredData } from './useFilteredData';
 export { useAddTransaction } from './useAddTransaction';
 export { useGlobalStats } from './useGlobalStats';
-
-// Utilities
-export { useBackup } from './useBackup';
 export { useLocalStorage } from './useLocalStorage';
 
 // Firebase (low-level)

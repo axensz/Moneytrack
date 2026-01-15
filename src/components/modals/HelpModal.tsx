@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Wallet, TrendingUp, CreditCard, Settings, GripVertical, Eye, Edit2, Repeat, Calendar, Percent, Filter, BarChart3 } from 'lucide-react';
+import { X, Wallet, TrendingUp, CreditCard, Settings, GripVertical, Eye, Edit2, Repeat, Percent, Filter, BarChart3, DollarSign, ArrowRightLeft, Clock, CheckCircle, AlertCircle, PieChart, TrendingDown, Calendar } from 'lucide-react';
 
 interface HelpModalProps {
   isOpen: boolean;
@@ -7,7 +7,7 @@ interface HelpModalProps {
 }
 
 export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'basics' | 'accounts' | 'transactions' | 'recurring' | 'features'>('basics');
+  const [activeTab, setActiveTab] = useState<'basics' | 'accounts' | 'transactions' | 'recurring' | 'stats'>('basics');
 
   // Prevenir scroll en el body cuando el modal está abierto
   useEffect(() => {
@@ -35,7 +35,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
         {/* Header - Sticky */}
         <div className="flex items-center justify-between p-5 sm:p-6 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shrink-0">
           <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-            <span>📚</span> Manual de Usuario
+            <Wallet size={24} className="text-purple-600" /> Manual de Usuario
           </h2>
           
           {/* MEJORA UX 2: Hitbox aumentado a 44px+ y anillo de foco para accesibilidad */}
@@ -56,7 +56,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
               { id: 'accounts', label: 'Cuentas', icon: Wallet },
               { id: 'transactions', label: 'Transacciones', icon: TrendingUp },
               { id: 'recurring', label: 'Periódicos', icon: Repeat },
-              { id: 'features', label: 'Funciones', icon: Settings },
+              { id: 'stats', label: 'Estadísticas', icon: BarChart3 },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -85,7 +85,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                     Bienvenido a MoneyTrack
                   </h3>
                   <p className="text-gray-600 dark:text-gray-400 mb-4 leading-relaxed">
-                    MoneyTrack es tu administrador financiero personal. Controla tus cuentas, registra transacciones y visualiza estadísticas de tus finanzas de manera simple y segura.
+                    MoneyTrack es tu administrador financiero personal. Controla tus cuentas, registra transacciones, gestiona pagos recurrentes y visualiza estadísticas detalladas de tus finanzas.
                   </p>
                 </div>
 
@@ -93,14 +93,15 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                   <div className="p-4 bg-purple-50 dark:bg-purple-900/10 rounded-xl border border-purple-100 dark:border-purple-800/50">
                     <h4 className="font-bold text-purple-900 dark:text-purple-100 mb-3 flex items-center gap-2">
                       <div className="p-1.5 bg-purple-100 dark:bg-purple-800 rounded-lg">
-                        <Wallet size={16} className="text-purple-600 dark:text-purple-300" />
+                        <CheckCircle size={16} className="text-purple-600 dark:text-purple-300" />
                       </div>
                       Primeros Pasos
                     </h4>
                     <ol className="list-decimal list-inside space-y-2.5 text-sm text-purple-800 dark:text-purple-200/90 ml-1">
-                      <li>Crea tu primera cuenta</li>
+                      <li>Crea tu primera cuenta (ahorro, efectivo o TC)</li>
                       <li>Registra tu saldo inicial</li>
-                      <li>Agrega transacciones</li>
+                      <li>Agrega tus primeras transacciones</li>
+                      <li>Configura pagos periódicos (suscripciones)</li>
                       <li>Revisa tus estadísticas</li>
                     </ol>
                   </div>
@@ -108,13 +109,75 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                   <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-800/50">
                     <h4 className="font-bold text-blue-900 dark:text-blue-100 mb-3 flex items-center gap-2">
                        <div className="p-1.5 bg-blue-100 dark:bg-blue-800 rounded-lg">
-                        <Settings size={16} className="text-blue-600 dark:text-blue-300" />
+                        <Eye size={16} className="text-blue-600 dark:text-blue-300" />
                       </div>
-                      Privacidad
+                      Privacidad y Datos
                     </h4>
-                    <p className="text-sm text-blue-800 dark:text-blue-200/90 leading-relaxed">
-                      Puedes usar la app sin cuenta (datos locales) o iniciar sesión con Google para sincronizar tus datos en la nube y acceder desde cualquier dispositivo.
-                    </p>
+                    <ul className="space-y-2 text-sm text-blue-800 dark:text-blue-200/90">
+                      <li className="flex items-start gap-2">
+                        <span className="text-blue-500 mt-1">•</span>
+                        <span><strong>Sin cuenta:</strong> Datos guardados localmente en tu navegador</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-blue-500 mt-1">•</span>
+                        <span><strong>Con Google:</strong> Sincronización en la nube, accede desde cualquier dispositivo</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-blue-500 mt-1">•</span>
+                        <span><strong>Modo discreto:</strong> Oculta saldos con el botón del ojo</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+
+                {/* Características principales */}
+                <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+                  <div className="bg-gray-50 dark:bg-gray-800/50 p-4 border-b border-gray-200 dark:border-gray-700">
+                    <h4 className="font-semibold text-gray-900 dark:text-gray-100">Características Principales</h4>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-0">
+                    <div className="p-4 border-b sm:border-r border-gray-200 dark:border-gray-700">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Wallet size={16} className="text-emerald-600" />
+                        <span className="font-medium text-gray-900 dark:text-gray-100">Múltiples Cuentas</span>
+                      </div>
+                      <p className="text-sm text-gray-500">Ahorros, efectivo y tarjetas de crédito con cupo y fechas de corte.</p>
+                    </div>
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                      <div className="flex items-center gap-2 mb-2">
+                        <ArrowRightLeft size={16} className="text-blue-600" />
+                        <span className="font-medium text-gray-900 dark:text-gray-100">Transferencias</span>
+                      </div>
+                      <p className="text-sm text-gray-500">Mueve dinero entre cuentas manteniendo el balance correcto.</p>
+                    </div>
+                    <div className="p-4 border-b sm:border-r border-gray-200 dark:border-gray-700">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Repeat size={16} className="text-purple-600" />
+                        <span className="font-medium text-gray-900 dark:text-gray-100">Pagos Periódicos</span>
+                      </div>
+                      <p className="text-sm text-gray-500">Gestiona suscripciones y servicios con alertas de vencimiento.</p>
+                    </div>
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Percent size={16} className="text-amber-600" />
+                        <span className="font-medium text-gray-900 dark:text-gray-100">Intereses TC</span>
+                      </div>
+                      <p className="text-sm text-gray-500">Calcula intereses automáticamente en compras a cuotas.</p>
+                    </div>
+                    <div className="p-4 sm:border-r border-gray-200 dark:border-gray-700">
+                      <div className="flex items-center gap-2 mb-2">
+                        <PieChart size={16} className="text-rose-600" />
+                        <span className="font-medium text-gray-900 dark:text-gray-100">Estadísticas</span>
+                      </div>
+                      <p className="text-sm text-gray-500">Gráficos de flujo de caja, categorías y tendencias.</p>
+                    </div>
+                    <div className="p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Filter size={16} className="text-gray-600" />
+                        <span className="font-medium text-gray-900 dark:text-gray-100">Filtros Avanzados</span>
+                      </div>
+                      <p className="text-sm text-gray-500">Por cuenta, categoría, estado y rango de fechas.</p>
+                    </div>
                   </div>
                 </div>
              </div>
@@ -124,66 +187,84 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
              <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 fade-in">
               <div className="prose dark:prose-invert max-w-none">
                  <h3 className="text-xl font-semibold mb-2">Gestión de Cuentas</h3>
-                 <p className="text-gray-500">Administra tus fuentes de dinero.</p>
+                 <p className="text-gray-500">Administra todas tus fuentes de dinero en un solo lugar.</p>
               </div>
+
+               {/* Tipos de cuenta */}
+               <div className="space-y-3">
+                   <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 uppercase tracking-wider pl-1">Tipos de Cuenta</h4>
+                   <div className="grid gap-3">
+                      <div className="flex items-start gap-4 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                        <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-full text-emerald-600 dark:text-emerald-400 shrink-0">
+                           <Wallet size={20} />
+                        </div>
+                        <div>
+                           <p className="font-semibold text-gray-900 dark:text-gray-100">Ahorros / Débito</p>
+                           <p className="text-sm text-gray-500 mb-2">Cuentas bancarias donde el dinero se descuenta inmediatamente.</p>
+                           <p className="text-xs text-gray-400">Campos: Nombre, saldo inicial</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-4 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-full text-blue-600 dark:text-blue-400 shrink-0">
+                           <DollarSign size={20} />
+                        </div>
+                        <div>
+                           <p className="font-semibold text-gray-900 dark:text-gray-100">Efectivo</p>
+                           <p className="text-sm text-gray-500 mb-2">Dinero físico que manejas fuera del banco.</p>
+                           <p className="text-xs text-gray-400">Campos: Nombre, saldo inicial</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-start gap-4 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                        <div className="p-3 bg-rose-50 dark:bg-rose-900/20 rounded-full text-rose-600 dark:text-rose-400 shrink-0">
+                           <CreditCard size={20} />
+                        </div>
+                        <div>
+                           <p className="font-semibold text-gray-900 dark:text-gray-100">Tarjeta de Crédito</p>
+                           <p className="text-sm text-gray-500 mb-2">Maneja cupo, fechas de corte/pago y calcula intereses por cuotas.</p>
+                           <p className="text-xs text-gray-400">Campos: Cupo, día corte, día pago, tasa E.A., cuenta asociada</p>
+                        </div>
+                      </div>
+                   </div>
+               </div>
               
+               {/* Drag & Drop */}
                <div className="border border-gray-100 dark:border-gray-700 rounded-xl p-0 overflow-hidden">
                   <div className="bg-gray-50 dark:bg-gray-800/50 p-4 border-b border-gray-100 dark:border-gray-700">
                      <h4 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
                         <GripVertical size={18} className="text-purple-500" />
-                        Organización Drag & Drop
+                        Organización con Drag & Drop
                      </h4>
                   </div>
                   <div className="p-4 space-y-3">
                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        ¡Nuevo! Ahora puedes reordenar tus cuentas fácilmente según tu prioridad:
+                        Reordena tus cuentas arrastrándolas según tu prioridad:
                      </p>
                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                         <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-900/50">
-                           <span className="text-2xl">💻</span>
+                           <div className="p-2 bg-gray-200 dark:bg-gray-700 rounded-lg">
+                             <Settings size={16} className="text-gray-600 dark:text-gray-400" />
+                           </div>
                            <div>
-                              <strong className="block text-gray-900 dark:text-gray-100">En Computador</strong>
-                              <span className="text-gray-500">Haz clic y arrastra desde el icono de las 3 líneas.</span>
+                              <strong className="block text-gray-900 dark:text-gray-100">Computador</strong>
+                              <span className="text-gray-500">Clic y arrastra desde el icono de las 3 líneas.</span>
                            </div>
                         </div>
                         <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-900/50">
-                           <span className="text-2xl">📱</span>
+                           <div className="p-2 bg-gray-200 dark:bg-gray-700 rounded-lg">
+                             <Wallet size={16} className="text-gray-600 dark:text-gray-400" />
+                           </div>
                            <div>
-                              <strong className="block text-gray-900 dark:text-gray-100">En Móvil</strong>
+                              <strong className="block text-gray-900 dark:text-gray-100">Móvil</strong>
                               <span className="text-gray-500">Mantén presionado un momento y luego arrastra.</span>
                            </div>
                         </div>
                      </div>
                   </div>
                </div>
-               
-               {/* Grid para tipos de cuenta */}
-               <div className="space-y-3">
-                   <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 uppercase tracking-wider pl-1">Tipos Disponibles</h4>
-                   <div className="grid gap-3">
-                      <div className="flex items-center gap-4 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-                        <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-full text-emerald-600 dark:text-emerald-400">
-                           <Wallet size={20} />
-                        </div>
-                        <div>
-                           <p className="font-semibold text-gray-900 dark:text-gray-100">Ahorros / Débito</p>
-                           <p className="text-sm text-gray-500">Cuentas estándar donde el dinero se descuenta inmediatamente.</p>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-4 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-                        <div className="p-3 bg-rose-50 dark:bg-rose-900/20 rounded-full text-rose-600 dark:text-rose-400">
-                           <CreditCard size={20} />
-                        </div>
-                        <div>
-                           <p className="font-semibold text-gray-900 dark:text-gray-100">Tarjeta de Crédito</p>
-                           <p className="text-sm text-gray-500">Maneja fechas de corte, pago, cupo disponible y tasa de interés E.A.</p>
-                        </div>
-                      </div>
-                   </div>
-               </div>
 
-               {/* Sección de Tasa de Interés */}
+               {/* Tasa de Interés */}
                <div className="border border-amber-200 dark:border-amber-800 rounded-xl p-0 overflow-hidden bg-amber-50/50 dark:bg-amber-900/10">
                   <div className="bg-amber-100 dark:bg-amber-900/30 p-4 border-b border-amber-200 dark:border-amber-800">
                      <h4 className="font-semibold text-amber-900 dark:text-amber-100 flex items-center gap-2">
@@ -198,18 +279,39 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                      <ul className="space-y-2 text-sm text-amber-700 dark:text-amber-300">
                         <li className="flex items-start gap-2">
                            <span className="text-amber-500">•</span>
-                           <span>Calcular intereses automáticamente cuando compras en cuotas</span>
+                           <span>Calcular intereses automáticamente en compras a cuotas (1, 3, 6, 12, 24, 36 meses)</span>
                         </li>
                         <li className="flex items-start gap-2">
                            <span className="text-amber-500">•</span>
-                           <span>Ver un resumen de intereses pagados en Estadísticas</span>
+                           <span>Ver resumen de intereses pagados y pendientes en Estadísticas</span>
                         </li>
                         <li className="flex items-start gap-2">
                            <span className="text-amber-500">•</span>
-                           <span>Edítala desde el botón "Editar" en la tarjeta de crédito</span>
+                           <span>La tasa se guarda con cada compra (snapshot histórico)</span>
                         </li>
                      </ul>
                   </div>
+               </div>
+
+               {/* Categorías */}
+               <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-200 dark:border-blue-800">
+                  <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2 flex items-center gap-2">
+                     <Settings size={16} />
+                     Gestión de Categorías
+                  </h4>
+                  <p className="text-sm text-blue-800 dark:text-blue-200">
+                     En la vista de Cuentas también puedes administrar tus categorías de ingresos y gastos. 
+                     Crea categorías personalizadas y elimina las que no uses.
+                  </p>
+               </div>
+
+               {/* Cuenta predeterminada */}
+               <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                  <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Cuenta Predeterminada</h4>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                     Marca una cuenta como predeterminada y se seleccionará automáticamente al crear nuevas transacciones.
+                     Usa el menú de opciones (...) en cada tarjeta de cuenta.
+                  </p>
                </div>
              </div>
            )}
@@ -221,6 +323,77 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                     <p className="text-gray-600 dark:text-gray-400">El corazón de tu seguimiento financiero.</p>
                   </div>
 
+                  {/* Tipos de transacción */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                     <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-800">
+                        <div className="flex items-center gap-2 mb-2">
+                           <TrendingUp size={18} className="text-emerald-600" />
+                           <span className="font-semibold text-emerald-900 dark:text-emerald-100">Ingreso</span>
+                        </div>
+                        <p className="text-sm text-emerald-700 dark:text-emerald-300">Dinero que entra (salario, ventas, etc.)</p>
+                     </div>
+                     <div className="p-4 bg-rose-50 dark:bg-rose-900/20 rounded-xl border border-rose-200 dark:border-rose-800">
+                        <div className="flex items-center gap-2 mb-2">
+                           <TrendingDown size={18} className="text-rose-600" />
+                           <span className="font-semibold text-rose-900 dark:text-rose-100">Gasto</span>
+                        </div>
+                        <p className="text-sm text-rose-700 dark:text-rose-300">Dinero que sale (compras, servicios, etc.)</p>
+                     </div>
+                     <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
+                        <div className="flex items-center gap-2 mb-2">
+                           <ArrowRightLeft size={18} className="text-blue-600" />
+                           <span className="font-semibold text-blue-900 dark:text-blue-100">Transferencia</span>
+                        </div>
+                        <p className="text-sm text-blue-700 dark:text-blue-300">Mover dinero entre tus cuentas</p>
+                     </div>
+                  </div>
+
+                  {/* Crear transacción */}
+                  <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+                     <div className="bg-gray-50 dark:bg-gray-800/50 p-4 border-b border-gray-200 dark:border-gray-700">
+                        <h4 className="font-semibold text-gray-900 dark:text-gray-100">Crear una Transacción</h4>
+                     </div>
+                     <div className="p-4 space-y-3">
+                        <ol className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                           <li className="flex gap-2"><span className="font-bold text-purple-600">1.</span> Clic en el botón + o "Nueva Transacción"</li>
+                           <li className="flex gap-2"><span className="font-bold text-purple-600">2.</span> Selecciona el tipo (Ingreso, Gasto, Transferencia)</li>
+                           <li className="flex gap-2"><span className="font-bold text-purple-600">3.</span> Ingresa el monto (acepta: 1000, 1.000, 1,000)</li>
+                           <li className="flex gap-2"><span className="font-bold text-purple-600">4.</span> Selecciona categoría, cuenta y fecha</li>
+                           <li className="flex gap-2"><span className="font-bold text-purple-600">5.</span> Marca como "Pagado" si ya se realizó</li>
+                        </ol>
+                     </div>
+                  </div>
+
+                  {/* Compras con TC */}
+                  <div className="border border-amber-200 dark:border-amber-800 rounded-xl p-0 overflow-hidden bg-amber-50/50 dark:bg-amber-900/10">
+                     <div className="bg-amber-100 dark:bg-amber-900/30 p-4 border-b border-amber-200 dark:border-amber-800">
+                        <h4 className="font-semibold text-amber-900 dark:text-amber-100 flex items-center gap-2">
+                           <CreditCard size={18} className="text-amber-600 dark:text-amber-400" />
+                           Compras con Tarjeta de Crédito
+                        </h4>
+                     </div>
+                     <div className="p-4 space-y-3">
+                        <p className="text-sm text-amber-800 dark:text-amber-200">
+                           Cuando gastas desde una TC con tasa configurada:
+                        </p>
+                        <ul className="space-y-2 text-sm text-amber-700 dark:text-amber-300">
+                           <li className="flex items-start gap-2">
+                              <span className="text-amber-500">•</span>
+                              <span>Activa "Compra con intereses"</span>
+                           </li>
+                           <li className="flex items-start gap-2">
+                              <span className="text-amber-500">•</span>
+                              <span>Selecciona cuotas: 1, 3, 6, 12, 24 o 36 meses</span>
+                           </li>
+                           <li className="flex items-start gap-2">
+                              <span className="text-amber-500">•</span>
+                              <span>El sistema calcula intereses con la fórmula de interés compuesto</span>
+                           </li>
+                        </ul>
+                     </div>
+                  </div>
+
+                  {/* Edición Rápida */}
                   <div className="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700">
                      <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
                         <Edit2 size={18} className="text-gray-600 dark:text-gray-400" />
@@ -228,64 +401,72 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                      </h4>
                      <ul className="space-y-3">
                         <li className="flex gap-3 text-sm text-gray-600 dark:text-gray-300">
-                           <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center text-xs font-bold">1</span>
-                           Haz clic en el icono del lápiz ✏️ en cualquier transacción.
+                           <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 flex items-center justify-center text-xs font-bold">1</span>
+                           Clic en el icono del lápiz en cualquier transacción
                         </li>
                         <li className="flex gap-3 text-sm text-gray-600 dark:text-gray-300">
-                           <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center text-xs font-bold">2</span>
-                           Edita el monto o la descripción directamente sin salir de la lista.
+                           <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 flex items-center justify-center text-xs font-bold">2</span>
+                           Edita monto o descripción directamente en la lista
                         </li>
                         <li className="flex gap-3 text-sm text-gray-600 dark:text-gray-300">
-                           <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center text-xs font-bold">3</span>
-                           Los cambios se guardan automáticamente al instante.
+                           <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 flex items-center justify-center text-xs font-bold">3</span>
+                           Los cambios se guardan automáticamente
                         </li>
                      </ul>
                   </div>
 
-                  {/* Filtros de Fecha */}
+                  {/* Filtros */}
                   <div className="border border-blue-200 dark:border-blue-800 rounded-xl p-0 overflow-hidden">
                      <div className="bg-blue-50 dark:bg-blue-900/20 p-4 border-b border-blue-200 dark:border-blue-800">
                         <h4 className="font-semibold text-blue-900 dark:text-blue-100 flex items-center gap-2">
                            <Filter size={18} className="text-blue-600 dark:text-blue-400" />
-                           Filtros Avanzados
+                           Filtros Disponibles
                         </h4>
                      </div>
-                     <div className="p-4 space-y-3">
-                        <p className="text-sm text-blue-800 dark:text-blue-200">
-                           Filtra tus transacciones por:
-                        </p>
-                        <div className="grid grid-cols-2 gap-2 text-sm">
-                           <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg text-blue-700 dark:text-blue-300">
-                              📅 Fecha (presets o rango)
+                     <div className="p-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+                           <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg text-blue-700 dark:text-blue-300 text-center">
+                              <Calendar size={14} className="inline mr-1" /> Fecha
                            </div>
-                           <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg text-blue-700 dark:text-blue-300">
-                              🏦 Cuenta
+                           <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg text-blue-700 dark:text-blue-300 text-center">
+                              <Wallet size={14} className="inline mr-1" /> Cuenta
                            </div>
-                           <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg text-blue-700 dark:text-blue-300">
-                              🏷️ Categoría
+                           <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg text-blue-700 dark:text-blue-300 text-center">
+                              <Settings size={14} className="inline mr-1" /> Categoría
                            </div>
-                           <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg text-blue-700 dark:text-blue-300">
-                              🔄 Pago periódico
+                           <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg text-blue-700 dark:text-blue-300 text-center">
+                              <CheckCircle size={14} className="inline mr-1" /> Estado
                            </div>
                         </div>
-                        <p className="text-xs text-blue-600 dark:text-blue-400">
-                           Tip: Usa "Limpiar" para resetear todos los filtros.
+                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-3">
+                           Presets de fecha: Hoy, Esta semana, Este mes, Mes anterior, Este año, Año anterior, o rango personalizado.
                         </p>
                      </div>
                   </div>
 
-                  {/* Deshacer Eliminación */}
-                  <div className="p-4 bg-rose-50 dark:bg-rose-900/10 rounded-xl border border-rose-200 dark:border-rose-800">
-                     <h4 className="font-semibold text-rose-900 dark:text-rose-100 mb-2">🔄 Deshacer Eliminación</h4>
-                     <p className="text-sm text-rose-700 dark:text-rose-300">
-                        Al eliminar una transacción, aparecerá un botón "Deshacer" por unos segundos. 
-                        Úsalo si te equivocaste y quieres restaurarla.
-                     </p>
+                  {/* Estado de pago */}
+                  <div className="grid grid-cols-2 gap-4">
+                     <div className="p-4 bg-emerald-50 dark:bg-emerald-900/10 rounded-xl border border-emerald-200 dark:border-emerald-800">
+                        <h4 className="font-semibold text-emerald-900 dark:text-emerald-100 mb-2 flex items-center gap-2">
+                           <CheckCircle size={16} /> Pagado
+                        </h4>
+                        <p className="text-sm text-emerald-700 dark:text-emerald-300">
+                           El dinero ya salió o entró de la cuenta. Afecta el saldo actual.
+                        </p>
+                     </div>
+                     <div className="p-4 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-200 dark:border-amber-800">
+                        <h4 className="font-semibold text-amber-900 dark:text-amber-100 mb-2 flex items-center gap-2">
+                           <Clock size={16} /> Pendiente
+                        </h4>
+                        <p className="text-sm text-amber-700 dark:text-amber-300">
+                           Programado pero aún no ejecutado. Aparece en "Gastos pendientes".
+                        </p>
+                     </div>
                   </div>
               </div>
            )}
 
-           {/* NUEVA PESTAÑA: Pagos Periódicos */}
+           {/* Pagos Periódicos */}
            {activeTab === 'recurring' && (
               <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 fade-in">
                   <div>
@@ -297,46 +478,85 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                   <div className="p-4 bg-purple-50 dark:bg-purple-900/10 rounded-xl border border-purple-200 dark:border-purple-800">
                      <h4 className="font-bold text-purple-900 dark:text-purple-100 mb-3 flex items-center gap-2">
                         <Repeat size={18} className="text-purple-600" />
-                        ¿Qué son?
+                        ¿Qué son los Pagos Periódicos?
                      </h4>
                      <p className="text-sm text-purple-800 dark:text-purple-200 mb-3">
-                        Son pagos que haces regularmente: Netflix, Spotify, arriendo, servicios públicos, seguros, etc.
+                        Son pagos que realizas regularmente: Netflix, Spotify, arriendo, servicios públicos, seguros, gimnasio, etc.
+                        MoneyTrack te ayuda a recordarlos y llevar el control de cuáles ya pagaste cada mes.
                      </p>
                      <div className="grid grid-cols-2 gap-2 text-xs">
                         <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg text-purple-700 dark:text-purple-300 text-center">
-                           📅 Mensuales
+                           <Calendar size={14} className="inline mr-1" /> Mensuales
                         </div>
                         <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg text-purple-700 dark:text-purple-300 text-center">
-                           📆 Anuales
+                           <Calendar size={14} className="inline mr-1" /> Anuales
                         </div>
                      </div>
                   </div>
 
-                  {/* Cómo funciona */}
+                  {/* Crear pago periódico */}
                   <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
                      <div className="bg-gray-50 dark:bg-gray-800/50 p-4 border-b border-gray-200 dark:border-gray-700">
-                        <h4 className="font-semibold text-gray-900 dark:text-gray-100">Cómo Funciona</h4>
+                        <h4 className="font-semibold text-gray-900 dark:text-gray-100">Crear un Pago Periódico</h4>
+                     </div>
+                     <div className="p-4 space-y-3">
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Campos a configurar:</p>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                           <div className="p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg">
+                              <span className="font-medium text-gray-900 dark:text-gray-100">Nombre:</span>
+                              <span className="text-gray-500 ml-1">Netflix, Arriendo...</span>
+                           </div>
+                           <div className="p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg">
+                              <span className="font-medium text-gray-900 dark:text-gray-100">Monto:</span>
+                              <span className="text-gray-500 ml-1">Valor esperado</span>
+                           </div>
+                           <div className="p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg">
+                              <span className="font-medium text-gray-900 dark:text-gray-100">Día:</span>
+                              <span className="text-gray-500 ml-1">Del 1 al 31</span>
+                           </div>
+                           <div className="p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg">
+                              <span className="font-medium text-gray-900 dark:text-gray-100">Frecuencia:</span>
+                              <span className="text-gray-500 ml-1">Mensual/Anual</span>
+                           </div>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                           Opcional: Categoría, cuenta preferida y notas adicionales.
+                        </p>
+                     </div>
+                  </div>
+
+                  {/* Cómo funciona */}
+                  <div className="border border-emerald-200 dark:border-emerald-800 rounded-xl overflow-hidden">
+                     <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 border-b border-emerald-200 dark:border-emerald-800">
+                        <h4 className="font-semibold text-emerald-900 dark:text-emerald-100">Flujo de Trabajo</h4>
                      </div>
                      <div className="p-4 space-y-4">
                         <div className="flex gap-3">
                            <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">1</span>
                            <div>
                               <p className="font-medium text-gray-900 dark:text-gray-100">Crea el pago periódico</p>
-                              <p className="text-sm text-gray-500">Nombre, monto, día de vencimiento y categoría.</p>
+                              <p className="text-sm text-gray-500">Configura nombre, monto, día y frecuencia.</p>
                            </div>
                         </div>
                         <div className="flex gap-3">
                            <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">2</span>
                            <div>
-                              <p className="font-medium text-gray-900 dark:text-gray-100">Registra cuando pagues</p>
-                              <p className="text-sm text-gray-500">Al crear un gasto, selecciona el pago periódico asociado.</p>
+                              <p className="font-medium text-gray-900 dark:text-gray-100">Recibe alertas de vencimiento</p>
+                              <p className="text-sm text-gray-500">Verás los próximos a vencer en la parte superior.</p>
                            </div>
                         </div>
                         <div className="flex gap-3">
                            <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">3</span>
                            <div>
-                              <p className="font-medium text-gray-900 dark:text-gray-100">¡Se marca como pagado!</p>
-                              <p className="text-sm text-gray-500">El sistema detecta automáticamente que ya pagaste este mes.</p>
+                              <p className="font-medium text-gray-900 dark:text-gray-100">Registra el pago</p>
+                              <p className="text-sm text-gray-500">Crea un gasto y selecciona el pago periódico asociado.</p>
+                           </div>
+                        </div>
+                        <div className="flex gap-3">
+                           <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">4</span>
+                           <div>
+                              <p className="font-medium text-gray-900 dark:text-gray-100">Se marca automáticamente</p>
+                              <p className="text-sm text-gray-500">El sistema detecta que ya pagaste este período.</p>
                            </div>
                         </div>
                      </div>
@@ -345,82 +565,190 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                   {/* Estados */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                      <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-800 text-center">
-                        <span className="text-2xl mb-1 block">✅</span>
+                        <CheckCircle size={24} className="mx-auto mb-1 text-emerald-600" />
                         <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">Pagado</p>
                         <p className="text-xs text-emerald-600 dark:text-emerald-400">Ya pagaste este mes</p>
                      </div>
                      <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800 text-center">
-                        <span className="text-2xl mb-1 block">⚠️</span>
+                        <AlertCircle size={24} className="mx-auto mb-1 text-amber-600" />
                         <p className="text-sm font-medium text-amber-700 dark:text-amber-300">Próximo</p>
                         <p className="text-xs text-amber-600 dark:text-amber-400">Vence en 7 días o menos</p>
                      </div>
                      <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 text-center">
-                        <span className="text-2xl mb-1 block">⏳</span>
+                        <Clock size={24} className="mx-auto mb-1 text-gray-500" />
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Pendiente</p>
                         <p className="text-xs text-gray-500">Aún no has pagado</p>
                      </div>
                   </div>
 
-                  {/* Estadísticas */}
+                  {/* Panel de estadísticas */}
                   <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-200 dark:border-blue-800">
                      <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2 flex items-center gap-2">
                         <BarChart3 size={16} />
-                        Estadísticas Incluidas
+                        Panel de Control
                      </h4>
-                     <p className="text-sm text-blue-800 dark:text-blue-200">
-                        Ve cuánto gastas mensualmente en suscripciones, cuántos has pagado y cuántos te faltan. 
-                        También puedes ver el historial de pagos de cada uno.
-                     </p>
+                     <ul className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
+                        <li className="flex items-start gap-2">
+                           <span className="text-blue-500">•</span>
+                           <span>Total mensual esperado de todos tus pagos periódicos</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                           <span className="text-blue-500">•</span>
+                           <span>Conteo de pagados vs pendientes del mes</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                           <span className="text-blue-500">•</span>
+                           <span>Historial de pagos por cada suscripción</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                           <span className="text-blue-500">•</span>
+                           <span>Sección de pagos inactivos (pausados temporalmente)</span>
+                        </li>
+                     </ul>
                   </div>
               </div>
            )}
 
-           {activeTab === 'features' && (
+           {/* Estadísticas */}
+           {activeTab === 'stats' && (
             <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 fade-in">
-               <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Funciones Adicionales</h3>
+               <div>
+                  <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Estadísticas</h3>
+                  <p className="text-gray-600 dark:text-gray-400">Visualiza y analiza el comportamiento de tus finanzas.</p>
+               </div>
                
-               <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow">
-                     <Eye className="w-8 h-8 text-purple-600 mb-3" />
-                     <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Modo Discreto</h4>
-                     <p className="text-sm text-gray-500">¿Estás en un lugar público? Usa el botón de "Ojo" en las tarjetas superiores para ocultar tus saldos.</p>
-                  </div>
+               {/* Gráficos disponibles */}
+               <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 uppercase tracking-wider pl-1">Gráficos Disponibles</h4>
+                  <div className="grid gap-3">
+                     <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                        <div className="flex items-center gap-3 mb-2">
+                           <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                              <BarChart3 size={18} className="text-blue-600" />
+                           </div>
+                           <div>
+                              <h5 className="font-semibold text-gray-900 dark:text-gray-100">Flujo de Caja Mensual</h5>
+                           </div>
+                        </div>
+                        <p className="text-sm text-gray-500 ml-11">
+                           Barras comparativas de ingresos vs gastos por mes. Incluye línea de tendencia del balance neto. Muestra los últimos 6 meses.
+                        </p>
+                     </div>
 
-                  <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow">
-                     <Settings className="w-8 h-8 text-gray-600 mb-3" />
-                     <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Categorías</h4>
-                     <p className="text-sm text-gray-500">Personaliza tus categorías desde la vista de Cuentas. Crea las que mejor se adapten a tu vida.</p>
-                  </div>
+                     <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                        <div className="flex items-center gap-3 mb-2">
+                           <div className="p-2 bg-rose-50 dark:bg-rose-900/20 rounded-lg">
+                              <PieChart size={18} className="text-rose-600" />
+                           </div>
+                           <div>
+                              <h5 className="font-semibold text-gray-900 dark:text-gray-100">Distribución por Categoría</h5>
+                           </div>
+                        </div>
+                        <p className="text-sm text-gray-500 ml-11">
+                           Gráfico circular que muestra en qué categorías gastas más. Incluye porcentajes y leyenda detallada.
+                        </p>
+                     </div>
 
-                  <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow">
-                     <BarChart3 className="w-8 h-8 text-blue-600 mb-3" />
-                     <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Estadísticas de Intereses</h4>
-                     <p className="text-sm text-gray-500">Si tienes tarjetas con tasa E.A. configurada, verás un resumen de intereses pagados en Estadísticas.</p>
-                  </div>
+                     <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                        <div className="flex items-center gap-3 mb-2">
+                           <div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                              <TrendingUp size={18} className="text-purple-600" />
+                           </div>
+                           <div>
+                              <h5 className="font-semibold text-gray-900 dark:text-gray-100">Comparativa Mensual</h5>
+                           </div>
+                        </div>
+                        <p className="text-sm text-gray-500 ml-11">
+                           Compara el mes actual con el anterior. Muestra cambios porcentuales en ingresos, gastos y balance.
+                        </p>
+                     </div>
 
-                  <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow">
-                     <CreditCard className="w-8 h-8 text-rose-600 mb-3" />
-                     <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Compras en Cuotas</h4>
-                     <p className="text-sm text-gray-500">Al gastar con TC, puedes indicar el número de cuotas. El sistema calcula los intereses automáticamente.</p>
+                     <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                        <div className="flex items-center gap-3 mb-2">
+                           <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
+                              <TrendingUp size={18} className="text-emerald-600" />
+                           </div>
+                           <div>
+                              <h5 className="font-semibold text-gray-900 dark:text-gray-100">Tendencia Anual</h5>
+                           </div>
+                        </div>
+                        <p className="text-sm text-gray-500 ml-11">
+                           Gráfico de área con la evolución año a año. Útil para ver el crecimiento o decrecimiento financiero a largo plazo.
+                        </p>
+                     </div>
                   </div>
                </div>
 
-               {/* Export/Import */}
-               <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-                  <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">📦 Exportar / Importar</h4>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                     Haz respaldo de tus datos o transfiérelos a otro dispositivo:
+               {/* Tarjeta de intereses */}
+               <div className="border border-amber-200 dark:border-amber-800 rounded-xl p-0 overflow-hidden bg-amber-50/50 dark:bg-amber-900/10">
+                  <div className="bg-amber-100 dark:bg-amber-900/30 p-4 border-b border-amber-200 dark:border-amber-800">
+                     <h4 className="font-semibold text-amber-900 dark:text-amber-100 flex items-center gap-2">
+                        <Percent size={18} className="text-amber-600 dark:text-amber-400" />
+                        Tarjeta de Intereses de TC
+                     </h4>
+                  </div>
+                  <div className="p-4 space-y-3">
+                     <p className="text-sm text-amber-800 dark:text-amber-200">
+                        Si tienes tarjetas de crédito con tasa E.A. configurada y compras a cuotas, verás:
+                     </p>
+                     <ul className="space-y-2 text-sm text-amber-700 dark:text-amber-300">
+                        <li className="flex items-start gap-2">
+                           <span className="text-amber-500">•</span>
+                           <span>Total de intereses generados por tus compras</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                           <span className="text-amber-500">•</span>
+                           <span>Desglose por tarjeta de crédito</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                           <span className="text-amber-500">•</span>
+                           <span>Intereses pagados vs pendientes</span>
+                        </li>
+                     </ul>
+                     <p className="text-xs text-amber-600 dark:text-amber-400">
+                        Esta tarjeta solo aparece si tienes compras con intereses registradas.
+                     </p>
+                  </div>
+               </div>
+
+               {/* Filtros en estadísticas */}
+               <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-200 dark:border-blue-800">
+                  <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2 flex items-center gap-2">
+                     <Filter size={16} />
+                     Filtros Aplicados
+                  </h4>
+                  <p className="text-sm text-blue-800 dark:text-blue-200 mb-3">
+                     Los filtros que apliques en la vista de Transacciones también afectan las estadísticas:
                   </p>
-                  <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
-                     <li className="flex items-center gap-2">
-                        <span className="text-emerald-500">↓</span>
-                        <strong>Exportar:</strong> Descarga un archivo JSON con todos tus datos.
+                  <ul className="space-y-1 text-sm text-blue-700 dark:text-blue-300">
+                     <li className="flex items-start gap-2">
+                        <span className="text-blue-500">•</span>
+                        <span>Filtra por cuenta para ver estadísticas solo de esa cuenta</span>
                      </li>
-                     <li className="flex items-center gap-2">
-                        <span className="text-blue-500">↑</span>
-                        <strong>Importar:</strong> Carga un archivo de respaldo previamente exportado.
+                     <li className="flex items-start gap-2">
+                        <span className="text-blue-500">•</span>
+                        <span>Filtra por categoría para analizar un tipo específico de gasto</span>
+                     </li>
+                     <li className="flex items-start gap-2">
+                        <span className="text-blue-500">•</span>
+                        <span>Usa rangos de fecha para comparar períodos específicos</span>
                      </li>
                   </ul>
+               </div>
+
+               {/* Funciones adicionales */}
+               <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+                     <Eye className="w-8 h-8 text-purple-600 mb-3" />
+                     <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Modo Discreto</h4>
+                     <p className="text-sm text-gray-500">Usa el botón del ojo en las tarjetas superiores para ocultar los saldos cuando estés en público.</p>
+                  </div>
+
+                  <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+                     <Settings className="w-8 h-8 text-gray-600 mb-3" />
+                     <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Tema Claro/Oscuro</h4>
+                     <p className="text-sm text-gray-500">Cambia entre tema claro y oscuro desde el botón en la esquina superior. Se adapta a tu preferencia del sistema.</p>
+                  </div>
                </div>
             </div>
            )}

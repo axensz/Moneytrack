@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import { Activity, BarChart3, Wallet, Repeat } from 'lucide-react';
 import { Header } from './components/Header';
@@ -20,13 +20,12 @@ import { useAccounts } from './hooks/useAccounts';
 import { useCategories } from './hooks/useCategories';
 import { useAuth } from './hooks/useAuth';
 import { useBackup } from './hooks/useBackup';
-import { useGlobalStats } from './hooks/useGlobalStats';
 import { useRecurringPayments } from './hooks/useRecurringPayments';
-import { TransactionValidator } from './utils/validators';
+import { useAddTransaction } from './hooks/useAddTransaction';
+import { useFilteredData } from './hooks/useFilteredData';
 import { formatCurrency } from './utils/formatters';
-import { calculateInterest } from './utils/interestCalculator';
-import { SUCCESS_MESSAGES, ERROR_MESSAGES, TRANSFER_CATEGORY, TOAST_CONFIG, INITIAL_TRANSACTION } from './config/constants';
-import type { NewTransaction, ViewType, FilterValue, Transaction } from './types/finance';
+import { TOAST_CONFIG, INITIAL_TRANSACTION } from './config/constants';
+import type { NewTransaction, ViewType, FilterValue } from './types/finance';
 import { logoutFirebase } from './lib/firebase';
 
 const FinanceTracker = () => {
@@ -63,9 +62,6 @@ const FinanceTracker = () => {
     stats: recurringStats
   } = useRecurringPayments(user?.uid || null, transactions);
 
-  // 🟡 REFACTORIZADO: Usar hook centralizado de estadísticas (elimina duplicidad)
-  const stats = useGlobalStats(transactions, accounts);
-
   const { categories, addCategory, deleteCategory } = useCategories(transactions);
   const { exportData, importData } = useBackup({ transactions, accounts, categories });
 
@@ -75,43 +71,15 @@ const FinanceTracker = () => {
   const [filterStatus, setFilterStatus] = useState<FilterValue>('all');
   const [filterAccount, setFilterAccount] = useState<FilterValue>('all');
 
-  // 🔄 LOGICA DE FILTRADO PARA ESTADISTICAS DINAMICAS
-  // Calculamos las transacciones filtradas para que las tarjetas reflejen la vista actual
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter(t => {
-      // 1. Filtro por Cuenta
-      if (filterAccount !== 'all' && t.accountId !== filterAccount) return false;
-      // 2. Filtro por Categoría
-      if (filterCategory !== 'all' && t.category !== filterCategory) return false;
-      return true;
-    });
-  }, [transactions, filterAccount, filterCategory]);
-
-  // Filtramos las cuentas solo si hay un filtro de cuenta activo
-  // Esto afecta al cálculo de "Gastos Pendientes" (Deuda TC) y al Balance mostrado
-  const filteredAccounts = useMemo(() => {
-    if (filterAccount === 'all') return accounts;
-    return accounts.filter(acc => acc.id === filterAccount);
-  }, [accounts, filterAccount]);
-
-  // Usamos el hook de estadísticas con los datos FILTRADOS
-  const dynamicStats = useGlobalStats(filteredTransactions, filteredAccounts);
-
-  // Calculamos el balance total dinámico (afectado solo por filtro de cuenta, no de categoría)
-  const dynamicTotalBalance = useMemo(() => {
-    if (filterAccount === 'all') return totalBalance;
-    // Usamos el helper getAccountBalance que ya calcula el saldo usando las estrategias correctas
-    // en lugar de intentar acceder a una propiedad .currentBalance que no existe en el objeto Account
-    return getAccountBalance(filterAccount);
-  }, [totalBalance, filterAccount, getAccountBalance]);
-
-  // Etiqueta dinámica para el balance (UX Improvement)
-  const balanceLabel = useMemo(() => {
-    if (filterAccount === 'all') return 'Balance Total';
-    const account = accounts.find(acc => acc.id === filterAccount);
-    if (account?.type === 'credit') return 'Cupo Disponible';
-    return 'Balance';
-  }, [filterAccount, accounts]);
+  // 🆕 Hook para filtrado y estadísticas dinámicas
+  const { dynamicStats, dynamicTotalBalance, balanceLabel } = useFilteredData({
+    transactions,
+    accounts,
+    filterAccount,
+    filterCategory,
+    totalBalance,
+    getAccountBalance,
+  });
 
   const [newTransaction, setNewTransaction] = useState<NewTransaction>({
     ...INITIAL_TRANSACTION
@@ -158,106 +126,18 @@ const FinanceTracker = () => {
     setView('accounts');
   };
 
-  const handleAddTransaction = async (): Promise<void> => {
-    // Validar que existan cuentas
-    if (accounts.length === 0) {
-      toast.error('Debes crear al menos una cuenta primero');
-      setShowWelcomeModal(true);
-      return;
-    }
-
-    // Obtener información de la cuenta
-    const accountId = newTransaction.accountId || defaultAccount?.id;
-    const selectedAccount = accounts.find(acc => acc.id === accountId);
-
-    if (!selectedAccount) {
-      toast.error('Por favor selecciona una cuenta válida');
-      return;
-    }
-
-    // 🔵 PASO 4: Validación usando Strategy Pattern
-    // Delega la validación de saldo/cupo a la estrategia correspondiente
-    const validation = TransactionValidator.validate(
-      newTransaction,
-      selectedAccount,
-      transactions
-    );
-
-    if (!validation.isValid) {
-      validation.errors.forEach(error => toast.error(error));
-      return;
-    }
-
-    try {
-      // Convertir amount de formato colombiano (1.234,56) a número
-      const amountStr = newTransaction.amount.toString().replace(/\./g, '').replace(',', '.');
-      const amount = parseFloat(amountStr);
-
-      if (isNaN(amount)) {
-        toast.error('Monto inválido');
-        return;
-      }
-
-      // 🆕 Si es un pago periódico con monto diferente, actualizar el monto base
-      if (newTransaction.recurringPaymentId) {
-        const recurringPayment = recurringPayments.find(p => p.id === newTransaction.recurringPaymentId);
-        if (recurringPayment && recurringPayment.amount !== amount) {
-          // Actualizar el monto del pago periódico al monto real pagado
-          await updateRecurringPayment(newTransaction.recurringPaymentId, { amount });
-        }
-      }
-
-      // Preparar datos de la transacción
-      const transactionData: Omit<Transaction, 'id' | 'createdAt'> = {
-        type: newTransaction.type,
-        amount: amount,
-        category: newTransaction.type === 'transfer' ? TRANSFER_CATEGORY : newTransaction.category,
-        description: newTransaction.description.trim(),
-        date: new Date(), // 🆕 Siempre usar fecha actual, no la fecha de vencimiento
-        paid: newTransaction.paid,
-        accountId: newTransaction.accountId || defaultAccount?.id || '',
-        toAccountId: newTransaction.toAccountId || undefined,
-        recurringPaymentId: newTransaction.recurringPaymentId || undefined // 🆕 Asociar a pago periódico
-      };
-
-      // 🆕 CALCULAR INTERESES: Si es un gasto en TC con cuotas/intereses
-      if (
-        selectedAccount.type === 'credit' &&
-        newTransaction.type === 'expense' &&
-        newTransaction.installments &&
-        newTransaction.installments > 0
-      ) {
-        const annualRate = selectedAccount.interestRate || 0;
-        const interestResult = calculateInterest(
-          amount,
-          annualRate,
-          newTransaction.installments,
-          newTransaction.hasInterest
-        );
-
-        // Agregar campos calculados a la transacción
-        transactionData.hasInterest = newTransaction.hasInterest;
-        transactionData.installments = newTransaction.installments;
-        transactionData.monthlyInstallmentAmount = interestResult.monthlyInstallmentAmount;
-        transactionData.totalInterestAmount = interestResult.totalInterestAmount;
-        transactionData.interestRate = annualRate; // Snapshot de la tasa
-      }
-
-      // ⚡ CERRAR MODAL INMEDIATAMENTE (UX optimizada)
-      setNewTransaction({
-        ...INITIAL_TRANSACTION,
-        accountId: defaultAccount?.id || ''
-      });
-      setShowForm(false);
-
-      // Ejecutar operación asíncrona después del cierre
-      await addTransaction(transactionData);
-      toast.success(SUCCESS_MESSAGES.TRANSACTION_ADDED);
-    } catch (error) {
-      toast.error(ERROR_MESSAGES.ADD_TRANSACTION_ERROR);
-      console.error(error);
-    }
-  };
+  // 🆕 Hook para manejar la creación de transacciones
+  const { handleAddTransaction } = useAddTransaction({
+    accounts,
+    transactions,
+    recurringPayments,
+    defaultAccount: defaultAccount || null,
+    addTransaction,
+    updateRecurringPayment,
+    setNewTransaction,
+    setShowForm,
+    setShowWelcomeModal,
+  });
 
   return (
     <div className="flex flex-col h-screen bg-background bg-gradient-to-br from-violet-50/30 via-purple-50/20 to-fuchsia-50/10 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
@@ -362,7 +242,7 @@ const FinanceTracker = () => {
                     categories={categories}
                     defaultAccount={defaultAccount || null}
                     recurringPayments={mounted ? recurringPayments : []}
-                    onSubmit={handleAddTransaction}
+                    onSubmit={() => handleAddTransaction(newTransaction)}
                     onCancel={() => setShowForm(false)}
                   />
                 )}

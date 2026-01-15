@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo } from 'react';
 import { X, Repeat } from 'lucide-react';
-import { UI_LABELS } from '../config/constants';
-import { formatNumberForInput, unformatNumber, formatCurrency } from '../utils/formatters';
-import { BalanceCalculator } from '../utils/balanceCalculator';
-import { INSTALLMENT_OPTIONS } from '../utils/interestCalculator';
-import type { NewTransaction, Account, Categories, Transaction, RecurringPayment } from '../types/finance';
+import { UI_LABELS } from '@/config/constants';
+import { formatNumberForInput, unformatNumber, formatCurrency } from '@/utils/formatters';
+import { BalanceCalculator } from '@/utils/balanceCalculator';
+import { INSTALLMENT_OPTIONS } from '@/utils/interestCalculator';
+import type { NewTransaction, Account, Categories, Transaction, RecurringPayment } from '@/types/finance';
 
 interface TransactionFormProps {
   newTransaction: NewTransaction;

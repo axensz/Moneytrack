@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Activity, BarChart3, Wallet, Download, Upload, Repeat } from 'lucide-react';
-import type { ViewType } from '../types/finance';
+import type { ViewType } from '../../types/finance';
 
 interface TabNavigationProps {
   view: ViewType;

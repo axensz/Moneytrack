@@ -1,6 +1,6 @@
 import { X } from 'lucide-react';
-import { loginWithGoogle } from '../lib/firebase';
-import { showToast } from '../utils/toastHelpers';
+import { loginWithGoogle } from '../../lib/firebase';
+import { showToast } from '../../utils/toastHelpers';
 
 interface AuthModalProps {
   isOpen: boolean;

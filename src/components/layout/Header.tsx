@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect } from 'react';
 import { LogIn, LogOut, User as UserIcon, Settings, HelpCircle } from 'lucide-react';
-import { ThemeToggle } from './ThemeToggle';
+import { ThemeToggle } from '../theme/ThemeToggle';
 import type { User } from 'firebase/auth';
 
 interface HeaderProps {

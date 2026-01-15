@@ -14,7 +14,7 @@ import { HelpModal } from './src/components/HelpModal';
 import { StatsView } from './src/components/views/stats';
 import { AccountsView } from './src/components/views/accounts';
 import { TransactionsView } from './src/components/views/TransactionsView';
-import { RecurringPaymentsView } from './src/components/views/RecurringPaymentsView';
+import { RecurringPaymentsView } from './src/components/views/recurring';
 import { useTransactions } from './src/hooks/useTransactions';
 import { useAccounts } from './src/hooks/useAccounts';
 import { useCategories } from './src/hooks/useCategories';

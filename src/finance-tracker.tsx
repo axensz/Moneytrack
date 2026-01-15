@@ -62,8 +62,8 @@ const FinanceTracker = () => {
     stats: recurringStats
   } = useRecurringPayments(user?.uid || null, transactions);
 
-  const { categories, addCategory, deleteCategory } = useCategories(transactions);
-  const { exportData, importData } = useBackup({ transactions, accounts, categories });
+  const { categories, addCategory, deleteCategory } = useCategories(transactions, user?.uid);
+  const { exportData } = useBackup({ transactions, accounts, categories });
 
   const [showForm, setShowForm] = useState(false);
   const [view, setView] = useState<ViewType>('transactions');
@@ -220,7 +220,6 @@ const FinanceTracker = () => {
               view={view}
               setView={setView}
               exportData={exportData}
-              importData={importData}
             />
 
             <StatsCards

@@ -1,21 +1,19 @@
 'use client';
 
 import React from 'react';
-import { Activity, BarChart3, Wallet, Download, Upload, Repeat } from 'lucide-react';
+import { Activity, BarChart3, Wallet, Download, Repeat } from 'lucide-react';
 import type { ViewType } from '../../types/finance';
 
 interface TabNavigationProps {
   view: ViewType;
   setView: (view: ViewType) => void;
   exportData: () => void;
-  importData: (event: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 export const TabNavigation: React.FC<TabNavigationProps> = ({
   view,
   setView,
   exportData,
-  importData
 }) => {
   const tabs = [
     { key: 'transactions' as const, label: 'Transacciones', icon: Activity },
@@ -54,25 +52,10 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
             <Download size={16} />
             <span>Exportar</span>
           </button>
-          <input
-            type="file"
-            accept=".json"
-            onChange={importData}
-            className="hidden"
-            id="import-file"
-          />
-          <label
-            htmlFor="import-file"
-            className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
-            title="Importar datos"
-          >
-            <Upload size={16} />
-            <span>Importar</span>
-          </label>
         </div>
       </div>
 
-      {/* Mobile Top Actions - Export/Import */}
+      {/* Mobile Top Actions - Export only */}
       <div className="sm:hidden flex gap-2 justify-end mb-4">
         <button
           onClick={exportData}
@@ -82,21 +65,6 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
           <Download size={14} />
           <span>Exportar</span>
         </button>
-        <label
-          htmlFor="import-file-mobile"
-          className="flex items-center gap-1.5 px-3 py-2 text-xs bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg active:bg-gray-200 dark:active:bg-gray-700 transition-colors cursor-pointer"
-          title="Importar datos"
-        >
-          <Upload size={14} />
-          <span>Importar</span>
-        </label>
-        <input
-          type="file"
-          accept=".json"
-          onChange={importData}
-          className="hidden"
-          id="import-file-mobile"
-        />
       </div>
     </>
   );

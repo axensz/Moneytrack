@@ -13,7 +13,7 @@ import { WelcomeModal } from './src/components/WelcomeModal';
 import { HelpModal } from './src/components/HelpModal';
 import { StatsView } from './src/components/views/stats';
 import { AccountsView } from './src/components/views/accounts';
-import { TransactionsView } from './src/components/views/TransactionsView';
+import { TransactionsView } from './src/components/views/transactions';
 import { RecurringPaymentsView } from './src/components/views/recurring';
 import { useTransactions } from './src/hooks/useTransactions';
 import { useAccounts } from './src/hooks/useAccounts';

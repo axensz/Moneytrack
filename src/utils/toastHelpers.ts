@@ -44,4 +44,21 @@ export const showToast = {
       icon: '⚠️',
     });
   },
+
+  /**
+   * Muestra un toast de carga (para operaciones async)
+   * @param message - Mensaje a mostrar
+   * @returns ID del toast para actualizarlo después
+   */
+  loading: (message: string): string => {
+    return toast.loading(message);
+  },
+
+  /**
+   * Descarta un toast específico
+   * @param toastId - ID del toast a descartar
+   */
+  dismiss: (toastId?: string): void => {
+    toast.dismiss(toastId);
+  },
 };

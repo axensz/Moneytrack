@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback } from 'react';
-import toast from 'react-hot-toast';
+import { showToast } from '../../../../utils/toastHelpers';
 import type { RecurringPayment, Account, Transaction } from '../../../../types/finance';
 
 interface UseRecurringPaymentsParams {
@@ -99,17 +99,17 @@ export const useRecurringPaymentsView = ({
 
     try {
       await deleteRecurringPayment(deleteConfirm);
-      toast.success('Pago eliminado');
+      showToast.success('Pago eliminado');
       setDeleteConfirm(null);
     } catch {
-      toast.error('Error al eliminar');
+      showToast.error('Error al eliminar');
     }
   }, [deleteConfirm, deleteRecurringPayment]);
 
   const handleReactivate = useCallback(
     async (payment: RecurringPayment) => {
       await updateRecurringPayment(payment.id!, { isActive: true });
-      toast.success('Pago reactivado');
+      showToast.success('Pago reactivado');
     },
     [updateRecurringPayment]
   );

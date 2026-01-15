@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { showToast } from '../../../../utils/toastHelpers';
 import type { RecurringPayment, Account } from '../../../../types/finance';
 import { formatNumberForInput } from '../../../../utils/formatters';
 
@@ -91,18 +91,18 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
     if (isSubmitting) return;
 
     if (!formData.name.trim()) {
-      toast.error('Ingresa un nombre para el pago');
+      showToast.error('Ingresa un nombre para el pago');
       return;
     }
 
     const amount = parseFloat(formData.amount.replace(/\./g, '').replace(',', '.'));
     if (isNaN(amount) || amount <= 0) {
-      toast.error('Ingresa un monto válido');
+      showToast.error('Ingresa un monto válido');
       return;
     }
 
     if (!formData.category) {
-      toast.error('Selecciona una categoría');
+      showToast.error('Selecciona una categoría');
       return;
     }
 
@@ -121,10 +121,10 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
       };
 
       await onSubmit(paymentData);
-      toast.success(editingPayment ? 'Pago actualizado' : 'Pago periódico creado');
+      showToast.success(editingPayment ? 'Pago actualizado' : 'Pago periódico creado');
       onClose();
     } catch (error) {
-      toast.error('Error al guardar');
+      showToast.error('Error al guardar');
       console.error(error);
     } finally {
       setIsSubmitting(false);

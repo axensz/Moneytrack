@@ -12,7 +12,7 @@
  */
 
 import { useCallback } from 'react';
-import toast from 'react-hot-toast';
+import { showToast } from '../utils/toastHelpers';
 import { TransactionValidator } from '../utils/validators';
 import { calculateInterest } from '../utils/interestCalculator';
 import {
@@ -61,7 +61,7 @@ export function useAddTransaction({
     async (newTransaction: NewTransaction): Promise<void> => {
       // Validar que existan cuentas
       if (accounts.length === 0) {
-        toast.error('Debes crear al menos una cuenta primero');
+        showToast.error('Debes crear al menos una cuenta primero');
         setShowWelcomeModal(true);
         return;
       }
@@ -71,7 +71,7 @@ export function useAddTransaction({
       const selectedAccount = accounts.find((acc) => acc.id === accountId);
 
       if (!selectedAccount) {
-        toast.error('Por favor selecciona una cuenta válida');
+        showToast.error('Por favor selecciona una cuenta válida');
         return;
       }
 
@@ -83,7 +83,7 @@ export function useAddTransaction({
       );
 
       if (!validation.isValid) {
-        validation.errors.forEach((error) => toast.error(error));
+        validation.errors.forEach((error) => showToast.error(error));
         return;
       }
 
@@ -96,7 +96,7 @@ export function useAddTransaction({
         const amount = parseFloat(amountStr);
 
         if (isNaN(amount)) {
-          toast.error('Monto inválido');
+          showToast.error('Monto inválido');
           return;
         }
 
@@ -157,9 +157,9 @@ export function useAddTransaction({
 
         // Ejecutar operación asíncrona después del cierre
         await addTransaction(transactionData);
-        toast.success(SUCCESS_MESSAGES.TRANSACTION_ADDED);
+        showToast.success(SUCCESS_MESSAGES.TRANSACTION_ADDED);
       } catch (error) {
-        toast.error(ERROR_MESSAGES.ADD_TRANSACTION_ERROR);
+        showToast.error(ERROR_MESSAGES.ADD_TRANSACTION_ERROR);
         console.error(error);
       }
     },

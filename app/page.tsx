@@ -1,6 +1,6 @@
 'use client';
 
-import FinanceTracker from '../finance-tracker';
+import FinanceTracker from '../src/finance-tracker';
 
 export default function Home() {
   return <FinanceTracker />;

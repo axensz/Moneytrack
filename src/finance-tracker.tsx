@@ -234,7 +234,7 @@ const FinanceTracker = () => {
       <div ref={scrollContainerRef} className="flex-1 overflow-auto">
         <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 pb-24 sm:pb-6">
           <div className="max-w-7xl mx-auto">
-            <TabNavigation 
+            <TabNavigation
               view={view}
               setView={setView}
             />
@@ -263,7 +263,7 @@ const FinanceTracker = () => {
                     onCancel={handleCloseForm}
                   />
                 )}
-                
+
                 <TransactionsView
                   transactions={mounted ? transactions : []}
                   accounts={mounted ? accounts : []}

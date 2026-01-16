@@ -32,7 +32,7 @@ export const TransactionsEmptyState: React.FC<TransactionsEmptyStateProps> = ({
           </p>
           <button
             onClick={onClearFilters}
-            className="inline-flex items-center gap-2 text-purple-600 dark:text-purple-400 font-medium hover:text-purple-700 dark:hover:text-purple-300 transition-colors bg-purple-50 dark:bg-purple-900/20 px-4 py-2 rounded-lg hover:bg-purple-100"
+            className="btn-secondary inline-flex"
           >
             <FilterX size={16} />
             Limpiar filtros

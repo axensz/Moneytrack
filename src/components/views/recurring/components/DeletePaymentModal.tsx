@@ -30,13 +30,13 @@ export const DeletePaymentModal: React.FC<DeletePaymentModalProps> = ({
         <div className="flex gap-3">
           <button
             onClick={onConfirm}
-            className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+            className="flex-1 btn-danger"
           >
             Eliminar
           </button>
           <button
             onClick={onClose}
-            className="flex-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 font-medium py-2 px-4 rounded-lg transition-colors"
+            className="flex-1 btn-cancel"
           >
             Cancelar
           </button>

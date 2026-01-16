@@ -147,7 +147,7 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = ({
         <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100 dark:border-gray-700">
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="text-sm text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 flex items-center gap-1"
+            className="text-sm text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors min-h-[36px]"
           >
             <History size={14} />
             Historial
@@ -157,14 +157,14 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = ({
           <div className="flex gap-2">
             <button
               onClick={onEdit}
-              className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
+              className="flex items-center justify-center p-2 min-h-[36px] min-w-[36px] text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
               title="Editar"
             >
               <Edit2 size={16} />
             </button>
             <button
               onClick={onDelete}
-              className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
+              className="flex items-center justify-center p-2 min-h-[36px] min-w-[36px] text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
               title="Eliminar"
             >
               <Trash2 size={16} />

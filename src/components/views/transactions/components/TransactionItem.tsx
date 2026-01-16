@@ -91,14 +91,14 @@ export const TransactionItem: React.FC<TransactionItemProps> = ({
           <div className="flex gap-2 justify-end">
             <button
               onClick={onSave}
-              className="flex items-center gap-1 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors shadow-md"
+              className="btn-submit"
             >
               <Check size={16} />
               Guardar
             </button>
             <button
               onClick={onCancel}
-              className="px-3 py-1.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 rounded-lg text-sm font-medium transition-colors"
+              className="btn-cancel"
             >
               Cancelar
             </button>
@@ -155,14 +155,14 @@ export const TransactionItem: React.FC<TransactionItemProps> = ({
           <div className="flex gap-1">
             <button
               onClick={onEdit}
-              className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
+              className="flex items-center justify-center p-2 min-h-[36px] min-w-[36px] text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
               title="Editar transacción"
             >
               <Edit2 size={16} />
             </button>
             <button
               onClick={onDelete}
-              className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
+              className="flex items-center justify-center p-2 min-h-[36px] min-w-[36px] text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
               title="Eliminar transacción"
             >
               <X size={18} />

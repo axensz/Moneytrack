@@ -62,14 +62,14 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({
         <div className="flex flex-col sm:flex-row gap-3">
           <button
             onClick={onGoToAccounts}
-            className="flex-1 btn-primary"
+            className="flex-1 flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-medium py-3 px-4 rounded-lg transition-colors shadow-md"
           >
             Ir a Cuentas
             <ArrowRight size={18} />
           </button>
           <button
             onClick={onClose}
-            className="flex-1 btn-cancel"
+            className="flex-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 font-medium py-3 px-4 rounded-lg transition-colors"
           >
             Entendido
           </button>

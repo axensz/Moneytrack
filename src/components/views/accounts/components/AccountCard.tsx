@@ -232,7 +232,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
             <>
               <button
                 onClick={onSetDefault}
-                className={`text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[36px] text-white ${
                   isCredit
                     ? 'bg-purple-600 hover:bg-purple-700'
                     : 'bg-emerald-600 hover:bg-emerald-700'
@@ -242,12 +242,12 @@ export const AccountCard: React.FC<AccountCardProps> = ({
               </button>
               <button
                 onClick={onDelete}
-                className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
+                className="flex items-center justify-center p-2 min-h-[36px] min-w-[36px] text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
               >
                 <Trash2 size={16} />
               </button>
             </>
-          )}
+          )}}
         </div>
       </div>
     </div>

@@ -92,7 +92,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
             <button
               onClick={onConfirm}
               disabled={!canDelete}
-              className="flex-1 bg-rose-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="flex-1 btn-danger"
             >
               Eliminar{' '}
               {transactionCount > 0

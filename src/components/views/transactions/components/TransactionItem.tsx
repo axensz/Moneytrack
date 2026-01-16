@@ -120,6 +120,15 @@ export const TransactionItem: React.FC<TransactionItemProps> = ({
             <span>{transaction.category}</span>
             <span className="hidden sm:inline">•</span>
             <span className="hidden sm:inline">{account?.name}</span>
+            {/* Mostrar cuotas si es TC y tiene más de 1 cuota */}
+            {account?.type === 'credit' && transaction.installments && transaction.installments > 1 && (
+              <>
+                <span className="hidden sm:inline">•</span>
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded text-xs font-medium">
+                  {transaction.installments} cuotas
+                </span>
+              </>
+            )}
             <span className="hidden sm:inline">•</span>
             <span>{new Date(transaction.date).toLocaleDateString('es-CO')}</span>
             {/* Indicador de pago periódico */}

@@ -10,7 +10,7 @@ interface CreditCardInterest {
   monthlyInterest: number;
   yearlyInterest: number;
   totalInterest: number;
-  pendingInstallments: number;
+  pendingInterest: number;
   transactionCount: number;
 }
 
@@ -97,7 +97,7 @@ const SummaryGrid: React.FC<SummaryGridProps> = ({ totals, formatCurrency }) => 
       variant="default"
     />
     <SummaryCard
-      label="Cuotas Pendientes"
+      label="Intereses Pendientes"
       value={formatCurrency(totals.pending)}
       variant="amber"
     />

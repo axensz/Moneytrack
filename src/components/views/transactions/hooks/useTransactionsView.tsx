@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
+import { RotateCcw } from 'lucide-react';
 import type {
   Transaction,
   Account,
@@ -159,7 +160,7 @@ export const useTransactionsView = ({
                   }}
                   className="px-2 py-1 text-xs bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors flex items-center gap-1"
                 >
-                  ↩ Deshacer
+                  <RotateCcw size={12} /> Deshacer
                 </button>
               )}
             </div>

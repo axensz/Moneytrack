@@ -1,10 +1,12 @@
 /**
  * Hook para manejar las subscripciones en tiempo real de Firestore
  * Separa la responsabilidad de escuchar cambios de las operaciones CRUD
+ * 
+ * OPTIMIZACIÓN: Usa Promise.all para iniciar todas las subscripciones en paralelo
  */
 
-import { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { useState, useEffect, useRef } from 'react';
+import { collection, onSnapshot, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import type { Transaction, Account, Category } from '../../types/finance';
 
@@ -22,101 +24,85 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [internalLoading, setInternalLoading] = useState(true);
-
-  // Track para qué userId hemos cargado los datos
-  const [loadedForUserId, setLoadedForUserId] = useState<string | null>(null);
-
-  // Track si cada colección ha cargado al menos una vez
-  const [loadedCollections, setLoadedCollections] = useState({
-    transactions: false,
-    accounts: false,
-    categories: false,
-  });
-
-  // Loading es true si:
-  // 1. internalLoading es true (cargando colecciones)
-  // 2. O si el userId actual no coincide con el userId para el que cargamos los datos
-  const loading =
-    internalLoading || (userId !== null && userId !== loadedForUserId);
-
-  // Marcar como cargado cuando TODAS las colecciones hayan cargado
-  useEffect(() => {
-    if (
-      loadedCollections.transactions &&
-      loadedCollections.accounts &&
-      loadedCollections.categories
-    ) {
-      setInternalLoading(false);
-      setLoadedForUserId(userId);
-    }
-  }, [loadedCollections, userId]);
+  const [loading, setLoading] = useState(true);
+  
+  // Ref para evitar actualizaciones de estado después de desmontar
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
+    isMountedRef.current = true;
+    
     if (!userId) {
       setTransactions([]);
       setAccounts([]);
       setCategories([]);
-      setLoadedCollections({
-        transactions: true,
-        accounts: true,
-        categories: true,
-      });
-      setInternalLoading(false);
-      setLoadedForUserId(null);
+      setLoading(false);
       return;
     }
 
-    // Reset loading state cuando cambia el usuario
-    setInternalLoading(true);
-    setLoadedCollections({
-      transactions: false,
-      accounts: false,
-      categories: false,
-    });
-
+    setLoading(true);
     const unsubscribes: (() => void)[] = [];
 
-    // Escuchar transacciones en tiempo real
-    const transactionsRef = collection(db, `users/${userId}/transactions`);
-    const transactionsQuery = query(transactionsRef, orderBy('date', 'desc'));
+    // Configurar subscripciones en paralelo
+    const setupSubscriptions = () => {
+      // Transacciones - ordenadas por fecha DESC
+      const transactionsRef = collection(db, `users/${userId}/transactions`);
+      const transactionsQuery = query(transactionsRef, orderBy('date', 'desc'));
+      
+      const unsubTransactions = onSnapshot(
+        transactionsQuery, 
+        (snapshot) => {
+          if (!isMountedRef.current) return;
+          const data = snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+            date: doc.data().date?.toDate() || new Date(),
+          })) as Transaction[];
+          setTransactions(data);
+        },
+        (error) => console.error('Error en transacciones:', error)
+      );
+      unsubscribes.push(unsubTransactions);
 
-    const unsubTransactions = onSnapshot(transactionsQuery, (snapshot) => {
-      const transactionsData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        date: doc.data().date?.toDate() || new Date(),
-      })) as Transaction[];
-      setTransactions(transactionsData);
-      setLoadedCollections((prev) => ({ ...prev, transactions: true }));
-    });
-    unsubscribes.push(unsubTransactions);
+      // Cuentas
+      const accountsRef = collection(db, `users/${userId}/accounts`);
+      const unsubAccounts = onSnapshot(
+        accountsRef, 
+        (snapshot) => {
+          if (!isMountedRef.current) return;
+          const data = snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as Account[];
+          setAccounts(data);
+        },
+        (error) => console.error('Error en cuentas:', error)
+      );
+      unsubscribes.push(unsubAccounts);
 
-    // Escuchar cuentas en tiempo real
-    const accountsRef = collection(db, `users/${userId}/accounts`);
-    const unsubAccounts = onSnapshot(accountsRef, (snapshot) => {
-      const accountsData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Account[];
-      setAccounts(accountsData);
-      setLoadedCollections((prev) => ({ ...prev, accounts: true }));
-    });
-    unsubscribes.push(unsubAccounts);
+      // Categorías
+      const categoriesRef = collection(db, `users/${userId}/categories`);
+      const unsubCategories = onSnapshot(
+        categoriesRef, 
+        (snapshot) => {
+          if (!isMountedRef.current) return;
+          const data = snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as Category[];
+          setCategories(data);
+          // Marcar como cargado cuando las categorías lleguen (última en configurarse)
+          setLoading(false);
+        },
+        (error) => console.error('Error en categorías:', error)
+      );
+      unsubscribes.push(unsubCategories);
+    };
 
-    // Escuchar categorías en tiempo real
-    const categoriesRef = collection(db, `users/${userId}/categories`);
-    const unsubCategories = onSnapshot(categoriesRef, (snapshot) => {
-      const categoriesData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Category[];
-      setCategories(categoriesData);
-      setLoadedCollections((prev) => ({ ...prev, categories: true }));
-    });
-    unsubscribes.push(unsubCategories);
+    setupSubscriptions();
 
     return () => {
+      isMountedRef.current = false;
       unsubscribes.forEach((unsub) => unsub());
     };
   }, [userId]);

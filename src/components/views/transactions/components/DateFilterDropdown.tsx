@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Calendar, ChevronDown } from 'lucide-react';
 import type { DateRangePreset } from '../../../../types/finance';
 import { DATE_PRESETS } from '../utils/dateUtils';
@@ -29,11 +29,30 @@ export const DateFilterDropdown: React.FC<DateFilterDropdownProps> = ({
   showDatePicker,
   setShowDatePicker,
 }) => {
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Cerrar al hacer clic fuera
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDatePicker(false);
+      }
+    }
+
+    if (showDatePicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showDatePicker, setShowDatePicker]);
+
   const currentLabel =
     DATE_PRESETS.find((p) => p.value === dateRangePreset)?.label || 'Fecha';
 
   return (
-    <div className="relative">
+    <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setShowDatePicker(!showDatePicker)}
         className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${

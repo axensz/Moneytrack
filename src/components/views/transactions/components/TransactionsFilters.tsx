@@ -1,9 +1,10 @@
 'use client';
 
-import React from 'react';
-import { PlusCircle, FilterX } from 'lucide-react';
+import React, { useState } from 'react';
+import { PlusCircle, FilterX, Wallet, Tag } from 'lucide-react';
 import type { Account, FilterValue } from '../../../../types/finance';
 import { DateFilterDropdown } from './DateFilterDropdown';
+import { FilterDropdown } from './FilterDropdown';
 
 interface TransactionsFiltersProps {
   accounts: Account[];
@@ -53,6 +54,31 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
   showDatePicker,
   setShowDatePicker,
 }) => {
+  const [activeDropdown, setActiveDropdown] = useState<'none' | 'account' | 'category'>('none');
+
+  const handleOpenAccount = () => {
+    if (activeDropdown === 'account') {
+      setActiveDropdown('none');
+    } else {
+      setActiveDropdown('account');
+      setShowDatePicker(false);
+    }
+  };
+
+  const handleOpenCategory = () => {
+    if (activeDropdown === 'category') {
+      setActiveDropdown('none');
+    } else {
+      setActiveDropdown('category');
+      setShowDatePicker(false);
+    }
+  };
+
+  const handleOpenDate = (show: boolean) => {
+    setShowDatePicker(show);
+    if (show) setActiveDropdown('none');
+  };
+
   return (
     <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
       <button
@@ -70,32 +96,31 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
       {/* Filtros alineados a la derecha */}
       <div className="flex flex-wrap items-center gap-2">
         {/* Filtro de cuenta */}
-        <select
+        <FilterDropdown
+          label="Cuenta"
           value={filterAccount}
-          onChange={(e) => setFilterAccount(e.target.value)}
-          className="px-3 py-2 rounded-lg text-sm font-medium bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600"
-        >
-          <option value="all">Todas las cuentas</option>
-          {accounts.map((acc) => (
-            <option key={acc.id} value={acc.id}>
-              {acc.name}
-            </option>
-          ))}
-        </select>
+          options={accounts.map((acc) => ({ value: acc.id, label: acc.name }))}
+          onChange={setFilterAccount}
+          isOpen={activeDropdown === 'account'}
+          onToggle={handleOpenAccount}
+          onClose={() => setActiveDropdown('none')}
+          icon={<Wallet size={16} />}
+        />
 
         {/* Filtro de categoría */}
-        <select
+        <FilterDropdown
+          label="Categoría"
           value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value)}
-          className="px-3 py-2 rounded-lg text-sm font-medium bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600"
-        >
-          <option value="all">Todas las categorías</option>
-          {[...categories.expense, ...categories.income].map((cat, index) => (
-            <option key={`${cat}-${index}`} value={cat}>
-              {cat}
-            </option>
-          ))}
-        </select>
+          options={[...categories.expense, ...categories.income].map((cat) => ({
+            value: cat,
+            label: cat,
+          }))}
+          onChange={setFilterCategory}
+          isOpen={activeDropdown === 'category'}
+          onToggle={handleOpenCategory}
+          onClose={() => setActiveDropdown('none')}
+          icon={<Tag size={16} />}
+        />
 
         {/* Filtro de fecha */}
         <DateFilterDropdown
@@ -106,13 +131,17 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
           customEndDate={customEndDate}
           setCustomEndDate={setCustomEndDate}
           showDatePicker={showDatePicker}
-          setShowDatePicker={setShowDatePicker}
+          setShowDatePicker={handleOpenDate}
         />
 
         {/* Botón limpiar filtros */}
         {isMetadataFiltersActive && (
           <button
-            onClick={onClearFilters}
+            onClick={() => {
+              onClearFilters();
+              setActiveDropdown('none');
+              setShowDatePicker(false);
+            }}
             className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
           >
             <FilterX size={16} />

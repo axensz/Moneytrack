@@ -247,7 +247,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
                 <Trash2 size={16} />
               </button>
             </>
-          )}}
+          )}
         </div>
       </div>
     </div>

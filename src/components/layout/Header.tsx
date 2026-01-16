@@ -57,15 +57,16 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center gap-2 sm:gap-3">
             {/* Usuario logueado - Nombre primero */}
             {user ? (
-              <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2" role="status" aria-label={`Sesión iniciada como ${user.displayName || 'Usuario'}`}>
                 {user.photoURL ? (
-                  <img 
-                    src={user.photoURL} 
-                    alt={user.displayName || 'Usuario'} 
+                  <img
+                    src={user.photoURL}
+                    alt=""
+                    aria-hidden="true"
                     className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-purple-200 dark:border-purple-700"
                   />
                 ) : (
-                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400">
+                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400" aria-hidden="true">
                     <UserIcon size={18} />
                   </div>
                 )}
@@ -77,8 +78,9 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 onClick={() => setIsAuthModalOpen(true)}
                 className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg text-sm font-medium active:opacity-80 transition-opacity"
+                aria-label="Iniciar sesión"
               >
-                <LogIn size={16} className="sm:w-[18px] sm:h-[18px]" />
+                <LogIn size={16} className="sm:w-[18px] sm:h-[18px]" aria-hidden="true" />
                 <span className="hidden sm:inline">Acceder</span>
               </button>
             )}
@@ -94,22 +96,29 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 onClick={() => setShowSettingsMenu(!showSettingsMenu)}
                 className="p-2 sm:p-2.5 text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 active:bg-gray-100 dark:active:bg-gray-800 rounded-lg transition-colors"
-                title="Configuración"
+                aria-label="Abrir menú de configuración"
+                aria-expanded={showSettingsMenu}
+                aria-haspopup="menu"
               >
-                <Settings size={20} />
+                <Settings size={20} aria-hidden="true" />
               </button>
 
               {/* Menú desplegable */}
               {showSettingsMenu && (
-                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50 animate-in fade-in zoom-in duration-200">
+                <div
+                  className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50 animate-in fade-in zoom-in duration-200"
+                  role="menu"
+                  aria-label="Opciones de configuración"
+                >
                   <button
                     onClick={() => {
                       onOpenHelp();
                       setShowSettingsMenu(false);
                     }}
                     className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    role="menuitem"
                   >
-                    <HelpCircle size={18} />
+                    <HelpCircle size={18} aria-hidden="true" />
                     <span>Manual de Ayuda</span>
                   </button>
                 </div>
@@ -121,9 +130,9 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 onClick={onLogout}
                 className="p-2 sm:p-2.5 text-gray-500 hover:text-rose-600 dark:hover:text-rose-400 active:bg-gray-100 dark:active:bg-gray-800 rounded-lg transition-colors"
-                title="Cerrar sesión"
+                aria-label="Cerrar sesión"
               >
-                <LogOut size={18} />
+                <LogOut size={18} aria-hidden="true" />
               </button>
             )}
           </div>

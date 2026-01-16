@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { memo } from 'react';
 import { Edit2, X, Check } from 'lucide-react';
 import type { Transaction, Account } from '../../../../types/finance';
 import { formatNumberForInput, unformatNumber } from '../../../../utils/formatters';
@@ -25,8 +25,9 @@ interface TransactionItemProps {
 
 /**
  * Card individual de transacción con modo edición inline
+ * Memoizado para evitar re-renders innecesarios en listas largas
  */
-export const TransactionItem: React.FC<TransactionItemProps> = ({
+export const TransactionItem: React.FC<TransactionItemProps> = memo(({
   transaction,
   account,
   isEditing,
@@ -181,4 +182,6 @@ export const TransactionItem: React.FC<TransactionItemProps> = ({
       </div>
     </div>
   );
-};
+});
+
+TransactionItem.displayName = 'TransactionItem';

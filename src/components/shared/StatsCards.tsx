@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import { TrendingUp, TrendingDown, Wallet, Calendar, Eye, EyeOff } from 'lucide-react';
 
 interface StatsCardsProps {
@@ -12,7 +12,7 @@ interface StatsCardsProps {
 
 const STORAGE_KEY = 'moneytrack_hide_values';
 
-export const StatsCards: React.FC<StatsCardsProps> = ({
+export const StatsCards: React.FC<StatsCardsProps> = memo(({
   totalBalance,
   totalIncome,
   totalExpenses,
@@ -103,4 +103,6 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       </div>
     </div>
   );
-};
+});
+
+StatsCards.displayName = 'StatsCards';

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, memo } from 'react';
 import { X, Repeat } from 'lucide-react';
 import { UI_LABELS } from '@/config/constants';
 import { formatNumberForInput, unformatNumber, formatCurrency } from '@/utils/formatters';
@@ -18,7 +18,7 @@ interface TransactionFormProps {
   onCancel: () => void;
 }
 
-export const TransactionForm: React.FC<TransactionFormProps> = ({
+export const TransactionForm: React.FC<TransactionFormProps> = memo(({
   newTransaction,
   setNewTransaction,
   accounts,
@@ -329,4 +329,6 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
       </div>
     </div>
   );
-};
+});
+
+TransactionForm.displayName = 'TransactionForm';

@@ -13,7 +13,31 @@ import {
   runTransaction,
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import type { Transaction, Account } from '../../types/finance';
+import type { Transaction } from '../../types/finance';
+
+/**
+ * Valida el esquema básico de una transacción antes de guardar
+ * Última línea de defensa - la validación principal ocurre en useAddTransaction
+ */
+function validateTransactionSchema(
+  transaction: Omit<Transaction, 'id' | 'createdAt'>
+): void {
+  if (!transaction.type || !['income', 'expense', 'transfer'].includes(transaction.type)) {
+    throw new Error('Tipo de transacción inválido');
+  }
+
+  if (typeof transaction.amount !== 'number' || isNaN(transaction.amount) || transaction.amount <= 0) {
+    throw new Error('Monto de transacción inválido');
+  }
+
+  if (!transaction.accountId || typeof transaction.accountId !== 'string') {
+    throw new Error('ID de cuenta inválido');
+  }
+
+  if (transaction.type === 'transfer' && !transaction.toAccountId) {
+    throw new Error('Transferencia requiere cuenta destino');
+  }
+}
 
 interface UseTransactionsCRUDReturn {
   addTransaction: (
@@ -95,6 +119,9 @@ export function useTransactionsCRUD(
   const addTransaction = useCallback(
     async (transaction: Omit<Transaction, 'id' | 'createdAt'>) => {
       if (!userId) return;
+
+      // Validación de esquema como última línea de defensa
+      validateTransactionSchema(transaction);
 
       // Transferencias usan atomicidad
       if (transaction.type === 'transfer' && transaction.toAccountId) {

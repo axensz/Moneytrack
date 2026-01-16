@@ -99,7 +99,7 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
         <FilterDropdown
           label="Cuenta"
           value={filterAccount}
-          options={accounts.map((acc) => ({ value: acc.id, label: acc.name }))}
+          options={accounts.filter((acc) => acc.id).map((acc) => ({ value: acc.id!, label: acc.name }))}
           onChange={setFilterAccount}
           isOpen={activeDropdown === 'account'}
           onToggle={handleOpenAccount}
@@ -111,7 +111,7 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
         <FilterDropdown
           label="Categoría"
           value={filterCategory}
-          options={[...categories.expense, ...categories.income].map((cat) => ({
+          options={[...new Set([...categories.expense, ...categories.income])].map((cat) => ({
             value: cat,
             label: cat,
           }))}

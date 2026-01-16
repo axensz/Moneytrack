@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { memo } from 'react';
 import { Edit2, Trash2, GripVertical, Wallet, CreditCard, Banknote } from 'lucide-react';
 import type { Account, Transaction } from '../../../../types/finance';
 
@@ -39,7 +39,7 @@ interface AccountCardProps {
  * Card individual de cuenta (soporta savings, credit, cash)
  * Incluye drag & drop para reordenar
  */
-export const AccountCard: React.FC<AccountCardProps> = ({
+export const AccountCard: React.FC<AccountCardProps> = memo(({
   account,
   balance,
   creditUsed,
@@ -252,7 +252,9 @@ export const AccountCard: React.FC<AccountCardProps> = ({
       </div>
     </div>
   );
-};
+});
+
+AccountCard.displayName = 'AccountCard';
 
 // Sub-componente para info de tarjeta de crédito
 interface CreditCardInfoProps {
@@ -265,7 +267,7 @@ interface CreditCardInfoProps {
   isAssociated: boolean;
 }
 
-const CreditCardInfo: React.FC<CreditCardInfoProps> = ({
+const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
   creditUsed,
   creditLimit,
   nextCutoff,
@@ -321,4 +323,6 @@ const CreditCardInfo: React.FC<CreditCardInfoProps> = ({
       </div>
     </div>
   );
-};
+});
+
+CreditCardInfo.displayName = 'CreditCardInfo';

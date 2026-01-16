@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import { Activity, BarChart3, Wallet, Repeat } from 'lucide-react';
 import { Header } from './components/layout/Header';
@@ -21,6 +21,7 @@ import { useAuth } from './hooks/useAuth';
 import { useRecurringPayments } from './hooks/useRecurringPayments';
 import { useAddTransaction } from './hooks/useAddTransaction';
 import { useFilteredData } from './hooks/useFilteredData';
+import { useWelcomeModal } from './hooks/useWelcomeModal';
 import { formatCurrency } from './utils/formatters';
 import { TOAST_CONFIG, INITIAL_TRANSACTION } from './config/constants';
 import type { NewTransaction, ViewType, FilterValue } from './types/finance';
@@ -37,7 +38,6 @@ const FinanceTracker = () => {
 
   const { user, loading: authLoading } = useAuth();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
 
@@ -82,6 +82,14 @@ const FinanceTracker = () => {
     ...INITIAL_TRANSACTION
   });
 
+  // Hook para manejar el modal de bienvenida
+  const { showWelcomeModal, handleDismissWelcomeModal, setShowWelcomeModal } = useWelcomeModal({
+    mounted,
+    authLoading,
+    accountsLoading,
+    accountsCount: accounts.length,
+  });
+
   // 🆕 Hook para manejar la creación de transacciones
   // IMPORTANTE: Debe estar ANTES de cualquier return condicional
   const { handleAddTransaction } = useAddTransaction({
@@ -96,18 +104,8 @@ const FinanceTracker = () => {
     setShowWelcomeModal,
   });
 
-  // Mostrar modal de bienvenida si no hay cuentas
-  // Esperar a que termine la autenticación Y la carga de cuentas
-  const shouldShowWelcome = mounted && !authLoading && !accountsLoading && accounts.length === 0;
-  
-  useEffect(() => {
-    if (shouldShowWelcome) {
-      setShowWelcomeModal(true);
-    }
-  }, [shouldShowWelcome]);
-
   // Handler para cerrar sesión con pantalla de carga
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     try {
       setIsLoggingOut(true);
       await logoutFirebase();
@@ -120,28 +118,48 @@ const FinanceTracker = () => {
     } finally {
       setIsLoggingOut(false);
     }
-  };
+  }, []);
 
-  // Mostrar pantalla de carga mientras verifica autenticación o cierra sesión
+  // Handlers optimizados con useCallback
+  const handleOpenAuthModal = useCallback(() => setIsAuthModalOpen(true), []);
+  const handleCloseAuthModal = useCallback(() => setIsAuthModalOpen(false), []);
+  const handleOpenHelpModal = useCallback(() => setShowHelpModal(true), []);
+  const handleCloseHelpModal = useCallback(() => setShowHelpModal(false), []);
+  const handleOpenForm = useCallback(() => setShowForm(true), []);
+  const handleCloseForm = useCallback(() => setShowForm(false), []);
+  const handleRestoreTransaction = useCallback(
+    (t: Omit<import('./types/finance').Transaction, 'id' | 'createdAt'>) => addTransaction(t),
+    [addTransaction]
+  );
+
+  const handleGoToAccounts = useCallback(() => {
+    handleDismissWelcomeModal();
+    setView('accounts');
+  }, [handleDismissWelcomeModal]);
+
+  // Mostrar pantalla de carga mientras verifica autenticación o carga datos
   // IMPORTANTE: Debe estar DESPUÉS de todos los hooks
-  if (authLoading || !mounted) {
+  // Si hay usuario, esperar a que carguen cuentas Y transacciones
+  const isDataLoading = user && (accountsLoading || transactionsLoading);
+  const isLoading = !mounted || authLoading || isDataLoading;
+
+  if (isLoading) {
     return <LoadingScreen />;
   }
-  
+
   if (isLoggingOut) {
     return <LoadingScreen message="Cerrando sesión..." variant="logout" />;
   }
 
-  const handleGoToAccounts = () => {
-    setShowWelcomeModal(false);
-    setView('accounts');
-  };
-
   return (
     <div className="flex flex-col h-screen bg-background bg-gradient-to-br from-violet-50/30 via-purple-50/20 to-fuchsia-50/10 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
       {/* Mobile Bottom Navigation - Fixed at bottom, FUERA del contenedor scrollable */}
-      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 shadow-lg safe-area-bottom">
-        <div className="flex justify-around items-center px-2 py-2 pb-2">
+      <nav
+        className="sm:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 shadow-lg safe-area-bottom"
+        aria-label="Navegación principal"
+        role="navigation"
+      >
+        <div className="flex justify-around items-center px-2 py-2 pb-2" role="tablist">
           {[
             { key: 'transactions' as ViewType, label: 'Transacciones', icon: Activity },
             { key: 'accounts' as ViewType, label: 'Cuentas', icon: Wallet },
@@ -150,6 +168,9 @@ const FinanceTracker = () => {
           ].map(tab => (
             <button
               key={tab.key}
+              role="tab"
+              aria-selected={view === tab.key}
+              aria-controls={`panel-${tab.key}`}
               onClick={() => {
                 // Solo hacer scroll al inicio si ya estamos en la misma pestaña
                 if (view === tab.key) {
@@ -166,7 +187,7 @@ const FinanceTracker = () => {
                   : 'text-gray-500 dark:text-gray-400 active:scale-95 active:bg-gray-100 dark:active:bg-gray-800'
               }`}
             >
-              <tab.icon size={22} strokeWidth={view === tab.key ? 2.5 : 2} />
+              <tab.icon size={22} strokeWidth={view === tab.key ? 2.5 : 2} aria-hidden="true" />
               <span className="text-[10px] font-semibold">{tab.label}</span>
             </button>
           ))}
@@ -184,29 +205,29 @@ const FinanceTracker = () => {
         }}
       />
 
-      <AuthModal 
-        isOpen={isAuthModalOpen} 
-        onClose={() => setIsAuthModalOpen(false)} 
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={handleCloseAuthModal}
       />
 
       <WelcomeModal
         isOpen={showWelcomeModal}
-        onClose={() => setShowWelcomeModal(false)}
+        onClose={handleDismissWelcomeModal}
         onGoToAccounts={handleGoToAccounts}
       />
 
       <HelpModal
         isOpen={showHelpModal}
-        onClose={() => setShowHelpModal(false)}
+        onClose={handleCloseHelpModal}
       />
 
-      <Header 
+      <Header
         user={user}
         isAuthModalOpen={isAuthModalOpen}
         setIsAuthModalOpen={setIsAuthModalOpen}
         showSettingsMenu={showSettingsMenu}
         setShowSettingsMenu={setShowSettingsMenu}
-        onOpenHelp={() => setShowHelpModal(true)}
+        onOpenHelp={handleOpenHelpModal}
         onLogout={handleLogout}
       />
 
@@ -239,7 +260,7 @@ const FinanceTracker = () => {
                     defaultAccount={defaultAccount || null}
                     recurringPayments={mounted ? recurringPayments : []}
                     onSubmit={() => handleAddTransaction(newTransaction)}
-                    onCancel={() => setShowForm(false)}
+                    onCancel={handleCloseForm}
                   />
                 )}
                 
@@ -261,7 +282,7 @@ const FinanceTracker = () => {
                   updateTransaction={updateTransaction}
                   formatCurrency={formatCurrency}
                   loading={transactionsLoading || accountsLoading}
-                  onRestore={(t) => addTransaction(t)}
+                  onRestore={handleRestoreTransaction}
                 />
               </>
             )}

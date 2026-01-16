@@ -23,11 +23,17 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
   return (
     <>
       {/* Desktop Navigation */}
-      <div className="hidden sm:flex justify-start items-center gap-4 mb-6 sm:mb-8">
-        <div className="flex gap-2 border-b border-gray-200 dark:border-purple-800">
+      <nav
+        className="hidden sm:flex justify-start items-center gap-4 mb-6 sm:mb-8"
+        aria-label="Navegación principal"
+      >
+        <div className="flex gap-2 border-b border-gray-200 dark:border-purple-800" role="tablist">
           {tabs.map(tab => (
             <button
               key={tab.key}
+              role="tab"
+              aria-selected={view === tab.key}
+              aria-controls={`panel-${tab.key}`}
               onClick={() => setView(tab.key)}
               className={`flex items-center gap-2 px-4 py-3 text-base font-medium transition-all whitespace-nowrap ${
                 view === tab.key
@@ -35,12 +41,12 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
                   : 'text-gray-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-300'
               }`}
             >
-              <tab.icon size={18} />
+              <tab.icon size={18} aria-hidden="true" />
               <span>{tab.label}</span>
             </button>
           ))}
         </div>
-      </div>
+      </nav>
     </>
   );
 };

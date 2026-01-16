@@ -20,7 +20,7 @@ import {
 
 export function useFirestore(userId: string | null) {
   // Datos y subscripciones
-  const { transactions, accounts, categories, loading } =
+  const { transactions, accounts, categories, loading, error } =
     useFirestoreSubscriptions(userId);
 
   // Operaciones CRUD
@@ -37,6 +37,7 @@ export function useFirestore(userId: string | null) {
     accounts,
     categories,
     loading,
+    error,
     // Transactions CRUD
     addTransaction,
     deleteTransaction,

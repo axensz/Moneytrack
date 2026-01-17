@@ -55,20 +55,21 @@ export const DateFilterDropdown: React.FC<DateFilterDropdownProps> = ({
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setShowDatePicker(!showDatePicker)}
-        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
           dateRangePreset !== 'all'
             ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
             : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600'
         }`}
       >
         <Calendar size={16} />
-        {currentLabel}
-        <ChevronDown size={14} />
+        <span className="hidden sm:inline">{currentLabel}</span>
+        <span className="sm:hidden">{currentLabel === 'Todo el tiempo' ? 'Fecha' : currentLabel}</span>
+        <ChevronDown size={14} className="flex-shrink-0" />
       </button>
 
       {showDatePicker && (
-        <div className="absolute top-full right-0 mt-1 z-20 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-3 min-w-[200px]">
-          <div className="space-y-1">
+        <div className="absolute top-full left-0 sm:left-auto sm:right-0 mt-1 z-20 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-2 min-w-[180px]">
+          <div className="space-y-0.5">
             {DATE_PRESETS.map((preset) => (
               <button
                 key={preset.value}
@@ -89,32 +90,28 @@ export const DateFilterDropdown: React.FC<DateFilterDropdownProps> = ({
 
           {/* Campos de fecha personalizada */}
           {dateRangePreset === 'custom' && (
-            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 space-y-2">
+            <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 space-y-2">
               <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400">
-                  Desde
-                </label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Desde</label>
                 <input
                   type="date"
                   value={customStartDate}
                   onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700"
+                  className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 />
               </div>
               <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400">
-                  Hasta
-                </label>
+                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Hasta</label>
                 <input
                   type="date"
                   value={customEndDate}
                   onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700"
+                  className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 />
               </div>
               <button
                 onClick={() => setShowDatePicker(false)}
-                className="w-full mt-2 py-1.5 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                className="w-full py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium"
               >
                 Aplicar
               </button>

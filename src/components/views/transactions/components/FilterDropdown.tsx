@@ -50,20 +50,20 @@ export const FilterDropdown: React.FC<FilterDropdownProps> = ({
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={onToggle}
-        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
           isActive
             ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
             : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600'
         }`}
       >
         {icon}
-        <span className="truncate max-w-[150px]">{isActive ? selectedLabel : label}</span>
-        <ChevronDown size={14} />
+        <span className="truncate max-w-[100px] sm:max-w-[150px]">{isActive ? selectedLabel : label}</span>
+        <ChevronDown size={14} className="flex-shrink-0" />
       </button>
 
       {isOpen && (
-        <div className="absolute top-full right-0 mt-1 z-20 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-2 min-w-[240px] max-w-[300px] max-h-[350px] overflow-y-auto">
-           <div className="space-y-1">
+        <div className="absolute top-full left-0 sm:left-auto sm:right-0 mt-1 z-20 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-2 min-w-[200px] max-w-[280px] max-h-[350px] overflow-y-auto">
+           <div className="space-y-0.5">
              <button
                onClick={() => {
                  onChange('all');

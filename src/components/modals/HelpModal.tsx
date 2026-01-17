@@ -50,27 +50,28 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
 
         {/* Tabs - Sticky */}
         <div className="border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 shrink-0">
-          <div className="flex gap-2 p-2 sm:p-4 overflow-x-auto no-scrollbar scroll-smooth">
+          <div className="flex gap-1 sm:gap-2 p-2 sm:p-3 overflow-x-auto no-scrollbar scroll-smooth">
             {[
-              { id: 'basics', label: 'Inicio', icon: null },
-              { id: 'accounts', label: 'Cuentas', icon: Wallet },
-              { id: 'transactions', label: 'Transacciones', icon: TrendingUp },
-              { id: 'recurring', label: 'Periódicos', icon: Repeat },
-              { id: 'stats', label: 'Estadísticas', icon: BarChart3 },
+              { id: 'basics', label: 'Inicio', shortLabel: 'Inicio', icon: null },
+              { id: 'accounts', label: 'Cuentas', shortLabel: 'Cuentas', icon: Wallet },
+              { id: 'transactions', label: 'Transacciones', shortLabel: 'Trans.', icon: TrendingUp },
+              { id: 'recurring', label: 'Periódicos', shortLabel: 'Peri.', icon: Repeat },
+              { id: 'stats', label: 'Estadísticas', shortLabel: 'Stats', icon: BarChart3 },
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => setActiveTab(tab.id as typeof activeTab)}
                 className={`
-                  flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-purple-500
+                  flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-purple-500
                   ${activeTab === tab.id
                     ? 'bg-white dark:bg-gray-700 text-purple-700 dark:text-purple-300 shadow-sm ring-1 ring-gray-200 dark:ring-gray-600'
                     : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 hover:text-gray-900 dark:hover:text-gray-200 active:scale-[0.98]'
                   }
                 `}
               >
-                {tab.icon && <tab.icon size={16} />}
-                {tab.label}
+                {tab.icon && <tab.icon size={14} className="sm:w-4 sm:h-4" />}
+                <span className="hidden sm:inline">{tab.label}</span>
+                <span className="sm:hidden">{tab.shortLabel}</span>
               </button>
             ))}
           </div>

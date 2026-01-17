@@ -193,10 +193,37 @@ body {
     background-color: var(--input);
     color: var(--foreground);
     border-color: var(--border);
+    /* Mejoras para móvil: tamaño mínimo táctil y prevención de zoom en iOS */
+    min-height: 44px;
+    font-size: 16px; /* Previene zoom en iOS al enfocar */
   }
-  
+
+  @media (min-width: 640px) {
+    .input-base {
+      font-size: 14px; /* En desktop puede ser más pequeño */
+      min-height: 42px;
+    }
+  }
+
   .input-base:hover {
     border-color: var(--border-accent);
+  }
+
+  /* Estilos específicos para selects */
+  select.input-base {
+    cursor: pointer;
+    padding-right: 2.5rem; /* Espacio para la flecha */
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.75rem center;
+    background-repeat: no-repeat;
+    background-size: 1.25em 1.25em;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+  }
+
+  .dark select.input-base {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
   }
 
   .label-base {
@@ -307,8 +334,9 @@ body {
     background-color: var(--input);
     color: var(--foreground);
     border-color: var(--border);
+    min-height: 44px;
   }
-  
+
   .select-filter:hover {
     border-color: var(--border-accent);
   }

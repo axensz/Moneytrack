@@ -85,24 +85,25 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
   };
 
   return (
-    <div className="space-y-4 mb-6">
+    <div className="space-y-3 mb-6">
       {/* Fila superior: Botón de nueva transacción y búsqueda */}
-      <div className="flex justify-between items-center gap-4 flex-wrap">
+      <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
         <button
           onClick={() => setShowForm(!showForm)}
           disabled={accounts.length === 0}
-          className={`btn-primary ${
+          className={`btn-primary flex-shrink-0 ${
             accounts.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
           }`}
           title={accounts.length === 0 ? 'Crea una cuenta primero' : 'Crear transacción'}
           aria-label="Crear nueva transacción"
         >
           <PlusCircle size={18} aria-hidden="true" />
-          Nueva Transacción
+          <span className="hidden xs:inline">Nueva Transacción</span>
+          <span className="xs:hidden">Nueva</span>
         </button>
 
         {/* 🆕 Barra de búsqueda */}
-        <div className="relative flex-1 max-w-md">
+        <div className="relative flex-1 min-w-[150px] max-w-md">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <Search size={18} className="text-gray-400" aria-hidden="true" />
           </div>
@@ -110,8 +111,8 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar por descripción..."
-            className="w-full pl-10 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400"
+            placeholder="Buscar..."
+            className="w-full pl-10 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 text-sm"
             aria-label="Buscar transacciones por descripción"
           />
           {searchQuery && (
@@ -127,7 +128,7 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
       </div>
 
       {/* Fila inferior: Filtros */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
         {/* Filtro de cuenta */}
         <FilterDropdown
           label="Cuenta"

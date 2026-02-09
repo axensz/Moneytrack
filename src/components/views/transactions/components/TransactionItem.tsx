@@ -114,13 +114,18 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
     <div className="border rounded-lg p-3 sm:p-4 transition-all bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-lg shadow-sm">
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-gray-900 dark:text-gray-100 truncate">
+          <div 
+            className="font-medium text-gray-900 dark:text-gray-100 truncate"
+            title={transaction.description}
+          >
             {transaction.description}
           </div>
           <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 flex flex-wrap gap-1 items-center">
-            <span>{transaction.category}</span>
+            <span className="truncate max-w-[120px]">{transaction.category}</span>
             <span className="hidden sm:inline">•</span>
-            <span className="hidden sm:inline">{account?.name}</span>
+            <span className="hidden sm:inline truncate max-w-[150px]" title={account?.name}>
+              {account?.name}
+            </span>
             {/* Mostrar cuotas si es TC y tiene más de 1 cuota */}
             {account?.type === 'credit' && transaction.installments && transaction.installments > 1 && (
               <>

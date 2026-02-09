@@ -1,5 +1,6 @@
 import React from 'react';
 import { Wallet, ArrowRight, Info } from 'lucide-react';
+import { BaseModal } from './BaseModal';
 
 interface WelcomeModalProps {
   isOpen: boolean;
@@ -12,11 +13,9 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({
   onClose,
   onGoToAccounts
 }) => {
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-md w-full p-6 sm:p-8 animate-in fade-in zoom-in duration-200">
+    <BaseModal isOpen={isOpen} onClose={onClose} closeOnBackdrop={false} showCloseButton={false}>
+      <div className="p-6 sm:p-8">
         <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 rounded-full bg-purple-100 dark:bg-purple-900/30">
           <Info size={32} className="text-purple-600 dark:text-purple-400" />
         </div>
@@ -75,6 +74,6 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </BaseModal>
   );
 };

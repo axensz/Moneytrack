@@ -109,6 +109,7 @@ export const ERROR_MESSAGES = {
 // Mensajes de éxito
 export const SUCCESS_MESSAGES = {
   TRANSACTION_ADDED: 'Transacción agregada exitosamente',
+  TRANSACTION_UPDATED: 'Transacción actualizada exitosamente',
   TRANSACTION_DELETED: 'Transacción eliminada exitosamente',
   TRANSACTION_DUPLICATED: 'Transacción duplicada exitosamente',
   ACCOUNT_ADDED: 'Cuenta creada exitosamente',

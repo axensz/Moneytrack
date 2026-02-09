@@ -8,7 +8,7 @@
 
 import { useCallback, useMemo } from 'react';
 import { useLocalStorage } from './useLocalStorage';
-import { useFirestore } from './useFirestore';
+import { useFirestoreData } from '../contexts/FirestoreContext';
 import { DEFAULT_CATEGORIES, ERROR_MESSAGES } from '../config/constants';
 import type { Categories, Transaction, Category } from '../types/finance';
 
@@ -18,7 +18,7 @@ export function useCategories(transactions: Transaction[], userId?: string | nul
     categories: firestoreCategories,
     addCategory: firestoreAddCategory,
     deleteCategory: firestoreDeleteCategory
-  } = useFirestore(userId ?? null);
+  } = useFirestoreData();
 
   // LocalStorage categories (formato agrupado)
   const [localCategories, setLocalCategories] = useLocalStorage<Categories>('financeCategories', {

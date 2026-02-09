@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, memo } from 'react';
-import { X, Repeat } from 'lucide-react';
+import React, { useEffect, useMemo, memo, useState } from 'react';
+import { X, Repeat, Zap } from 'lucide-react';
 import { UI_LABELS } from '@/config/constants';
 import { formatNumberForInput, unformatNumber, formatCurrency } from '@/utils/formatters';
 import { BalanceCalculator } from '@/utils/balanceCalculator';
@@ -15,7 +15,9 @@ interface TransactionFormProps {
   defaultAccount: Account | null;
   recurringPayments?: RecurringPayment[];
   onSubmit: () => void;
+  onSubmitAndContinue?: () => void;
   onCancel: () => void;
+  batchCount?: number;
 }
 
 export const TransactionForm: React.FC<TransactionFormProps> = memo(({
@@ -27,7 +29,9 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
   defaultAccount,
   recurringPayments = [],
   onSubmit,
-  onCancel
+  onSubmitAndContinue,
+  onCancel,
+  batchCount = 0,
 }) => {
   // Obtener cuenta seleccionada para validar restricciones
   const selectedAccount = accounts.find(acc => acc.id === newTransaction.accountId) || defaultAccount;
@@ -49,7 +53,9 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
         accountId: defaultAccount.id
       });
     }
-  }, [newTransaction.accountId, defaultAccount, newTransaction, setNewTransaction]);
+    // Solo depender de accountId y defaultAccount para evitar loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newTransaction.accountId, defaultAccount?.id]);
 
   // Efecto: Si cambia a TC y está en "transfer", cambiar a "expense"
   useEffect(() => {
@@ -60,7 +66,9 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
         toAccountId: ''
       });
     }
-  }, [isCreditCard, newTransaction, setNewTransaction]);
+    // Solo depender de isCreditCard y type para evitar loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCreditCard, newTransaction.type]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm">
@@ -317,13 +325,28 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
         </div>
       )}
 
-          <div className="flex gap-3 mt-6">
+          <div className="flex flex-wrap gap-3 mt-6 items-center">
             <button onClick={onSubmit} className="btn-submit">
               Agregar
             </button>
+            {onSubmitAndContinue && (
+              <button
+                onClick={onSubmitAndContinue}
+                className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-semibold bg-amber-500 hover:bg-amber-600 text-white transition-colors shadow-sm"
+                title="Agregar y seguir ingresando (mantiene cuenta y fecha)"
+              >
+                <Zap size={16} />
+                Agregar y continuar
+              </button>
+            )}
             <button onClick={onCancel} className="btn-cancel">
               Cancelar
             </button>
+            {batchCount > 0 && (
+              <span className="ml-auto text-sm text-purple-600 dark:text-purple-400 font-medium bg-purple-50 dark:bg-purple-900/30 px-3 py-1.5 rounded-full">
+                {batchCount} agregada{batchCount !== 1 ? 's' : ''}
+              </span>
+            )}
           </div>
         </div>
       </div>

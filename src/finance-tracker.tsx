@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import { Activity, BarChart3, Wallet, Repeat } from 'lucide-react';
 import { Header } from './components/layout/Header';
@@ -10,10 +10,8 @@ import { StatsCards, TransactionForm } from './components/shared';
 import { AuthModal } from './components/modals/AuthModal';
 import { WelcomeModal } from './components/modals/WelcomeModal';
 import { HelpModal } from './components/modals/HelpModal';
-import { StatsView } from './components/views/stats';
-import { AccountsView } from './components/views/accounts';
+import { FirestoreProvider } from './contexts/FirestoreContext';
 import { TransactionsView } from './components/views/transactions';
-import { RecurringPaymentsView } from './components/views/recurring';
 import { useTransactions } from './hooks/useTransactions';
 import { useAccounts } from './hooks/useAccounts';
 import { useCategories } from './hooks/useCategories';
@@ -22,30 +20,66 @@ import { useRecurringPayments } from './hooks/useRecurringPayments';
 import { useAddTransaction } from './hooks/useAddTransaction';
 import { useFilteredData } from './hooks/useFilteredData';
 import { useWelcomeModal } from './hooks/useWelcomeModal';
-import { useNotifications } from './hooks/useNotifications'; // 🆕 Notificaciones  
-import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'; // 🆕 Atajos de teclado
+import { useNotifications } from './hooks/useNotifications';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { formatCurrency } from './utils/formatters';
 import { TOAST_CONFIG, INITIAL_TRANSACTION } from './config/constants';
 import { logger } from './utils/logger';
 import type { NewTransaction, ViewType, FilterValue } from './types/finance';
 import { logoutFirebase } from './lib/firebase';
+import type { User } from 'firebase/auth';
 
+// Lazy-loaded secondary views
+const StatsView = lazy(() =>
+  import('./components/views/stats/StatsView').then(m => ({ default: m.StatsView }))
+);
+const AccountsView = lazy(() =>
+  import('./components/views/accounts/AccountsView').then(m => ({ default: m.AccountsView }))
+);
+const RecurringPaymentsView = lazy(() =>
+  import('./components/views/recurring/RecurringPaymentsView').then(m => ({ default: m.RecurringPaymentsView }))
+);
+
+const ViewFallback = () => (
+  <div className="flex items-center justify-center py-12">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600" />
+  </div>
+);
+
+/**
+ * Outer wrapper: manages auth + provides single Firestore context
+ * (eliminates triple-listener bug)
+ */
 const FinanceTracker = () => {
   const [mounted, setMounted] = useState(false);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  useEffect(() => { setMounted(true); }, []);
 
   const { user, loading: authLoading } = useAuth();
+
+  if (!mounted || authLoading) {
+    return <LoadingScreen />;
+  }
+
+  return (
+    <FirestoreProvider userId={user?.uid || null}>
+      <FinanceTrackerContent user={user} />
+    </FirestoreProvider>
+  );
+};
+
+/**
+ * Inner component: all app logic, consuming shared Firestore context
+ */
+const FinanceTrackerContent = ({ user }: { user: User | null }) => {
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const newTransactionRef = useRef<NewTransaction>({ ...INITIAL_TRANSACTION });
+
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
 
-  // 🟡 REFACTORIZADO: Hook simplificado (ya no calcula stats, solo CRUD)
-  const { transactions, addTransaction, deleteTransaction, togglePaid, updateTransaction, loading: transactionsLoading } = useTransactions(user?.uid || null);
+  const { transactions, addTransaction, deleteTransaction, updateTransaction, loading: transactionsLoading } = useTransactions(user?.uid || null);
 
   // Cargar cuentas con transacciones
   const { accounts, addAccount, updateAccount, deleteAccount, setDefaultAccount, getAccountBalance, getTransactionCountForAccount, totalBalance, defaultAccount, loading: accountsLoading } = useAccounts(user?.uid || null, transactions, deleteTransaction);
@@ -66,136 +100,76 @@ const FinanceTracker = () => {
   const { categories, addCategory, deleteCategory } = useCategories(transactions, user?.uid);
 
   const [showForm, setShowForm] = useState(false);
+  const [batchCount, setBatchCount] = useState(0);
   const [view, setView] = useState<ViewType>('transactions');
   const [filterCategory, setFilterCategory] = useState<FilterValue>('all');
-  const [filterStatus, setFilterStatus] = useState<FilterValue>('all');
   const [filterAccount, setFilterAccount] = useState<FilterValue>('all');
-  // 🆕 Estado para filtro de fecha
   const [dateRange, setDateRange] = useState<import('./types/finance').DateRange>({ preset: 'all' });
 
-  // 🆕 Hook para filtrado y estadísticas dinámicas (ahora incluye fecha)
   const { dynamicStats, dynamicTotalBalance, balanceLabel } = useFilteredData({
-    transactions,
-    accounts,
-    filterAccount,
-    filterCategory,
-    dateRange, // 🆕 Incluir filtro de fecha
-    totalBalance,
-    getAccountBalance,
+    transactions, accounts, filterAccount, filterCategory, dateRange, totalBalance, getAccountBalance,
   });
 
   const [newTransaction, setNewTransaction] = useState<NewTransaction>({
     ...INITIAL_TRANSACTION
   });
 
-  // Hook para manejar el modal de bienvenida
+  // Keep ref in sync for stable callbacks
+  useEffect(() => { newTransactionRef.current = newTransaction; }, [newTransaction]);
+
   const { showWelcomeModal, handleDismissWelcomeModal, setShowWelcomeModal } = useWelcomeModal({
-    mounted,
-    authLoading,
+    mounted: true,
+    authLoading: false,
     accountsLoading,
     accountsCount: accounts.length,
   });
 
-  // 🆕 Hook de notificaciones
   const { checkAndNotifyPayments } = useNotifications();
 
-  // 🆕 Verificar pagos vencidos al cargar (solo una vez al día)
   useEffect(() => {
-    if (!mounted || !recurringPayments.length) return;
-
-    // Verificar si ya revisamos hoy
+    if (!recurringPayments.length) return;
     const lastCheckDate = localStorage.getItem('lastNotificationCheck');
     const today = new Date().toDateString();
-    
     if (lastCheckDate === today) return;
-
-    // Verificar y notificar después de 5 segundos (dar tiempo a cargar)
     const timer = setTimeout(() => {
       checkAndNotifyPayments(recurringPayments, getDaysUntilDue);
       localStorage.setItem('lastNotificationCheck', today);
     }, 5000);
-
     return () => clearTimeout(timer);
-  }, [mounted, recurringPayments, getDaysUntilDue, checkAndNotifyPayments]);
+  }, [recurringPayments, getDaysUntilDue, checkAndNotifyPayments]);
 
-  // 🆕 Atajos de teclado
-  useKeyboardShortcuts(
-    [
-      {
-        key: 'n',
-        modifiers: ['ctrl'],
-        description: 'Nueva transacción',
-        action: () => {
-          if (accounts.length > 0) {
-            setShowForm(true);
-            setView('transactions');
-          }
-        }
-      },
-      {
-        key: '1',
-        modifiers: ['alt'],
-        description: 'Ir a Transacciones',
-        action: () => setView('transactions')
-      },
-      {
-        key: '2',
-        modifiers: ['alt'],
-        description: 'Ir a Cuentas',
-        action: () => setView('accounts')
-      },
-      {
-        key: '3',
-        modifiers: ['alt'],
-        description: 'Ir a Pagos Periódicos',
-        action: () => setView('recurring')
-      },
-      {
-        key: '4',
-        modifiers: ['alt'],
-        description: 'Ir a Estadísticas',
-        action: () => setView('stats')
-      },
-      {
-        key: 'h',
-        modifiers: ['ctrl'],
-        description: 'Abrir ayuda',
-        action: () => setShowHelpModal(true)
-      },
-      {
-        key: 'Escape',
-        description: 'Cerrar modal',
-        action: () => {
-          setShowForm(false);
-          setShowHelpModal(false);
-          setIsAuthModalOpen(false);
-        },
-        preventDefault: false // Permitir comportamiento por defecto
-      }
-    ],
-    { enabled: mounted, announceShortcuts: true }
-  );
+  // Memoized keyboard shortcuts (prevents array recreation each render)
+  const shortcuts = useMemo(() => [
+    {
+      key: 'n', modifiers: ['ctrl' as const],
+      description: 'Nueva transacción',
+      action: () => { if (accounts.length > 0) { setShowForm(true); setView('transactions'); } }
+    },
+    { key: '1', modifiers: ['alt' as const], description: 'Ir a Transacciones', action: () => setView('transactions') },
+    { key: '2', modifiers: ['alt' as const], description: 'Ir a Cuentas', action: () => setView('accounts') },
+    { key: '3', modifiers: ['alt' as const], description: 'Ir a Pagos Periódicos', action: () => setView('recurring') },
+    { key: '4', modifiers: ['alt' as const], description: 'Ir a Estadísticas', action: () => setView('stats') },
+    { key: 'h', modifiers: ['ctrl' as const], description: 'Abrir ayuda', action: () => setShowHelpModal(true) },
+    {
+      key: 'Escape', description: 'Cerrar modal',
+      action: () => { setShowForm(false); setShowHelpModal(false); setIsAuthModalOpen(false); },
+      preventDefault: false
+    }
+  ], [accounts.length]);
 
-  // 🆕 Hook para manejar la creación de transacciones
-  // IMPORTANTE: Debe estar ANTES de cualquier return condicional
-  const { handleAddTransaction } = useAddTransaction({
-    accounts,
-    transactions,
-    recurringPayments,
+  useKeyboardShortcuts(shortcuts, { enabled: true, announceShortcuts: true });
+
+  const { handleAddTransaction, handleAddAndContinue } = useAddTransaction({
+    accounts, transactions, recurringPayments,
     defaultAccount: defaultAccount || null,
-    addTransaction,
-    updateRecurringPayment,
-    setNewTransaction,
-    setShowForm,
-    setShowWelcomeModal,
+    addTransaction, updateRecurringPayment,
+    setNewTransaction, setShowForm, setShowWelcomeModal,
   });
 
-  // Handler para cerrar sesión con pantalla de carga
   const handleLogout = useCallback(async () => {
     try {
       setIsLoggingOut(true);
       await logoutFirebase();
-      // Pequeño delay para que se vea la pantalla de cierre de sesión
       await new Promise(resolve => setTimeout(resolve, 800));
       toast.success('Sesión cerrada correctamente');
     } catch (error) {
@@ -206,30 +180,34 @@ const FinanceTracker = () => {
     }
   }, []);
 
-  // Handlers optimizados con useCallback
-  const handleOpenAuthModal = useCallback(() => setIsAuthModalOpen(true), []);
   const handleCloseAuthModal = useCallback(() => setIsAuthModalOpen(false), []);
   const handleOpenHelpModal = useCallback(() => setShowHelpModal(true), []);
   const handleCloseHelpModal = useCallback(() => setShowHelpModal(false), []);
-  const handleOpenForm = useCallback(() => setShowForm(true), []);
-  const handleCloseForm = useCallback(() => setShowForm(false), []);
+  const handleCloseForm = useCallback(() => { setBatchCount(0); setShowForm(false); }, []);
   const handleRestoreTransaction = useCallback(
     (t: Omit<import('./types/finance').Transaction, 'id' | 'createdAt'>) => addTransaction(t),
     [addTransaction]
   );
+
+  // Stable callbacks for TransactionForm (use ref to avoid re-creation on every keystroke)
+  const handleSubmit = useCallback(() => {
+    setBatchCount(0);
+    handleAddTransaction(newTransactionRef.current);
+  }, [handleAddTransaction]);
+
+  const handleSubmitAndContinue = useCallback(async () => {
+    const success = await handleAddAndContinue(newTransactionRef.current);
+    if (success) setBatchCount(prev => prev + 1);
+  }, [handleAddAndContinue]);
 
   const handleGoToAccounts = useCallback(() => {
     handleDismissWelcomeModal();
     setView('accounts');
   }, [handleDismissWelcomeModal]);
 
-  // Mostrar pantalla de carga mientras verifica autenticación o carga datos
-  // IMPORTANTE: Debe estar DESPUÉS de todos los hooks
-  // Si hay usuario, esperar a que carguen cuentas Y transacciones
   const isDataLoading = user && (accountsLoading || transactionsLoading);
-  const isLoading = !mounted || authLoading || isDataLoading;
 
-  if (isLoading) {
+  if (isDataLoading) {
     return <LoadingScreen />;
   }
 
@@ -309,7 +287,6 @@ const FinanceTracker = () => {
 
       <Header
         user={user}
-        isAuthModalOpen={isAuthModalOpen}
         setIsAuthModalOpen={setIsAuthModalOpen}
         showSettingsMenu={showSettingsMenu}
         setShowSettingsMenu={setShowSettingsMenu}
@@ -326,10 +303,10 @@ const FinanceTracker = () => {
             />
 
             <StatsCards
-              totalBalance={mounted ? dynamicTotalBalance : 0}
-              totalIncome={mounted ? dynamicStats.totalIncome : 0}
-              totalExpenses={mounted ? dynamicStats.totalExpenses : 0}
-              pendingExpenses={mounted ? dynamicStats.pendingExpenses : 0}
+              totalBalance={dynamicTotalBalance}
+              totalIncome={dynamicStats.totalIncome}
+              totalExpenses={dynamicStats.totalExpenses}
+              pendingExpenses={dynamicStats.pendingExpenses}
               formatCurrency={formatCurrency}
               balanceLabel={balanceLabel}
             />
@@ -340,30 +317,29 @@ const FinanceTracker = () => {
                   <TransactionForm
                     newTransaction={newTransaction}
                     setNewTransaction={setNewTransaction}
-                    accounts={mounted ? accounts : []}
-                    transactions={mounted ? transactions : []}
+                    accounts={accounts}
+                    transactions={transactions}
                     categories={categories}
                     defaultAccount={defaultAccount || null}
-                    recurringPayments={mounted ? recurringPayments : []}
-                    onSubmit={() => handleAddTransaction(newTransaction)}
+                    recurringPayments={recurringPayments}
+                    onSubmit={handleSubmit}
+                    onSubmitAndContinue={handleSubmitAndContinue}
                     onCancel={handleCloseForm}
+                    batchCount={batchCount}
                   />
                 )}
 
                 <TransactionsView
-                  transactions={mounted ? transactions : []}
-                  accounts={mounted ? accounts : []}
-                  recurringPayments={mounted ? recurringPayments : []}
+                  transactions={transactions}
+                  accounts={accounts}
+                  recurringPayments={recurringPayments}
                   showForm={showForm}
                   setShowForm={setShowForm}
                   filterCategory={filterCategory}
                   setFilterCategory={setFilterCategory}
-                  filterStatus={filterStatus}
-                  setFilterStatus={setFilterStatus}
                   filterAccount={filterAccount}
                   setFilterAccount={setFilterAccount}
                   categories={categories}
-                  togglePaid={togglePaid}
                   deleteTransaction={deleteTransaction}
                   updateTransaction={updateTransaction}
                   formatCurrency={formatCurrency}
@@ -374,46 +350,52 @@ const FinanceTracker = () => {
             )}
 
             {view === 'recurring' && (
-              <RecurringPaymentsView
-                recurringPayments={mounted ? recurringPayments : []}
-                accounts={mounted ? accounts : []}
-                transactions={mounted ? transactions : []}
-                categories={categories}
-                formatCurrency={formatCurrency}
-                addRecurringPayment={addRecurringPayment}
-                updateRecurringPayment={updateRecurringPayment}
-                deleteRecurringPayment={deleteRecurringPayment}
-                isPaidForMonth={isPaidForMonth}
-                getNextDueDate={getNextDueDate}
-                getDaysUntilDue={getDaysUntilDue}
-                getPaymentHistory={getPaymentHistory}
-                stats={recurringStats}
-              />
+              <Suspense fallback={<ViewFallback />}>
+                <RecurringPaymentsView
+                  recurringPayments={recurringPayments}
+                  accounts={accounts}
+                  transactions={transactions}
+                  categories={categories}
+                  formatCurrency={formatCurrency}
+                  addRecurringPayment={addRecurringPayment}
+                  updateRecurringPayment={updateRecurringPayment}
+                  deleteRecurringPayment={deleteRecurringPayment}
+                  isPaidForMonth={isPaidForMonth}
+                  getNextDueDate={getNextDueDate}
+                  getDaysUntilDue={getDaysUntilDue}
+                  getPaymentHistory={getPaymentHistory}
+                  stats={recurringStats}
+                />
+              </Suspense>
             )}
 
             {view === 'stats' && (
-              <StatsView
-                transactions={mounted ? transactions : []}
-                accounts={mounted ? accounts : []}
-              />
+              <Suspense fallback={<ViewFallback />}>
+                <StatsView
+                  transactions={transactions}
+                  accounts={accounts}
+                />
+              </Suspense>
             )}
 
             {view === 'accounts' && (
-              <AccountsView
-                accounts={mounted ? accounts : []}
-                transactions={mounted ? transactions : []}
-                addAccount={addAccount}
-                updateAccount={updateAccount}
-                deleteAccount={deleteAccount}
-                setDefaultAccount={setDefaultAccount}
-                getAccountBalance={getAccountBalance}
-                getTransactionCountForAccount={getTransactionCountForAccount}
-                formatCurrency={formatCurrency}
-                categories={categories}
-                addCategory={addCategory}
-                deleteCategory={deleteCategory}
-                addTransaction={addTransaction}
-              />
+              <Suspense fallback={<ViewFallback />}>
+                <AccountsView
+                  accounts={accounts}
+                  transactions={transactions}
+                  addAccount={addAccount}
+                  updateAccount={updateAccount}
+                  deleteAccount={deleteAccount}
+                  setDefaultAccount={setDefaultAccount}
+                  getAccountBalance={getAccountBalance}
+                  getTransactionCountForAccount={getTransactionCountForAccount}
+                  formatCurrency={formatCurrency}
+                  categories={categories}
+                  addCategory={addCategory}
+                  deleteCategory={deleteCategory}
+                  addTransaction={addTransaction}
+                />
+              </Suspense>
             )}
           </div>
         </div>

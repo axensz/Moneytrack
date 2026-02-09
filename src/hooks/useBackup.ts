@@ -191,10 +191,14 @@ export const useBackup = ({ transactions, accounts, categories, userId, refreshD
       }
     };
 
-    // 1. Importar cuentas (sin IDs para evitar conflictos)
+    // 1. Importar cuentas — mapear IDs viejos → nuevos para mantener referencias
+    const accountIdMap = new Map<string, string>();
     for (const account of backupData.accounts) {
       const accountRef = doc(collection(db, `users/${uid}/accounts`));
-      const { id, ...accountData } = account; // Remover ID antiguo
+      const { id: oldId, ...accountData } = account;
+      if (oldId) {
+        accountIdMap.set(oldId, accountRef.id);
+      }
       batch.set(accountRef, {
         ...accountData,
         createdAt: accountData.createdAt ? new Date(accountData.createdAt) : new Date()
@@ -240,14 +244,18 @@ export const useBackup = ({ transactions, accounts, categories, userId, refreshD
 
     setImportProgress(80);
 
-    // 3. Importar transacciones
-    // NOTA: Se pierden las referencias de IDs de cuentas debido a regeneración
-    // Esto es una limitación conocida - se podrían mapear pero sería complejo
+    // 3. Importar transacciones — remap accountId/toAccountId con el mapa de IDs
     for (const transaction of backupData.transactions) {
       const transactionRef = doc(collection(db, `users/${uid}/transactions`));
       const { id, ...transactionData } = transaction;
+      const mappedAccountId = accountIdMap.get(transactionData.accountId) || transactionData.accountId;
+      const mappedToAccountId = transactionData.toAccountId
+        ? (accountIdMap.get(transactionData.toAccountId) || transactionData.toAccountId)
+        : undefined;
       batch.set(transactionRef, {
         ...transactionData,
+        accountId: mappedAccountId,
+        ...(mappedToAccountId !== undefined && { toAccountId: mappedToAccountId }),
         date: transactionData.date ? new Date(transactionData.date) : new Date(),
         createdAt: transactionData.createdAt ? new Date(transactionData.createdAt) : new Date()
       });

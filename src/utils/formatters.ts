@@ -244,7 +244,7 @@ class NumberFormatter {
  * Nota: Solo para uso local, no usar para IDs de base de datos
  */
 export const generateId = (): string => {
-  return Date.now().toString() + Math.random().toString(36).substr(2, 9);
+  return Date.now().toString() + Math.random().toString(36).substring(2, 11);
 };
 
 // Exportar funciones directas para compatibilidad

@@ -35,53 +35,59 @@ export function useRecurringUtils(
   transactions: Transaction[]
 ): UseRecurringUtilsReturn {
   /**
+   * Pre-computed lookup: month key → Set of paid recurringPaymentIds
+   * Reduces isPaidForMonth from O(N) per call to O(1) after O(N) setup
+   */
+  const paidPaymentsByMonth = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const t of transactions) {
+      if (!t.recurringPaymentId) continue;
+      const d = new Date(t.date);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      if (!map.has(key)) map.set(key, new Set());
+      map.get(key)!.add(t.recurringPaymentId);
+    }
+    return map;
+  }, [transactions]);
+
+  /**
    * Verificar si un pago periódico está pagado para un mes específico
+   * O(1) lookup gracias al mapa pre-computado
    */
   const isPaidForMonth = useCallback(
     (paymentId: string, month: Date = new Date()): boolean => {
-      const startOfMonth = new Date(month.getFullYear(), month.getMonth(), 1);
-      const endOfMonth = new Date(
-        month.getFullYear(),
-        month.getMonth() + 1,
-        0,
-        23,
-        59,
-        59
-      );
-
-      return transactions.some(
-        (t) =>
-          t.recurringPaymentId === paymentId &&
-          new Date(t.date) >= startOfMonth &&
-          new Date(t.date) <= endOfMonth
-      );
+      const key = `${month.getFullYear()}-${month.getMonth()}`;
+      return paidPaymentsByMonth.get(key)?.has(paymentId) ?? false;
     },
-    [transactions]
+    [paidPaymentsByMonth]
   );
+
+  /**
+   * Pre-computed lookup: month key → Map of paymentId → Transaction
+   * Used by getPaymentTransactionForMonth for O(1) lookups
+   */
+  const paymentTransactionsByMonth = useMemo(() => {
+    const map = new Map<string, Map<string, Transaction>>();
+    for (const t of transactions) {
+      if (!t.recurringPaymentId) continue;
+      const d = new Date(t.date);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      if (!map.has(key)) map.set(key, new Map());
+      // Keep the latest transaction for each payment in that month
+      map.get(key)!.set(t.recurringPaymentId, t);
+    }
+    return map;
+  }, [transactions]);
 
   /**
    * Obtener la transacción asociada a un pago para un mes
    */
   const getPaymentTransactionForMonth = useCallback(
     (paymentId: string, month: Date = new Date()): Transaction | undefined => {
-      const startOfMonth = new Date(month.getFullYear(), month.getMonth(), 1);
-      const endOfMonth = new Date(
-        month.getFullYear(),
-        month.getMonth() + 1,
-        0,
-        23,
-        59,
-        59
-      );
-
-      return transactions.find(
-        (t) =>
-          t.recurringPaymentId === paymentId &&
-          new Date(t.date) >= startOfMonth &&
-          new Date(t.date) <= endOfMonth
-      );
+      const key = `${month.getFullYear()}-${month.getMonth()}`;
+      return paymentTransactionsByMonth.get(key)?.get(paymentId);
     },
-    [transactions]
+    [paymentTransactionsByMonth]
   );
 
   /**

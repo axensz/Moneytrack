@@ -7,7 +7,6 @@ import type { User } from 'firebase/auth';
 
 interface HeaderProps {
   user: User | null;
-  isAuthModalOpen: boolean;
   setIsAuthModalOpen: (open: boolean) => void;
   showSettingsMenu: boolean;
   setShowSettingsMenu: (show: boolean) => void;
@@ -17,7 +16,6 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   user,
-  isAuthModalOpen,
   setIsAuthModalOpen,
   showSettingsMenu,
   setShowSettingsMenu,

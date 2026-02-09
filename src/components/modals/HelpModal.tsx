@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { X, Wallet, TrendingUp, CreditCard, Settings, GripVertical, Eye, Edit2, Repeat, Percent, Filter, BarChart3, DollarSign, ArrowRightLeft, Clock, CheckCircle, AlertCircle, PieChart, TrendingDown, Calendar } from 'lucide-react';
+import React, { useState } from 'react';
+import { Wallet, TrendingUp, CreditCard, Settings, GripVertical, Eye, Edit2, Repeat, Percent, Filter, BarChart3, DollarSign, ArrowRightLeft, Clock, CheckCircle, AlertCircle, PieChart, TrendingDown, Calendar } from 'lucide-react';
+import { BaseModal } from './BaseModal';
 
 interface HelpModalProps {
   isOpen: boolean;
@@ -9,46 +10,16 @@ interface HelpModalProps {
 export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState<'basics' | 'accounts' | 'transactions' | 'recurring' | 'stats'>('basics');
 
-  // Prevenir scroll en el body cuando el modal está abierto
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => { document.body.style.overflow = 'unset'; };
-  }, [isOpen]);
-
-  if (!isOpen) return null;
-
   return (
-    // MEJORA UX 1: onClick en el backdrop cierra el modal
-    <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity duration-200"
-      onClick={onClose}
+    <BaseModal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Manual de Usuario"
+      titleIcon={<Wallet size={24} className="text-purple-600" />}
+      maxWidth="max-w-3xl"
+      className="h-[85vh] sm:h-[600px] flex flex-col"
     >
-      <div 
-        // MEJORA UX 1: stopPropagation evita que clicks dentro cierren el modal
-        onClick={(e) => e.stopPropagation()} 
-        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl h-[85vh] sm:h-[600px] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
-      >
-        {/* Header - Sticky */}
-        <div className="flex items-center justify-between p-5 sm:p-6 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shrink-0">
-          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-            <Wallet size={24} className="text-purple-600" /> Manual de Usuario
-          </h2>
-          
-          {/* MEJORA UX 2: Hitbox aumentado a 44px+ y anillo de foco para accesibilidad */}
-          <button
-            onClick={onClose}
-            aria-label="Cerrar manual"
-            className="p-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"
-          >
-            <X size={24} />
-          </button>
-        </div>
-
-        {/* Tabs - Sticky */}
+        {/* Tabs */}
         <div className="border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 shrink-0">
           <div className="flex gap-1 sm:gap-2 p-2 sm:p-3 overflow-x-auto no-scrollbar scroll-smooth">
             {[
@@ -761,7 +732,6 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             MoneyTrack utiliza formato local colombiano: <span className="font-mono bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded text-gray-700 dark:text-gray-300">1.234.567,89</span>
           </p>
         </div>
-      </div>
-    </div>
+    </BaseModal>
   );
 };

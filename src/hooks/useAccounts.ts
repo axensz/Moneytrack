@@ -1,8 +1,11 @@
-import { useMemo, useState, useCallback } from 'react';
-import { useFirestore } from './useFirestore';
+import { useMemo, useCallback } from 'react';
+import { useFirestoreData } from '../contexts/FirestoreContext';
 import { useLocalStorage } from './useLocalStorage';
 import { BalanceCalculator } from '../utils/balanceCalculator';
 import type { Account, Transaction } from '../types/finance';
+
+// Generar ID único para localStorage (hoisted fuera del hook)
+const generateId = () => Date.now().toString() + Math.random().toString(36).substring(2, 11);
 
 export function useAccounts(
   userId: string | null,
@@ -15,7 +18,7 @@ export function useAccounts(
     addAccount: firestoreAddAccount,
     deleteAccount: firestoreDeleteAccount,
     updateAccount: firestoreUpdateAccount
-  } = useFirestore(userId);
+  } = useFirestoreData();
 
   const [localAccounts, setLocalAccounts] = useLocalStorage<Account[]>('accounts', []);
   
@@ -26,15 +29,16 @@ export function useAccounts(
   // Importante: confiar en el loading de useFirestore que ahora espera a que los datos lleguen
   const loading = userId ? firestoreLoading : false;
 
-  // Generar ID único para localStorage
-  const generateId = () => Date.now().toString() + Math.random().toString(36).substr(2, 9);
-
-  const getAccountBalance = (accountId: string): number => {
+  const getAccountBalance = useCallback((accountId: string): number => {
     const account = accounts.find(a => a.id === accountId);
     if (!account) return 0;
 
     return BalanceCalculator.calculateAccountBalance(account, transactions);
-  };
+  }, [accounts, transactions]);
+
+  const getTransactionCountForAccount = useCallback((accountId: string): number => {
+    return transactions.filter(t => t.accountId === accountId || t.toAccountId === accountId).length;
+  }, [transactions]);
 
   const totalBalance = useMemo(() => {
     return BalanceCalculator.calculateTotalBalance(accounts, transactions);
@@ -91,10 +95,6 @@ export function useAccounts(
     } else {
       setLocalAccounts(prev => prev.filter(acc => acc.id !== id));
     }
-  };
-
-  const getTransactionCountForAccount = (accountId: string): number => {
-    return transactions.filter(t => t.accountId === accountId || t.toAccountId === accountId).length;
   };
 
   const setDefaultAccount = async (id: string) => {

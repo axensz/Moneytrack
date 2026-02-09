@@ -26,15 +26,12 @@ interface TransactionsViewProps {
   setShowForm: (show: boolean) => void;
   filterCategory: FilterValue;
   setFilterCategory: (filter: FilterValue) => void;
-  filterStatus: FilterValue;
-  setFilterStatus: (filter: FilterValue) => void;
   filterAccount: FilterValue;
   setFilterAccount: (filter: FilterValue) => void;
   categories: {
     expense: string[];
     income: string[];
   };
-  togglePaid: (id: string) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
   updateTransaction: (id: string, updates: Partial<Transaction>) => Promise<void>;
   formatCurrency: (amount: number) => string;

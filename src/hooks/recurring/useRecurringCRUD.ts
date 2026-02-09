@@ -23,7 +23,7 @@ interface UseRecurringCRUDReturn {
  * Genera un ID único para localStorage
  */
 const generateId = () =>
-  Date.now().toString() + Math.random().toString(36).substr(2, 9);
+  Date.now().toString() + Math.random().toString(36).substring(2, 11);
 
 export function useRecurringCRUD(
   userId: string | null,

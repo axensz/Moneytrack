@@ -55,15 +55,14 @@ export const DateFilterDropdown: React.FC<DateFilterDropdownProps> = ({
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setShowDatePicker(!showDatePicker)}
-        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+        className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
           dateRangePreset !== 'all'
             ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
             : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600'
         }`}
       >
         <Calendar size={16} />
-        <span className="hidden sm:inline">{currentLabel}</span>
-        <span className="sm:hidden">{currentLabel === 'Todo el tiempo' ? 'Fecha' : currentLabel}</span>
+        <span className="truncate max-w-[50px] sm:max-w-[80px]">{currentLabel === 'Todo el tiempo' ? 'Fecha' : currentLabel}</span>
         <ChevronDown size={14} className="flex-shrink-0" />
       </button>
 

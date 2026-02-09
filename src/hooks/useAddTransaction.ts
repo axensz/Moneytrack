@@ -16,6 +16,7 @@ import { showToast } from '../utils/toastHelpers';
 import { logger } from '../utils/logger';
 import { TransactionValidator } from '../utils/validators';
 import { calculateInterest } from '../utils/interestCalculator';
+import { parseDateFromInput } from '../utils/formatters';
 import {
   SUCCESS_MESSAGES,
   ERROR_MESSAGES,
@@ -67,15 +68,27 @@ export function useAddTransaction({
   }, [defaultAccount, setNewTransaction, setShowForm]);
 
   /**
-   * Handler principal para agregar una transacción
+   * Resetea el formulario manteniendo cuenta y fecha (para modo continuo)
    */
-  const handleAddTransaction = useCallback(
-    async (newTransaction: NewTransaction): Promise<void> => {
+  const resetFormKeepContext = useCallback((currentTransaction: NewTransaction) => {
+    setNewTransaction({
+      ...INITIAL_TRANSACTION,
+      accountId: currentTransaction.accountId,
+      date: currentTransaction.date,
+    });
+  }, [setNewTransaction]);
+
+  /**
+   * Lógica común para preparar y guardar una transacción.
+   * Retorna true si se guardó correctamente, false si hubo error.
+   */
+  const processTransaction = useCallback(
+    async (newTransaction: NewTransaction): Promise<boolean> => {
       // Validar que existan cuentas
       if (accounts.length === 0) {
         showToast.error('Debes crear al menos una cuenta primero');
         setShowWelcomeModal(true);
-        return;
+        return false;
       }
 
       // Obtener información de la cuenta
@@ -84,7 +97,7 @@ export function useAddTransaction({
 
       if (!selectedAccount) {
         showToast.error('Por favor selecciona una cuenta válida');
-        return;
+        return false;
       }
 
       // Validación usando Strategy Pattern
@@ -96,7 +109,7 @@ export function useAddTransaction({
 
       if (!validation.isValid) {
         validation.errors.forEach((error) => showToast.error(error));
-        return;
+        return false;
       }
 
       try {
@@ -109,7 +122,7 @@ export function useAddTransaction({
 
         if (isNaN(amount)) {
           showToast.error('Monto inválido');
-          return;
+          return false;
         }
 
         // Si es un pago periódico con monto diferente, actualizar el monto base
@@ -133,7 +146,7 @@ export function useAddTransaction({
               ? TRANSFER_CATEGORY
               : newTransaction.category,
           description: newTransaction.description.trim(),
-          date: new Date(),
+          date: newTransaction.date ? parseDateFromInput(newTransaction.date) : new Date(),
           paid: newTransaction.paid,
           accountId: newTransaction.accountId || defaultAccount?.id || '',
           toAccountId: newTransaction.toAccountId || undefined,
@@ -164,15 +177,12 @@ export function useAddTransaction({
           transactionData.interestRate = annualRate;
         }
 
-        // Cerrar modal inmediatamente (UX optimizada)
-        resetForm();
-
-        // Ejecutar operación asíncrona después del cierre
         await addTransaction(transactionData);
-        showToast.success(SUCCESS_MESSAGES.TRANSACTION_ADDED);
+        return true;
       } catch (error) {
         showToast.error(ERROR_MESSAGES.ADD_TRANSACTION_ERROR);
         logger.error('Error adding transaction', error);
+        return false;
       }
     },
     [
@@ -183,12 +193,43 @@ export function useAddTransaction({
       addTransaction,
       updateRecurringPayment,
       setShowWelcomeModal,
-      resetForm,
     ]
+  );
+
+  /**
+   * Handler principal para agregar una transacción (cierra el formulario)
+   */
+  const handleAddTransaction = useCallback(
+    async (newTransaction: NewTransaction): Promise<void> => {
+      // Cerrar modal inmediatamente (UX optimizada)
+      resetForm();
+
+      const success = await processTransaction(newTransaction);
+      if (success) {
+        showToast.success(SUCCESS_MESSAGES.TRANSACTION_ADDED);
+      }
+    },
+    [resetForm, processTransaction]
+  );
+
+  /**
+   * Handler para agregar y continuar (mantiene el formulario abierto con cuenta y fecha)
+   */
+  const handleAddAndContinue = useCallback(
+    async (newTransaction: NewTransaction): Promise<boolean> => {
+      const success = await processTransaction(newTransaction);
+      if (success) {
+        showToast.success(SUCCESS_MESSAGES.TRANSACTION_ADDED);
+        resetFormKeepContext(newTransaction);
+      }
+      return success;
+    },
+    [processTransaction, resetFormKeepContext]
   );
 
   return {
     handleAddTransaction,
+    handleAddAndContinue,
     resetForm,
   };
 }

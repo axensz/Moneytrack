@@ -10,9 +10,13 @@
  * RESPONSABILIDAD: Gestión de transacciones (CRUD + operaciones)
  */
 
-import { useFirestore } from './useFirestore';
+import { useMemo } from 'react';
+import { useFirestoreData } from '../contexts/FirestoreContext';
 import { useLocalStorage } from './useLocalStorage';
 import type { Transaction } from '../types/finance';
+
+// Generar ID único para localStorage (hoisted fuera del hook)
+const generateId = () => Date.now().toString() + Math.random().toString(36).substring(2, 11);
 
 export function useTransactions(userId: string | null) {
   const {
@@ -21,24 +25,22 @@ export function useTransactions(userId: string | null) {
     addTransaction: firestoreAddTransaction,
     deleteTransaction: firestoreDeleteTransaction,
     updateTransaction: firestoreUpdateTransaction
-  } = useFirestore(userId);
+  } = useFirestoreData();
 
   const [localTransactions, setLocalTransactions] = useLocalStorage<Transaction[]>('transactions', []);
 
   // Usar Firebase si hay usuario, localStorage si no
   // Firestore ya viene ordenado por fecha DESC, solo ordenamos localStorage
-  const transactions = userId 
-    ? firestoreTransactions 
-    : [...localTransactions].sort((a, b) => {
-        const dateA = new Date(a.date).getTime();
-        const dateB = new Date(b.date).getTime();
-        return dateB - dateA;
-      });
+  const transactions = useMemo(() => {
+    if (userId) return firestoreTransactions;
+    return [...localTransactions].sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      return dateB - dateA;
+    });
+  }, [userId, firestoreTransactions, localTransactions]);
 
   const loading = userId ? firestoreLoading : false;
-
-  // Generar ID único para localStorage
-  const generateId = () => Date.now().toString() + Math.random().toString(36).substr(2, 9);
 
   const addTransaction = async (transaction: Omit<Transaction, 'id' | 'createdAt'>) => {
     if (userId) {

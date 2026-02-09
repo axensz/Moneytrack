@@ -74,6 +74,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     setCustomEndDate,
     showDatePicker,
     setShowDatePicker,
+    searchQuery, // 🆕 Búsqueda
+    setSearchQuery, // 🆕 Búsqueda
     editingTransaction,
     editForm,
     setEditForm,
@@ -124,6 +126,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
         setCustomEndDate={setCustomEndDate}
         showDatePicker={showDatePicker}
         setShowDatePicker={setShowDatePicker}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
       />
 
       {/* Título con contador */}

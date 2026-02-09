@@ -341,3 +341,29 @@ body {
     border-color: var(--border-accent);
   }
 }
+
+/* ♿ MEJORAS DE ACCESIBILIDAD */
+
+/* Clase para elementos solo visibles para screen readers */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Focus visible mejorado para accesibilidad */
+*:focus-visible {
+  outline: 2px solid theme('colors.purple.500');
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.dark *:focus-visible {
+  outline-color: theme('colors.purple.400');
+}

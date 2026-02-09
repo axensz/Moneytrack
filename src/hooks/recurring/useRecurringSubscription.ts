@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { logger } from '../../utils/logger';
 import type { RecurringPayment } from '../../types/finance';
 
 interface RecurringSubscriptionReturn {

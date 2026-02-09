@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { PlusCircle, Activity, X, Edit2, Check, Search, FilterX, RotateCcw, Calendar, ChevronDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { Transaction, Account, FilterValue, NewTransaction, DateRangePreset, RecurringPayment } from '../../types/finance';
-import { formatNumberForInput, unformatNumber } from '../../utils/formatters';
+import { formatNumberForInput, unformatNumber, parseDateFromInput } from '../../utils/formatters';
 
 // Utilidades de fecha
 const getDateRangeFromPreset = (preset: DateRangePreset): { start: Date | null; end: Date | null } => {
@@ -175,7 +175,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     await updateTransaction(id, {
       description: editForm.description.trim(),
       amount,
-      date: new Date(editForm.date)
+      date: parseDateFromInput(editForm.date) // 🐛 FIX: Usar parseDateFromInput para evitar problemas de timezone
     });
 
     setEditingTransaction(null);
@@ -200,12 +200,12 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
         
         if (dateRangePreset === 'custom') {
           if (customStartDate) {
-            const start = new Date(customStartDate);
+            const start = parseDateFromInput(customStartDate); // 🐛 FIX: Usar parseDateFromInput
             start.setHours(0, 0, 0, 0);
             if (transactionDate < start) return false;
           }
           if (customEndDate) {
-            const end = new Date(customEndDate);
+            const end = parseDateFromInput(customEndDate); // 🐛 FIX: Usar parseDateFromInput
             end.setHours(23, 59, 59, 999);
             if (transactionDate > end) return false;
           }

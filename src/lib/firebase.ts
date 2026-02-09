@@ -16,7 +16,31 @@ const firebaseConfig = {
 // Validate Firebase configuration
 if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
   throw new Error(
-    'Firebase configuration is missing. Please check your .env.local file and ensure all required variables are set.'
+    '🔥 Firebase configuration is missing!\n\n' +
+    'Please follow these steps:\n' +
+    '1. Go to https://console.firebase.google.com\n' +
+    '2. Select your project: "moneytrack-889fe"\n' +
+    '3. Click ⚙️ > Project settings > Your apps\n' +
+    '4. Copy your Firebase config values\n' +
+    '5. Update the .env.local file with real credentials\n\n' +
+    'See .env.local for detailed instructions.'
+  );
+}
+
+// Detect placeholder/dummy values
+const isDummyConfig = 
+  firebaseConfig.apiKey.includes('YOUR_') || 
+  firebaseConfig.apiKey.includes('Dummy') ||
+  firebaseConfig.apiKey.length < 30;
+
+if (isDummyConfig) {
+  throw new Error(
+    '🔥 Firebase API key is invalid!\n\n' +
+    'You are using a placeholder API key. Please:\n' +
+    '1. Open .env.local file\n' +
+    '2. Replace placeholder values with real Firebase credentials\n' +
+    '3. Get your credentials from: https://console.firebase.google.com\n\n' +
+    'Current API key: ' + firebaseConfig.apiKey.substring(0, 20) + '...'
   );
 }
 

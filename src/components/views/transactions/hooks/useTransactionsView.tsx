@@ -8,7 +8,7 @@ import type {
   DateRangePreset,
   RecurringPayment,
 } from '../../../../types/finance';
-import { formatNumberForInput } from '../../../../utils/formatters';
+import { formatNumberForInput, parseDateFromInput } from '../../../../utils/formatters';
 import { getDateRangeFromPreset } from '../utils/dateUtils';
 
 interface UseTransactionsViewParams {
@@ -52,13 +52,24 @@ export const useTransactionsView = ({
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  // Filtrado con rango de fecha
+  // 🆕 Estado de búsqueda por texto
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Filtrado con rango de fecha y búsqueda de texto
   const filteredTransactions = useMemo(() => {
     return transactions.filter((t) => {
       // Filtro por categoría
       if (filterCategory !== 'all' && t.category !== filterCategory) return false;
       // Filtro por cuenta
       if (filterAccount !== 'all' && t.accountId !== filterAccount) return false;
+
+      // 🆕 Filtro por texto (búsqueda en descripción)
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        if (!t.description.toLowerCase().includes(query)) {
+          return false;
+        }
+      }
 
       // Filtro por rango de fecha
       if (dateRangePreset !== 'all') {
@@ -84,11 +95,11 @@ export const useTransactionsView = ({
 
       return true;
     });
-  }, [transactions, filterCategory, filterAccount, dateRangePreset, customStartDate, customEndDate]);
+  }, [transactions, filterCategory, filterAccount, searchQuery, dateRangePreset, customStartDate, customEndDate]);
 
   // Verificar si hay filtros activos
   const isMetadataFiltersActive =
-    filterCategory !== 'all' || filterAccount !== 'all' || dateRangePreset !== 'all';
+    filterCategory !== 'all' || filterAccount !== 'all' || dateRangePreset !== 'all' || searchQuery.trim() !== '';
 
   // Handlers
   const clearFilters = useCallback(
@@ -101,6 +112,7 @@ export const useTransactionsView = ({
       setDateRangePreset('all');
       setCustomStartDate('');
       setCustomEndDate('');
+      setSearchQuery(''); // 🆕 Limpiar búsqueda
     },
     []
   );
@@ -126,7 +138,7 @@ export const useTransactionsView = ({
       await updateTransaction(id, {
         description: editForm.description.trim(),
         amount,
-        date: new Date(editForm.date),
+        date: parseDateFromInput(editForm.date), // 🐛 FIX: Usar parseDateFromInput para evitar problemas de timezone
       });
 
       setEditingTransaction(null);
@@ -203,6 +215,10 @@ export const useTransactionsView = ({
     setCustomEndDate,
     showDatePicker,
     setShowDatePicker,
+
+    // 🆕 Search filter
+    searchQuery,
+    setSearchQuery,
 
     // Edit state
     editingTransaction,

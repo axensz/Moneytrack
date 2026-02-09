@@ -13,6 +13,7 @@
 
 import { useCallback } from 'react';
 import { showToast } from '../utils/toastHelpers';
+import { logger } from '../utils/logger';
 import { TransactionValidator } from '../utils/validators';
 import { calculateInterest } from '../utils/interestCalculator';
 import {
@@ -171,7 +172,7 @@ export function useAddTransaction({
         showToast.success(SUCCESS_MESSAGES.TRANSACTION_ADDED);
       } catch (error) {
         showToast.error(ERROR_MESSAGES.ADD_TRANSACTION_ERROR);
-        console.error(error);
+        logger.error('Error adding transaction', error);
       }
     },
     [

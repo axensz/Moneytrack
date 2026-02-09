@@ -22,8 +22,11 @@ import { useRecurringPayments } from './hooks/useRecurringPayments';
 import { useAddTransaction } from './hooks/useAddTransaction';
 import { useFilteredData } from './hooks/useFilteredData';
 import { useWelcomeModal } from './hooks/useWelcomeModal';
+import { useNotifications } from './hooks/useNotifications'; // 🆕 Notificaciones  
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'; // 🆕 Atajos de teclado
 import { formatCurrency } from './utils/formatters';
 import { TOAST_CONFIG, INITIAL_TRANSACTION } from './config/constants';
+import { logger } from './utils/logger';
 import type { NewTransaction, ViewType, FilterValue } from './types/finance';
 import { logoutFirebase } from './lib/firebase';
 
@@ -67,13 +70,16 @@ const FinanceTracker = () => {
   const [filterCategory, setFilterCategory] = useState<FilterValue>('all');
   const [filterStatus, setFilterStatus] = useState<FilterValue>('all');
   const [filterAccount, setFilterAccount] = useState<FilterValue>('all');
+  // 🆕 Estado para filtro de fecha
+  const [dateRange, setDateRange] = useState<import('./types/finance').DateRange>({ preset: 'all' });
 
-  // 🆕 Hook para filtrado y estadísticas dinámicas
+  // 🆕 Hook para filtrado y estadísticas dinámicas (ahora incluye fecha)
   const { dynamicStats, dynamicTotalBalance, balanceLabel } = useFilteredData({
     transactions,
     accounts,
     filterAccount,
     filterCategory,
+    dateRange, // 🆕 Incluir filtro de fecha
     totalBalance,
     getAccountBalance,
   });
@@ -89,6 +95,86 @@ const FinanceTracker = () => {
     accountsLoading,
     accountsCount: accounts.length,
   });
+
+  // 🆕 Hook de notificaciones
+  const { checkAndNotifyPayments } = useNotifications();
+
+  // 🆕 Verificar pagos vencidos al cargar (solo una vez al día)
+  useEffect(() => {
+    if (!mounted || !recurringPayments.length) return;
+
+    // Verificar si ya revisamos hoy
+    const lastCheckDate = localStorage.getItem('lastNotificationCheck');
+    const today = new Date().toDateString();
+    
+    if (lastCheckDate === today) return;
+
+    // Verificar y notificar después de 5 segundos (dar tiempo a cargar)
+    const timer = setTimeout(() => {
+      checkAndNotifyPayments(recurringPayments, getDaysUntilDue);
+      localStorage.setItem('lastNotificationCheck', today);
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [mounted, recurringPayments, getDaysUntilDue, checkAndNotifyPayments]);
+
+  // 🆕 Atajos de teclado
+  useKeyboardShortcuts(
+    [
+      {
+        key: 'n',
+        modifiers: ['ctrl'],
+        description: 'Nueva transacción',
+        action: () => {
+          if (accounts.length > 0) {
+            setShowForm(true);
+            setView('transactions');
+          }
+        }
+      },
+      {
+        key: '1',
+        modifiers: ['alt'],
+        description: 'Ir a Transacciones',
+        action: () => setView('transactions')
+      },
+      {
+        key: '2',
+        modifiers: ['alt'],
+        description: 'Ir a Cuentas',
+        action: () => setView('accounts')
+      },
+      {
+        key: '3',
+        modifiers: ['alt'],
+        description: 'Ir a Pagos Periódicos',
+        action: () => setView('recurring')
+      },
+      {
+        key: '4',
+        modifiers: ['alt'],
+        description: 'Ir a Estadísticas',
+        action: () => setView('stats')
+      },
+      {
+        key: 'h',
+        modifiers: ['ctrl'],
+        description: 'Abrir ayuda',
+        action: () => setShowHelpModal(true)
+      },
+      {
+        key: 'Escape',
+        description: 'Cerrar modal',
+        action: () => {
+          setShowForm(false);
+          setShowHelpModal(false);
+          setIsAuthModalOpen(false);
+        },
+        preventDefault: false // Permitir comportamiento por defecto
+      }
+    ],
+    { enabled: mounted, announceShortcuts: true }
+  );
 
   // 🆕 Hook para manejar la creación de transacciones
   // IMPORTANTE: Debe estar ANTES de cualquier return condicional
@@ -113,7 +199,7 @@ const FinanceTracker = () => {
       await new Promise(resolve => setTimeout(resolve, 800));
       toast.success('Sesión cerrada correctamente');
     } catch (error) {
-      console.error('Error al cerrar sesión', error);
+      logger.error('Error al cerrar sesión', error);
       toast.error('Error al cerrar sesión');
     } finally {
       setIsLoggingOut(false);

@@ -116,6 +116,17 @@ class DateFormatter {
   }
 
   /**
+   * Parsea un string de fecha (YYYY-MM-DD) a Date en zona horaria local
+   * Evita problemas de timezone al crear Date desde input type="date"
+   * @param dateString - String en formato YYYY-MM-DD
+   * @returns Date en timezone local (medianoche local, no UTC)
+   */
+  static parseDateFromInput(dateString: string): Date {
+    const [year, month, day] = dateString.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  }
+
+  /**
    * Formatea mes y año
    * @param date - Fecha a formatear
    * @returns String formateado (ej: "ene. 2024")
@@ -244,6 +255,7 @@ export const formatCurrencyLarge = (amount: number): string => CurrencyFormatter
 export const formatDate = (date: Date | string): string => DateFormatter.formatDate(date);
 export const formatDateLong = (date: Date | string): string => DateFormatter.formatDateLong(date);
 export const formatDateForInput = (date?: Date): string => DateFormatter.formatDateForInput(date);
+export const parseDateFromInput = (dateString: string): Date => DateFormatter.parseDateFromInput(dateString);
 export const formatMonthYear = (date: Date | string): string => DateFormatter.formatMonthYear(date);
 export const getMonthName = (monthNumber: number): string => DateFormatter.getMonthName(monthNumber);
 

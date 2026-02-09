@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { PlusCircle, FilterX, Wallet, Tag } from 'lucide-react';
+import { PlusCircle, FilterX, Wallet, Tag, Search, X } from 'lucide-react';
 import type { Account, FilterValue } from '../../../../types/finance';
 import { DateFilterDropdown } from './DateFilterDropdown';
 import { FilterDropdown } from './FilterDropdown';
@@ -29,6 +29,9 @@ interface TransactionsFiltersProps {
   setCustomEndDate: (date: string) => void;
   showDatePicker: boolean;
   setShowDatePicker: (show: boolean) => void;
+  // 🆕 Search filter
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
 }
 
 /**
@@ -53,6 +56,8 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
   setCustomEndDate,
   showDatePicker,
   setShowDatePicker,
+  searchQuery,
+  setSearchQuery,
 }) => {
   const [activeDropdown, setActiveDropdown] = useState<'none' | 'account' | 'category'>('none');
 
@@ -80,20 +85,48 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
   };
 
   return (
-    <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
-      <button
-        onClick={() => setShowForm(!showForm)}
-        disabled={accounts.length === 0}
-        className={`btn-primary ${
-          accounts.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
-        }`}
-        title={accounts.length === 0 ? 'Crea una cuenta primero' : 'Crear transacción'}
-      >
-        <PlusCircle size={18} />
-        Nueva Transacción
-      </button>
+    <div className="space-y-4 mb-6">
+      {/* Fila superior: Botón de nueva transacción y búsqueda */}
+      <div className="flex justify-between items-center gap-4 flex-wrap">
+        <button
+          onClick={() => setShowForm(!showForm)}
+          disabled={accounts.length === 0}
+          className={`btn-primary ${
+            accounts.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
+          }`}
+          title={accounts.length === 0 ? 'Crea una cuenta primero' : 'Crear transacción'}
+          aria-label="Crear nueva transacción"
+        >
+          <PlusCircle size={18} aria-hidden="true" />
+          Nueva Transacción
+        </button>
 
-      {/* Filtros alineados a la derecha */}
+        {/* 🆕 Barra de búsqueda */}
+        <div className="relative flex-1 max-w-md">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <Search size={18} className="text-gray-400" aria-hidden="true" />
+          </div>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Buscar por descripción..."
+            className="w-full pl-10 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400"
+            aria-label="Buscar transacciones por descripción"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              aria-label="Limpiar búsqueda"
+            >
+              <X size={18} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Fila inferior: Filtros */}
       <div className="flex flex-wrap items-center gap-2">
         {/* Filtro de cuenta */}
         <FilterDropdown
@@ -143,8 +176,9 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
               setShowDatePicker(false);
             }}
             className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
+            aria-label="Limpiar todos los filtros"
           >
-            <FilterX size={16} />
+            <FilterX size={16} aria-hidden="true" />
             Limpiar
           </button>
         )}

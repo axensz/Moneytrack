@@ -144,7 +144,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           onClearFilters={handleClearFilters}
         />
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2 max-h-[65vh] overflow-y-auto pr-1 scrollbar-thin">
           {filteredTransactions.map((transaction) => (
             <TransactionItem
               key={transaction.id}

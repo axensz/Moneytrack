@@ -232,6 +232,7 @@ const FinanceTrackerContent = ({ user }: { user: User | null }) => {
           ].map(tab => (
             <button
               key={tab.key}
+              id={`tab-${tab.key}-mobile`}
               role="tab"
               aria-selected={view === tab.key}
               aria-controls={`panel-${tab.key}`}
@@ -312,7 +313,7 @@ const FinanceTrackerContent = ({ user }: { user: User | null }) => {
             />
 
             {view === 'transactions' && (
-              <>
+              <div id="panel-transactions" role="tabpanel" aria-labelledby="tab-transactions">
                 {showForm && (
                   <TransactionForm
                     newTransaction={newTransaction}
@@ -346,12 +347,13 @@ const FinanceTrackerContent = ({ user }: { user: User | null }) => {
                   loading={transactionsLoading || accountsLoading}
                   onRestore={handleRestoreTransaction}
                 />
-              </>
+              </div>
             )}
 
             {view === 'recurring' && (
-              <Suspense fallback={<ViewFallback />}>
-                <RecurringPaymentsView
+              <div id="panel-recurring" role="tabpanel" aria-labelledby="tab-recurring">
+                <Suspense fallback={<ViewFallback />}>
+                  <RecurringPaymentsView
                   recurringPayments={recurringPayments}
                   accounts={accounts}
                   transactions={transactions}
@@ -366,21 +368,25 @@ const FinanceTrackerContent = ({ user }: { user: User | null }) => {
                   getPaymentHistory={getPaymentHistory}
                   stats={recurringStats}
                 />
-              </Suspense>
+                </Suspense>
+              </div>
             )}
 
             {view === 'stats' && (
-              <Suspense fallback={<ViewFallback />}>
-                <StatsView
-                  transactions={transactions}
-                  accounts={accounts}
-                />
-              </Suspense>
+              <div id="panel-stats" role="tabpanel" aria-labelledby="tab-stats">
+                <Suspense fallback={<ViewFallback />}>
+                  <StatsView
+                    transactions={transactions}
+                    accounts={accounts}
+                  />
+                </Suspense>
+              </div>
             )}
 
             {view === 'accounts' && (
-              <Suspense fallback={<ViewFallback />}>
-                <AccountsView
+              <div id="panel-accounts" role="tabpanel" aria-labelledby="tab-accounts">
+                <Suspense fallback={<ViewFallback />}>
+                  <AccountsView
                   accounts={accounts}
                   transactions={transactions}
                   addAccount={addAccount}
@@ -395,7 +401,8 @@ const FinanceTrackerContent = ({ user }: { user: User | null }) => {
                   deleteCategory={deleteCategory}
                   addTransaction={addTransaction}
                 />
-              </Suspense>
+                </Suspense>
+              </div>
             )}
           </div>
         </div>

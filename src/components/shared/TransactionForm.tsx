@@ -8,7 +8,7 @@ import type { NewTransaction, Account, Categories, Transaction, RecurringPayment
 
 interface TransactionFormProps {
   newTransaction: NewTransaction;
-  setNewTransaction: (tx: NewTransaction) => void;
+  setNewTransaction: React.Dispatch<React.SetStateAction<NewTransaction>>;
   accounts: Account[];
   transactions: Transaction[];
   categories: Categories;
@@ -48,27 +48,17 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
   // Efecto: Inicializar accountId con defaultAccount si está vacío
   useEffect(() => {
     if (!newTransaction.accountId && defaultAccount?.id) {
-      setNewTransaction({
-        ...newTransaction,
-        accountId: defaultAccount.id
-      });
+      const id = defaultAccount.id;
+      setNewTransaction(prev => ({ ...prev, accountId: id }));
     }
-    // Solo depender de accountId y defaultAccount para evitar loops
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newTransaction.accountId, defaultAccount?.id]);
+  }, [newTransaction.accountId, defaultAccount?.id, setNewTransaction]);
 
   // Efecto: Si cambia a TC y está en "transfer", cambiar a "expense"
   useEffect(() => {
     if (isCreditCard && newTransaction.type === 'transfer') {
-      setNewTransaction({
-        ...newTransaction,
-        type: 'expense',
-        toAccountId: ''
-      });
+      setNewTransaction(prev => ({ ...prev, type: 'expense', toAccountId: '' }));
     }
-    // Solo depender de isCreditCard y type para evitar loops
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isCreditCard, newTransaction.type]);
+  }, [isCreditCard, newTransaction.type, setNewTransaction]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm">

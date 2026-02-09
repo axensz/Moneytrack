@@ -31,6 +31,7 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
           {tabs.map(tab => (
             <button
               key={tab.key}
+              id={`tab-${tab.key}`}
               role="tab"
               aria-selected={view === tab.key}
               aria-controls={`panel-${tab.key}`}

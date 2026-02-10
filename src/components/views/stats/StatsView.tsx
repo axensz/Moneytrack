@@ -8,6 +8,7 @@ import { MonthlyComparisonChart } from './components/MonthlyComparisonChart';
 import { CategoryPieChart } from './components/CategoryPieChart';
 import { YearlyTrendChart } from './components/YearlyTrendChart';
 import { CreditCardInterestsCard } from './components/CreditCardInterestsCard';
+import { PeriodSummaryCard } from './components/PeriodSummaryCard';
 import { useCreditCardInterests } from './hooks/useCreditCardInterests';
 import { useStatsData } from './hooks/useStatsData';
 
@@ -65,6 +66,12 @@ export const StatsView: React.FC<StatsViewProps> = ({
         creditCardInterests={creditCardInterests}
         totals={totals}
         formatCurrency={formatCurrency}
+      />
+
+      {/* Fila 5: Consulta por periodo personalizado */}
+      <PeriodSummaryCard
+        transactions={transactions}
+        accounts={accounts}
       />
     </div>
   );

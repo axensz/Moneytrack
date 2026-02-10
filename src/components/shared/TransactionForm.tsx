@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, memo, useState } from 'react';
-import { X, Repeat, Zap } from 'lucide-react';
+import { X, Repeat, Zap, AlertTriangle } from 'lucide-react';
 import { UI_LABELS } from '@/config/constants';
-import { formatNumberForInput, unformatNumber, formatCurrency } from '@/utils/formatters';
+import { formatNumberForInput, unformatNumber, formatCurrency, formatDate } from '@/utils/formatters';
 import { BalanceCalculator } from '@/utils/balanceCalculator';
 import { INSTALLMENT_OPTIONS } from '@/utils/interestCalculator';
+import { detectDuplicates } from '@/utils/duplicateDetector';
 import type { NewTransaction, Account, Categories, Transaction, RecurringPayment } from '@/types/finance';
 
 interface TransactionFormProps {
@@ -59,6 +60,18 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
       setNewTransaction(prev => ({ ...prev, type: 'expense', toAccountId: '' }));
     }
   }, [isCreditCard, newTransaction.type, setNewTransaction]);
+
+  // Detección de duplicados
+  const duplicates = useMemo(() => {
+    return detectDuplicates(newTransaction, transactions);
+  }, [newTransaction.amount, newTransaction.category, newTransaction.description, newTransaction.date, newTransaction.type, transactions]);
+
+  const [dismissedDuplicates, setDismissedDuplicates] = useState(false);
+
+  // Reset dismissed when duplicates change
+  useEffect(() => {
+    setDismissedDuplicates(false);
+  }, [duplicates.length]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm">
@@ -314,6 +327,42 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
           )}
         </div>
       )}
+
+          {/* ⚠️ Alerta de posible duplicado */}
+          {duplicates.length > 0 && !dismissedDuplicates && (
+            <div className="mt-4 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-xl">
+              <div className="flex items-start gap-3">
+                <AlertTriangle size={20} className="text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                    Posible duplicado detectado
+                  </p>
+                  <div className="mt-2 space-y-1.5">
+                    {duplicates.map((dup, i) => (
+                      <div key={i} className="text-xs text-amber-700 dark:text-amber-300 bg-amber-100/50 dark:bg-amber-900/30 p-2 rounded-lg">
+                        <span className="font-medium">{formatCurrency(dup.transaction.amount)}</span>
+                        {' — '}
+                        {dup.transaction.description || dup.transaction.category}
+                        {' · '}
+                        <span className="text-amber-600 dark:text-amber-400">
+                          {formatDate(dup.transaction.date)}
+                        </span>
+                        <span className="ml-2 text-amber-500 dark:text-amber-500 italic">
+                          ({dup.reasons.join(', ')})
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setDismissedDuplicates(true)}
+                    className="mt-2 text-xs font-medium text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200 underline underline-offset-2"
+                  >
+                    No es duplicado, continuar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-3 mt-6 items-center">
             <button onClick={onSubmit} className="btn-submit">

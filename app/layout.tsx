@@ -16,10 +16,6 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Control de Finanzas - MoneyTrack",
   description: "Gestiona tus ingresos, gastos y cuentas de forma simple",
-  icons: {
-    icon: '/moneytrack-icon.svg',
-    apple: '/moneytrack-icon.svg',
-  },
 };
 
 export default function RootLayout({

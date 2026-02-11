@@ -243,7 +243,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
       </div>
 
       <div className="mt-4">
-        <label className="label-base">Descripción</label>
+        <label className="label-base">Descripción <span className="text-gray-400 font-normal">(opcional)</span></label>
         <input
           type="text"
           value={newTransaction.description}

@@ -48,10 +48,8 @@ export class TransactionValidator {
 
     // ===== VALIDACIONES BÁSICAS =====
 
-    // Validar descripción
-    if (!transaction.description.trim()) {
-      errors.push(ERROR_MESSAGES.EMPTY_DESCRIPTION);
-    } else if (transaction.description.length > TRANSACTION_VALIDATION.description.maxLength) {
+    // Validar descripción (opcional, pero con límite de largo)
+    if (transaction.description.length > TRANSACTION_VALIDATION.description.maxLength) {
       errors.push(
         `La descripción no puede tener más de ${TRANSACTION_VALIDATION.description.maxLength} caracteres`
       );
@@ -138,9 +136,7 @@ export class TransactionValidator {
     const errors: string[] = [];
 
     // Validaciones básicas (igual que antes)
-    if (!transaction.description.trim()) {
-      errors.push(ERROR_MESSAGES.EMPTY_DESCRIPTION);
-    }
+    // Descripción es opcional
 
     if (transaction.type !== 'transfer' && !transaction.category) {
       errors.push(ERROR_MESSAGES.EMPTY_CATEGORY);

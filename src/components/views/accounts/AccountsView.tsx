@@ -7,10 +7,8 @@ import { BalanceCalculator } from '../../../utils/balanceCalculator';
 import type { Account, Transaction, NewAccount } from '../../../types/finance';
 
 import { AccountFormModal } from './components/AccountFormModal';
-import { CategoryFormModal } from './components/CategoryFormModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { AccountCard } from './components/AccountCard';
-import { CategoriesList } from './components/CategoriesList';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
 import { useAccountForm } from './hooks/useAccountForm';
 
@@ -30,12 +28,6 @@ interface AccountsViewProps {
   getAccountBalance: (id: string) => number;
   getTransactionCountForAccount: (id: string) => number;
   formatCurrency: (amount: number) => string;
-  categories: {
-    expense: string[];
-    income: string[];
-  };
-  addCategory: (type: 'expense' | 'income', name: string) => void;
-  deleteCategory: (type: 'expense' | 'income', name: string) => void;
   addTransaction: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
 }
 
@@ -57,9 +49,6 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   getAccountBalance,
   getTransactionCountForAccount,
   formatCurrency,
-  categories,
-  addCategory,
-  deleteCategory,
   addTransaction,
 }) => {
   // Helpers (definidos antes de los hooks que los usan)
@@ -81,7 +70,6 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   });
 
   // Estados locales
-  const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     accountId: string;
     name: string;
@@ -182,24 +170,12 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
         <div className="flex gap-3">
           <button
             onClick={() => {
-              setShowCategoryForm(false);
               accountForm.openCreateForm();
             }}
             className="btn-primary"
           >
             <Plus size={18} />
             Nueva Cuenta
-          </button>
-
-          <button
-            onClick={() => {
-              accountForm.closeForm();
-              setShowCategoryForm(true);
-            }}
-            className="btn-secondary"
-          >
-            <Plus size={18} />
-            Nueva Categoría
           </button>
         </div>
       </div>
@@ -227,12 +203,6 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
         formatCurrency={formatCurrency}
         getAccountBalance={getAccountBalance}
         getCreditUsed={getCreditUsed}
-      />
-
-      <CategoryFormModal
-        isOpen={showCategoryForm}
-        onClose={() => setShowCategoryForm(false)}
-        addCategory={addCategory}
       />
 
       <DeleteConfirmModal
@@ -360,9 +330,6 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
           );
         })}
       </div>
-
-      {/* Lista de categorías */}
-      <CategoriesList categories={categories} deleteCategory={deleteCategory} />
     </div>
   );
 };

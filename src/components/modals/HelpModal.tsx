@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Wallet, TrendingUp, CreditCard, Settings, GripVertical, Eye, Edit2, Repeat, Percent, Filter, BarChart3, DollarSign, ArrowRightLeft, Clock, CheckCircle, AlertCircle, PieChart, TrendingDown, Calendar } from 'lucide-react';
+import { Wallet, TrendingUp, CreditCard, Settings, GripVertical, Eye, Edit2, Repeat, Percent, Filter, BarChart3, DollarSign, ArrowRightLeft, Clock, CheckCircle, AlertCircle, PieChart, TrendingDown, Calendar, Bot, Tag, MessageSquare, Sparkles } from 'lucide-react';
 import { BaseModal } from './BaseModal';
 
 interface HelpModalProps {
@@ -8,7 +8,7 @@ interface HelpModalProps {
 }
 
 export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'basics' | 'accounts' | 'transactions' | 'recurring' | 'stats'>('basics');
+  const [activeTab, setActiveTab] = useState<'basics' | 'accounts' | 'transactions' | 'recurring' | 'stats' | 'ai'>('basics');
 
   return (
     <BaseModal
@@ -28,6 +28,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
               { id: 'transactions', label: 'Transacciones', shortLabel: 'Trans.', icon: TrendingUp },
               { id: 'recurring', label: 'Periódicos', shortLabel: 'Peri.', icon: Repeat },
               { id: 'stats', label: 'Estadísticas', shortLabel: 'Stats', icon: BarChart3 },
+              { id: 'ai', label: 'Asistente IA', shortLabel: 'IA', icon: Bot },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -150,6 +151,13 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                       </div>
                       <p className="text-sm text-gray-500">Por cuenta, categoría, estado y rango de fechas.</p>
                     </div>
+                    <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Bot size={16} className="text-indigo-600" />
+                        <span className="font-medium text-gray-900 dark:text-gray-100">Asistente IA</span>
+                      </div>
+                      <p className="text-sm text-gray-500">Chat inteligente que analiza y ejecuta acciones sobre tus finanzas.</p>
+                    </div>
                   </div>
                 </div>
              </div>
@@ -268,12 +276,13 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                {/* Categorías */}
                <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-200 dark:border-blue-800">
                   <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2 flex items-center gap-2">
-                     <Settings size={16} />
+                     <Tag size={16} />
                      Gestión de Categorías
                   </h4>
                   <p className="text-sm text-blue-800 dark:text-blue-200">
-                     En la vista de Cuentas también puedes administrar tus categorías de ingresos y gastos. 
-                     Crea categorías personalizadas y elimina las que no uses.
+                     Administra tus categorías de ingresos y gastos desde el menú de configuración
+                     (icono de engranaje en la esquina superior). Allí encontrarás la opción "Categorías"
+                     para crear nuevas o eliminar las que no uses.
                   </p>
                </div>
 
@@ -331,7 +340,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                            <li className="flex gap-2"><span className="font-bold text-purple-600">2.</span> Selecciona el tipo (Ingreso, Gasto, Transferencia)</li>
                            <li className="flex gap-2"><span className="font-bold text-purple-600">3.</span> Ingresa el monto (acepta: 1000, 1.000, 1,000)</li>
                            <li className="flex gap-2"><span className="font-bold text-purple-600">4.</span> Selecciona categoría, cuenta y fecha</li>
-                           <li className="flex gap-2"><span className="font-bold text-purple-600">5.</span> Marca como "Pagado" si ya se realizó</li>
+                           <li className="flex gap-2"><span className="font-bold text-purple-600">5.</span> La descripción es opcional (si la omites, se muestra la categoría)</li>
+                           <li className="flex gap-2"><span className="font-bold text-purple-600">6.</span> Marca como "Pagado" si ya se realizó</li>
                         </ol>
                      </div>
                   </div>
@@ -378,11 +388,11 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                         </li>
                         <li className="flex gap-3 text-sm text-gray-600 dark:text-gray-300">
                            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 flex items-center justify-center text-xs font-bold">2</span>
-                           Edita monto o descripción directamente en la lista
+                           Edita monto, descripción, categoría y fecha directamente en la lista
                         </li>
                         <li className="flex gap-3 text-sm text-gray-600 dark:text-gray-300">
                            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 flex items-center justify-center text-xs font-bold">3</span>
-                           Los cambios se guardan automáticamente
+                           Los cambios se guardan al confirmar con el botón de guardar
                         </li>
                      </ul>
                   </div>
@@ -721,6 +731,125 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                      <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Tema Claro/Oscuro</h4>
                      <p className="text-sm text-gray-500">Cambia entre tema claro y oscuro desde el botón en la esquina superior. Se adapta a tu preferencia del sistema.</p>
                   </div>
+               </div>
+            </div>
+           )}
+
+           {/* Asistente IA */}
+           {activeTab === 'ai' && (
+            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 fade-in">
+               <div>
+                  <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Asistente IA</h3>
+                  <p className="text-gray-600 dark:text-gray-400">Tu asistente financiero personal potenciado por inteligencia artificial.</p>
+               </div>
+
+               {/* Cómo acceder */}
+               <div className="p-4 bg-purple-50 dark:bg-purple-900/10 rounded-xl border border-purple-200 dark:border-purple-800">
+                  <h4 className="font-bold text-purple-900 dark:text-purple-100 mb-3 flex items-center gap-2">
+                     <div className="p-1.5 bg-purple-100 dark:bg-purple-800 rounded-lg">
+                        <Bot size={16} className="text-purple-600 dark:text-purple-300" />
+                     </div>
+                     ¿Cómo usarlo?
+                  </h4>
+                  <p className="text-sm text-purple-800 dark:text-purple-200 mb-3">
+                     Busca el botón flotante con el ícono de chat en la esquina inferior derecha. 
+                     Al abrirlo, podrás conversar con el asistente sobre tus finanzas. Solo está disponible cuando inicias sesión.
+                  </p>
+               </div>
+
+               {/* Consultas */}
+               <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+                  <div className="bg-gray-50 dark:bg-gray-800/50 p-4 border-b border-gray-200 dark:border-gray-700">
+                     <h4 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                        <MessageSquare size={18} className="text-blue-600" />
+                        Consultas que puedes hacer
+                     </h4>
+                  </div>
+                  <div className="p-4 space-y-3">
+                     <p className="text-sm text-gray-600 dark:text-gray-400">
+                        El asistente conoce tus cuentas, transacciones y estadísticas. Puedes preguntarle:
+                     </p>
+                     <div className="grid gap-2 text-sm">
+                        <div className="p-2.5 bg-gray-50 dark:bg-gray-900/30 rounded-lg text-gray-700 dark:text-gray-300">
+                           💬 <em>"¿Cómo voy este mes?"</em> — Resumen de ingresos vs gastos
+                        </div>
+                        <div className="p-2.5 bg-gray-50 dark:bg-gray-900/30 rounded-lg text-gray-700 dark:text-gray-300">
+                           💬 <em>"¿En qué gasto más?"</em> — Análisis de categorías
+                        </div>
+                        <div className="p-2.5 bg-gray-50 dark:bg-gray-900/30 rounded-lg text-gray-700 dark:text-gray-300">
+                           💬 <em>"¿Cuánto debo en tarjetas de crédito?"</em> — Deuda TC
+                        </div>
+                        <div className="p-2.5 bg-gray-50 dark:bg-gray-900/30 rounded-lg text-gray-700 dark:text-gray-300">
+                           💬 <em>"Dame consejos para ahorrar"</em> — Recomendaciones personalizadas
+                        </div>
+                     </div>
+                  </div>
+               </div>
+
+               {/* Acciones */}
+               <div className="border border-emerald-200 dark:border-emerald-800 rounded-xl overflow-hidden">
+                  <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 border-b border-emerald-200 dark:border-emerald-800">
+                     <h4 className="font-semibold text-emerald-900 dark:text-emerald-100 flex items-center gap-2">
+                        <Sparkles size={18} className="text-emerald-600 dark:text-emerald-400" />
+                        Acciones desde el chat
+                     </h4>
+                  </div>
+                  <div className="p-4 space-y-4">
+                     <p className="text-sm text-emerald-800 dark:text-emerald-200">
+                        Además de consultar, el asistente puede realizar acciones en tu cuenta:
+                     </p>
+                     <div className="space-y-3">
+                        <div className="flex gap-3">
+                           <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">+</span>
+                           <div>
+                              <p className="font-medium text-gray-900 dark:text-gray-100">Agregar transacciones</p>
+                              <p className="text-sm text-gray-500">Escribe: <em>"Gasté 35mil en almuerzo"</em> y lo registra por ti.</p>
+                           </div>
+                        </div>
+                        <div className="flex gap-3">
+                           <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">↻</span>
+                           <div>
+                              <p className="font-medium text-gray-900 dark:text-gray-100">Recategorizar transacciones</p>
+                              <p className="text-sm text-gray-500">Pídele: <em>"Recategoriza mis transacciones de comida"</em></p>
+                           </div>
+                        </div>
+                        <div className="flex gap-3">
+                           <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">📋</span>
+                           <div>
+                              <p className="font-medium text-gray-900 dark:text-gray-100">Recategorización masiva</p>
+                              <p className="text-sm text-gray-500">Puede recategorizar varias transacciones a la vez automáticamente.</p>
+                           </div>
+                        </div>
+                        <div className="flex gap-3">
+                           <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">🏷️</span>
+                           <div>
+                              <p className="font-medium text-gray-900 dark:text-gray-100">Crear categorías</p>
+                              <p className="text-sm text-gray-500">Si una recategorización necesita una categoría nueva, la crea automáticamente.</p>
+                           </div>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+
+               {/* Confirmación */}
+               <div className="p-4 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-200 dark:border-amber-800">
+                  <h4 className="font-semibold text-amber-900 dark:text-amber-100 mb-2 flex items-center gap-2">
+                     <CheckCircle size={16} className="text-amber-600" />
+                     Confirmación de acciones
+                  </h4>
+                  <p className="text-sm text-amber-800 dark:text-amber-200">
+                     Todas las acciones propuestas por el asistente requieren tu confirmación antes de ejecutarse.
+                     Verás una tarjeta con los detalles de la acción y botones para confirmar o rechazar.
+                  </p>
+               </div>
+
+               {/* Token usage */}
+               <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                  <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Uso de tokens</h4>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                     Al pasar el cursor sobre el ícono del bot en cada respuesta, verás el uso de tokens 
+                     (una medida del procesamiento utilizado por la IA). Esto es solo informativo.
+                  </p>
                </div>
             </div>
            )}

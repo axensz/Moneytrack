@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect } from 'react';
-import { LogIn, LogOut, User as UserIcon, Settings, HelpCircle } from 'lucide-react';
+import { LogIn, LogOut, User as UserIcon, Settings, HelpCircle, Tag } from 'lucide-react';
 import { ThemeToggle } from '../theme/ThemeToggle';
 import type { User } from 'firebase/auth';
 
@@ -11,6 +11,7 @@ interface HeaderProps {
   showSettingsMenu: boolean;
   setShowSettingsMenu: (show: boolean) => void;
   onOpenHelp: () => void;
+  onOpenCategories: () => void;
   onLogout: () => Promise<void>;
 }
 
@@ -20,6 +21,7 @@ export const Header: React.FC<HeaderProps> = ({
   showSettingsMenu,
   setShowSettingsMenu,
   onOpenHelp,
+  onOpenCategories,
   onLogout
 }) => {
   const settingsMenuRef = useRef<HTMLDivElement>(null);
@@ -108,6 +110,17 @@ export const Header: React.FC<HeaderProps> = ({
                   role="menu"
                   aria-label="Opciones de configuración"
                 >
+                  <button
+                    onClick={() => {
+                      onOpenCategories();
+                      setShowSettingsMenu(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    role="menuitem"
+                  >
+                    <Tag size={18} aria-hidden="true" />
+                    <span>Categorías</span>
+                  </button>
                   <button
                     onClick={() => {
                       onOpenHelp();

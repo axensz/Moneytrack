@@ -152,6 +152,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
               account={getAccountForTransaction(transaction.accountId)}
               isEditing={editingTransaction === transaction.id}
               editForm={editForm}
+              categories={categories}
               recurringPaymentName={getRecurringPaymentName(
                 transaction.recurringPaymentId
               )}

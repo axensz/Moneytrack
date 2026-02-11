@@ -27,24 +27,28 @@ export function useCategories(transactions: Transaction[], userId?: string | nul
   });
 
   // Convertir Firebase (Category[]) a formato UI (Categories)
+  // Siempre incluye las categorías por defecto + las creadas por el usuario en Firestore
   const categories = useMemo((): Categories => {
-    if (userId && firestoreCategories.length > 0) {
-      return {
-        expense: firestoreCategories
-          .filter(c => c.type === 'expense')
-          .map(c => c.name),
-        income: firestoreCategories
-          .filter(c => c.type === 'income')
-          .map(c => c.name)
-      };
-    }
-    
-    // Si no hay categorías en Firebase pero hay usuario, usar defaults
     if (userId) {
-      return {
-        expense: [...DEFAULT_CATEGORIES.expense],
-        income: [...DEFAULT_CATEGORIES.income]
-      };
+      const firestoreExpense = firestoreCategories
+        .filter(c => c.type === 'expense')
+        .map(c => c.name);
+      const firestoreIncome = firestoreCategories
+        .filter(c => c.type === 'income')
+        .map(c => c.name);
+
+      // Merge: defaults + custom (sin duplicados)
+      const expense: string[] = [...DEFAULT_CATEGORIES.expense];
+      firestoreExpense.forEach(name => {
+        if (!expense.includes(name)) expense.push(name);
+      });
+
+      const income: string[] = [...DEFAULT_CATEGORIES.income];
+      firestoreIncome.forEach(name => {
+        if (!income.includes(name)) income.push(name);
+      });
+
+      return { expense, income };
     }
 
     return localCategories;

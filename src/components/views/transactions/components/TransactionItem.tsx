@@ -2,7 +2,7 @@
 
 import React, { memo } from 'react';
 import { Edit2, X, Check } from 'lucide-react';
-import type { Transaction, Account } from '../../../../types/finance';
+import type { Transaction, Account, Categories } from '../../../../types/finance';
 import { formatNumberForInput, unformatNumber } from '../../../../utils/formatters';
 
 interface TransactionItemProps {
@@ -13,14 +13,16 @@ interface TransactionItemProps {
     description: string;
     amount: string;
     date: string;
+    category: string;
   };
+  categories: Categories;
   recurringPaymentName?: string | null;
   formatCurrency: (amount: number) => string;
   onEdit: () => void;
   onDelete: () => void;
   onSave: () => void;
   onCancel: () => void;
-  onEditFormChange: (form: { description: string; amount: string; date: string }) => void;
+  onEditFormChange: (form: { description: string; amount: string; date: string; category: string }) => void;
 }
 
 /**
@@ -32,6 +34,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
   account,
   isEditing,
   editForm,
+  categories,
   recurringPaymentName,
   formatCurrency,
   onEdit,
@@ -44,18 +47,37 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
     return (
       <div className="border rounded-lg p-3 sm:p-4 transition-all bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
         <div className="space-y-3">
-          <div>
-            <label className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">
-              Descripción
-            </label>
-            <input
-              type="text"
-              value={editForm.description}
-              onChange={(e) =>
-                onEditFormChange({ ...editForm, description: e.target.value })
-              }
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">
+                Descripción
+              </label>
+              <input
+                type="text"
+                value={editForm.description}
+                onChange={(e) =>
+                  onEditFormChange({ ...editForm, description: e.target.value })
+                }
+                placeholder="(opcional)"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">
+                Categoría
+              </label>
+              <select
+                value={editForm.category}
+                onChange={(e) =>
+                  onEditFormChange({ ...editForm, category: e.target.value })
+                }
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              >
+                {(transaction.type === 'income' ? categories.income : categories.expense).map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -117,9 +139,9 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
         <div className="flex-1 min-w-0">
           <div 
             className="font-medium text-gray-900 dark:text-gray-100 truncate"
-            title={transaction.description}
+            title={transaction.description || transaction.category}
           >
-            {transaction.description}
+            {transaction.description || <span className="text-gray-400 italic">{transaction.category}</span>}
           </div>
           <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 flex flex-wrap gap-1 items-center">
             <span className="truncate max-w-[120px]">{transaction.category}</span>

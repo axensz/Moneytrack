@@ -21,12 +21,15 @@ export const DEFAULT_CATEGORIES = {
     'Salud',
     'Entretenimiento',
     'Educación',
+    'Compras Personales',
+    'Regalos',
     'Otros'
   ],
   income: [
     'Salario',
     'Freelance',
     'Inversiones',
+    'Cesantías',
     'Otros'
   ]
 } as const;
@@ -69,9 +72,9 @@ export const TRANSACTION_VALIDATION = {
     errorMessage: 'El monto debe ser mayor a 0'
   },
   description: {
-    minLength: 1,
+    minLength: 0,
     maxLength: 500,
-    errorMessage: 'La descripción debe tener entre 1 y 500 caracteres'
+    errorMessage: 'La descripción no puede tener más de 500 caracteres'
   }
 } as const;
 

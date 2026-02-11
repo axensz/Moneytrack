@@ -46,6 +46,7 @@ export const useTransactionsView = ({
     description: '',
     amount: '',
     date: '',
+    category: '',
   });
 
   // Estado de filtro de fecha
@@ -125,6 +126,7 @@ export const useTransactionsView = ({
       description: transaction.description,
       amount: formatNumberForInput(transaction.amount),
       date: new Date(transaction.date).toISOString().split('T')[0],
+      category: transaction.category,
     });
   }, []);
 
@@ -140,7 +142,8 @@ export const useTransactionsView = ({
       await updateTransaction(id, {
         description: editForm.description.trim(),
         amount,
-        date: parseDateFromInput(editForm.date), // 🐛 FIX: Usar parseDateFromInput para evitar problemas de timezone
+        date: parseDateFromInput(editForm.date),
+        category: editForm.category,
       });
 
       setEditingTransaction(null);
@@ -151,7 +154,7 @@ export const useTransactionsView = ({
 
   const handleCancelEdit = useCallback(() => {
     setEditingTransaction(null);
-    setEditForm({ description: '', amount: '', date: '' });
+    setEditForm({ description: '', amount: '', date: '', category: '' });
   }, []);
 
   const handleDeleteTransaction = useCallback(

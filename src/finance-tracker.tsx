@@ -10,6 +10,7 @@ import { StatsCards, TransactionForm } from './components/shared';
 import { AuthModal } from './components/modals/AuthModal';
 import { WelcomeModal } from './components/modals/WelcomeModal';
 import { HelpModal } from './components/modals/HelpModal';
+import { CategoriesModal } from './components/modals/CategoriesModal';
 import { FirestoreProvider } from './contexts/FirestoreContext';
 import { TransactionsView } from './components/views/transactions';
 import { useTransactions } from './hooks/useTransactions';
@@ -30,6 +31,7 @@ import type { NewTransaction, ViewType, FilterValue } from './types/finance';
 import { logoutFirebase } from './lib/firebase';
 import type { User } from 'firebase/auth';
 import { OfflineBanner } from './components/layout/OfflineBanner';
+import { AIChatBot } from './components/chat/AIChatBot';
 
 // Lazy-loaded secondary views
 const StatsView = lazy(() =>
@@ -92,6 +94,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showCategoriesModal, setShowCategoriesModal] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
 
   const { transactions, addTransaction, deleteTransaction, updateTransaction, loading: transactionsLoading } = useTransactions(user?.uid || null);
@@ -167,7 +170,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     { key: 'h', modifiers: ['ctrl' as const], description: 'Abrir ayuda', action: () => setShowHelpModal(true) },
     {
       key: 'Escape', description: 'Cerrar modal',
-      action: () => { setShowForm(false); setShowHelpModal(false); setIsAuthModalOpen(false); },
+      action: () => { setShowForm(false); setShowHelpModal(false); setShowCategoriesModal(false); setIsAuthModalOpen(false); },
       preventDefault: false
     }
   ], [accounts.length]);
@@ -197,6 +200,8 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
 
   const handleCloseAuthModal = useCallback(() => setIsAuthModalOpen(false), []);
   const handleOpenHelpModal = useCallback(() => setShowHelpModal(true), []);
+  const handleOpenCategories = useCallback(() => setShowCategoriesModal(true), []);
+  const handleCloseCategories = useCallback(() => setShowCategoriesModal(false), []);
   const handleCloseHelpModal = useCallback(() => setShowHelpModal(false), []);
   const handleCloseForm = useCallback(() => { setBatchCount(0); setShowForm(false); }, []);
   const handleRestoreTransaction = useCallback(
@@ -304,12 +309,21 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         onClose={handleCloseHelpModal}
       />
 
+      <CategoriesModal
+        isOpen={showCategoriesModal}
+        onClose={handleCloseCategories}
+        categories={categories}
+        addCategory={addCategory}
+        deleteCategory={deleteCategory}
+      />
+
       <Header
         user={user}
         setIsAuthModalOpen={setIsAuthModalOpen}
         showSettingsMenu={showSettingsMenu}
         setShowSettingsMenu={setShowSettingsMenu}
         onOpenHelp={handleOpenHelpModal}
+        onOpenCategories={handleOpenCategories}
         onLogout={handleLogout}
       />
 
@@ -414,9 +428,6 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
                   getAccountBalance={getAccountBalance}
                   getTransactionCountForAccount={getTransactionCountForAccount}
                   formatCurrency={formatCurrency}
-                  categories={categories}
-                  addCategory={addCategory}
-                  deleteCategory={deleteCategory}
                   addTransaction={addTransaction}
                 />
                 </Suspense>
@@ -425,6 +436,18 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
           </div>
         </div>
       </div>
+
+      {/* AI ChatBot */}
+      {user && (
+        <AIChatBot
+          transactions={transactions}
+          accounts={accounts}
+          categories={categories}
+          onAddTransaction={addTransaction}
+          onUpdateTransaction={updateTransaction}
+          onAddCategory={addCategory}
+        />
+      )}
     </div>
   );
 };

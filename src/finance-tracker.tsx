@@ -22,12 +22,14 @@ import { useFilteredData } from './hooks/useFilteredData';
 import { useWelcomeModal } from './hooks/useWelcomeModal';
 import { useNotifications } from './hooks/useNotifications';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { formatCurrency } from './utils/formatters';
 import { TOAST_CONFIG, INITIAL_TRANSACTION } from './config/constants';
 import { logger } from './utils/logger';
 import type { NewTransaction, ViewType, FilterValue } from './types/finance';
 import { logoutFirebase } from './lib/firebase';
 import type { User } from 'firebase/auth';
+import { OfflineBanner } from './components/layout/OfflineBanner';
 
 // Lazy-loaded secondary views
 const StatsView = lazy(() =>
@@ -52,25 +54,38 @@ const ViewFallback = () => (
  */
 const FinanceTracker = () => {
   const [mounted, setMounted] = useState(false);
+  const [dataReady, setDataReady] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
   const { user, loading: authLoading } = useAuth();
+  const { isOnline } = useNetworkStatus();
 
-  if (!mounted || authLoading) {
-    return <LoadingScreen />;
-  }
+  // Mostrar UNA sola pantalla de carga que cubre auth + data loading
+  // Solo se oculta cuando dataReady es true (los datos ya cargaron)
+  const showLoading = !mounted || authLoading || (user && !dataReady);
 
   return (
-    <FirestoreProvider userId={user?.uid || null}>
-      <FinanceTrackerContent user={user} />
-    </FirestoreProvider>
+    <>
+      {showLoading && <LoadingScreen />}
+      {mounted && !authLoading && (
+        <div style={{ display: showLoading ? 'none' : undefined }}>
+          <FirestoreProvider userId={user?.uid || null}>
+            <FinanceTrackerContent
+              user={user}
+              isOnline={isOnline}
+              onDataReady={setDataReady}
+            />
+          </FirestoreProvider>
+        </div>
+      )}
+    </>
   );
 };
 
 /**
  * Inner component: all app logic, consuming shared Firestore context
  */
-const FinanceTrackerContent = ({ user }: { user: User | null }) => {
+const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | null; isOnline: boolean; onDataReady: (ready: boolean) => void }) => {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const newTransactionRef = useRef<NewTransaction>({ ...INITIAL_TRANSACTION });
@@ -104,7 +119,7 @@ const FinanceTrackerContent = ({ user }: { user: User | null }) => {
   const [view, setView] = useState<ViewType>('transactions');
   const [filterCategory, setFilterCategory] = useState<FilterValue>('all');
   const [filterAccount, setFilterAccount] = useState<FilterValue>('all');
-  const [dateRange, setDateRange] = useState<import('./types/finance').DateRange>({ preset: 'all' });
+  const [dateRange, setDateRange] = useState<import('./types/finance').DateRange>({ preset: 'this-month' });
 
   const { dynamicStats, dynamicTotalBalance, balanceLabel } = useFilteredData({
     transactions, accounts, filterAccount, filterCategory, dateRange, totalBalance, getAccountBalance,
@@ -205,11 +220,11 @@ const FinanceTrackerContent = ({ user }: { user: User | null }) => {
     setView('accounts');
   }, [handleDismissWelcomeModal]);
 
+  // Notificar al padre cuando los datos están listos
   const isDataLoading = user && (accountsLoading || transactionsLoading);
-
-  if (isDataLoading) {
-    return <LoadingScreen />;
-  }
+  useEffect(() => {
+    onDataReady(!isDataLoading);
+  }, [isDataLoading, onDataReady]);
 
   if (isLoggingOut) {
     return <LoadingScreen message="Cerrando sesión..." variant="logout" />;
@@ -217,6 +232,9 @@ const FinanceTrackerContent = ({ user }: { user: User | null }) => {
 
   return (
     <div className="flex flex-col h-screen bg-background bg-gradient-to-br from-violet-50/30 via-purple-50/20 to-fuchsia-50/10 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+      {/* Banner de sin conexión */}
+      <OfflineBanner isOnline={isOnline} />
+
       {/* Mobile Bottom Navigation - Fixed at bottom, FUERA del contenedor scrollable */}
       <nav
         className="sm:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 shadow-lg safe-area-bottom"

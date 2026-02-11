@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Wallet, CreditCard, Banknote } from 'lucide-react';
 import { showToast } from '../../../utils/toastHelpers';
 import { BalanceCalculator } from '../../../utils/balanceCalculator';
@@ -62,6 +62,13 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   deleteCategory,
   addTransaction,
 }) => {
+  // Helpers (definidos antes de los hooks que los usan)
+  const getCreditUsed = useCallback((accountId: string): number => {
+    const account = accounts.find((a) => a.id === accountId);
+    if (!account || account.type !== 'credit') return 0;
+    return BalanceCalculator.calculateCreditCardUsed(account, transactions);
+  }, [accounts, transactions]);
+
   // Custom hooks
   const dragDrop = useDragAndDrop({ accounts, updateAccount });
   const accountForm = useAccountForm({
@@ -69,6 +76,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     updateAccount,
     addTransaction,
     getAccountBalance,
+    getCreditUsed,
     formatCurrency,
   });
 
@@ -92,13 +100,6 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
 
   // Filtrar cuentas de ahorro para asociación con TC
   const savingsAccounts = accounts.filter((acc) => acc.type === 'savings');
-
-  // Helpers
-  const getCreditUsed = (accountId: string): number => {
-    const account = accounts.find((a) => a.id === accountId);
-    if (!account || account.type !== 'credit') return 0;
-    return BalanceCalculator.calculateCreditCardUsed(account, transactions);
-  };
 
   const getNextCutoffDate = (account: Account): Date | null => {
     if (account.type !== 'credit' || !account.cutoffDay) return null;
@@ -225,6 +226,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
         unformatNumber={accountForm.unformatNumber}
         formatCurrency={formatCurrency}
         getAccountBalance={getAccountBalance}
+        getCreditUsed={getCreditUsed}
       />
 
       <CategoryFormModal

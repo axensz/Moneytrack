@@ -65,7 +65,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
         {/* Ingresos Card */}
         <div className="p-4 sm:p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-md hover:shadow-lg transition-all">
           <div className="flex items-center justify-between mb-2 sm:mb-3">
-            <span className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Ingresos</span>
+            <span className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Ingresos <span className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500 font-normal">este mes</span></span>
             <div className="p-1.5 sm:p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
               <TrendingUp size={16} className="sm:w-[18px] sm:h-[18px] text-emerald-600 dark:text-emerald-400" />
             </div>
@@ -78,7 +78,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
         {/* Gastos Card */}
         <div className="p-4 sm:p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-md hover:shadow-lg transition-all">
           <div className="flex items-center justify-between mb-2 sm:mb-3">
-            <span className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Gastos</span>
+            <span className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Gastos <span className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500 font-normal">este mes</span></span>
             <div className="p-1.5 sm:p-2 rounded-lg bg-rose-100 dark:bg-rose-900/30">
               <TrendingDown size={16} className="sm:w-[18px] sm:h-[18px] text-rose-600 dark:text-rose-400" />
             </div>

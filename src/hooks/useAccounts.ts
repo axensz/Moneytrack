@@ -1,7 +1,7 @@
 import { useMemo, useCallback } from 'react';
 import { useFirestoreData } from '../contexts/FirestoreContext';
 import { useLocalStorage } from './useLocalStorage';
-import { BalanceCalculator } from '../utils/balanceCalculator';
+import { BalanceCalculator, CreditCardCalculator } from '../utils/balanceCalculator';
 import type { Account, Transaction } from '../types/finance';
 
 // Generar ID único para localStorage (hoisted fuera del hook)

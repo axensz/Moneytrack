@@ -64,6 +64,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
               </label>
               <input
                 type="text"
+                inputMode="decimal"
                 value={formatNumberForInput(editForm.amount)}
                 onChange={(e) =>
                   onEditFormChange({

@@ -137,14 +137,20 @@ export function useAddTransaction({
           }
         }
 
+        // Determinar categoría
+        const isTCPayment = selectedAccount.type === 'credit' && newTransaction.type === 'income';
+        let category = newTransaction.category;
+        if (newTransaction.type === 'transfer') {
+          category = TRANSFER_CATEGORY;
+        } else if (isTCPayment) {
+          category = 'Pago TC';
+        }
+
         // Preparar datos de la transacción
         const transactionData: Omit<Transaction, 'id' | 'createdAt'> = {
           type: newTransaction.type,
           amount: amount,
-          category:
-            newTransaction.type === 'transfer'
-              ? TRANSFER_CATEGORY
-              : newTransaction.category,
+          category,
           description: newTransaction.description.trim(),
           date: newTransaction.date ? parseDateFromInput(newTransaction.date) : new Date(),
           paid: newTransaction.paid,
@@ -178,6 +184,28 @@ export function useAddTransaction({
         }
 
         await addTransaction(transactionData);
+
+        // Si es un pago de TC con cuenta origen, crear la transacción opuesta
+        // (transferencia: sale de la cuenta origen, entra a la TC)
+        if (
+          selectedAccount.type === 'credit' &&
+          newTransaction.type === 'income' &&
+          newTransaction.toAccountId
+        ) {
+          const sourceAccount = accounts.find(acc => acc.id === newTransaction.toAccountId);
+          if (sourceAccount) {
+            await addTransaction({
+              type: 'expense',
+              amount: amount,
+              category: 'Pago TC',
+              description: `Pago a ${selectedAccount.name}${newTransaction.description.trim() ? ': ' + newTransaction.description.trim() : ''}`,
+              date: newTransaction.date ? parseDateFromInput(newTransaction.date) : new Date(),
+              paid: true,
+              accountId: sourceAccount.id!,
+            });
+          }
+        }
+
         return true;
       } catch (error) {
         showToast.error(ERROR_MESSAGES.ADD_TRANSACTION_ERROR);

@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, memo, useState } from 'react';
+import React, { useEffect, useMemo, memo, useState, useCallback } from 'react';
 import { X, Repeat, Zap, AlertTriangle } from 'lucide-react';
 import { UI_LABELS } from '@/config/constants';
 import { formatNumberForInput, unformatNumber, formatCurrency, formatDate } from '@/utils/formatters';
 import { BalanceCalculator } from '@/utils/balanceCalculator';
 import { INSTALLMENT_OPTIONS } from '@/utils/interestCalculator';
-import { detectDuplicates } from '@/utils/duplicateDetector';
+import { detectDuplicates, type DuplicateMatch } from '@/utils/duplicateDetector';
 import type { NewTransaction, Account, Categories, Transaction, RecurringPayment } from '@/types/finance';
 
 interface TransactionFormProps {
@@ -61,17 +61,33 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
     }
   }, [isCreditCard, newTransaction.type, setNewTransaction]);
 
-  // Detección de duplicados
-  const duplicates = useMemo(() => {
-    return detectDuplicates(newTransaction, transactions);
-  }, [newTransaction.amount, newTransaction.category, newTransaction.description, newTransaction.date, newTransaction.type, transactions]);
+  // Detección de duplicados: solo al intentar enviar (no en tiempo real)
+  const [pendingDuplicates, setPendingDuplicates] = useState<DuplicateMatch[]>([]);
+  const [pendingAction, setPendingAction] = useState<'submit' | 'continue' | null>(null);
 
-  const [dismissedDuplicates, setDismissedDuplicates] = useState(false);
+  const checkDuplicatesAndSubmit = useCallback((action: 'submit' | 'continue') => {
+    const matches = detectDuplicates(newTransaction, transactions);
+    if (matches.length > 0) {
+      setPendingDuplicates(matches);
+      setPendingAction(action);
+    } else {
+      // Sin duplicados, enviar directamente
+      if (action === 'submit') onSubmit();
+      else onSubmitAndContinue?.();
+    }
+  }, [newTransaction, transactions, onSubmit, onSubmitAndContinue]);
 
-  // Reset dismissed when duplicates change
-  useEffect(() => {
-    setDismissedDuplicates(false);
-  }, [duplicates.length]);
+  const handleConfirmDuplicate = useCallback(() => {
+    setPendingDuplicates([]);
+    if (pendingAction === 'submit') onSubmit();
+    else onSubmitAndContinue?.();
+    setPendingAction(null);
+  }, [pendingAction, onSubmit, onSubmitAndContinue]);
+
+  const handleCancelDuplicate = useCallback(() => {
+    setPendingDuplicates([]);
+    setPendingAction(null);
+  }, []);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm">
@@ -148,6 +164,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
           <label className="label-base">Monto</label>
           <input
             type="text"
+            inputMode="decimal"
             value={formatNumberForInput(newTransaction.amount)}
             onChange={(e) => {
               const unformatted = unformatNumber(e.target.value);
@@ -165,7 +182,9 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
 
         <div>
           <label className="label-base">
-            {newTransaction.type === 'transfer' ? 'Cuenta Destino' : 'Categoría'}
+            {newTransaction.type === 'transfer' ? 'Cuenta Destino' 
+              : (isCreditCard && newTransaction.type === 'income') ? 'Desde qué cuenta' 
+              : 'Categoría'}
           </label>
           {newTransaction.type === 'transfer' ? (
             <select
@@ -183,6 +202,20 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                     <option key={acc.id} value={acc.id}>{acc.name}</option>
                   ))
               )}
+            </select>
+          ) : (isCreditCard && newTransaction.type === 'income') ? (
+            <select
+              value={newTransaction.toAccountId}
+              onChange={(e) => setNewTransaction({...newTransaction, toAccountId: e.target.value})}
+              className="input-base"
+            >
+              <option value="">Selecciona cuenta origen</option>
+              {accounts
+                .filter(acc => acc.id !== newTransaction.accountId && acc.type !== 'credit')
+                .map(acc => (
+                  <option key={acc.id} value={acc.id}>{acc.name}</option>
+                ))
+              }
             </select>
           ) : (
             <select
@@ -328,8 +361,8 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
         </div>
       )}
 
-          {/* ⚠️ Alerta de posible duplicado */}
-          {duplicates.length > 0 && !dismissedDuplicates && (
+          {/* ⚠️ Alerta de posible duplicado (solo aparece al intentar enviar) */}
+          {pendingDuplicates.length > 0 && (
             <div className="mt-4 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-xl">
               <div className="flex items-start gap-3">
                 <AlertTriangle size={20} className="text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
@@ -338,7 +371,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                     Posible duplicado detectado
                   </p>
                   <div className="mt-2 space-y-1.5">
-                    {duplicates.map((dup, i) => (
+                    {pendingDuplicates.map((dup, i) => (
                       <div key={i} className="text-xs text-amber-700 dark:text-amber-300 bg-amber-100/50 dark:bg-amber-900/30 p-2 rounded-lg">
                         <span className="font-medium">{formatCurrency(dup.transaction.amount)}</span>
                         {' — '}
@@ -353,24 +386,32 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                       </div>
                     ))}
                   </div>
-                  <button
-                    onClick={() => setDismissedDuplicates(true)}
-                    className="mt-2 text-xs font-medium text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200 underline underline-offset-2"
-                  >
-                    No es duplicado, continuar
-                  </button>
+                  <div className="flex gap-3 mt-3">
+                    <button
+                      onClick={handleConfirmDuplicate}
+                      className="text-xs font-medium px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors"
+                    >
+                      No es duplicado, agregar de todos modos
+                    </button>
+                    <button
+                      onClick={handleCancelDuplicate}
+                      className="text-xs font-medium text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200 underline underline-offset-2"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
           <div className="flex flex-wrap gap-3 mt-6 items-center">
-            <button onClick={onSubmit} className="btn-submit">
+            <button onClick={() => checkDuplicatesAndSubmit('submit')} className="btn-submit">
               Agregar
             </button>
             {onSubmitAndContinue && (
               <button
-                onClick={onSubmitAndContinue}
+                onClick={() => checkDuplicatesAndSubmit('continue')}
                 className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-semibold bg-amber-500 hover:bg-amber-600 text-white transition-colors shadow-sm"
                 title="Agregar y seguir ingresando (mantiene cuenta y fecha)"
               >

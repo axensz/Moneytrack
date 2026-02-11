@@ -20,6 +20,7 @@ interface UseAccountFormProps {
   updateAccount: (id: string, updates: Partial<Account>) => Promise<void>;
   addTransaction: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
   getAccountBalance: (id: string) => number;
+  getCreditUsed: (id: string) => number;
   formatCurrency: (amount: number) => string;
 }
 
@@ -52,6 +53,7 @@ export function useAccountForm({
   updateAccount,
   addTransaction,
   getAccountBalance,
+  getCreditUsed,
   formatCurrency,
 }: UseAccountFormProps): UseAccountFormReturn {
   const [showAccountForm, setShowAccountForm] = useState(false);
@@ -129,20 +131,42 @@ export function useAccountForm({
             return;
           }
 
-          const currentBalance = getAccountBalance(editingAccount.id!);
-          const adjustment = newBalance - currentBalance;
+          if (editingAccount.type === 'credit') {
+            // Para TC: ajustar la deuda pendiente
+            const currentDebt = getCreditUsed(editingAccount.id!);
+            const debtDifference = newBalance - currentDebt;
 
-          if (Math.abs(adjustment) >= 0.01) {
-            needsBalanceAdjustment = true;
-            adjustmentData = {
-              type: adjustment > 0 ? 'income' : 'expense',
-              amount: Math.abs(adjustment),
-              category: 'Otros',
-              description: `Ajuste de saldo: ${adjustment > 0 ? '+' : ''}${formatCurrency(adjustment)}`,
-              date: new Date(),
-              paid: true,
-              accountId: editingAccount.id!,
-            };
+            if (Math.abs(debtDifference) >= 0.01) {
+              needsBalanceAdjustment = true;
+              // Si la deuda nueva es mayor, agregar un gasto de ajuste
+              // Si la deuda nueva es menor, agregar un ingreso (pago) de ajuste
+              adjustmentData = {
+                type: debtDifference > 0 ? 'expense' : 'income',
+                amount: Math.abs(debtDifference),
+                category: 'Otros',
+                description: `Ajuste de deuda TC: ${debtDifference > 0 ? '+' : '-'}${formatCurrency(Math.abs(debtDifference))}`,
+                date: new Date(),
+                paid: true,
+                accountId: editingAccount.id!,
+              };
+            }
+          } else {
+            // Para cuentas normales: ajustar saldo
+            const currentBalance = getAccountBalance(editingAccount.id!);
+            const adjustment = newBalance - currentBalance;
+
+            if (Math.abs(adjustment) >= 0.01) {
+              needsBalanceAdjustment = true;
+              adjustmentData = {
+                type: adjustment > 0 ? 'income' : 'expense',
+                amount: Math.abs(adjustment),
+                category: 'Otros',
+                description: `Ajuste de saldo: ${adjustment > 0 ? '+' : ''}${formatCurrency(adjustment)}`,
+                date: new Date(),
+                paid: true,
+                accountId: editingAccount.id!,
+              };
+            }
           }
         }
 
@@ -162,7 +186,10 @@ export function useAccountForm({
 
         if (needsBalanceAdjustment && adjustmentData) {
           await addTransaction(adjustmentData);
-          showToast.success('Cuenta actualizada y saldo ajustado correctamente');
+          const msg = editingAccount.type === 'credit' 
+            ? 'Cuenta actualizada y deuda ajustada correctamente'
+            : 'Cuenta actualizada y saldo ajustado correctamente';
+          showToast.success(msg);
         } else {
           showToast.success(SUCCESS_MESSAGES.ACCOUNT_UPDATED);
         }
@@ -223,6 +250,7 @@ export function useAccountForm({
     updateAccount,
     addTransaction,
     getAccountBalance,
+    getCreditUsed,
     formatCurrency,
     closeForm,
   ]);

@@ -57,14 +57,20 @@ export class TransactionValidator {
       );
     }
 
-    // Validar categoría (excepto para transferencias)
-    if (transaction.type !== 'transfer' && !transaction.category) {
+    // Validar categoría (excepto para transferencias y pagos de TC)
+    const isTCPayment = account?.type === 'credit' && transaction.type === 'income';
+    if (transaction.type !== 'transfer' && !isTCPayment && !transaction.category) {
       errors.push(ERROR_MESSAGES.EMPTY_CATEGORY);
     }
 
     // Validar cuenta destino para transferencias
     if (transaction.type === 'transfer' && !transaction.toAccountId) {
       errors.push(ERROR_MESSAGES.EMPTY_TO_ACCOUNT);
+    }
+
+    // Validar cuenta origen para pagos de TC
+    if (isTCPayment && !transaction.toAccountId) {
+      errors.push('Selecciona la cuenta desde la que pagarás la tarjeta');
     }
 
     // Validar que no se transfiera a la misma cuenta

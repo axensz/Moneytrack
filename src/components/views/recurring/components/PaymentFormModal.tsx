@@ -168,6 +168,7 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
                 <label className="label-base">Monto *</label>
                 <input
                   type="text"
+                  inputMode="decimal"
                   value={formatNumberForInput(amountInput)}
                   onChange={(e) => {
                     const rawValue = e.target.value.replace(/[^0-9]/g, '');

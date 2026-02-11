@@ -30,6 +30,7 @@ interface AccountFormModalProps {
   unformatNumber: (value: string) => string;
   formatCurrency: (amount: number) => string;
   getAccountBalance: (id: string) => number;
+  getCreditUsed: (id: string) => number;
 }
 
 /**
@@ -56,6 +57,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
   unformatNumber,
   formatCurrency,
   getAccountBalance,
+  getCreditUsed,
 }) => {
   if (!isOpen) return null;
 
@@ -112,6 +114,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                   <label className="label-base">Límite de Crédito</label>
                   <input
                     type="text"
+                    inputMode="decimal"
                     value={formatNumberForInput(creditLimitInput)}
                     onChange={(e) => {
                       const unformatted = unformatNumber(e.target.value);
@@ -146,6 +149,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                 <label className="label-base">Ajustar saldo (opcional)</label>
                 <input
                   type="text"
+                  inputMode="decimal"
                   value={formatNumberForInput(balanceAdjustment)}
                   placeholder={`Saldo actual: ${formatCurrency(getAccountBalance(editingAccount.id!))}`}
                   onChange={(e) => {
@@ -156,6 +160,27 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                 />
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   Ingresa el nuevo saldo deseado. Se creará un ajuste automático.
+                </p>
+              </div>
+            )}
+
+            {/* Ajuste de deuda para TC */}
+            {editingAccount && editingAccount.type === 'credit' && (
+              <div>
+                <label className="label-base">Ajustar deuda pendiente (opcional)</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={formatNumberForInput(balanceAdjustment)}
+                  placeholder={`Deuda actual: ${formatCurrency(getCreditUsed(editingAccount.id!))}`}
+                  onChange={(e) => {
+                    const unformatted = unformatNumber(e.target.value);
+                    setBalanceAdjustment(unformatted);
+                  }}
+                  className="input-base"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Ingresa el monto real que debes. Se creará un ajuste automático.
                 </p>
               </div>
             )}
@@ -188,6 +213,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                     <label className="label-base">Saldo inicial</label>
                     <input
                       type="text"
+                      inputMode="decimal"
                       value={formatNumberForInput(initialBalanceInput)}
                       onChange={(e) => {
                         const unformatted = unformatNumber(e.target.value);
@@ -226,6 +252,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                       <label className="label-base">Cupo total</label>
                       <input
                         type="text"
+                        inputMode="decimal"
                         value={formatNumberForInput(creditLimitInput)}
                         onChange={(e) => {
                           const unformatted = unformatNumber(e.target.value);

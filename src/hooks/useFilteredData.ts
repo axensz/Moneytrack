@@ -13,6 +13,7 @@
 
 import { useMemo } from 'react';
 import { useGlobalStats } from './useGlobalStats';
+import { CreditCardCalculator } from '../utils/balanceCalculator';
 import type { Transaction, Account, FilterValue, DateRange } from '../types/finance';
 
 interface UseFilteredDataParams {
@@ -140,13 +141,28 @@ export function useFilteredData({
     return accounts.filter((acc) => acc.id === filterAccount);
   }, [accounts, filterAccount]);
 
-  // Estadísticas dinámicas basadas en datos filtrados
-  const dynamicStats = useGlobalStats(filteredTransactions, filteredAccounts);
+  // Estadísticas dinámicas basadas en datos filtrados (ingresos/gastos mensuales)
+  const monthlyStats = useGlobalStats(filteredTransactions, filteredAccounts);
 
-  // Balance total dinámico (solo afectado por filtro de cuenta)
+  // Pendientes: siempre con TODAS las transacciones (no filtradas por fecha)
+  const pendingExpenses = useMemo(() => {
+    return accounts
+      .filter(acc => acc.type === 'credit')
+      .reduce(
+        (sum, account) => sum + CreditCardCalculator.calculateUsedCredit(account, transactions),
+        0
+      );
+  }, [accounts, transactions]);
+
+  const dynamicStats = useMemo(() => ({
+    ...monthlyStats,
+    pendingExpenses,
+  }), [monthlyStats, pendingExpenses]);
+
+  // Balance total dinámico (suma real de cuentas, excluyendo TC)
   const dynamicTotalBalance = useMemo(() => {
-    if (filterAccount === 'all') return totalBalance;
-    return getAccountBalance(filterAccount);
+    if (filterAccount !== 'all') return getAccountBalance(filterAccount);
+    return totalBalance;
   }, [totalBalance, filterAccount, getAccountBalance]);
 
   // Etiqueta dinámica para el balance

@@ -267,6 +267,9 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
 
   const configured = isGeminiConfigured();
 
+  // No mostrar el chatbot si la API key no está configurada
+  if (!configured) return null;
+
   // Auto scroll al último mensaje
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -478,12 +481,12 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
           </div>
           <div>
             <h3 className="text-sm font-semibold">Asistente MoneyTrack</h3>
-            <p className="text-[10px] text-white/70 font-mono">
-              {(() => {
-                const total = messages.reduce((sum, m) => sum + (m.tokenUsage?.totalTokens ?? 0), 0);
-                return total > 0 ? `${total.toLocaleString()} tokens usados` : 'gemini-2.5-flash';
-              })()}
-            </p>
+            {(() => {
+              const total = messages.reduce((sum, m) => sum + (m.tokenUsage?.totalTokens ?? 0), 0);
+              return total > 0 ? (
+                <p className="text-[10px] text-white/70 font-mono">{total.toLocaleString()} tokens usados</p>
+              ) : null;
+            })()}
           </div>
         </div>
         <div className="flex items-center gap-1">

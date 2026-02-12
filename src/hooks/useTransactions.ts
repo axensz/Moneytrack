@@ -23,6 +23,7 @@ export function useTransactions(userId: string | null) {
     transactions: firestoreTransactions,
     loading: firestoreLoading,
     addTransaction: firestoreAddTransaction,
+    addCreditPaymentAtomic: firestoreAddCreditPaymentAtomic,
     deleteTransaction: firestoreDeleteTransaction,
     updateTransaction: firestoreUpdateTransaction
   } = useFirestoreData();
@@ -90,6 +91,7 @@ export function useTransactions(userId: string | null) {
     transactions,
     loading,
     addTransaction,
+    addCreditPaymentAtomic: firestoreAddCreditPaymentAtomic,
     deleteTransaction,
     togglePaid,
     updateTransaction

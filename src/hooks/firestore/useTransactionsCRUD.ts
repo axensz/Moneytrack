@@ -43,6 +43,10 @@ interface UseTransactionsCRUDReturn {
   addTransaction: (
     transaction: Omit<Transaction, 'id' | 'createdAt'>
   ) => Promise<void>;
+  addCreditPaymentAtomic: (
+    creditTx: Omit<Transaction, 'id' | 'createdAt'>,
+    sourceTx: Omit<Transaction, 'id' | 'createdAt'>
+  ) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
   updateTransaction: (
     id: string,
@@ -114,6 +118,49 @@ export function useTransactionsCRUD(
   );
 
   /**
+   * AUDIT-FIX: Pago de crédito atómico — crea ambas transacciones en una sola operación
+   * (ingreso al crédito + gasto de la cuenta origen)
+   */
+  const addCreditPaymentAtomic = useCallback(
+    async (
+      creditTx: Omit<Transaction, 'id' | 'createdAt'>,
+      sourceTx: Omit<Transaction, 'id' | 'createdAt'>
+    ): Promise<void> => {
+      if (!userId) return;
+
+      validateTransactionSchema(creditTx);
+      validateTransactionSchema(sourceTx);
+
+      await runTransaction(db, async (firestoreTransaction) => {
+        // Verificar que ambas cuentas existan
+        const creditAccountRef = doc(db, `users/${userId}/accounts`, creditTx.accountId);
+        const sourceAccountRef = doc(db, `users/${userId}/accounts`, sourceTx.accountId);
+
+        const creditSnap = await firestoreTransaction.get(creditAccountRef);
+        const sourceSnap = await firestoreTransaction.get(sourceAccountRef);
+
+        if (!creditSnap.exists()) throw new Error('La cuenta de crédito no existe');
+        if (!sourceSnap.exists()) throw new Error('La cuenta origen no existe');
+
+        // Crear ambas transacciones atómicamente
+        const creditTxRef = doc(collection(db, `users/${userId}/transactions`));
+        const sourceTxRef = doc(collection(db, `users/${userId}/transactions`));
+
+        const cleanCredit = Object.fromEntries(
+          Object.entries(creditTx).filter(([, v]) => v !== undefined)
+        );
+        const cleanSource = Object.fromEntries(
+          Object.entries(sourceTx).filter(([, v]) => v !== undefined)
+        );
+
+        firestoreTransaction.set(creditTxRef, { ...cleanCredit, createdAt: new Date() });
+        firestoreTransaction.set(sourceTxRef, { ...cleanSource, createdAt: new Date() });
+      });
+    },
+    [userId]
+  );
+
+  /**
    * Agregar transacción (gasto, ingreso o transferencia)
    */
   const addTransaction = useCallback(
@@ -165,6 +212,7 @@ export function useTransactionsCRUD(
 
   return {
     addTransaction,
+    addCreditPaymentAtomic,
     deleteTransaction,
     updateTransaction,
   };

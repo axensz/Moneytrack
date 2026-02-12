@@ -7,6 +7,7 @@ import type {
   FilterValue,
   RecurringPayment,
 } from '../../../types/finance';
+import { useFinance } from '../../../contexts/FinanceContext';
 
 // Componentes
 import { NoAccountsMessage } from './components/NoAccountsMessage';
@@ -19,22 +20,12 @@ import { TransactionsListSkeleton } from './components/TransactionsListSkeleton'
 import { useTransactionsView } from './hooks/useTransactionsView';
 
 interface TransactionsViewProps {
-  transactions: Transaction[];
-  accounts: Account[];
-  recurringPayments?: RecurringPayment[];
   showForm: boolean;
   setShowForm: (show: boolean) => void;
   filterCategory: FilterValue;
   setFilterCategory: (filter: FilterValue) => void;
   filterAccount: FilterValue;
   setFilterAccount: (filter: FilterValue) => void;
-  categories: {
-    expense: string[];
-    income: string[];
-  };
-  deleteTransaction: (id: string) => Promise<void>;
-  updateTransaction: (id: string, updates: Partial<Transaction>) => Promise<void>;
-  formatCurrency: (amount: number) => string;
   loading?: boolean;
   onRestore?: (transaction: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
 }
@@ -44,22 +35,24 @@ interface TransactionsViewProps {
  * Muestra lista filtrable con edición inline y eliminación con undo
  */
 export const TransactionsView: React.FC<TransactionsViewProps> = ({
-  transactions,
-  accounts,
-  recurringPayments = [],
   showForm,
   setShowForm,
   filterCategory,
   setFilterCategory,
   filterAccount,
   setFilterAccount,
-  categories,
-  deleteTransaction,
-  updateTransaction,
-  formatCurrency,
   loading = false,
   onRestore,
 }) => {
+  const {
+    transactions,
+    accounts,
+    recurringPayments,
+    categories,
+    deleteTransaction,
+    updateTransaction,
+    formatCurrency,
+  } = useFinance();
   const {
     filteredTransactions,
     isMetadataFiltersActive,

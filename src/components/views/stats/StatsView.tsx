@@ -2,7 +2,7 @@
 
 import React from 'react';
 import type { Transaction, Account } from '../../../types/finance';
-import { formatCurrency } from '../../../utils/formatters';
+import { useFinance } from '../../../contexts/FinanceContext';
 import { CashFlowChart } from './components/CashFlowChart';
 import { MonthlyComparisonChart } from './components/MonthlyComparisonChart';
 import { CategoryPieChart } from './components/CategoryPieChart';
@@ -11,11 +11,6 @@ import { CreditCardInterestsCard } from './components/CreditCardInterestsCard';
 import { PeriodSummaryCard } from './components/PeriodSummaryCard';
 import { useCreditCardInterests } from './hooks/useCreditCardInterests';
 import { useStatsData } from './hooks/useStatsData';
-
-interface StatsViewProps {
-  transactions: Transaction[];
-  accounts: Account[];
-}
 
 /**
  * Vista Principal de Estadísticas
@@ -27,10 +22,8 @@ interface StatsViewProps {
  * 
  * @author Refactored following Clean Code principles
  */
-export const StatsView: React.FC<StatsViewProps> = ({
-  transactions,
-  accounts,
-}) => {
+export const StatsView: React.FC = () => {
+  const { transactions, accounts, formatCurrency } = useFinance();
   // Custom hooks para procesamiento de datos
   const { monthlyData, yearlyData, categoryData } = useStatsData(transactions);
   const { creditCardInterests, totals } = useCreditCardInterests(accounts, transactions);

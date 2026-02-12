@@ -1,4 +1,6 @@
 import { useMemo, useCallback } from 'react';
+import { doc, runTransaction, collection, writeBatch } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { useFirestoreData } from '../contexts/FirestoreContext';
 import { useLocalStorage } from './useLocalStorage';
 import { BalanceCalculator, CreditCardCalculator } from '../utils/balanceCalculator';
@@ -79,19 +81,32 @@ export function useAccounts(
       throw new Error('No puedes eliminar la cuenta por defecto');
     }
 
-    // 🔴 ELIMINACIÓN EN CASCADA: Eliminar todas las transacciones asociadas
+    // AUDIT-FIX: Eliminación en cascada atómica con writeBatch
     const relatedTransactions = transactions.filter(
       t => t.accountId === id || t.toAccountId === id
     );
 
-    // Eliminar transacciones en paralelo
-    await Promise.all(
-      relatedTransactions.map(t => deleteTransactionFn(t.id!))
-    );
-
-    // Luego eliminar la cuenta
     if (userId) {
-      await firestoreDeleteAccount(id);
+      // Usar batch para atomicidad — máximo 500 operaciones por batch
+      const BATCH_SIZE = 499; // 499 deletes + 1 account delete
+      const txIds = relatedTransactions.map(t => t.id!);
+
+      for (let i = 0; i < txIds.length; i += BATCH_SIZE) {
+        const batch = writeBatch(db);
+        const chunk = txIds.slice(i, i + BATCH_SIZE);
+        chunk.forEach(txId => {
+          batch.delete(doc(db, `users/${userId}/transactions`, txId));
+        });
+        // Incluir la cuenta en el último batch
+        if (i + BATCH_SIZE >= txIds.length) {
+          batch.delete(doc(db, `users/${userId}/accounts`, id));
+        }
+        await batch.commit();
+      }
+      // Si no hubo transacciones, eliminar solo la cuenta
+      if (txIds.length === 0) {
+        await firestoreDeleteAccount(id);
+      }
     } else {
       setLocalAccounts(prev => prev.filter(acc => acc.id !== id));
     }
@@ -99,13 +114,14 @@ export function useAccounts(
 
   const setDefaultAccount = async (id: string) => {
     if (userId) {
-      // Actualizar todas las cuentas en Firebase
-      const updates = accounts.map(account => 
-        updateAccount(account.id!, { isDefault: account.id === id })
-      );
-      await Promise.all(updates);
+      // AUDIT-FIX: Usar runTransaction para atomicidad
+      await runTransaction(db, async (transaction) => {
+        for (const account of accounts) {
+          const accountRef = doc(db, `users/${userId}/accounts`, account.id!);
+          transaction.update(accountRef, { isDefault: account.id === id });
+        }
+      });
     } else {
-      // Actualizar en localStorage
       setLocalAccounts(prev => 
         prev.map(acc => ({ ...acc, isDefault: acc.id === id }))
       );

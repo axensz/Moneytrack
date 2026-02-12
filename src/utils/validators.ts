@@ -55,7 +55,7 @@ export class TransactionValidator {
       );
     }
 
-    // Validar categoría (excepto para transferencias y pagos de TC)
+    // Validar categoría (excepto para transferencias y pagos de Crédito)
     const isTCPayment = account?.type === 'credit' && transaction.type === 'income';
     if (transaction.type !== 'transfer' && !isTCPayment && !transaction.category) {
       errors.push(ERROR_MESSAGES.EMPTY_CATEGORY);
@@ -66,10 +66,7 @@ export class TransactionValidator {
       errors.push(ERROR_MESSAGES.EMPTY_TO_ACCOUNT);
     }
 
-    // Validar cuenta origen para pagos de TC
-    if (isTCPayment && !transaction.toAccountId) {
-      errors.push('Selecciona la cuenta desde la que pagarás la tarjeta');
-    }
+    // Pagos de crédito: cuenta origen es opcional (permite pagos externos)
 
     // Validar que no se transfiera a la misma cuenta
     if (
@@ -116,59 +113,6 @@ export class TransactionValidator {
         // Si no existe estrategia (tipo inválido), agregar error genérico
         errors.push('Tipo de cuenta no válido');
       }
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors
-    };
-  }
-
-  /**
-   * 🔴 MÉTODO LEGACY: Validación sin estrategias (backward compatibility)
-   * @deprecated Usar validate(transaction, account, transactions) con estrategias
-   */
-  static validateLegacy(
-    transaction: NewTransaction,
-    accountBalance?: number,
-    accountType?: 'savings' | 'credit' | 'cash'
-  ): ValidationResult {
-    const errors: string[] = [];
-
-    // Validaciones básicas (igual que antes)
-    // Descripción es opcional
-
-    if (transaction.type !== 'transfer' && !transaction.category) {
-      errors.push(ERROR_MESSAGES.EMPTY_CATEGORY);
-    }
-
-    if (transaction.type === 'transfer' && !transaction.toAccountId) {
-      errors.push(ERROR_MESSAGES.EMPTY_TO_ACCOUNT);
-    }
-
-    if (
-      transaction.type === 'transfer' &&
-      transaction.accountId === transaction.toAccountId
-    ) {
-      errors.push(ERROR_MESSAGES.SAME_ACCOUNT_TRANSFER);
-    }
-
-    const amount = parseFloat(transaction.amount);
-    if (!transaction.amount || isNaN(amount)) {
-      errors.push(ERROR_MESSAGES.INVALID_AMOUNT);
-    } else if (amount <= TRANSACTION_VALIDATION.amount.min) {
-      errors.push(TRANSACTION_VALIDATION.amount.errorMessage);
-    }
-
-    // ❌ Validación legacy (sin estrategias)
-    if (
-      (transaction.type === 'expense' || transaction.type === 'transfer') &&
-      accountBalance !== undefined &&
-      accountBalance !== null &&
-      accountType !== 'credit' &&
-      amount > accountBalance
-    ) {
-      errors.push('Saldo insuficiente para realizar esta transacción');
     }
 
     return {

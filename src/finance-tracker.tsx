@@ -12,19 +12,15 @@ import { WelcomeModal } from './components/modals/WelcomeModal';
 import { HelpModal } from './components/modals/HelpModal';
 import { CategoriesModal } from './components/modals/CategoriesModal';
 import { FirestoreProvider } from './contexts/FirestoreContext';
+import { FinanceProvider, useFinance } from './contexts/FinanceContext';
 import { TransactionsView } from './components/views/transactions';
-import { useTransactions } from './hooks/useTransactions';
-import { useAccounts } from './hooks/useAccounts';
-import { useCategories } from './hooks/useCategories';
 import { useAuth } from './hooks/useAuth';
-import { useRecurringPayments } from './hooks/useRecurringPayments';
 import { useAddTransaction } from './hooks/useAddTransaction';
 import { useFilteredData } from './hooks/useFilteredData';
 import { useWelcomeModal } from './hooks/useWelcomeModal';
 import { useNotifications } from './hooks/useNotifications';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
-import { formatCurrency } from './utils/formatters';
 import { TOAST_CONFIG, INITIAL_TRANSACTION } from './config/constants';
 import { logger } from './utils/logger';
 import type { NewTransaction, ViewType, FilterValue } from './types/finance';
@@ -72,11 +68,13 @@ const FinanceTracker = () => {
       {mounted && !authLoading && (
         <div style={{ display: showLoading ? 'none' : undefined }}>
           <FirestoreProvider userId={user?.uid || null}>
-            <FinanceTrackerContent
-              user={user}
-              isOnline={isOnline}
-              onDataReady={setDataReady}
-            />
+            <FinanceProvider userId={user?.uid || null}>
+              <FinanceTrackerContent
+                user={user}
+                isOnline={isOnline}
+                onDataReady={setDataReady}
+              />
+            </FinanceProvider>
           </FirestoreProvider>
         </div>
       )}
@@ -85,9 +83,28 @@ const FinanceTracker = () => {
 };
 
 /**
- * Inner component: all app logic, consuming shared Firestore context
+ * Inner component: UI logic, consuming shared FinanceContext
  */
 const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | null; isOnline: boolean; onDataReady: (ready: boolean) => void }) => {
+  const {
+    transactions,
+    accounts,
+    categories,
+    recurringPayments,
+    defaultAccount,
+    totalBalance,
+    transactionsLoading,
+    accountsLoading,
+    addTransaction,
+    addCreditPaymentAtomic,
+    deleteCategory,
+    addCategory,
+    updateRecurringPayment,
+    getDaysUntilDue,
+    getAccountBalance,
+    formatCurrency,
+  } = useFinance();
+
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const newTransactionRef = useRef<NewTransaction>({ ...INITIAL_TRANSACTION });
@@ -96,26 +113,6 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showCategoriesModal, setShowCategoriesModal] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
-
-  const { transactions, addTransaction, deleteTransaction, updateTransaction, loading: transactionsLoading } = useTransactions(user?.uid || null);
-
-  // Cargar cuentas con transacciones
-  const { accounts, addAccount, updateAccount, deleteAccount, setDefaultAccount, getAccountBalance, getTransactionCountForAccount, totalBalance, defaultAccount, loading: accountsLoading } = useAccounts(user?.uid || null, transactions, deleteTransaction);
-
-  // 🆕 Hook de pagos periódicos
-  const {
-    recurringPayments,
-    addRecurringPayment,
-    updateRecurringPayment,
-    deleteRecurringPayment,
-    isPaidForMonth,
-    getNextDueDate,
-    getDaysUntilDue,
-    getPaymentHistory,
-    stats: recurringStats
-  } = useRecurringPayments(user?.uid || null, transactions);
-
-  const { categories, addCategory, deleteCategory } = useCategories(transactions, user?.uid);
 
   const [showForm, setShowForm] = useState(false);
   const [batchCount, setBatchCount] = useState(0);
@@ -180,7 +177,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const { handleAddTransaction, handleAddAndContinue } = useAddTransaction({
     accounts, transactions, recurringPayments,
     defaultAccount: defaultAccount || null,
-    addTransaction, updateRecurringPayment,
+    addTransaction, addCreditPaymentAtomic, updateRecurringPayment,
     setNewTransaction, setShowForm, setShowWelcomeModal,
   });
 
@@ -350,11 +347,6 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
                   <TransactionForm
                     newTransaction={newTransaction}
                     setNewTransaction={setNewTransaction}
-                    accounts={accounts}
-                    transactions={transactions}
-                    categories={categories}
-                    defaultAccount={defaultAccount || null}
-                    recurringPayments={recurringPayments}
                     onSubmit={handleSubmit}
                     onSubmitAndContinue={handleSubmitAndContinue}
                     onCancel={handleCloseForm}
@@ -363,19 +355,12 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
                 )}
 
                 <TransactionsView
-                  transactions={transactions}
-                  accounts={accounts}
-                  recurringPayments={recurringPayments}
                   showForm={showForm}
                   setShowForm={setShowForm}
                   filterCategory={filterCategory}
                   setFilterCategory={setFilterCategory}
                   filterAccount={filterAccount}
                   setFilterAccount={setFilterAccount}
-                  categories={categories}
-                  deleteTransaction={deleteTransaction}
-                  updateTransaction={updateTransaction}
-                  formatCurrency={formatCurrency}
                   loading={transactionsLoading || accountsLoading}
                   onRestore={handleRestoreTransaction}
                 />
@@ -385,21 +370,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
             {view === 'recurring' && (
               <div id="panel-recurring" role="tabpanel" aria-labelledby="tab-recurring">
                 <Suspense fallback={<ViewFallback />}>
-                  <RecurringPaymentsView
-                  recurringPayments={recurringPayments}
-                  accounts={accounts}
-                  transactions={transactions}
-                  categories={categories}
-                  formatCurrency={formatCurrency}
-                  addRecurringPayment={addRecurringPayment}
-                  updateRecurringPayment={updateRecurringPayment}
-                  deleteRecurringPayment={deleteRecurringPayment}
-                  isPaidForMonth={isPaidForMonth}
-                  getNextDueDate={getNextDueDate}
-                  getDaysUntilDue={getDaysUntilDue}
-                  getPaymentHistory={getPaymentHistory}
-                  stats={recurringStats}
-                />
+                  <RecurringPaymentsView />
                 </Suspense>
               </div>
             )}
@@ -407,10 +378,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
             {view === 'stats' && (
               <div id="panel-stats" role="tabpanel" aria-labelledby="tab-stats">
                 <Suspense fallback={<ViewFallback />}>
-                  <StatsView
-                    transactions={transactions}
-                    accounts={accounts}
-                  />
+                  <StatsView />
                 </Suspense>
               </div>
             )}
@@ -418,18 +386,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
             {view === 'accounts' && (
               <div id="panel-accounts" role="tabpanel" aria-labelledby="tab-accounts">
                 <Suspense fallback={<ViewFallback />}>
-                  <AccountsView
-                  accounts={accounts}
-                  transactions={transactions}
-                  addAccount={addAccount}
-                  updateAccount={updateAccount}
-                  deleteAccount={deleteAccount}
-                  setDefaultAccount={setDefaultAccount}
-                  getAccountBalance={getAccountBalance}
-                  getTransactionCountForAccount={getTransactionCountForAccount}
-                  formatCurrency={formatCurrency}
-                  addTransaction={addTransaction}
-                />
+                  <AccountsView />
                 </Suspense>
               </div>
             )}
@@ -439,14 +396,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
 
       {/* AI ChatBot */}
       {user && (
-        <AIChatBot
-          transactions={transactions}
-          accounts={accounts}
-          categories={categories}
-          onAddTransaction={addTransaction}
-          onUpdateTransaction={updateTransaction}
-          onAddCategory={addCategory}
-        />
+        <AIChatBot />
       )}
     </div>
   );

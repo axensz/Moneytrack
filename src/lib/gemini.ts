@@ -99,7 +99,7 @@ function buildFinancialContext(
   const currentYear = now.getFullYear();
 
   // Categorías que son ajustes internos, NO gastos reales del usuario
-  const ADJUSTMENT_CATEGORIES = ['Ajuste de saldo', 'Pago TC', 'Ajuste'];
+  const ADJUSTMENT_CATEGORIES = ['Ajuste de saldo', 'Pago Crédito', 'Pago TC', 'Ajuste'];
 
   // Filtrar ajustes de todas las transacciones para análisis
   const realTransactions = transactions.filter(t => !ADJUSTMENT_CATEGORIES.includes(t.category));
@@ -185,7 +185,7 @@ function buildFinancialContext(
       const balance = BalanceCalculator.calculateAccountBalance(a, transactions);
       if (a.type === 'credit') {
         const used = CreditCardCalculator.calculateUsedCredit(a, transactions);
-        return `  - [ID:${a.id}] ${a.name} (Tarjeta de Crédito): Usado ${formatCurrency(used)} de ${formatCurrency(a.creditLimit || 0)} (Disponible: ${formatCurrency(balance)})`;
+        return `  - [ID:${a.id}] ${a.name} (Crédito): Usado ${formatCurrency(used)} de ${formatCurrency(a.creditLimit || 0)} (Disponible: ${formatCurrency(balance)})`;
       }
       const type = a.type === 'savings' ? 'Ahorro' : 'Efectivo';
       return `  - [ID:${a.id}] ${a.name} (${type}): ${formatCurrency(balance)}`;
@@ -247,7 +247,7 @@ Día ${dayOfMonth} de ${daysInMonth} del mes (${Math.round((dayOfMonth / daysInM
 
 💰 BALANCE GENERAL:
 - Dinero disponible (cuentas y efectivo): ${formatCurrency(totalBalance)}
-- Deuda en tarjetas de crédito: ${formatCurrency(totalCreditDebt)}
+- Deuda en créditos: ${formatCurrency(totalCreditDebt)}
 - Patrimonio neto: ${formatCurrency(totalBalance - totalCreditDebt)}
 - Gastos pendientes de pago: ${formatCurrency(allPending)} (${pendingCount} transacciones)
 
@@ -315,7 +315,7 @@ REGLAS:
 - No des consejos de inversión específicos (acciones, cripto, etc.)
 - Sé empático con situaciones financieras difíciles
 - Usa emojis moderadamente para ser amigable
-- Los "Ajustes de saldo" y "Pago TC" son movimientos internos de la app, NO son gastos reales. Ignóralos completamente.
+- Los "Ajustes de saldo" y "Pago Crédito" son movimientos internos de la app, NO son gastos reales. Ignóralos completamente.
 - Si ves transacciones en "Otros" cuya descripción claramente pertenece a otra categoría, sugiérele al usuario recategorizarlas (ej: "Transporte" en Otros → debería estar en Transporte). Sé breve: solo menciona las más obvias.
 
 ACCIONES - PUEDES EJECUTAR ACCIONES EN LA APP:

@@ -6,15 +6,11 @@ import { BalanceCalculator } from '@/utils/balanceCalculator';
 import { INSTALLMENT_OPTIONS } from '@/utils/interestCalculator';
 import { detectDuplicates, type DuplicateMatch } from '@/utils/duplicateDetector';
 import type { NewTransaction, Account, Categories, Transaction, RecurringPayment } from '@/types/finance';
+import { useFinance } from '@/contexts/FinanceContext';
 
 interface TransactionFormProps {
   newTransaction: NewTransaction;
   setNewTransaction: React.Dispatch<React.SetStateAction<NewTransaction>>;
-  accounts: Account[];
-  transactions: Transaction[];
-  categories: Categories;
-  defaultAccount: Account | null;
-  recurringPayments?: RecurringPayment[];
   onSubmit: () => void;
   onSubmitAndContinue?: () => void;
   onCancel: () => void;
@@ -24,16 +20,18 @@ interface TransactionFormProps {
 export const TransactionForm: React.FC<TransactionFormProps> = memo(({
   newTransaction,
   setNewTransaction,
-  accounts,
-  transactions,
-  categories,
-  defaultAccount,
-  recurringPayments = [],
   onSubmit,
   onSubmitAndContinue,
   onCancel,
   batchCount = 0,
 }) => {
+  const {
+    accounts,
+    transactions,
+    categories,
+    defaultAccount,
+    recurringPayments,
+  } = useFinance();
   // Obtener cuenta seleccionada para validar restricciones
   const selectedAccount = accounts.find(acc => acc.id === newTransaction.accountId) || defaultAccount;
   const isCreditCard = selectedAccount?.type === 'credit';
@@ -142,7 +140,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                   : 'btn-type-inactive'
               }`}
             >
-              {isCreditCard ? 'Pagar TC' : UI_LABELS.transactionTypes.income}
+              {isCreditCard ? 'Pagar' : UI_LABELS.transactionTypes.income}
             </button>
             {!isCreditCard && (
               <button
@@ -209,7 +207,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
               onChange={(e) => setNewTransaction({...newTransaction, toAccountId: e.target.value})}
               className="input-base"
             >
-              <option value="">Selecciona cuenta origen</option>
+              <option value="">Pago externo (sin cuenta origen)</option>
               {accounts
                 .filter(acc => acc.id !== newTransaction.accountId && acc.type !== 'credit')
                 .map(acc => (

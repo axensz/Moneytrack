@@ -36,6 +36,10 @@ interface UseAddTransactionParams {
   recurringPayments: RecurringPayment[];
   defaultAccount: Account | null;
   addTransaction: (transaction: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
+  addCreditPaymentAtomic: (
+    creditTx: Omit<Transaction, 'id' | 'createdAt'>,
+    sourceTx: Omit<Transaction, 'id' | 'createdAt'>
+  ) => Promise<void>;
   updateRecurringPayment: (id: string, updates: Partial<RecurringPayment>) => Promise<void>;
   setNewTransaction: (transaction: NewTransaction) => void;
   setShowForm: (show: boolean) => void;
@@ -51,6 +55,7 @@ export function useAddTransaction({
   recurringPayments,
   defaultAccount,
   addTransaction,
+  addCreditPaymentAtomic,
   updateRecurringPayment,
   setNewTransaction,
   setShowForm,
@@ -143,7 +148,7 @@ export function useAddTransaction({
         if (newTransaction.type === 'transfer') {
           category = TRANSFER_CATEGORY;
         } else if (isTCPayment) {
-          category = 'Pago TC';
+          category = 'Pago Crédito';
         }
 
         // Preparar datos de la transacción
@@ -183,10 +188,8 @@ export function useAddTransaction({
           transactionData.interestRate = annualRate;
         }
 
-        await addTransaction(transactionData);
-
-        // Si es un pago de TC con cuenta origen, crear la transacción opuesta
-        // (transferencia: sale de la cuenta origen, entra a la TC)
+        // AUDIT-FIX (CRÍTICO-01): Pago de crédito atómico
+        // Si es un pago de crédito con cuenta origen, ambas transacciones se crean atómicamente
         if (
           selectedAccount.type === 'credit' &&
           newTransaction.type === 'income' &&
@@ -194,16 +197,22 @@ export function useAddTransaction({
         ) {
           const sourceAccount = accounts.find(acc => acc.id === newTransaction.toAccountId);
           if (sourceAccount) {
-            await addTransaction({
+            const sourceTx: Omit<Transaction, 'id' | 'createdAt'> = {
               type: 'expense',
               amount: amount,
-              category: 'Pago TC',
+              category: 'Pago Crédito',
               description: `Pago a ${selectedAccount.name}${newTransaction.description.trim() ? ': ' + newTransaction.description.trim() : ''}`,
               date: newTransaction.date ? parseDateFromInput(newTransaction.date) : new Date(),
               paid: true,
               accountId: sourceAccount.id!,
-            });
+            };
+            await addCreditPaymentAtomic(transactionData, sourceTx);
+          } else {
+            // Cuenta origen no encontrada — solo registrar el ingreso al crédito
+            await addTransaction(transactionData);
           }
+        } else {
+          await addTransaction(transactionData);
         }
 
         return true;
@@ -219,6 +228,7 @@ export function useAddTransaction({
       recurringPayments,
       defaultAccount,
       addTransaction,
+      addCreditPaymentAtomic,
       updateRecurringPayment,
       setShowWelcomeModal,
     ]

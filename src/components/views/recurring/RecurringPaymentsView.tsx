@@ -4,6 +4,7 @@ import React from 'react';
 import { Plus, Repeat } from 'lucide-react';
 
 import type { RecurringPayment, Account, Transaction } from '../../../types/finance';
+import { useFinance } from '../../../contexts/FinanceContext';
 
 // Componentes
 import { RecurringStatsCards } from './components/RecurringStatsCards';
@@ -16,51 +17,25 @@ import { InactivePaymentsList } from './components/InactivePaymentsList';
 // Hook
 import { useRecurringPaymentsView } from './hooks/useRecurringPaymentsView';
 
-interface RecurringPaymentsViewProps {
-  recurringPayments: RecurringPayment[];
-  accounts: Account[];
-  transactions: Transaction[];
-  categories: {
-    expense: string[];
-    income: string[];
-  };
-  formatCurrency: (amount: number) => string;
-  addRecurringPayment: (payment: Omit<RecurringPayment, 'id' | 'createdAt'>) => Promise<void>;
-  updateRecurringPayment: (id: string, updates: Partial<RecurringPayment>) => Promise<void>;
-  deleteRecurringPayment: (id: string) => Promise<void>;
-  isPaidForMonth: (paymentId: string, month?: Date) => boolean;
-  getNextDueDate: (payment: RecurringPayment) => Date;
-  getDaysUntilDue: (payment: RecurringPayment) => number;
-  getPaymentHistory: (paymentId: string, limit?: number) => Transaction[];
-  stats: {
-    total: number;
-    active: number;
-    paidThisMonth: number;
-    pendingThisMonth: number;
-    totalMonthlyAmount: number;
-    totalYearlyAmount: number;
-    upcomingPayments: RecurringPayment[];
-  };
-}
-
 /**
  * Vista principal de pagos periódicos
  * Muestra estadísticas, alertas y lista de pagos con formulario de gestión
  */
-export const RecurringPaymentsView: React.FC<RecurringPaymentsViewProps> = ({
-  recurringPayments,
-  accounts,
-  categories,
-  formatCurrency,
-  addRecurringPayment,
-  updateRecurringPayment,
-  deleteRecurringPayment,
-  isPaidForMonth,
-  getNextDueDate,
-  getDaysUntilDue,
-  getPaymentHistory,
-  stats,
-}) => {
+export const RecurringPaymentsView: React.FC = () => {
+  const {
+    recurringPayments,
+    accounts,
+    categories,
+    formatCurrency,
+    addRecurringPayment,
+    updateRecurringPayment,
+    deleteRecurringPayment,
+    isPaidForMonth,
+    getNextDueDate,
+    getDaysUntilDue,
+    getPaymentHistory,
+    recurringStats: stats,
+  } = useFinance();
   const {
     sortedPayments,
     inactivePayments,

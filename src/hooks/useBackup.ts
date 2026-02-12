@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { collection, writeBatch, doc, getDocs, deleteDoc } from 'firebase/firestore';
+import { collection, writeBatch, doc, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { showToast } from '../utils/toastHelpers';
 import { logger } from '../utils/logger';
@@ -131,29 +131,23 @@ export const useBackup = ({ transactions, accounts, categories, userId, refreshD
     logger.info('Clearing existing user data');
     setImportProgress(10);
 
-    // Eliminar transacciones
+    // AUDIT-FIX (MEDIO-07): Usar writeBatch en vez de deleteDoc individuales
     const transactionsSnapshot = await getDocs(collection(db, `users/${uid}/transactions`));
-    const deleteTransactionsPromises = transactionsSnapshot.docs.map(docSnap =>
-      deleteDoc(doc(db, `users/${uid}/transactions`, docSnap.id))
-    );
-
-    // Eliminar cuentas
     const accountsSnapshot = await getDocs(collection(db, `users/${uid}/accounts`));
-    const deleteAccountsPromises = accountsSnapshot.docs.map(docSnap =>
-      deleteDoc(doc(db, `users/${uid}/accounts`, docSnap.id))
-    );
-
-    // Eliminar categorías
     const categoriesSnapshot = await getDocs(collection(db, `users/${uid}/categories`));
-    const deleteCategoriesPromises = categoriesSnapshot.docs.map(docSnap =>
-      deleteDoc(doc(db, `users/${uid}/categories`, docSnap.id))
-    );
 
-    await Promise.all([
-      ...deleteTransactionsPromises,
-      ...deleteAccountsPromises,
-      ...deleteCategoriesPromises
-    ]);
+    const allDocs = [
+      ...transactionsSnapshot.docs.map(d => doc(db, `users/${uid}/transactions`, d.id)),
+      ...accountsSnapshot.docs.map(d => doc(db, `users/${uid}/accounts`, d.id)),
+      ...categoriesSnapshot.docs.map(d => doc(db, `users/${uid}/categories`, d.id)),
+    ];
+
+    // Firestore batch limit: 500 operaciones
+    for (let i = 0; i < allDocs.length; i += 499) {
+      const batch = writeBatch(db);
+      allDocs.slice(i, i + 499).forEach(ref => batch.delete(ref));
+      await batch.commit();
+    }
 
     setImportProgress(30);
     logger.info('User data cleared successfully');

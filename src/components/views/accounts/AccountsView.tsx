@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Wallet, CreditCard, Banknote } from 'lucide-react';
 import { showToast } from '../../../utils/toastHelpers';
 import { BalanceCalculator } from '../../../utils/balanceCalculator';
+import { useFinance } from '../../../contexts/FinanceContext';
 import type { Account, Transaction, NewAccount } from '../../../types/finance';
 
 import { AccountFormModal } from './components/AccountFormModal';
@@ -14,22 +15,9 @@ import { useAccountForm } from './hooks/useAccountForm';
 
 const ACCOUNT_TYPES = [
   { value: 'savings' as const, label: 'Cuenta de Ahorros', icon: Wallet },
-  { value: 'credit' as const, label: 'Tarjeta de Crédito', icon: CreditCard },
+  { value: 'credit' as const, label: 'Crédito', icon: CreditCard },
   { value: 'cash' as const, label: 'Efectivo', icon: Banknote },
 ];
-
-interface AccountsViewProps {
-  accounts: Account[];
-  transactions: Transaction[];
-  addAccount: (account: Omit<Account, 'id'>) => Promise<void>;
-  updateAccount: (id: string, updates: Partial<Account>) => Promise<void>;
-  deleteAccount: (id: string) => Promise<void>;
-  setDefaultAccount: (id: string) => Promise<void>;
-  getAccountBalance: (id: string) => number;
-  getTransactionCountForAccount: (id: string) => number;
-  formatCurrency: (amount: number) => string;
-  addTransaction: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
-}
 
 /**
  * Vista de Cuentas y Categorías
@@ -39,18 +27,19 @@ interface AccountsViewProps {
  * - Maneja drag & drop para reordenar cuentas
  * - Renderiza la lista de cuentas con sus tarjetas asociadas
  */
-export const AccountsView: React.FC<AccountsViewProps> = ({
-  accounts,
-  transactions,
-  addAccount,
-  updateAccount,
-  deleteAccount,
-  setDefaultAccount,
-  getAccountBalance,
-  getTransactionCountForAccount,
-  formatCurrency,
-  addTransaction,
-}) => {
+export const AccountsView: React.FC = () => {
+  const {
+    accounts,
+    transactions,
+    addAccount,
+    updateAccount,
+    deleteAccount,
+    setDefaultAccount,
+    getAccountBalance,
+    getTransactionCountForAccount,
+    formatCurrency,
+    addTransaction,
+  } = useFinance();
   // Helpers (definidos antes de los hooks que los usan)
   const getCreditUsed = useCallback((accountId: string): number => {
     const account = accounts.find((a) => a.id === accountId);
@@ -78,13 +67,15 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   } | null>(null);
 
   // Inicializar order si no existe
+  // AUDIT-FIX (MEDIO-01): deps correctas para evitar stale closures
   useEffect(() => {
     accounts.forEach((account, index) => {
       if (account.order === undefined) {
         updateAccount(account.id!, { order: index });
       }
     });
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accounts.length]);
 
   // Filtrar cuentas de ahorro para asociación con TC
   const savingsAccounts = accounts.filter((acc) => acc.type === 'savings');

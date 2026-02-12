@@ -24,7 +24,7 @@ export function useFirestore(userId: string | null) {
     useFirestoreSubscriptions(userId);
 
   // Operaciones CRUD
-  const { addTransaction, deleteTransaction, updateTransaction } =
+  const { addTransaction, addCreditPaymentAtomic, deleteTransaction, updateTransaction } =
     useTransactionsCRUD(userId);
 
   const { addAccount, deleteAccount, updateAccount } = useAccountsCRUD(userId);
@@ -40,6 +40,7 @@ export function useFirestore(userId: string | null) {
     error,
     // Transactions CRUD
     addTransaction,
+    addCreditPaymentAtomic,
     deleteTransaction,
     updateTransaction,
     // Accounts CRUD

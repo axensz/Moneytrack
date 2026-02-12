@@ -237,7 +237,7 @@ export class CreditCardStrategy implements AccountBalanceStrategy {
     if (transactionType === 'transfer') {
       return {
         valid: false,
-        error: 'No se pueden realizar transferencias desde una Tarjeta de Crédito'
+        error: 'No se pueden realizar transferencias desde una cuenta de Crédito'
       };
     }
 

@@ -102,7 +102,7 @@ export const ERROR_MESSAGES = {
   DELETE_CATEGORY_WITH_TRANSACTIONS: 'No puedes eliminar una categoría con transacciones',
 
   // Validación de cuentas de crédito
-  INVALID_CREDIT_LIMIT: 'El cupo total debe ser mayor a 0 para tarjetas de crédito',
+  INVALID_CREDIT_LIMIT: 'El cupo total debe ser mayor a 0 para cuentas de crédito',
   INVALID_CUTOFF_DAY: 'El día de corte debe estar entre 1 y 31',
   INVALID_PAYMENT_DAY: 'El día de pago debe estar entre 1 y 31',
   PAYMENT_BEFORE_CUTOFF: 'El día de pago debe ser posterior al día de corte',
@@ -127,7 +127,7 @@ export const SUCCESS_MESSAGES = {
 // Configuración de tipos de cuenta
 export const ACCOUNT_TYPES = [
   { value: 'savings' as const, label: 'Cuenta de Ahorros' },
-  { value: 'credit' as const, label: 'Tarjeta de Crédito' },
+  { value: 'credit' as const, label: 'Crédito' },
   { value: 'cash' as const, label: 'Efectivo' }
 ] as const;
 
@@ -169,7 +169,7 @@ export const UI_LABELS = {
   // Tipos de cuenta
   accountTypes: {
     savings: 'Cuenta de Ahorros',
-    credit: 'Tarjeta de Crédito',
+    credit: 'Crédito',
     cash: 'Efectivo'
   },
   // Labels de formularios

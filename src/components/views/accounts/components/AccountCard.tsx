@@ -6,7 +6,7 @@ import type { Account, Transaction } from '../../../../types/finance';
 
 const ACCOUNT_TYPES = [
   { value: 'savings' as const, label: 'Cuenta de Ahorros', icon: Wallet },
-  { value: 'credit' as const, label: 'Tarjeta de Crédito', icon: CreditCard },
+  { value: 'credit' as const, label: 'Crédito', icon: CreditCard },
   { value: 'cash' as const, label: 'Efectivo', icon: Banknote },
 ];
 

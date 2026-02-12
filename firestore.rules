@@ -28,20 +28,27 @@ service cloud.firestore {
       match /transactions/{transactionId} {
         allow read: if isOwner(userId);
 
+        // AUDIT-FIX: description min=0 (es opcional en la UI)
         allow create: if isOwner(userId)
           && request.resource.data.type in ['income', 'expense', 'transfer']
           && isValidAmount(request.resource.data.amount)
-          && isValidString(request.resource.data.description, 1, 500)
+          && request.resource.data.description is string
+          && request.resource.data.description.size() <= 500
           && request.resource.data.category is string
           && request.resource.data.paid is bool
           && request.resource.data.accountId is string
           && request.resource.data.date is timestamp
           && request.resource.data.createdAt is timestamp;
 
+        // AUDIT-FIX: update valida campos inmutables + restringe description/category
         allow update: if isOwner(userId)
           && request.resource.data.type == resource.data.type
           && request.resource.data.amount == resource.data.amount
-          && request.resource.data.accountId == resource.data.accountId;
+          && request.resource.data.accountId == resource.data.accountId
+          && request.resource.data.date == resource.data.date
+          && request.resource.data.description is string
+          && request.resource.data.description.size() <= 500
+          && request.resource.data.category is string;
 
         allow delete: if isOwner(userId);
       }
@@ -59,7 +66,12 @@ service cloud.firestore {
           && request.resource.data.initialBalance >= -1000000000
           && request.resource.data.initialBalance <= 1000000000;
 
-        allow update: if isOwner(userId);
+        // AUDIT-FIX: update valida que type sea inmutable y name sea válido
+        allow update: if isOwner(userId)
+          && request.resource.data.type == resource.data.type
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0;
+
         allow delete: if isOwner(userId);
       }
 

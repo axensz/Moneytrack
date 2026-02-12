@@ -5,6 +5,7 @@ import { X, Send, Bot, User, Loader2, Sparkles, Trash2, Check, XCircle, Info } f
 import { sendChatMessage, isGeminiConfigured, parseActionFromResponse, type ChatMessage, type ChatAction, type TokenUsage } from '../../lib/gemini';
 import type { Transaction, Account, Categories } from '../../types/finance';
 import { formatCurrency } from '../../utils/formatters';
+import { useFinance } from '../../contexts/FinanceContext';
 
 // Simple markdown renderer - converts markdown to React elements
 function renderMarkdown(text: string): React.ReactNode {
@@ -96,14 +97,7 @@ function renderMarkdown(text: string): React.ReactNode {
   return elements;
 }
 
-interface AIChatBotProps {
-  transactions: Transaction[];
-  accounts: Account[];
-  categories: Categories;
-  onAddTransaction: (transaction: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
-  onUpdateTransaction: (id: string, updates: Partial<Transaction>) => Promise<void>;
-  onAddCategory: (type: 'expense' | 'income', name: string) => Promise<void>;
-}
+interface AIChatBotProps {}
 
 const WELCOME_MESSAGE: ChatMessage = {
   role: 'model',
@@ -248,14 +242,15 @@ const ActionCard: React.FC<{
   );
 };
 
-export const AIChatBot: React.FC<AIChatBotProps> = memo(({
-  transactions,
-  accounts,
-  categories,
-  onAddTransaction,
-  onUpdateTransaction,
-  onAddCategory,
-}) => {
+export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
+  const {
+    transactions,
+    accounts,
+    categories,
+    addTransaction: onAddTransaction,
+    updateTransaction: onUpdateTransaction,
+    addCategory: onAddCategory,
+  } = useFinance();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState('');
@@ -359,6 +354,23 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
       switch (action.type) {
         case 'add_transaction': {
           const d = action.data;
+
+          // AUDIT-FIX: Validar datos del LLM antes de ejecutar
+          if (typeof d.amount !== 'number' || isNaN(d.amount) || d.amount <= 0 || d.amount > 999999999999) {
+            throw new Error(`Monto inválido: ${d.amount}`);
+          }
+          if (!d.category || typeof d.category !== 'string' || d.category.length > 100) {
+            throw new Error('Categoría inválida');
+          }
+          if (!d.accountId || !accounts.find(a => a.id === d.accountId)) {
+            throw new Error('Cuenta no encontrada. Verifica que la cuenta exista.');
+          }
+          if (!['income', 'expense'].includes(d.txType)) {
+            throw new Error('Tipo de transacción inválido');
+          }
+          // Sanitizar description para prevenir inyección
+          const safeDescription = (d.description || '').toString().slice(0, 500).trim();
+
           // Auto-crear categoría si no existe
           const txCatType = d.txType === 'income' ? 'income' : 'expense';
           const txExistingCats = txCatType === 'income' ? categories.income : categories.expense;
@@ -369,9 +381,9 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
             type: d.txType,
             amount: d.amount,
             category: d.category,
-            description: d.description,
+            description: safeDescription,
             date: d.date ? new Date(d.date) : new Date(),
-            paid: d.paid,
+            paid: d.paid ?? true,
             accountId: d.accountId,
           });
           // Mark as executed and add confirmation
@@ -385,9 +397,16 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
         }
         case 'update_category': {
           const d = action.data;
-          // Auto-crear categoría si no existe
+          // AUDIT-FIX: Validar que la transacción exista antes de actualizar
           const txForCat = transactions.find(t => t.id === d.transactionId);
-          const catType = txForCat?.type === 'income' ? 'income' : 'expense';
+          if (!txForCat) {
+            throw new Error(`Transacción no encontrada (ID: ${d.transactionId})`);
+          }
+          if (!d.newCategory || typeof d.newCategory !== 'string' || d.newCategory.length > 100) {
+            throw new Error('Categoría nueva inválida');
+          }
+          // Auto-crear categoría si no existe
+          const catType = txForCat.type === 'income' ? 'income' : 'expense';
           const existingCats = catType === 'income' ? categories.income : categories.expense;
           if (!existingCats.includes(d.newCategory)) {
             await onAddCategory(catType, d.newCategory);

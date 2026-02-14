@@ -9,7 +9,7 @@ import type {
   RecurringPayment,
 } from '../../../../types/finance';
 import { formatNumberForInput, parseDateFromInput } from '../../../../utils/formatters';
-import { getDateRangeFromPreset } from '../utils/dateUtils';
+import { getDateRangeFromPreset } from '../../../../utils/dateUtils';
 import { showToast } from '../../../../utils/toastHelpers';
 import { SUCCESS_MESSAGES } from '../../../../config/constants';
 

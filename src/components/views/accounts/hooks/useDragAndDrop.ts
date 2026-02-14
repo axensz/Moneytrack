@@ -1,4 +1,6 @@
 import { useState, useCallback } from 'react';
+import { logger } from '../../../../utils/logger';
+import { showToast } from '../../../../utils/toastHelpers';
 import type { Account } from '../../../../types/finance';
 
 interface UseDragAndDropProps {
@@ -35,15 +37,15 @@ export function useDragAndDrop({
   const [touchCurrentY, setTouchCurrentY] = useState<number | null>(null);
 
   // Helpers
-  const isMainAccount = (acc: Account) => acc.type !== 'credit' || !acc.bankAccountId;
+  const isMainAccount = useCallback((acc: Account) => acc.type !== 'credit' || !acc.bankAccountId, []);
 
-  const areSiblings = (acc1: Account, acc2: Account) => {
+  const areSiblings = useCallback((acc1: Account, acc2: Account) => {
     if (isMainAccount(acc1) && isMainAccount(acc2)) return true;
     if (acc1.bankAccountId && acc2.bankAccountId && acc1.bankAccountId === acc2.bankAccountId) return true;
     return false;
-  };
+  }, [isMainAccount]);
 
-  const reorderAccounts = async (draggedId: string, targetId: string) => {
+  const reorderAccounts = useCallback(async (draggedId: string, targetId: string) => {
     const draggedAccount = accounts.find(acc => acc.id === draggedId);
     const targetAccount = accounts.find(acc => acc.id === targetId);
 
@@ -69,11 +71,15 @@ export function useDragAndDrop({
     const [removed] = newOrder.splice(draggedIndex, 1);
     newOrder.splice(targetIndex, 0, removed);
 
-    // Actualizar en Firestore
-    await Promise.all(
-      newOrder.map((account, index) => updateAccount(account.id!, { order: index }))
-    );
-  };
+    try {
+      await Promise.all(
+        newOrder.map((account, index) => updateAccount(account.id!, { order: index }))
+      );
+    } catch (error) {
+      logger.error('Error reordering accounts', error);
+      showToast.error('Error al reordenar cuentas');
+    }
+  }, [accounts, updateAccount, areSiblings, isMainAccount]);
 
   // Desktop handlers
   const handleDragStart = useCallback((e: React.DragEvent, accountId: string) => {
@@ -106,7 +112,7 @@ export function useDragAndDrop({
 
     setDraggedAccountId(null);
     setDragOverAccountId(null);
-  }, [draggedAccountId, accounts, updateAccount]);
+  }, [draggedAccountId, reorderAccounts]);
 
   const handleDragEnd = useCallback(() => {
     setDraggedAccountId(null);
@@ -153,7 +159,7 @@ export function useDragAndDrop({
     setDragOverAccountId(null);
     setTouchStartY(null);
     setTouchCurrentY(null);
-  }, [draggedAccountId, dragOverAccountId, accounts, updateAccount]);
+  }, [draggedAccountId, dragOverAccountId, reorderAccounts]);
 
   return {
     draggedAccountId,

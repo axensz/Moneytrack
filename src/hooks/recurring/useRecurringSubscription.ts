@@ -47,7 +47,7 @@ export function useRecurringSubscription(
         setLoading(false);
       },
       (err) => {
-        console.error('Error en pagos recurrentes:', err);
+        logger.error('Error en pagos recurrentes', err);
         setError(new Error(`Error al cargar pagos recurrentes: ${err.message}`));
         setLoading(false);
       }

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, memo, useState, useCallback } from 'react';
 import { X, Repeat, Zap, AlertTriangle } from 'lucide-react';
-import { UI_LABELS } from '@/config/constants';
+import { UI_LABELS, TRANSFER_CATEGORY } from '@/config/constants';
 import { formatNumberForInput, unformatNumber, formatCurrency, formatDate } from '@/utils/formatters';
 import { BalanceCalculator } from '@/utils/balanceCalculator';
 import { INSTALLMENT_OPTIONS } from '@/utils/interestCalculator';
@@ -145,7 +145,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
             {!isCreditCard && (
               <button
                 type="button"
-                onClick={() => setNewTransaction({...newTransaction, type: 'transfer', category: 'Transferencia', toAccountId: ''})}
+                onClick={() => setNewTransaction({...newTransaction, type: 'transfer', category: TRANSFER_CATEGORY, toAccountId: ''})}
                 className={`btn-type ${
                   newTransaction.type === 'transfer'
                     ? 'btn-type-active-info'

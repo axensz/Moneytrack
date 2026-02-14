@@ -1,0 +1,201 @@
+/**
+ * Estilos de componentes reutilizables con CSS custom
+ * Cards, botones, inputs, formularios
+ */
+
+@layer components {
+  /* ─── Cards ───────────────────────────────────────── */
+
+  .card-balance {
+    @apply p-6 rounded-xl border transition-all;
+    background: linear-gradient(135deg, #f3e8ff 0%, #ede9fe 50%, #e9d5ff 100%);
+    border-color: var(--border-accent);
+    box-shadow: 0 4px 6px -1px rgba(124, 58, 237, 0.08), 0 2px 4px -1px rgba(124, 58, 237, 0.04);
+  }
+  
+  .dark .card-balance {
+    background: var(--balance-accent);
+  }
+
+  .card-stat {
+    @apply p-6 rounded-xl border transition-all;
+    background-color: var(--card);
+    border-color: var(--border);
+    box-shadow: var(--shadow-md);
+  }
+  
+  .card-stat:hover {
+    box-shadow: var(--shadow-lg);
+    border-color: var(--border-accent);
+  }
+
+  .card {
+    @apply rounded-xl p-6 border transition-colors;
+    background-color: var(--card);
+    color: var(--card-foreground);
+    border-color: var(--border);
+    box-shadow: var(--shadow-md);
+  }
+
+  /* ─── Forms & Inputs ──────────────────────────────── */
+
+  .form-container {
+    @apply rounded-xl p-5 border;
+    background-color: var(--card);
+    border-color: var(--border);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .input-base {
+    @apply w-full px-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all;
+    background-color: var(--input);
+    color: var(--foreground);
+    border-color: var(--border);
+    min-height: 44px;
+    font-size: 16px; /* Previene zoom en iOS al enfocar */
+  }
+
+  @media (min-width: 640px) {
+    .input-base {
+      font-size: 14px;
+      min-height: 42px;
+    }
+  }
+
+  .input-base:hover {
+    border-color: var(--border-accent);
+  }
+
+  select.input-base {
+    cursor: pointer;
+    padding-right: 2.5rem;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.75rem center;
+    background-repeat: no-repeat;
+    background-size: 1.25em 1.25em;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+  }
+
+  .dark select.input-base {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  }
+
+  .label-base {
+    @apply block mb-1.5 text-sm font-medium;
+    color: var(--muted-foreground);
+  }
+
+  .icon-badge {
+    @apply p-2 rounded-lg;
+  }
+
+  .select-filter {
+    @apply px-4 py-2.5 border rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent shadow-sm transition-all cursor-pointer;
+    background-color: var(--input);
+    color: var(--foreground);
+    border-color: var(--border);
+    min-height: 44px;
+  }
+
+  .select-filter:hover {
+    border-color: var(--border-accent);
+  }
+
+  /* ─── Buttons ─────────────────────────────────────── */
+
+  .btn-type {
+    @apply flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all border;
+  }
+
+  .btn-type-inactive {
+    background-color: var(--muted);
+    color: var(--muted-foreground);
+    border-color: var(--border);
+  }
+  
+  .btn-type-inactive:hover {
+    background-color: #eeede9;
+    border-color: var(--border-accent);
+  }
+
+  .btn-type-active-destructive {
+    background-color: var(--destructive-muted);
+    color: var(--destructive);
+    border-color: var(--destructive);
+    box-shadow: 0 0 0 1px var(--destructive);
+  }
+
+  .btn-type-active-success {
+    background-color: var(--success-muted);
+    color: var(--success);
+    border-color: var(--success);
+    box-shadow: 0 0 0 1px var(--success);
+  }
+
+  .btn-type-active-info {
+    background-color: var(--info-muted);
+    color: var(--info);
+    border-color: var(--info);
+    box-shadow: 0 0 0 1px var(--info);
+  }
+
+  .btn-primary {
+    @apply flex items-center justify-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg font-medium shadow-md hover:shadow-lg transition-all text-sm sm:text-base min-h-[40px] sm:min-h-[44px];
+    background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%);
+    color: var(--primary-foreground);
+  }
+  
+  .btn-primary:hover {
+    background: linear-gradient(135deg, #6d28d9 0%, #7c3aed 100%);
+    transform: translateY(-1px);
+  }
+
+  .btn-secondary {
+    @apply flex items-center justify-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg font-medium shadow-md hover:shadow-lg transition-all text-sm sm:text-base min-h-[40px] sm:min-h-[44px];
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  .btn-cancel {
+    @apply flex items-center justify-center px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg font-medium transition-colors text-sm sm:text-base min-h-[40px] sm:min-h-[44px];
+    background-color: var(--muted);
+    color: var(--muted-foreground);
+  }
+  
+  .btn-cancel:hover {
+    background-color: #e5e4e0;
+  }
+
+  .btn-submit {
+    @apply flex items-center justify-center px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg font-medium transition-all shadow-md text-sm sm:text-base min-h-[40px] sm:min-h-[44px];
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+  }
+  
+  .btn-submit:hover {
+    background-color: #6d28d9;
+    transform: translateY(-1px);
+  }
+
+  .btn-edit {
+    @apply flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[36px];
+    background-color: var(--info-muted);
+    color: var(--info);
+  }
+
+  .btn-danger {
+    @apply flex items-center justify-center gap-1 px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg text-sm sm:text-base font-medium transition-colors min-h-[40px] sm:min-h-[44px];
+    background-color: #dc2626;
+    color: white;
+  }
+
+  .btn-danger:hover {
+    background-color: #b91c1c;
+  }
+
+  .btn-danger:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+}

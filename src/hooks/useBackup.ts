@@ -4,6 +4,7 @@ import { db } from '../lib/firebase';
 import { showToast } from '../utils/toastHelpers';
 import { logger } from '../utils/logger';
 import type { Transaction, Account, Categories, BackupData } from '../types/finance';
+import { TRANSFER_CATEGORY } from '../config/constants';
 
 interface UseBackupProps {
   transactions: Transaction[];
@@ -67,21 +68,24 @@ export const useBackup = ({ transactions, accounts, categories, userId, refreshD
   /**
    * Valida la estructura del archivo de respaldo
    */
-  const validateBackupData = (data: any): data is BackupData => {
+  const validateBackupData = (data: unknown): data is BackupData => {
     if (!data || typeof data !== 'object') {
       throw new Error('Archivo de respaldo inválido');
     }
 
-    if (!data.version || data.version !== '1.0') {
+    const record = data as Record<string, unknown>;
+
+    if (!record.version || record.version !== '1.0') {
       throw new Error('Versión de respaldo no compatible');
     }
 
-    if (!Array.isArray(data.transactions) || !Array.isArray(data.accounts)) {
+    if (!Array.isArray(record.transactions) || !Array.isArray(record.accounts)) {
       throw new Error('Estructura de datos inválida');
     }
 
     // Validar que las categorías existen
-    if (!data.categories || !data.categories.expense || !data.categories.income) {
+    const cats = record.categories as Record<string, unknown> | undefined;
+    if (!cats || !Array.isArray(cats.expense) || !Array.isArray(cats.income)) {
       throw new Error('Categorías inválidas');
     }
 
@@ -96,7 +100,7 @@ export const useBackup = ({ transactions, accounts, categories, userId, refreshD
     const allCategories = [
       ...backupData.categories.expense,
       ...backupData.categories.income,
-      'Transferencia'
+      TRANSFER_CATEGORY
     ];
 
     // Validar que cada transacción referencia una cuenta válida
@@ -185,6 +189,15 @@ export const useBackup = ({ transactions, accounts, categories, userId, refreshD
       }
     };
 
+    // Forzar commit del batch actual y reiniciar (para separar grupos lógicos)
+    const flushBatch = async () => {
+      if (operationCount > 0) {
+        await batch.commit();
+        batch = writeBatch(db);
+        operationCount = 0;
+      }
+    };
+
     // 1. Importar cuentas — mapear IDs viejos → nuevos para mantener referencias
     const accountIdMap = new Map<string, string>();
     for (const account of backupData.accounts) {
@@ -201,6 +214,8 @@ export const useBackup = ({ transactions, accounts, categories, userId, refreshD
       await commitIfNeeded();
     }
 
+    // Commit cuentas antes de procesar categorías (garantiza separación atómica)
+    await flushBatch();
     setImportProgress(60);
 
     // 2. Importar categorías personalizadas
@@ -236,6 +251,8 @@ export const useBackup = ({ transactions, accounts, categories, userId, refreshD
       await commitIfNeeded();
     }
 
+    // Commit categorías antes de procesar transacciones
+    await flushBatch();
     setImportProgress(80);
 
     // 3. Importar transacciones — remap accountId/toAccountId con el mapa de IDs

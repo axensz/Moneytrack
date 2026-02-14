@@ -13,6 +13,7 @@ import {
   runTransaction,
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { TRANSFER_CATEGORY } from '../../config/constants';
 import type { Transaction } from '../../types/finance';
 
 /**
@@ -106,7 +107,7 @@ export function useTransactionsCRUD(
           amount,
           accountId,
           toAccountId,
-          category: 'Transferencia',
+          category: TRANSFER_CATEGORY,
           description: description || 'Transferencia entre cuentas',
           date: date || new Date(),
           paid: true,

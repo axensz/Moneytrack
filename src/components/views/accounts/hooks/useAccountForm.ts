@@ -2,7 +2,8 @@ import { useState, useCallback } from 'react';
 import type { Account, NewAccount, Transaction } from '../../../../types/finance';
 import { showToast } from '../../../../utils/toastHelpers';
 import { formatNumberForInput, unformatNumber } from '../../../../utils/formatters';
-import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../../../../config/constants';
+import { logger } from '../../../../utils/logger';
+import { ERROR_MESSAGES, SUCCESS_MESSAGES, BALANCE_ADJUSTMENT_CATEGORY } from '../../../../config/constants';
 
 const INITIAL_ACCOUNT: NewAccount = {
   name: '',
@@ -143,7 +144,7 @@ export function useAccountForm({
               adjustmentData = {
                 type: debtDifference > 0 ? 'expense' : 'income',
                 amount: Math.abs(debtDifference),
-                category: 'Otros',
+                category: BALANCE_ADJUSTMENT_CATEGORY,
                 description: `Ajuste de deuda TC: ${debtDifference > 0 ? '+' : '-'}${formatCurrency(Math.abs(debtDifference))}`,
                 date: new Date(),
                 paid: true,
@@ -160,7 +161,7 @@ export function useAccountForm({
               adjustmentData = {
                 type: adjustment > 0 ? 'income' : 'expense',
                 amount: Math.abs(adjustment),
-                category: 'Otros',
+                category: BALANCE_ADJUSTMENT_CATEGORY,
                 description: `Ajuste de saldo: ${adjustment > 0 ? '+' : ''}${formatCurrency(adjustment)}`,
                 date: new Date(),
                 paid: true,
@@ -171,7 +172,6 @@ export function useAccountForm({
         }
 
         const accountId = editingAccount.id!;
-        closeForm();
 
         const updates: Partial<Account> = { name: newAccount.name.trim() };
 
@@ -189,8 +189,10 @@ export function useAccountForm({
           const msg = editingAccount.type === 'credit' 
             ? 'Cuenta actualizada y deuda ajustada correctamente'
             : 'Cuenta actualizada y saldo ajustado correctamente';
+          closeForm();
           showToast.success(msg);
         } else {
+          closeForm();
           showToast.success(SUCCESS_MESSAGES.ACCOUNT_UPDATED);
         }
       } else {
@@ -240,7 +242,7 @@ export function useAccountForm({
       }
     } catch (error) {
       showToast.error(ERROR_MESSAGES.ADD_ACCOUNT_ERROR);
-      console.error(error);
+      logger.error('Error saving account', error);
     }
   }, [
     newAccount,

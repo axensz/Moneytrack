@@ -8,6 +8,8 @@ import type { Transaction, Account, Categories } from '../types/finance';
 import { formatCurrency } from '../utils/formatters';
 import { BalanceCalculator } from '../utils/balanceCalculator';
 import { CreditCardCalculator } from '../utils/balanceCalculator';
+import { logger } from '../utils/logger';
+import { SPECIAL_CATEGORIES } from '../config/constants';
 
 // ============ TIPOS DE ACCIONES ============
 
@@ -99,7 +101,7 @@ function buildFinancialContext(
   const currentYear = now.getFullYear();
 
   // Categorías que son ajustes internos, NO gastos reales del usuario
-  const ADJUSTMENT_CATEGORIES = ['Ajuste de saldo', 'Pago Crédito', 'Pago TC', 'Ajuste'];
+  const ADJUSTMENT_CATEGORIES = SPECIAL_CATEGORIES.adjustmentCategories;
 
   // Filtrar ajustes de todas las transacciones para análisis
   const realTransactions = transactions.filter(t => !ADJUSTMENT_CATEGORIES.includes(t.category));
@@ -372,7 +374,7 @@ export function parseActionFromResponse(response: string): { text: string; actio
     const action = JSON.parse(actionMatch[1]) as ChatAction;
     return { text, action };
   } catch {
-    console.warn('[Gemini] Failed to parse action JSON:', actionMatch[1]);
+    logger.warn('Failed to parse action JSON from Gemini response', { raw: actionMatch[1] });
     return { text: response };
   }
 }
@@ -441,7 +443,9 @@ export async function sendChatMessage(
         promptTokens: usageMetadata.promptTokenCount || 0,
         responseTokens: usageMetadata.candidatesTokenCount || 0,
         totalTokens: usageMetadata.totalTokenCount || 0,
-        thinkingTokens: (usageMetadata as Record<string, unknown>).thoughtsTokenCount as number | undefined,
+        thinkingTokens: 'thoughtsTokenCount' in usageMetadata
+          ? (usageMetadata.thoughtsTokenCount as number | undefined)
+          : undefined,
       } : undefined;
       
       // Si la respuesta se cortó por tokens, agregar indicador
@@ -460,7 +464,7 @@ export async function sendChatMessage(
         const suggestedDelay = retryMatch ? parseInt(retryMatch[1]) * 1000 : RETRY_DELAYS[attempt];
         const waitMs = Math.max(suggestedDelay, RETRY_DELAYS[attempt]);
 
-        console.warn(`[Gemini] Rate limit (429). Esperando ${Math.round(waitMs / 1000)}s... (intento ${attempt + 1}/${RETRY_DELAYS.length})`);
+        logger.warn(`Gemini rate limit (429). Waiting ${Math.round(waitMs / 1000)}s...`, { attempt: attempt + 1, maxRetries: RETRY_DELAYS.length });
         await new Promise(r => setTimeout(r, waitMs));
         continue;
       }

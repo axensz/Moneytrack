@@ -1,4 +1,4 @@
-import type { DateRangePreset } from '../../../../types/finance';
+import type { DateRangePreset } from '../types/finance';
 
 /**
  * Calcula el rango de fechas basado en un preset

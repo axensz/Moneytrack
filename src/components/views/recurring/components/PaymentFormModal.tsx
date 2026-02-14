@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { showToast } from '../../../../utils/toastHelpers';
+import { logger } from '../../../../utils/logger';
 import type { RecurringPayment, Account } from '../../../../types/finance';
 import { formatNumberForInput } from '../../../../utils/formatters';
 
@@ -125,7 +126,7 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
       onClose();
     } catch (error) {
       showToast.error('Error al guardar');
-      console.error(error);
+      logger.error('Error al guardar pago recurrente', error);
     } finally {
       setIsSubmitting(false);
     }

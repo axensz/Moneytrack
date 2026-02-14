@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { detectDuplicates } from './duplicateDetector';
-import type { Transaction, NewTransaction } from '../types/finance';
+import { detectDuplicates } from '../../utils/duplicateDetector';
+import type { Transaction, NewTransaction } from '../../types/finance';
 
 const baseTx: NewTransaction = {
   type: 'expense',

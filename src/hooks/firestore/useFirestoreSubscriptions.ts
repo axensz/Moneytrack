@@ -4,12 +4,38 @@
  */
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, DocumentData } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { logger } from '../../utils/logger';
 import type { Transaction, Account, Category } from '../../types/finance';
 
 // Timeout para la carga inicial (10 segundos)
 const LOADING_TIMEOUT_MS = 10000;
+
+// -- Runtime type guards para datos de Firestore --
+function isValidTransaction(data: DocumentData): boolean {
+  return (
+    typeof data.type === 'string' &&
+    typeof data.amount === 'number' &&
+    typeof data.category === 'string' &&
+    typeof data.accountId === 'string'
+  );
+}
+
+function isValidAccount(data: DocumentData): boolean {
+  return (
+    typeof data.name === 'string' &&
+    typeof data.type === 'string' &&
+    typeof data.initialBalance === 'number'
+  );
+}
+
+function isValidCategory(data: DocumentData): boolean {
+  return (
+    typeof data.type === 'string' &&
+    typeof data.name === 'string'
+  );
+}
 
 interface FirestoreData {
   transactions: Transaction[];
@@ -53,7 +79,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
 
     // Helper para manejar errores de Firestore
     const handleError = (collectionName: string) => (err: Error) => {
-      console.error(`Error en ${collectionName}:`, err);
+      logger.error(`Error en ${collectionName}`, err);
       if (!isMountedRef.current) return;
       setError(new Error(`Error al cargar ${collectionName}: ${err.message}`));
       // Marcar como cargado para evitar loading infinito
@@ -79,7 +105,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
       if (!isMountedRef.current) return;
       const { transactions, accounts, categories } = loadedCollections.current;
       if (!transactions || !accounts || !categories) {
-        console.warn('Timeout: No se pudieron cargar todos los datos de Firestore');
+        logger.warn('Timeout: No se pudieron cargar todos los datos de Firestore');
         setError(new Error('Tiempo de espera agotado. Verifica tu conexión a internet.'));
         setLoadedForUserId(userId); // Terminar loading
       }
@@ -95,11 +121,19 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
         transactionsQuery,
         (snapshot) => {
           if (!isMountedRef.current) return;
-          const data = snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-            date: doc.data().date?.toDate() || new Date(),
-          })) as Transaction[];
+          const data = snapshot.docs
+            .filter((doc) => {
+              if (!isValidTransaction(doc.data())) {
+                logger.warn('Skipping invalid transaction document', { id: doc.id });
+                return false;
+              }
+              return true;
+            })
+            .map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+              date: doc.data().date?.toDate() || new Date(),
+            })) as Transaction[];
           setTransactions(data);
           loadedCollections.current.transactions = true;
           checkAllLoaded();
@@ -114,10 +148,18 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
         accountsRef,
         (snapshot) => {
           if (!isMountedRef.current) return;
-          const data = snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          })) as Account[];
+          const data = snapshot.docs
+            .filter((doc) => {
+              if (!isValidAccount(doc.data())) {
+                logger.warn('Skipping invalid account document', { id: doc.id });
+                return false;
+              }
+              return true;
+            })
+            .map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+            })) as Account[];
           setAccounts(data);
           loadedCollections.current.accounts = true;
           checkAllLoaded();
@@ -132,10 +174,18 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
         categoriesRef,
         (snapshot) => {
           if (!isMountedRef.current) return;
-          const data = snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          })) as Category[];
+          const data = snapshot.docs
+            .filter((doc) => {
+              if (!isValidCategory(doc.data())) {
+                logger.warn('Skipping invalid category document', { id: doc.id });
+                return false;
+              }
+              return true;
+            })
+            .map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+            })) as Category[];
           setCategories(data);
           loadedCollections.current.categories = true;
           checkAllLoaded();

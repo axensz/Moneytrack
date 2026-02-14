@@ -1,0 +1,104 @@
+/**
+ * Variables CSS del tema (Paleta Personalizada)
+ * Light mode + Dark mode
+ */
+
+:root {
+  /* BASE LIGHT - Fondo más cálido y acogedor */
+  --background: #faf9f7;
+  --foreground: #1f1f1f;
+
+  /* CARDS - Blanco con sutil tono cálido */
+  --card: #ffffff;
+  --card-foreground: #1f1f1f;
+  
+  /* MUTED - Grises más cálidos */
+  --muted: #f5f4f1;
+  --muted-foreground: #6b6b6b;
+
+  /* PRIMARY - Morado vibrante */
+  --primary: #7c3aed;
+  --primary-foreground: #ffffff;
+
+  /* SUCCESS (Verde) */
+  --success: #059669;
+  --success-muted: #ecfdf5;
+
+  /* DESTRUCTIVE (Rojo) */
+  --destructive: #dc2626;
+  --destructive-muted: #fef2f2;
+
+  /* WARNING (Amarillo/Naranja) */
+  --warning: #d97706;
+  --warning-muted: #fffbeb;
+
+  /* INFO (Azul) */
+  --info: #2563eb;
+  --info-muted: #eff6ff;
+
+  /* BALANCE (Morado especial - más vibrante) */
+  --balance-accent: #f3e8ff;
+  --balance-accent-foreground: #7c3aed;
+  --balance-foreground: #6b21a8;
+  --balance-value: #7c3aed;
+
+  /* BORDERS & INPUTS - Bordes más suaves */
+  --border: #e5e5e5;
+  --border-accent: #ddd6fe;
+  --input: #ffffff;
+  
+  /* SOMBRAS para modo claro */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+}
+
+.dark {
+  /* BASE DARK */
+  --background: #0a0a0a;
+  --foreground: #ededed;
+
+  /* CARDS DARK */
+  --card: #1f2937;
+  --card-foreground: #ededed;
+
+  /* MUTED DARK */
+  --muted: #262626;
+  --muted-foreground: #a3a3a3;
+
+  /* PRIMARY DARK */
+  --primary: #8b5cf6;
+  --primary-foreground: #ffffff;
+
+  /* SUCCESS DARK */
+  --success: #10b981;
+  --success-muted: #064e3b;
+
+  /* DESTRUCTIVE DARK */
+  --destructive: #ef4444;
+  --destructive-muted: #7f1d1d;
+
+  /* WARNING DARK */
+  --warning: #f59e0b;
+  --warning-muted: #78350f;
+
+  /* INFO DARK */
+  --info: #3b82f6;
+  --info-muted: #1e3a8a;
+
+  /* BALANCE DARK */
+  --balance-accent: #581c87;
+  --balance-accent-foreground: #c4b5fd;
+  --balance-foreground: #d8b4fe;
+  --balance-value: #c4b5fd;
+
+  /* BORDERS & INPUTS DARK */
+  --border: #4c1d95;
+  --border-accent: #6d28d9;
+  --input: #1f2937;
+  
+  /* SOMBRAS para modo oscuro */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.4);
+}

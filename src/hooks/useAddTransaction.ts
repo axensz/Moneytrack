@@ -21,6 +21,7 @@ import {
   SUCCESS_MESSAGES,
   ERROR_MESSAGES,
   TRANSFER_CATEGORY,
+  CREDIT_PAYMENT_CATEGORY,
   INITIAL_TRANSACTION,
 } from '../config/constants';
 import type {
@@ -148,7 +149,7 @@ export function useAddTransaction({
         if (newTransaction.type === 'transfer') {
           category = TRANSFER_CATEGORY;
         } else if (isTCPayment) {
-          category = 'Pago Crédito';
+          category = CREDIT_PAYMENT_CATEGORY;
         }
 
         // Preparar datos de la transacción
@@ -200,7 +201,7 @@ export function useAddTransaction({
             const sourceTx: Omit<Transaction, 'id' | 'createdAt'> = {
               type: 'expense',
               amount: amount,
-              category: 'Pago Crédito',
+              category: CREDIT_PAYMENT_CATEGORY,
               description: `Pago a ${selectedAccount.name}${newTransaction.description.trim() ? ': ' + newTransaction.description.trim() : ''}`,
               date: newTransaction.date ? parseDateFromInput(newTransaction.date) : new Date(),
               paid: true,

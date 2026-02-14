@@ -1,5 +1,6 @@
 import { loginWithGoogle } from '../../lib/firebase';
 import { showToast } from '../../utils/toastHelpers';
+import { logger } from '../../utils/logger';
 import { BaseModal } from './BaseModal';
 
 interface AuthModalProps {
@@ -14,7 +15,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       onClose();
       showToast.success('Sesión iniciada correctamente');
     } catch (error) {
-      console.error("Error al iniciar sesión", error);
+      logger.error('Error al iniciar sesión', error);
       showToast.error("Error al iniciar sesión. Por favor, intenta de nuevo.");
     }
   };

@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { Search, Calendar, Tag, Wallet, TrendingUp, TrendingDown, ArrowRightLeft } from 'lucide-react';
 import type { Transaction, Account } from '../../../../types/finance';
+import { TRANSFER_CATEGORY } from '../../../../config/constants';
 import { formatCurrency } from '../../../../utils/formatters';
 
 interface PeriodSummaryCardProps {
@@ -27,7 +28,7 @@ export const PeriodSummaryCard: React.FC<PeriodSummaryCardProps> = ({
   const allCategories = useMemo(() => {
     const cats = new Set<string>();
     transactions.forEach(t => {
-      if (t.category && t.category !== 'Transferencia') cats.add(t.category);
+      if (t.category && t.category !== TRANSFER_CATEGORY) cats.add(t.category);
     });
     return Array.from(cats).sort();
   }, [transactions]);

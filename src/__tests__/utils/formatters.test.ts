@@ -11,7 +11,7 @@ import {
   formatNumberForInput,
   unformatNumber,
   generateId,
-} from './formatters';
+} from '../../utils/formatters';
 
 describe('formatCurrency', () => {
   it('formats positive amounts', () => {

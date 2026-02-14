@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { TransactionValidator, AccountValidator, CategoryValidator } from './validators';
-import type { NewTransaction, NewAccount } from '../types/finance';
+import { TransactionValidator, AccountValidator, CategoryValidator } from '../../utils/validators';
+import type { NewTransaction, NewAccount } from '../../types/finance';
 
 const baseTransaction: NewTransaction = {
   type: 'expense',
@@ -23,15 +23,14 @@ describe('TransactionValidator', () => {
       expect(result.errors).toHaveLength(0);
     });
 
-    it('fails when description is empty', () => {
+    it('allows empty description (description is optional)', () => {
       const result = TransactionValidator.validate({ ...baseTransaction, description: '' });
-      expect(result.isValid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.isValid).toBe(true);
     });
 
-    it('fails when description is only whitespace', () => {
+    it('allows whitespace-only description (description is optional)', () => {
       const result = TransactionValidator.validate({ ...baseTransaction, description: '   ' });
-      expect(result.isValid).toBe(false);
+      expect(result.isValid).toBe(true);
     });
 
     it('fails when amount is zero', () => {

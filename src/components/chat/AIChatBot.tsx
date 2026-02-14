@@ -1,11 +1,15 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 import { X, Send, Bot, User, Loader2, Sparkles, Trash2, Check, XCircle, Info } from 'lucide-react';
 import { sendChatMessage, isGeminiConfigured, parseActionFromResponse, type ChatMessage, type ChatAction, type TokenUsage } from '../../lib/gemini';
 import type { Transaction, Account, Categories } from '../../types/finance';
 import { formatCurrency } from '../../utils/formatters';
+import { logger } from '../../utils/logger';
 import { useFinance } from '../../contexts/FinanceContext';
+
+// Máximo de mensajes del historial enviados a la API para evitar exceder tokens
+const MAX_HISTORY_MESSAGES = 20;
 
 // Simple markdown renderer - converts markdown to React elements
 function renderMarkdown(text: string): React.ReactNode {
@@ -262,9 +266,6 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
 
   const configured = isGeminiConfigured();
 
-  // No mostrar el chatbot si la API key no está configurada
-  if (!configured) return null;
-
   // Auto scroll al último mensaje
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -277,6 +278,13 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
     }
   }, [isOpen]);
 
+  // Memoizar el contexto financiero para evitar recalcular en cada render
+  const financialData = useMemo(() => ({
+    transactions,
+    accounts,
+    categories,
+  }), [transactions, accounts, categories]);
+
   const sendMessage = useCallback(async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || isLoading) return;
@@ -288,23 +296,22 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
     setError(null);
 
     try {
-      // Historial sin el mensaje de bienvenida
-      const history = messages.filter((_, i) => i > 0).map(m => ({
-        role: m.role,
-        content: m.content,
-      }));
+      // Historial sin el mensaje de bienvenida, limitado a los últimos N mensajes
+      const history = messages
+        .filter((_, i) => i > 0)
+        .slice(-MAX_HISTORY_MESSAGES)
+        .map(m => ({
+          role: m.role,
+          content: m.content,
+        }));
 
-      const { text: rawText, tokenUsage } = await sendChatMessage(trimmed, history, {
-        transactions,
-        accounts,
-        categories,
-      });
+      const { text: rawText, tokenUsage } = await sendChatMessage(trimmed, history, financialData);
 
       // Parsear acciones del response
       const { text, action } = parseActionFromResponse(rawText);
       setMessages(prev => [...prev, { role: 'model', content: text, action, tokenUsage }]);
     } catch (err) {
-      console.error('[AIChatBot] Error:', err);
+      logger.error('[AIChatBot] Error sending message', err);
       const errorMsg = err instanceof Error ? err.message : String(err);
       if (errorMsg.includes('API_KEY') || errorMsg.includes('configurada')) {
         setError('API key de Gemini no configurada. Agrega NEXT_PUBLIC_GEMINI_API_KEY en .env.local');
@@ -320,7 +327,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, messages, transactions, accounts, categories]);
+  }, [isLoading, messages, financialData]);
 
   const handleSend = useCallback(() => {
     sendMessage(input);
@@ -472,6 +479,9 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
       return updated;
     });
   }, []);
+
+  // No mostrar el chatbot si la API key no está configurada
+  if (!configured) return null;
 
   // Botón flotante
   if (!isOpen) {

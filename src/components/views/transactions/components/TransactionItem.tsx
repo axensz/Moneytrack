@@ -144,9 +144,9 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
             {transaction.description || <span className="text-gray-400 italic">{transaction.category}</span>}
           </div>
           <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 flex flex-wrap gap-1 items-center">
-            <span className="truncate max-w-[120px]">{transaction.category}</span>
+            <span title={transaction.category}>{transaction.category}</span>
             <span className="hidden sm:inline">•</span>
-            <span className="hidden sm:inline truncate max-w-[150px]" title={account?.name}>
+            <span className="hidden sm:inline" title={account?.name}>
               {account?.name}
             </span>
             {/* Mostrar cuotas si es TC y tiene más de 1 cuota */}

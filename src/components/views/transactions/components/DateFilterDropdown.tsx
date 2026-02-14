@@ -3,7 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Calendar, ChevronDown } from 'lucide-react';
 import type { DateRangePreset } from '../../../../types/finance';
-import { DATE_PRESETS } from '../utils/dateUtils';
+import { DATE_PRESETS } from '../../../../utils/dateUtils';
 
 interface DateFilterDropdownProps {
   dateRangePreset: DateRangePreset;

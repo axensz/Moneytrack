@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
-import { Activity, BarChart3, Wallet, Repeat, HandCoins, PieChart, Target } from 'lucide-react';
+import { Activity, BarChart3, Wallet, Repeat, HandCoins, PieChart, Target, MoreHorizontal } from 'lucide-react';
 import { Header } from './components/layout/Header';
 import { TabNavigation } from './components/layout/TabNavigation';
 import { LoadingScreen } from './components/layout/LoadingScreen';
@@ -129,6 +129,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const [showForm, setShowForm] = useState(false);
   const [batchCount, setBatchCount] = useState(0);
   const [view, setView] = useState<ViewType>('transactions');
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [filterCategory, setFilterCategory] = useState<FilterValue>('all');
   const [filterAccount, setFilterAccount] = useState<FilterValue>('all');
   const [dateRange, setDateRange] = useState<import('./types/finance').DateRange>({ preset: 'this-month' });
@@ -252,21 +253,51 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
       {/* Banner de sin conexión */}
       <OfflineBanner isOnline={isOnline} />
 
+      {/* Overlay para cerrar menú "Más" - FUERA del nav para cubrir toda la pantalla */}
+      {showMoreMenu && (
+        <div className="sm:hidden fixed inset-0 z-[60]" onClick={() => setShowMoreMenu(false)} onTouchStart={() => setShowMoreMenu(false)} />
+      )}
+
+      {/* Popover de "Más" - posicionado fixed para evitar conflictos de z-index */}
+      {showMoreMenu && (
+        <div className="sm:hidden fixed bottom-[72px] right-3 z-[70] bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden min-w-[170px] animate-in slide-in-from-bottom-2 duration-150 fade-in">
+          {[
+            { key: 'recurring' as ViewType, label: 'Periódicos', icon: Repeat },
+            { key: 'debts' as ViewType, label: 'Préstamos', icon: HandCoins },
+            { key: 'budgets' as ViewType, label: 'Presupuestos', icon: PieChart },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => {
+                scrollContainerRef.current?.scrollTo({ top: 0 });
+                setView(tab.key);
+                setShowMoreMenu(false);
+              }}
+              className={`flex items-center gap-3 w-full px-4 py-3 text-sm font-medium transition-colors ${
+                view === tab.key
+                  ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 active:bg-gray-100 dark:active:bg-gray-700'
+              }`}
+            >
+              <tab.icon size={18} />
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Mobile Bottom Navigation - Fixed at bottom, FUERA del contenedor scrollable */}
       <nav
         className="sm:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 shadow-lg safe-area-bottom"
         aria-label="Navegación principal"
         role="navigation"
       >
-        <div className="flex justify-around items-center px-1 py-2 pb-2 overflow-x-auto" role="tablist">
+        <div className="flex justify-around items-center px-2 py-1.5 pb-2" role="tablist">
           {[
-            { key: 'transactions' as ViewType, label: 'Movimientos', icon: Activity },
+            { key: 'transactions' as ViewType, label: 'Inicio', icon: Activity },
             { key: 'accounts' as ViewType, label: 'Cuentas', icon: Wallet },
-            { key: 'recurring' as ViewType, label: 'Periódicos', icon: Repeat },
-            { key: 'debts' as ViewType, label: 'Préstamos', icon: HandCoins },
-            { key: 'budgets' as ViewType, label: 'Presupuesto', icon: PieChart },
             { key: 'goals' as ViewType, label: 'Metas', icon: Target },
-            { key: 'stats' as ViewType, label: 'Stats', icon: BarChart3 }
+            { key: 'stats' as ViewType, label: 'Stats', icon: BarChart3 },
           ].map(tab => (
             <button
               key={tab.key}
@@ -275,25 +306,40 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
               aria-selected={view === tab.key}
               aria-controls={`panel-${tab.key}`}
               onClick={() => {
-                // Solo hacer scroll al inicio si ya estamos en la misma pestaña
                 if (view === tab.key) {
                   scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
                 } else {
-                  // Cambiar de pestaña sin animación de scroll
                   scrollContainerRef.current?.scrollTo({ top: 0 });
                   setView(tab.key);
                 }
+                setShowMoreMenu(false);
               }}
-              className={`flex flex-col items-center justify-center gap-0.5 px-2 py-2 min-w-[52px] rounded-xl transition-all ${
+              className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 min-w-[56px] rounded-xl transition-all ${
                 view === tab.key
                   ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 scale-105'
                   : 'text-gray-500 dark:text-gray-400 active:scale-95 active:bg-gray-100 dark:active:bg-gray-800'
               }`}
             >
-              <tab.icon size={18} strokeWidth={view === tab.key ? 2.5 : 2} aria-hidden="true" />
-              <span className="text-[9px] font-semibold leading-tight">{tab.label}</span>
+              <tab.icon size={20} strokeWidth={view === tab.key ? 2.5 : 2} aria-hidden="true" />
+              <span className="text-[10px] font-semibold leading-tight">{tab.label}</span>
             </button>
           ))}
+          {/* Botón "Más" */}
+          <div className="relative">
+            <button
+              onClick={() => setShowMoreMenu(prev => !prev)}
+              className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 min-w-[56px] rounded-xl transition-all ${
+                (['recurring', 'budgets', 'debts'] as ViewType[]).includes(view)
+                  ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 scale-105'
+                  : showMoreMenu
+                    ? 'text-purple-600 dark:text-purple-400'
+                    : 'text-gray-500 dark:text-gray-400 active:scale-95 active:bg-gray-100 dark:active:bg-gray-800'
+              }`}
+            >
+              <MoreHorizontal size={20} strokeWidth={(['recurring', 'budgets', 'debts'] as ViewType[]).includes(view) ? 2.5 : 2} aria-hidden="true" />
+              <span className="text-[10px] font-semibold leading-tight">Más</span>
+            </button>
+          </div>
         </div>
       </nav>
 

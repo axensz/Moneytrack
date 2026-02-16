@@ -46,11 +46,19 @@ export const CREDIT_PAYMENT_CATEGORY = 'Pago Crédito' as const;
 // Categoría especial para ajustes de saldo
 export const BALANCE_ADJUSTMENT_CATEGORY = 'Ajuste de saldo' as const;
 
+// Categoría especial para préstamos
+export const LOAN_CATEGORY = 'Préstamo' as const;
+
+// Categoría especial para cobro de deudas
+export const LOAN_PAYMENT_CATEGORY = 'Cobro Préstamo' as const;
+
 // Categorías especiales del sistema (auto-asignadas, no creadas por usuario)
 export const SPECIAL_CATEGORIES = {
   transfer: TRANSFER_CATEGORY,
   creditPayment: CREDIT_PAYMENT_CATEGORY,
   balanceAdjustment: BALANCE_ADJUSTMENT_CATEGORY,
+  loan: LOAN_CATEGORY,
+  loanPayment: LOAN_PAYMENT_CATEGORY,
   // Categorías que representan ajustes internos (no gastos reales del usuario)
   adjustmentCategories: [BALANCE_ADJUSTMENT_CATEGORY, CREDIT_PAYMENT_CATEGORY, 'Pago TC', 'Ajuste'] as readonly string[],
 } as const;
@@ -170,7 +178,10 @@ export const FIRESTORE_COLLECTIONS = {
   users: 'users',
   transactions: 'transactions',
   accounts: 'accounts',
-  categories: 'categories'
+  categories: 'categories',
+  debts: 'debts',
+  budgets: 'budgets',
+  savingsGoals: 'savingsGoals',
 } as const;
 
 // Labels de UI (para internacionalización futura)

@@ -109,6 +109,73 @@ service cloud.firestore {
         allow update: if isOwner(userId);
         allow delete: if isOwner(userId);
       }
+
+      // Debts / Loans subcollection
+      match /debts/{debtId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId)
+          && request.resource.data.personName is string
+          && request.resource.data.personName.size() > 0
+          && request.resource.data.personName.size() <= 200
+          && request.resource.data.type in ['lent', 'borrowed']
+          && isValidAmount(request.resource.data.originalAmount)
+          && request.resource.data.remainingAmount is number
+          && request.resource.data.remainingAmount >= 0
+          && request.resource.data.remainingAmount <= request.resource.data.originalAmount
+          && request.resource.data.isSettled is bool
+          && request.resource.data.createdAt is timestamp;
+
+        allow update: if isOwner(userId)
+          && request.resource.data.type == resource.data.type
+          && request.resource.data.originalAmount == resource.data.originalAmount
+          && request.resource.data.personName is string
+          && request.resource.data.personName.size() > 0;
+
+        allow delete: if isOwner(userId);
+      }
+
+      // Budgets subcollection
+      match /budgets/{budgetId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId)
+          && request.resource.data.category is string
+          && request.resource.data.category.size() > 0
+          && request.resource.data.category.size() <= 100
+          && isValidAmount(request.resource.data.monthlyLimit)
+          && request.resource.data.isActive is bool
+          && request.resource.data.createdAt is timestamp;
+
+        allow update: if isOwner(userId)
+          && request.resource.data.category is string
+          && request.resource.data.category.size() > 0;
+
+        allow delete: if isOwner(userId);
+      }
+
+      // Savings Goals subcollection
+      match /savingsGoals/{goalId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId)
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 200
+          && isValidAmount(request.resource.data.targetAmount)
+          && request.resource.data.currentAmount is number
+          && request.resource.data.currentAmount >= 0
+          && request.resource.data.isCompleted is bool
+          && request.resource.data.createdAt is timestamp;
+
+        allow update: if isOwner(userId)
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.currentAmount is number
+          && request.resource.data.currentAmount >= 0;
+
+        allow delete: if isOwner(userId);
+      }
     }
 
     // Deny all other access

@@ -23,8 +23,13 @@ import { useTransactions } from '../hooks/useTransactions';
 import { useAccounts } from '../hooks/useAccounts';
 import { useRecurringPayments } from '../hooks/useRecurringPayments';
 import { useCategories } from '../hooks/useCategories';
+import { useDebts } from '../hooks/useDebts';
+import { useBudgets } from '../hooks/useBudgets';
+import { useSavingsGoals } from '../hooks/useSavingsGoals';
 import { formatCurrency } from '../utils/formatters';
-import type { Transaction, Account, Categories, RecurringPayment } from '../types/finance';
+import type { Transaction, Account, Categories, RecurringPayment, Debt, Budget, SavingsGoal } from '../types/finance';
+import type { BudgetStatus } from '../hooks/useBudgets';
+import type { GoalStatus } from '../hooks/useSavingsGoals';
 
 // ─── Tipos ────────────────────────────────────────────────
 
@@ -82,6 +87,51 @@ export interface FinanceContextValue {
   getPaymentHistory: (paymentId: string, limit?: number) => Transaction[];
   recurringStats: RecurringStats;
 
+  // ── Debts CRUD ──
+  debts: Debt[];
+  addDebt: (debt: Omit<Debt, 'id' | 'createdAt'>) => Promise<void>;
+  updateDebt: (id: string, updates: Partial<Debt>) => Promise<void>;
+  deleteDebt: (id: string) => Promise<void>;
+  registerDebtPayment: (debtId: string, amount: number) => Promise<void>;
+  getDebtTransactions: (debtId: string) => Transaction[];
+  debtStats: {
+    totalLent: number;
+    totalBorrowed: number;
+    activeLentCount: number;
+    activeBorrowedCount: number;
+    settledCount: number;
+    totalCount: number;
+  };
+
+  // ── Budgets CRUD ──
+  budgets: Budget[];
+  addBudget: (budget: Omit<Budget, 'id' | 'createdAt'>) => Promise<void>;
+  updateBudget: (id: string, updates: Partial<Budget>) => Promise<void>;
+  deleteBudget: (id: string) => Promise<void>;
+  budgetStatuses: BudgetStatus[];
+  budgetStats: {
+    active: number;
+    exceeded: number;
+    warning: number;
+    totalBudgeted: number;
+    totalSpent: number;
+  };
+
+  // ── Savings Goals CRUD ──
+  savingsGoals: SavingsGoal[];
+  addGoal: (goal: Omit<SavingsGoal, 'id' | 'createdAt'>) => Promise<void>;
+  updateGoal: (id: string, updates: Partial<SavingsGoal>) => Promise<void>;
+  deleteGoal: (id: string) => Promise<void>;
+  addSavings: (goalId: string, amount: number) => Promise<void>;
+  goalStatuses: GoalStatus[];
+  goalStats: {
+    activeCount: number;
+    completedCount: number;
+    totalTarget: number;
+    totalSaved: number;
+    overallPercentage: number;
+  };
+
   // ── Utilidades ──
   formatCurrency: (amount: number) => string;
 }
@@ -138,6 +188,38 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
   // 4. Categorías (depende de transactions)
   const { categories, addCategory, deleteCategory } = useCategories(transactions, userId);
 
+  // 5. Deudas/Préstamos (depende de transactions)
+  const {
+    debts,
+    addDebt,
+    updateDebt,
+    deleteDebt,
+    registerDebtPayment,
+    getDebtTransactions,
+    stats: debtStats,
+  } = useDebts(userId, transactions);
+
+  // 6. Presupuestos (depende de transactions)
+  const {
+    budgets,
+    addBudget,
+    updateBudget,
+    deleteBudget,
+    budgetStatuses,
+    stats: budgetStats,
+  } = useBudgets(userId, transactions);
+
+  // 7. Metas de ahorro
+  const {
+    goals: savingsGoals,
+    addGoal,
+    updateGoal,
+    deleteGoal,
+    addSavings,
+    goalStatuses,
+    stats: goalStats,
+  } = useSavingsGoals(userId);
+
   const value: FinanceContextValue = {
     // Datos
     transactions,
@@ -178,6 +260,32 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     getDaysUntilDue,
     getPaymentHistory,
     recurringStats,
+
+    // Debts
+    debts,
+    addDebt,
+    updateDebt,
+    deleteDebt,
+    registerDebtPayment,
+    getDebtTransactions,
+    debtStats,
+
+    // Budgets
+    budgets,
+    addBudget,
+    updateBudget,
+    deleteBudget,
+    budgetStatuses,
+    budgetStats,
+
+    // Savings Goals
+    savingsGoals,
+    addGoal,
+    updateGoal,
+    deleteGoal,
+    addSavings,
+    goalStatuses,
+    goalStats,
 
     // Utilidades
     formatCurrency,

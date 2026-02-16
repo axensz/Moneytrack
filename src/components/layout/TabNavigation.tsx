@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Activity, BarChart3, Wallet, Repeat } from 'lucide-react';
+import { Activity, BarChart3, Wallet, Repeat, HandCoins, PieChart, Target } from 'lucide-react';
 import type { ViewType } from '../../types/finance';
 
 interface TabNavigationProps {
@@ -17,7 +17,10 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
     { key: 'transactions' as const, label: 'Transacciones', icon: Activity },
     { key: 'accounts' as const, label: 'Cuentas', icon: Wallet },
     { key: 'recurring' as const, label: 'Periódicos', icon: Repeat },
-    { key: 'stats' as const, label: 'Estadísticas', icon: BarChart3 }
+    { key: 'debts' as const, label: 'Préstamos', icon: HandCoins },
+    { key: 'budgets' as const, label: 'Presupuestos', icon: PieChart },
+    { key: 'goals' as const, label: 'Metas', icon: Target },
+    { key: 'stats' as const, label: 'Estadísticas', icon: BarChart3 },
   ];
 
   return (

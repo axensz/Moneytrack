@@ -19,6 +19,9 @@ export interface Transaction {
 
   // 🆕 Asociación con pago periódico
   recurringPaymentId?: string; // ID del pago periódico asociado
+
+  // 🆕 Asociación con préstamo/deuda
+  debtId?: string; // ID de la deuda asociada
 }
 
 // 🆕 PAGOS PERIÓDICOS (Suscripciones, Servicios, etc.)
@@ -35,6 +38,42 @@ export interface RecurringPayment {
   createdAt?: Date;
   lastPaidDate?: Date; // Última fecha de pago registrada
   lastPaidAmount?: number; // Último monto pagado (puede variar)
+}
+
+// 🆕 PRÉSTAMOS / DEUDAS
+export interface Debt {
+  id?: string;
+  personName: string; // Nombre de la persona
+  type: 'lent' | 'borrowed'; // 'lent' = yo presté, 'borrowed' = me prestaron
+  originalAmount: number; // Monto original del préstamo
+  remainingAmount: number; // Monto pendiente por cobrar/pagar
+  description?: string; // Notas opcionales
+  accountId?: string; // Cuenta desde la que se prestó
+  isSettled: boolean; // Si la deuda está completamente saldada
+  createdAt?: Date;
+  settledAt?: Date; // Fecha en que se saldó
+}
+
+// 🆕 PRESUPUESTOS
+export interface Budget {
+  id?: string;
+  category: string; // Categoría del presupuesto
+  monthlyLimit: number; // Límite mensual en COP
+  isActive: boolean; // Si está activo
+  createdAt?: Date;
+}
+
+// 🆕 METAS DE AHORRO
+export interface SavingsGoal {
+  id?: string;
+  name: string; // Nombre de la meta (ej: "Vacaciones")
+  targetAmount: number; // Monto objetivo
+  currentAmount: number; // Monto ahorrado hasta ahora
+  targetDate?: Date; // Fecha objetivo (opcional)
+  accountId?: string; // Cuenta de ahorro asociada (opcional)
+  isCompleted: boolean; // Si se alcanzó la meta
+  createdAt?: Date;
+  completedAt?: Date; // Fecha en que se completó
 }
 
 // Rango de fechas para filtros
@@ -104,12 +143,15 @@ export interface NewAccount {
 }
 
 export type FilterValue = 'all' | string;
-export type ViewType = 'transactions' | 'stats' | 'accounts' | 'recurring';
+export type ViewType = 'transactions' | 'stats' | 'accounts' | 'recurring' | 'debts' | 'budgets' | 'goals';
 
 export interface BackupData {
   transactions: Transaction[];
   accounts: Account[];
   categories: Categories;
+  debts?: Debt[];
+  budgets?: Budget[];
+  savingsGoals?: SavingsGoal[];
   exportDate: string;
   version: string;
 }

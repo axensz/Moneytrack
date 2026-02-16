@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
-import { Activity, BarChart3, Wallet, Repeat } from 'lucide-react';
+import { Activity, BarChart3, Wallet, Repeat, HandCoins, PieChart, Target } from 'lucide-react';
 import { Header } from './components/layout/Header';
 import { TabNavigation } from './components/layout/TabNavigation';
 import { LoadingScreen } from './components/layout/LoadingScreen';
@@ -38,6 +38,18 @@ const AccountsView = lazy(() =>
 );
 const RecurringPaymentsView = lazy(() =>
   import('./components/views/recurring/RecurringPaymentsView').then(m => ({ default: m.RecurringPaymentsView }))
+);
+const DebtsView = lazy(() =>
+  import('./components/views/debts/DebtsView').then(m => ({ default: m.DebtsView }))
+);
+const BudgetsView = lazy(() =>
+  import('./components/views/budgets/BudgetsView').then(m => ({ default: m.BudgetsView }))
+);
+const GoalsView = lazy(() =>
+  import('./components/views/goals/GoalsView').then(m => ({ default: m.GoalsView }))
+);
+const CreditCardStatementView = lazy(() =>
+  import('./components/views/accounts/CreditCardStatementView').then(m => ({ default: m.CreditCardStatementView }))
 );
 
 const ViewFallback = () => (
@@ -163,7 +175,10 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     { key: '1', modifiers: ['alt' as const], description: 'Ir a Transacciones', action: () => setView('transactions') },
     { key: '2', modifiers: ['alt' as const], description: 'Ir a Cuentas', action: () => setView('accounts') },
     { key: '3', modifiers: ['alt' as const], description: 'Ir a Pagos Periódicos', action: () => setView('recurring') },
-    { key: '4', modifiers: ['alt' as const], description: 'Ir a Estadísticas', action: () => setView('stats') },
+    { key: '4', modifiers: ['alt' as const], description: 'Ir a Préstamos', action: () => setView('debts') },
+    { key: '5', modifiers: ['alt' as const], description: 'Ir a Presupuestos', action: () => setView('budgets') },
+    { key: '6', modifiers: ['alt' as const], description: 'Ir a Metas', action: () => setView('goals') },
+    { key: '7', modifiers: ['alt' as const], description: 'Ir a Estadísticas', action: () => setView('stats') },
     { key: 'h', modifiers: ['ctrl' as const], description: 'Abrir ayuda', action: () => setShowHelpModal(true) },
     {
       key: 'Escape', description: 'Cerrar modal',
@@ -243,12 +258,15 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         aria-label="Navegación principal"
         role="navigation"
       >
-        <div className="flex justify-around items-center px-2 py-2 pb-2" role="tablist">
+        <div className="flex justify-around items-center px-1 py-2 pb-2 overflow-x-auto" role="tablist">
           {[
-            { key: 'transactions' as ViewType, label: 'Transacciones', icon: Activity },
+            { key: 'transactions' as ViewType, label: 'Movimientos', icon: Activity },
             { key: 'accounts' as ViewType, label: 'Cuentas', icon: Wallet },
             { key: 'recurring' as ViewType, label: 'Periódicos', icon: Repeat },
-            { key: 'stats' as ViewType, label: 'Estadísticas', icon: BarChart3 }
+            { key: 'debts' as ViewType, label: 'Préstamos', icon: HandCoins },
+            { key: 'budgets' as ViewType, label: 'Presupuesto', icon: PieChart },
+            { key: 'goals' as ViewType, label: 'Metas', icon: Target },
+            { key: 'stats' as ViewType, label: 'Stats', icon: BarChart3 }
           ].map(tab => (
             <button
               key={tab.key}
@@ -266,14 +284,14 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
                   setView(tab.key);
                 }
               }}
-              className={`flex flex-col items-center justify-center gap-1 px-3 py-2 min-w-[70px] rounded-xl transition-all ${
+              className={`flex flex-col items-center justify-center gap-0.5 px-2 py-2 min-w-[52px] rounded-xl transition-all ${
                 view === tab.key
                   ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 scale-105'
                   : 'text-gray-500 dark:text-gray-400 active:scale-95 active:bg-gray-100 dark:active:bg-gray-800'
               }`}
             >
-              <tab.icon size={22} strokeWidth={view === tab.key ? 2.5 : 2} aria-hidden="true" />
-              <span className="text-[10px] font-semibold">{tab.label}</span>
+              <tab.icon size={18} strokeWidth={view === tab.key ? 2.5 : 2} aria-hidden="true" />
+              <span className="text-[9px] font-semibold leading-tight">{tab.label}</span>
             </button>
           ))}
         </div>
@@ -387,6 +405,33 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
               <div id="panel-accounts" role="tabpanel" aria-labelledby="tab-accounts">
                 <Suspense fallback={<ViewFallback />}>
                   <AccountsView />
+                  <div className="mt-4">
+                    <CreditCardStatementView />
+                  </div>
+                </Suspense>
+              </div>
+            )}
+
+            {view === 'debts' && (
+              <div id="panel-debts" role="tabpanel" aria-labelledby="tab-debts">
+                <Suspense fallback={<ViewFallback />}>
+                  <DebtsView />
+                </Suspense>
+              </div>
+            )}
+
+            {view === 'budgets' && (
+              <div id="panel-budgets" role="tabpanel" aria-labelledby="tab-budgets">
+                <Suspense fallback={<ViewFallback />}>
+                  <BudgetsView />
+                </Suspense>
+              </div>
+            )}
+
+            {view === 'goals' && (
+              <div id="panel-goals" role="tabpanel" aria-labelledby="tab-goals">
+                <Suspense fallback={<ViewFallback />}>
+                  <GoalsView />
                 </Suspense>
               </div>
             )}

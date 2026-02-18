@@ -48,9 +48,9 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
       onClose={onClose}
       title="Categorías"
       titleIcon={<Tag size={24} className="text-purple-600" />}
-      maxWidth="max-w-lg"
+      maxWidth="max-w-2xl"
     >
-      <div className="p-5 sm:p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 max-h-[calc(90vh-80px)] overflow-y-auto">
         {/* Header con botón */}
         <div className="flex justify-between items-center">
           <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -119,13 +119,13 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
         )}
 
         {/* Listas de categorías */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
           {/* Gastos */}
           <div>
             <h5 className="text-sm font-semibold mb-3 text-gray-700 dark:text-gray-300">
               Gastos ({categories.expense.length})
             </h5>
-            <div className="space-y-1.5 max-h-64 overflow-y-auto">
+            <div className="space-y-1.5 max-h-48 sm:max-h-64 overflow-y-auto">
               {categories.expense.map((cat) => (
                 <CategoryItem
                   key={cat}
@@ -145,7 +145,7 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
             <h5 className="text-sm font-semibold mb-3 text-gray-700 dark:text-gray-300">
               Ingresos ({categories.income.length})
             </h5>
-            <div className="space-y-1.5 max-h-64 overflow-y-auto">
+            <div className="space-y-1.5 max-h-48 sm:max-h-64 overflow-y-auto">
               {categories.income.map((cat) => (
                 <CategoryItem
                   key={cat}

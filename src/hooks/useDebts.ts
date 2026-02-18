@@ -62,9 +62,14 @@ export function useDebts(userId: string | null, transactions: Transaction[]) {
 
   // CRUD Operations
   const addDebt = useCallback(async (debt: Omit<Debt, 'id' | 'createdAt'>) => {
+    // Limpiar campos undefined antes de enviar a Firestore
+    const cleanDebt = Object.fromEntries(
+      Object.entries(debt).filter(([, v]) => v !== undefined)
+    );
+
     if (userId) {
       await addDoc(collection(db, `users/${userId}/debts`), {
-        ...debt,
+        ...cleanDebt,
         createdAt: new Date(),
       });
     } else {

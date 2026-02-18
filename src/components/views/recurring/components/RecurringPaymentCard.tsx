@@ -11,8 +11,33 @@ import {
   History,
   ChevronDown,
   ChevronUp,
+  Zap,
+  Wifi,
+  Home,
+  ShoppingCart,
+  Smartphone,
+  Car,
+  Heart,
+  GraduationCap,
+  Coffee,
+  Film,
 } from 'lucide-react';
 import type { RecurringPayment, Account, Transaction } from '../../../../types/finance';
+import { useFinance } from '@/contexts/FinanceContext';
+
+// Mapeo de categorías a iconos mejorados
+const CATEGORY_ICONS: Record<string, React.ElementType> = {
+  'Servicios': Zap,
+  'Internet': Wifi,
+  'Arriendo': Home,
+  'Supermercado': ShoppingCart,
+  'Telefonía': Smartphone,
+  'Transporte': Car,
+  'Salud': Heart,
+  'Educación': GraduationCap,
+  'Entretenimiento': Film,
+  'Suscripciones': Coffee,
+};
 
 interface RecurringPaymentCardProps {
   payment: RecurringPayment;
@@ -41,7 +66,13 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = ({
   onEdit,
   onDelete,
 }) => {
+  const { hideBalances } = useFinance();
   const [isExpanded, setIsExpanded] = useState(false);
+
+  const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
+
+  // Obtener icono según categoría
+  const CategoryIcon = CATEGORY_ICONS[payment.category] || CalendarDays;
 
   const getCardClasses = () => {
     const base = 'border rounded-xl overflow-hidden transition-all';
@@ -96,7 +127,8 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = ({
               <h4 className="font-semibold text-gray-900 dark:text-gray-100 truncate">
                 {payment.name}
               </h4>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                <CategoryIcon size={12} />
                 {payment.category}
               </span>
             </div>
@@ -133,7 +165,7 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = ({
           {/* Amount */}
           <div className="text-right flex-shrink-0">
             <p className="text-xl font-bold text-gray-900 dark:text-gray-100">
-              {formatCurrency(payment.amount)}
+              {displayAmount(payment.amount)}
             </p>
             {isPaid && (
               <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
@@ -191,6 +223,9 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({
   history,
   formatCurrency,
 }) => {
+  const { hideBalances } = useFinance();
+  const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
+
   return (
     <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
       <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 my-3">
@@ -213,7 +248,7 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({
                 })}
               </span>
               <span className="font-medium text-gray-900 dark:text-gray-100">
-                {formatCurrency(t.amount)}
+                {displayAmount(t.amount)}
               </span>
             </div>
           ))}

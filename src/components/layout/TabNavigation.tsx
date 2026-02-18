@@ -39,11 +39,10 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
               aria-selected={view === tab.key}
               aria-controls={`panel-${tab.key}`}
               onClick={() => setView(tab.key)}
-              className={`flex items-center gap-2 px-4 py-3 text-base font-medium transition-all whitespace-nowrap ${
-                view === tab.key
-                  ? 'text-purple-600 dark:text-purple-400 border-b-2 border-purple-600 dark:border-purple-400'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-300'
-              }`}
+              className={`flex items-center gap-2 px-4 py-3 text-base font-medium transition-all whitespace-nowrap ${view === tab.key
+                ? 'text-purple-600 dark:text-purple-400 border-b-2 border-purple-600 dark:border-purple-400'
+                : 'text-gray-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-300'
+                }`}
             >
               <tab.icon size={18} aria-hidden="true" />
               <span>{tab.label}</span>

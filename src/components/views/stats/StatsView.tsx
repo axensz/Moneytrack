@@ -23,42 +23,45 @@ import { useStatsData } from './hooks/useStatsData';
  * @author Refactored following Clean Code principles
  */
 export const StatsView: React.FC = () => {
-  const { transactions, accounts, formatCurrency } = useFinance();
+  const { transactions, accounts, formatCurrency, hideBalances } = useFinance();
   // Custom hooks para procesamiento de datos
   const { monthlyData, yearlyData, categoryData } = useStatsData(transactions);
   const { creditCardInterests, totals } = useCreditCardInterests(accounts, transactions);
+
+  // Wrapper para formatCurrency que respeta hideBalances
+  const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
 
   return (
     <div className="space-y-6">
       {/* Fila 1: Flujo de caja a ancho completo */}
       <CashFlowChart
         data={monthlyData}
-        formatCurrency={formatCurrency}
+        formatCurrency={displayAmount}
       />
 
       {/* Fila 2: Comparación mensual y distribución por categoría */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <MonthlyComparisonChart
           data={monthlyData}
-          formatCurrency={formatCurrency}
+          formatCurrency={displayAmount}
         />
         <CategoryPieChart
           data={categoryData}
-          formatCurrency={formatCurrency}
+          formatCurrency={displayAmount}
         />
       </div>
 
       {/* Fila 3: Tendencia anual */}
       <YearlyTrendChart
         data={yearlyData}
-        formatCurrency={formatCurrency}
+        formatCurrency={displayAmount}
       />
 
       {/* Fila 4: Intereses de tarjetas de crédito */}
       <CreditCardInterestsCard
         creditCardInterests={creditCardInterests}
         totals={totals}
-        formatCurrency={formatCurrency}
+        formatCurrency={displayAmount}
       />
 
       {/* Fila 5: Consulta por periodo personalizado */}

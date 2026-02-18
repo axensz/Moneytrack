@@ -139,15 +139,20 @@ export const useTransactionsView = ({
         return;
       }
 
-      await updateTransaction(id, {
-        description: editForm.description.trim(),
-        amount,
-        date: parseDateFromInput(editForm.date),
-        category: editForm.category,
-      });
+      try {
+        await updateTransaction(id, {
+          description: editForm.description.trim(),
+          amount,
+          date: parseDateFromInput(editForm.date),
+          category: editForm.category,
+        });
 
-      setEditingTransaction(null);
-      showToast.success(SUCCESS_MESSAGES.TRANSACTION_UPDATED);
+        setEditingTransaction(null);
+        setEditForm({ description: '', amount: '', date: '', category: '' });
+        showToast.success(SUCCESS_MESSAGES.TRANSACTION_UPDATED);
+      } catch (error) {
+        showToast.error('Error al actualizar la transacción');
+      }
     },
     [editForm, updateTransaction]
   );

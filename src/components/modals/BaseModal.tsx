@@ -100,7 +100,7 @@ export function BaseModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm transition-opacity duration-200"
       onClick={closeOnBackdrop ? onClose : undefined}
       role="dialog"
       aria-modal="true"
@@ -111,7 +111,7 @@ export function BaseModal({
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
         tabIndex={-1}
-        className={`bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full ${maxWidth} overflow-hidden outline-none animate-in fade-in zoom-in-95 duration-200 ${className}`}
+        className={`bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full ${maxWidth} max-h-[90vh] overflow-y-auto outline-none animate-in fade-in zoom-in-95 duration-200 ${className}`}
       >
         {title && (
           <div className="flex justify-between items-center p-6 border-b border-gray-100 dark:border-gray-700">

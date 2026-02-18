@@ -4,6 +4,7 @@ import React, { memo } from 'react';
 import { Edit2, X, Check } from 'lucide-react';
 import type { Transaction, Account, Categories } from '../../../../types/finance';
 import { formatNumberForInput, unformatNumber } from '../../../../utils/formatters';
+import { useFinance } from '@/contexts/FinanceContext';
 
 interface TransactionItemProps {
   transaction: Transaction;
@@ -43,6 +44,10 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
   onCancel,
   onEditFormChange,
 }) => {
+  const { hideBalances } = useFinance();
+
+  const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
+
   if (isEditing) {
     return (
       <div className="border rounded-lg p-3 sm:p-4 transition-all bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
@@ -137,7 +142,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
     <div className="border rounded-lg p-3 sm:p-4 transition-all bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-lg shadow-sm">
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
         <div className="flex-1 min-w-0">
-          <div 
+          <div
             className="font-medium text-gray-900 dark:text-gray-100 truncate"
             title={transaction.description || transaction.category}
           >
@@ -174,20 +179,19 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
 
         <div className="flex items-center justify-between sm:justify-end gap-3">
           <div
-            className={`text-base sm:text-lg font-semibold whitespace-nowrap ${
-              transaction.type === 'income'
-                ? 'text-emerald-600'
-                : transaction.type === 'expense'
+            className={`text-base sm:text-lg font-semibold whitespace-nowrap ${transaction.type === 'income'
+              ? 'text-emerald-600'
+              : transaction.type === 'expense'
                 ? 'text-rose-600'
                 : 'text-blue-600'
-            }`}
+              }`}
           >
             {transaction.type === 'income'
               ? '+'
               : transaction.type === 'expense'
-              ? '-'
-              : '→'}{' '}
-            {formatCurrency(transaction.amount)}
+                ? '-'
+                : '→'}{' '}
+            {displayAmount(transaction.amount)}
           </div>
 
           <div className="flex gap-1">

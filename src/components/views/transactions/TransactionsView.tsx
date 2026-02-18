@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import { Download } from 'lucide-react';
 import type {
   Transaction,
   Account,
@@ -9,7 +8,6 @@ import type {
   RecurringPayment,
 } from '../../../types/finance';
 import { useFinance } from '../../../contexts/FinanceContext';
-import { useCSVExport } from '../../../hooks/useCSVExport';
 
 // Componentes
 import { NoAccountsMessage } from './components/NoAccountsMessage';
@@ -89,8 +87,6 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     onRestore,
   });
 
-  const { exportTransactionsCSV } = useCSVExport();
-
   const handleClearFilters = () => {
     clearFilters(setFilterAccount, setFilterCategory);
   };
@@ -124,7 +120,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
         setSearchQuery={setSearchQuery}
       />
 
-      {/* Título con contador y CSV export */}
+      {/* Título con contador */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
           Transacciones{' '}
@@ -132,16 +128,6 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
             {filteredTransactions.length}
           </span>
         </h3>
-        {filteredTransactions.length > 0 && (
-          <button
-            onClick={() => exportTransactionsCSV(filteredTransactions, accounts)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
-            title="Exportar a CSV"
-          >
-            <Download size={14} />
-            CSV
-          </button>
-        )}
       </div>
 
       {/* Contenido principal */}

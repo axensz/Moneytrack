@@ -1,5 +1,6 @@
-import React, { useState, useEffect, memo } from 'react';
+import React, { memo } from 'react';
 import { TrendingUp, TrendingDown, Wallet, Calendar, Eye, EyeOff } from 'lucide-react';
+import { useFinance } from '@/contexts/FinanceContext';
 
 interface StatsCardsProps {
   totalBalance: number;
@@ -10,8 +11,6 @@ interface StatsCardsProps {
   balanceLabel?: string;
 }
 
-const STORAGE_KEY = 'moneytrack_hide_values';
-
 export const StatsCards: React.FC<StatsCardsProps> = memo(({
   totalBalance,
   totalIncome,
@@ -20,31 +19,21 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
   formatCurrency,
   balanceLabel = 'Balance'
 }) => {
-  const [isHidden, setIsHidden] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return saved === 'true';
-    }
-    return false;
-  });
+  const { hideBalances, setHideBalances } = useFinance();
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, String(isHidden));
-  }, [isHidden]);
-
-  const displayValue = (value: number) => isHidden ? '••••••' : formatCurrency(value);
+  const displayValue = (value: number) => hideBalances ? '••••••' : formatCurrency(value);
 
   return (
     <div className="mb-6 sm:mb-8">
       {/* Botón de ocultar valores */}
       <div className="flex justify-end mb-3">
         <button
-          onClick={() => setIsHidden(!isHidden)}
+          onClick={() => setHideBalances(!hideBalances)}
           className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
-          title={isHidden ? 'Mostrar valores' : 'Ocultar valores'}
+          title={hideBalances ? 'Mostrar valores' : 'Ocultar valores'}
         >
-          {isHidden ? <Eye size={16} /> : <EyeOff size={16} />}
-          <span className="hidden sm:inline">{isHidden ? 'Mostrar' : 'Ocultar'}</span>
+          {hideBalances ? <Eye size={16} /> : <EyeOff size={16} />}
+          <span className="hidden sm:inline">{hideBalances ? 'Mostrar' : 'Ocultar'}</span>
         </button>
       </div>
 

@@ -5,6 +5,7 @@ import { Search, Calendar, Tag, Wallet, TrendingUp, TrendingDown, ArrowRightLeft
 import type { Transaction, Account } from '../../../../types/finance';
 import { TRANSFER_CATEGORY } from '../../../../config/constants';
 import { formatCurrency } from '../../../../utils/formatters';
+import { useFinance } from '../../../../contexts/FinanceContext';
 
 interface PeriodSummaryCardProps {
   transactions: Transaction[];
@@ -17,12 +18,15 @@ export const PeriodSummaryCard: React.FC<PeriodSummaryCardProps> = ({
   transactions,
   accounts,
 }) => {
+  const { hideBalances } = useFinance();
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedAccount, setSelectedAccount] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<SummaryType>('all');
   const [isExpanded, setIsExpanded] = useState(false);
+
+  const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
 
   // Get unique categories from transactions
   const allCategories = useMemo(() => {
@@ -199,26 +203,24 @@ export const PeriodSummaryCard: React.FC<PeriodSummaryCardProps> = ({
                   <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-1 flex items-center justify-center gap-1">
                     <TrendingUp size={12} /> Ingresos
                   </p>
-                  <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{formatCurrency(summary.income)}</p>
+                  <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{displayAmount(summary.income)}</p>
                 </div>
                 <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-900/20 text-center">
                   <p className="text-xs text-rose-600 dark:text-rose-400 mb-1 flex items-center justify-center gap-1">
                     <TrendingDown size={12} /> Gastos
                   </p>
-                  <p className="text-lg font-bold text-rose-700 dark:text-rose-300">{formatCurrency(summary.expenses)}</p>
+                  <p className="text-lg font-bold text-rose-700 dark:text-rose-300">{displayAmount(summary.expenses)}</p>
                 </div>
-                <div className={`p-3 rounded-xl text-center ${
-                  summary.net >= 0 
-                    ? 'bg-blue-50 dark:bg-blue-900/20' 
-                    : 'bg-amber-50 dark:bg-amber-900/20'
-                }`}>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Neto</p>
-                  <p className={`text-lg font-bold ${
-                    summary.net >= 0 
-                      ? 'text-blue-700 dark:text-blue-300' 
-                      : 'text-amber-700 dark:text-amber-300'
+                <div className={`p-3 rounded-xl text-center ${summary.net >= 0
+                  ? 'bg-blue-50 dark:bg-blue-900/20'
+                  : 'bg-amber-50 dark:bg-amber-900/20'
                   }`}>
-                    {summary.net >= 0 ? '+' : ''}{formatCurrency(summary.net)}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Neto</p>
+                  <p className={`text-lg font-bold ${summary.net >= 0
+                    ? 'text-blue-700 dark:text-blue-300'
+                    : 'text-amber-700 dark:text-amber-300'
+                    }`}>
+                    {summary.net >= 0 ? '+' : ''}{displayAmount(summary.net)}
                   </p>
                 </div>
               </div>
@@ -245,7 +247,7 @@ export const PeriodSummaryCard: React.FC<PeriodSummaryCardProps> = ({
                             />
                           </div>
                           <span className="text-xs font-medium text-gray-700 dark:text-gray-300 w-28 text-right flex-shrink-0">
-                            {formatCurrency(cat.amount)}
+                            {displayAmount(cat.amount)}
                           </span>
                         </div>
                       );

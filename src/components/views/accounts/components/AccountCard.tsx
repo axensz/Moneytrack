@@ -3,6 +3,7 @@
 import React, { memo } from 'react';
 import { Edit2, Trash2, GripVertical, Wallet, CreditCard, Banknote } from 'lucide-react';
 import type { Account, Transaction } from '../../../../types/finance';
+import { useFinance } from '@/contexts/FinanceContext';
 
 const ACCOUNT_TYPES = [
   { value: 'savings' as const, label: 'Cuenta de Ahorros', icon: Wallet },
@@ -63,8 +64,11 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
   onTouchMove,
   onTouchEnd,
 }) => {
+  const { hideBalances } = useFinance();
   const isCredit = account.type === 'credit';
   const accountTypeInfo = ACCOUNT_TYPES.find((t) => t.value === account.type);
+
+  const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
 
   const getCardClasses = () => {
     const base = 'rounded-xl p-5 transition-all touch-none select-none relative overflow-hidden';
@@ -78,24 +82,21 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
     }
 
     if (isAssociated) {
-      return `${base} border border-purple-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md ${
-        account.isDefault ? 'ring-2 ring-purple-400' : ''
-      }`;
+      return `${base} border border-purple-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md ${account.isDefault ? 'ring-2 ring-purple-400' : ''
+        }`;
     }
 
     if (account.isDefault) {
-      return `${base} border-2 ${
-        isCredit
-          ? 'border-purple-500 bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20'
-          : 'border-emerald-500 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20'
-      } shadow-md`;
+      return `${base} border-2 ${isCredit
+        ? 'border-purple-500 bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20'
+        : 'border-emerald-500 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20'
+        } shadow-md`;
     }
 
-    return `${base} border ${
-      isCredit
-        ? 'border-purple-100 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600'
-        : 'border-emerald-100 dark:border-gray-700 hover:border-emerald-300 dark:hover:border-emerald-600'
-    } bg-white dark:bg-gray-800 hover:shadow-md`;
+    return `${base} border ${isCredit
+      ? 'border-purple-100 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600'
+      : 'border-emerald-100 dark:border-gray-700 hover:border-emerald-300 dark:hover:border-emerald-600'
+      } bg-white dark:bg-gray-800 hover:shadow-md`;
   };
 
   return (
@@ -119,9 +120,8 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
     >
       {/* Accent Bar */}
       <div
-        className={`absolute left-0 top-0 bottom-0 w-1.5 ${
-          isCredit ? 'bg-purple-500' : 'bg-emerald-500'
-        }`}
+        className={`absolute left-0 top-0 bottom-0 w-1.5 ${isCredit ? 'bg-purple-500' : 'bg-emerald-500'
+          }`}
       />
 
       <div className="pl-2">
@@ -134,11 +134,10 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
                 className="text-gray-400 cursor-grab active:cursor-grabbing flex-shrink-0"
               />
               <div
-                className={`p-1.5 rounded-lg flex-shrink-0 ${
-                  isCredit
-                    ? 'bg-purple-100 dark:bg-purple-900/40'
-                    : 'bg-emerald-100 dark:bg-emerald-900/40'
-                }`}
+                className={`p-1.5 rounded-lg flex-shrink-0 ${isCredit
+                  ? 'bg-purple-100 dark:bg-purple-900/40'
+                  : 'bg-emerald-100 dark:bg-emerald-900/40'
+                  }`}
               >
                 {accountTypeInfo &&
                   React.createElement(accountTypeInfo.icon, {
@@ -150,17 +149,15 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h4
-                  className={`font-semibold text-gray-900 dark:text-gray-100 ${
-                    isAssociated ? 'text-sm sm:text-base' : ''
-                  }`}
+                  className={`font-semibold text-gray-900 dark:text-gray-100 ${isAssociated ? 'text-sm sm:text-base' : ''
+                    }`}
                 >
                   {account.name}
                 </h4>
                 {account.isDefault && (
                   <span
-                    className={`text-xs text-white px-2 py-0.5 rounded-full font-medium ${
-                      isCredit ? 'bg-purple-600' : 'bg-emerald-600'
-                    }`}
+                    className={`text-xs text-white px-2 py-0.5 rounded-full font-medium ${isCredit ? 'bg-purple-600' : 'bg-emerald-600'
+                      }`}
                   >
                     Principal
                   </span>
@@ -170,11 +167,10 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
 
             {/* Type badge */}
             <span
-              className={`inline-flex items-center text-xs px-2 py-0.5 rounded-full font-medium ${
-                isCredit
-                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
-                  : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
-              }`}
+              className={`inline-flex items-center text-xs px-2 py-0.5 rounded-full font-medium ${isCredit
+                ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
+                : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                }`}
             >
               {accountTypeInfo?.label}
             </span>
@@ -188,22 +184,21 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
           {/* Balance */}
           <div className="text-left sm:text-right">
             <div
-              className={`text-xl sm:text-2xl font-bold ${
-                isCredit
-                  ? balance >= 0
-                    ? 'text-purple-600 dark:text-purple-400'
-                    : 'text-rose-600'
-                  : balance >= 0
+              className={`text-xl sm:text-2xl font-bold ${isCredit
+                ? balance >= 0
+                  ? 'text-purple-600 dark:text-purple-400'
+                  : 'text-rose-600'
+                : balance >= 0
                   ? 'text-emerald-600 dark:text-emerald-400'
                   : 'text-rose-600'
-              }`}
+                }`}
             >
               {isCredit && (
                 <div className="text-xs font-normal text-gray-500 dark:text-gray-400 mb-1">
                   Disponible
                 </div>
               )}
-              {formatCurrency(balance)}
+              {displayAmount(balance)}
             </div>
           </div>
         </div>
@@ -232,11 +227,10 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
             <>
               <button
                 onClick={onSetDefault}
-                className={`flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[36px] text-white ${
-                  isCredit
-                    ? 'bg-purple-600 hover:bg-purple-700'
-                    : 'bg-emerald-600 hover:bg-emerald-700'
-                }`}
+                className={`flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[36px] text-white ${isCredit
+                  ? 'bg-purple-600 hover:bg-purple-700'
+                  : 'bg-emerald-600 hover:bg-emerald-700'
+                  }`}
               >
                 Principal
               </button>
@@ -276,25 +270,27 @@ const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
   formatCurrency,
   isAssociated,
 }) => {
+  const { hideBalances } = useFinance();
   const usagePercentage = Math.min((creditUsed / creditLimit) * 100, 100);
   const isHighUsage = creditUsed > creditLimit * 0.8;
+
+  const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
 
   return (
     <div className="mt-4">
       <div className={`flex justify-between ${isAssociated ? 'text-xs sm:text-sm' : 'text-sm'} mb-1.5`}>
         <span className="text-gray-600 dark:text-gray-400">Cupo utilizado</span>
         <span className="font-medium text-gray-900 dark:text-gray-100">
-          {formatCurrency(creditUsed)} / {formatCurrency(creditLimit)}
+          {displayAmount(creditUsed)} / {displayAmount(creditLimit)}
         </span>
       </div>
 
       <div className="w-full h-2.5 bg-purple-100 dark:bg-purple-900/30 rounded-full overflow-hidden">
         <div
-          className={`h-full transition-all ${
-            isHighUsage
-              ? 'bg-gradient-to-r from-orange-500 to-rose-500'
-              : 'bg-gradient-to-r from-purple-500 to-violet-500'
-          }`}
+          className={`h-full transition-all ${isHighUsage
+            ? 'bg-gradient-to-r from-orange-500 to-rose-500'
+            : 'bg-gradient-to-r from-purple-500 to-violet-500'
+            }`}
           style={{ width: `${usagePercentage}%` }}
         />
       </div>

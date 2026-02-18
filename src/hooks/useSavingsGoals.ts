@@ -70,9 +70,14 @@ export function useSavingsGoals(userId: string | null) {
 
   // CRUD
   const addGoal = useCallback(async (goal: Omit<SavingsGoal, 'id' | 'createdAt'>) => {
+    // Limpiar campos undefined antes de enviar a Firestore
+    const cleanGoal = Object.fromEntries(
+      Object.entries(goal).filter(([, v]) => v !== undefined)
+    );
+
     if (userId) {
       await addDoc(collection(db, `users/${userId}/savingsGoals`), {
-        ...goal,
+        ...cleanGoal,
         createdAt: new Date(),
       });
     } else {

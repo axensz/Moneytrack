@@ -133,8 +133,7 @@ export const AccountsView: React.FC = () => {
 
       if (transactionCount > 0) {
         showToast.success(
-          `Cuenta "${account.name}" eliminada junto con ${transactionCount} transacción${
-            transactionCount !== 1 ? 'es' : ''
+          `Cuenta "${account.name}" eliminada junto con ${transactionCount} transacción${transactionCount !== 1 ? 'es' : ''
           }`
         );
       } else {
@@ -152,10 +151,20 @@ export const AccountsView: React.FC = () => {
 
   return (
     <div className="card">
-      {/* Header */}
+      {/* Header con descripción */}
+      <div className="mb-6">
+        <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+          Cuentas
+        </h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          Administra tus cuentas bancarias y tarjetas de crédito
+        </p>
+      </div>
+
+      {/* Header con botones */}
       <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-          Cuentas
+          Mis Cuentas
         </h3>
 
         <div className="flex gap-3">
@@ -242,8 +251,8 @@ export const AccountsView: React.FC = () => {
                 isDragOver={dragDrop.dragOverAccountId === account.id}
                 touchTransform={
                   dragDrop.draggedAccountId === account.id &&
-                  dragDrop.touchCurrentY &&
-                  dragDrop.touchStartY
+                    dragDrop.touchCurrentY &&
+                    dragDrop.touchStartY
                     ? `translateY(${dragDrop.touchCurrentY - dragDrop.touchStartY}px)`
                     : undefined
                 }
@@ -271,9 +280,8 @@ export const AccountsView: React.FC = () => {
               {/* Tarjetas asociadas */}
               {associatedCards.length > 0 && (
                 <div
-                  className={`ml-4 sm:ml-8 mt-3 space-y-3 border-l-2 border-purple-200 dark:border-purple-800 pl-4 transition-opacity duration-200 ${
-                    dragDrop.draggedAccountId === account.id ? 'opacity-50' : ''
-                  }`}
+                  className={`ml-4 sm:ml-8 mt-3 space-y-3 border-l-2 border-purple-200 dark:border-purple-800 pl-4 transition-opacity duration-200 ${dragDrop.draggedAccountId === account.id ? 'opacity-50' : ''
+                    }`}
                 >
                   {associatedCards.map((card) => (
                     <AccountCard
@@ -289,8 +297,8 @@ export const AccountsView: React.FC = () => {
                       isDragOver={dragDrop.dragOverAccountId === card.id}
                       touchTransform={
                         dragDrop.draggedAccountId === card.id &&
-                        dragDrop.touchCurrentY &&
-                        dragDrop.touchStartY
+                          dragDrop.touchCurrentY &&
+                          dragDrop.touchStartY
                           ? `translateY(${dragDrop.touchCurrentY - dragDrop.touchStartY}px)`
                           : undefined
                       }

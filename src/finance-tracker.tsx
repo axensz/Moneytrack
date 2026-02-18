@@ -273,11 +273,10 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
                 setView(tab.key);
                 setShowMoreMenu(false);
               }}
-              className={`flex items-center gap-3 w-full px-4 py-3 text-sm font-medium transition-colors ${
-                view === tab.key
+              className={`flex items-center gap-3 w-full px-4 py-3 text-sm font-medium transition-colors ${view === tab.key
                   ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30'
                   : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 active:bg-gray-100 dark:active:bg-gray-700'
-              }`}
+                }`}
             >
               <tab.icon size={18} />
               <span>{tab.label}</span>
@@ -288,7 +287,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
 
       {/* Mobile Bottom Navigation - Fixed at bottom, FUERA del contenedor scrollable */}
       <nav
-        className="sm:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 shadow-lg safe-area-bottom"
+        className="sm:hidden fixed bottom-0 left-0 right-0 z-[100] bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 shadow-lg safe-area-bottom"
         aria-label="Navegación principal"
         role="navigation"
       >
@@ -314,11 +313,10 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
                 }
                 setShowMoreMenu(false);
               }}
-              className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 min-w-[56px] rounded-xl transition-all ${
-                view === tab.key
+              className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 min-w-[56px] rounded-xl transition-all ${view === tab.key
                   ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 scale-105'
                   : 'text-gray-500 dark:text-gray-400 active:scale-95 active:bg-gray-100 dark:active:bg-gray-800'
-              }`}
+                }`}
             >
               <tab.icon size={20} strokeWidth={view === tab.key ? 2.5 : 2} aria-hidden="true" />
               <span className="text-[10px] font-semibold leading-tight">{tab.label}</span>
@@ -327,14 +325,20 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
           {/* Botón "Más" */}
           <div className="relative">
             <button
-              onClick={() => setShowMoreMenu(prev => !prev)}
-              className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 min-w-[56px] rounded-xl transition-all ${
-                (['recurring', 'budgets', 'debts'] as ViewType[]).includes(view)
+              onClick={() => {
+                if (showMoreMenu || (['recurring', 'budgets', 'debts'] as ViewType[]).includes(view)) {
+                  setShowMoreMenu(false);
+                } else {
+                  setShowMoreMenu(true);
+                }
+              }}
+              className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 min-w-[56px] rounded-xl transition-all ${(['recurring', 'budgets', 'debts'] as ViewType[]).includes(view)
                   ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 scale-105'
                   : showMoreMenu
                     ? 'text-purple-600 dark:text-purple-400'
                     : 'text-gray-500 dark:text-gray-400 active:scale-95 active:bg-gray-100 dark:active:bg-gray-800'
-              }`}
+                }`}
+              aria-pressed={showMoreMenu}
             >
               <MoreHorizontal size={20} strokeWidth={(['recurring', 'budgets', 'debts'] as ViewType[]).includes(view) ? 2.5 : 2} aria-hidden="true" />
               <span className="text-[10px] font-semibold leading-tight">Más</span>
@@ -391,11 +395,6 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
       <div ref={scrollContainerRef} className="flex-1 overflow-auto">
         <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 pb-24 sm:pb-6">
           <div className="max-w-7xl mx-auto">
-            <TabNavigation
-              view={view}
-              setView={setView}
-            />
-
             <StatsCards
               totalBalance={dynamicTotalBalance}
               totalIncome={dynamicStats.totalIncome}
@@ -403,6 +402,11 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
               pendingExpenses={dynamicStats.pendingExpenses}
               formatCurrency={formatCurrency}
               balanceLabel={balanceLabel}
+            />
+
+            <TabNavigation
+              view={view}
+              setView={setView}
             />
 
             {view === 'transactions' && (

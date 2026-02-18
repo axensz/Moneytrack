@@ -27,6 +27,8 @@ export const RecurringPaymentsView: React.FC = () => {
     accounts,
     categories,
     formatCurrency,
+    hideBalances,
+    setHideBalances,
     addRecurringPayment,
     updateRecurringPayment,
     deleteRecurringPayment,
@@ -63,6 +65,8 @@ export const RecurringPaymentsView: React.FC = () => {
     deleteRecurringPayment,
   });
 
+  const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
+
   return (
     <div className="space-y-6">
       {/* Header con estadísticas */}
@@ -87,7 +91,7 @@ export const RecurringPaymentsView: React.FC = () => {
           paidThisMonth={stats.paidThisMonth}
           pendingThisMonth={stats.pendingThisMonth}
           totalMonthlyAmount={stats.totalMonthlyAmount}
-          formatCurrency={formatCurrency}
+          formatCurrency={displayAmount}
         />
       </div>
 
@@ -95,7 +99,7 @@ export const RecurringPaymentsView: React.FC = () => {
       <UpcomingPaymentsAlert
         upcomingPayments={stats.upcomingPayments}
         getDaysUntilDue={getDaysUntilDue}
-        formatCurrency={formatCurrency}
+        formatCurrency={displayAmount}
       />
 
       {/* Lista de pagos activos */}
@@ -119,7 +123,7 @@ export const RecurringPaymentsView: React.FC = () => {
                   nextDueDate={displayData.nextDueDate}
                   account={displayData.account}
                   history={displayData.history}
-                  formatCurrency={formatCurrency}
+                  formatCurrency={displayAmount}
                   onEdit={() => openEditForm(payment)}
                   onDelete={() => confirmDelete(payment.id!)}
                 />
@@ -132,7 +136,7 @@ export const RecurringPaymentsView: React.FC = () => {
       {/* Pagos inactivos */}
       <InactivePaymentsList
         payments={inactivePayments}
-        formatCurrency={formatCurrency}
+        formatCurrency={displayAmount}
         onReactivate={handleReactivate}
       />
 

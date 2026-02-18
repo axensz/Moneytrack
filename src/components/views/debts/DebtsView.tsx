@@ -22,6 +22,8 @@ export const DebtsView: React.FC = () => {
     getDebtTransactions,
     debtStats,
     formatCurrency,
+    hideBalances,
+    setHideBalances,
   } = useFinance();
 
   const [showForm, setShowForm] = useState(false);
@@ -55,7 +57,7 @@ export const DebtsView: React.FC = () => {
       originalAmount: amount,
       remainingAmount: amount,
       description: formData.description.trim(),
-      accountId: formData.accountId || undefined,
+      accountId: formData.accountId || undefined, // Asegurar que sea undefined si está vacío
       isSettled: false,
     });
 
@@ -88,211 +90,248 @@ export const DebtsView: React.FC = () => {
   const lentDebts = activeDebts.filter(d => d.type === 'lent');
   const borrowedDebts = activeDebts.filter(d => d.type === 'borrowed');
 
+  const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
+
   return (
-    <div className="card">
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 text-center">
-          <ArrowUpRight className="mx-auto text-blue-600 dark:text-blue-400 mb-1" size={20} />
-          <p className="text-xs text-gray-600 dark:text-gray-400">Me deben</p>
-          <p className="text-sm font-bold text-blue-700 dark:text-blue-300">{formatCurrency(debtStats.totalLent)}</p>
-          <p className="text-xs text-gray-500">{debtStats.activeLentCount} activo{debtStats.activeLentCount !== 1 ? 's' : ''}</p>
-        </div>
-        <div className="bg-orange-50 dark:bg-orange-900/20 rounded-xl p-3 text-center">
-          <ArrowDownLeft className="mx-auto text-orange-600 dark:text-orange-400 mb-1" size={20} />
-          <p className="text-xs text-gray-600 dark:text-gray-400">Debo</p>
-          <p className="text-sm font-bold text-orange-700 dark:text-orange-300">{formatCurrency(debtStats.totalBorrowed)}</p>
-          <p className="text-xs text-gray-500">{debtStats.activeBorrowedCount} activo{debtStats.activeBorrowedCount !== 1 ? 's' : ''}</p>
-        </div>
-        <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-3 text-center">
-          <CheckCircle2 className="mx-auto text-green-600 dark:text-green-400 mb-1" size={20} />
-          <p className="text-xs text-gray-600 dark:text-gray-400">Saldados</p>
-          <p className="text-sm font-bold text-green-700 dark:text-green-300">{debtStats.settledCount}</p>
-        </div>
-        <div className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-3 text-center">
-          <Users className="mx-auto text-purple-600 dark:text-purple-400 mb-1" size={20} />
-          <p className="text-xs text-gray-600 dark:text-gray-400">Balance neto</p>
-          <p className={`text-sm font-bold ${debtStats.totalLent - debtStats.totalBorrowed >= 0 ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
-            {formatCurrency(debtStats.totalLent - debtStats.totalBorrowed)}
+    <div className="space-y-6">
+      {/* Header con descripción */}
+      <div className="card">
+        <div className="mb-6">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+            Préstamos y Deudas
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Controla el dinero que prestas y debes
           </p>
         </div>
+
+        {/* Stats Cards - Mejoradas */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 rounded-2xl p-4 sm:p-5 border-2 border-blue-200 dark:border-blue-700 shadow-lg hover:shadow-xl transition-all">
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-2 bg-blue-200 dark:bg-blue-800 rounded-xl">
+                <ArrowUpRight className="text-blue-700 dark:text-blue-300" size={20} />
+              </div>
+              <span className="text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/50 px-2 py-1 rounded-full">
+                {debtStats.activeLentCount} activo{debtStats.activeLentCount !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <p className="text-xs text-blue-700 dark:text-blue-400 font-medium mb-1">Me deben</p>
+            <p className="text-xl sm:text-2xl font-bold text-blue-900 dark:text-blue-100">{displayAmount(debtStats.totalLent)}</p>
+          </div>
+
+          <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/30 dark:to-orange-800/20 rounded-2xl p-4 sm:p-5 border-2 border-orange-200 dark:border-orange-700 shadow-lg hover:shadow-xl transition-all">
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-2 bg-orange-200 dark:bg-orange-800 rounded-xl">
+                <ArrowDownLeft className="text-orange-700 dark:text-orange-300" size={20} />
+              </div>
+              <span className="text-xs font-medium text-orange-600 dark:text-orange-400 bg-orange-100 dark:bg-orange-900/50 px-2 py-1 rounded-full">
+                {debtStats.activeBorrowedCount} activo{debtStats.activeBorrowedCount !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <p className="text-xs text-orange-700 dark:text-orange-400 font-medium mb-1">Debo</p>
+            <p className="text-xl sm:text-2xl font-bold text-orange-900 dark:text-orange-100">{displayAmount(debtStats.totalBorrowed)}</p>
+          </div>
+
+          <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/20 rounded-2xl p-4 sm:p-5 border-2 border-green-200 dark:border-green-700 shadow-lg hover:shadow-xl transition-all">
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-2 bg-green-200 dark:bg-green-800 rounded-xl">
+                <CheckCircle2 className="text-green-700 dark:text-green-300" size={20} />
+              </div>
+            </div>
+            <p className="text-xs text-green-700 dark:text-green-400 font-medium mb-1">Saldados</p>
+            <p className="text-xl sm:text-2xl font-bold text-green-900 dark:text-green-100">{debtStats.settledCount}</p>
+          </div>
+
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/20 rounded-2xl p-4 sm:p-5 border-2 border-purple-200 dark:border-purple-700 shadow-lg hover:shadow-xl transition-all">
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-2 bg-purple-200 dark:bg-purple-800 rounded-xl">
+                <Users className="text-purple-700 dark:text-purple-300" size={20} />
+              </div>
+            </div>
+            <p className="text-xs text-purple-700 dark:text-purple-400 font-medium mb-1">Balance neto</p>
+            <p className={`text-xl sm:text-2xl font-bold ${debtStats.totalLent - debtStats.totalBorrowed >= 0 ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
+              {displayAmount(debtStats.totalLent - debtStats.totalBorrowed)}
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-          <HandCoins size={20} className="text-purple-600" />
-          Préstamos y Deudas
-        </h2>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="btn-submit text-sm flex items-center gap-1.5"
-        >
-          <Plus size={16} />
-          Nuevo
-        </button>
-      </div>
-
-      {/* Form */}
-      {showForm && (
-        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 mb-4 space-y-3">
-          <div className="flex gap-2 mb-3">
-            <button
-              onClick={() => setFormData(f => ({ ...f, type: 'lent' }))}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
-                formData.type === 'lent'
-                  ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 ring-2 ring-blue-400'
-                  : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-400'
-              }`}
-            >
-              <ArrowUpRight size={14} className="inline mr-1" />
-              Yo presté
-            </button>
-            <button
-              onClick={() => setFormData(f => ({ ...f, type: 'borrowed' }))}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
-                formData.type === 'borrowed'
-                  ? 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 ring-2 ring-orange-400'
-                  : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-400'
-              }`}
-            >
-              <ArrowDownLeft size={14} className="inline mr-1" />
-              Me prestaron
-            </button>
-          </div>
-
-          <input
-            type="text"
-            value={formData.personName}
-            onChange={e => setFormData(f => ({ ...f, personName: e.target.value }))}
-            placeholder="Nombre de la persona"
-            className="input-field"
-          />
-
-          <input
-            type="text"
-            inputMode="numeric"
-            value={formatNumberForInput(formData.originalAmount)}
-            onChange={e => setFormData(f => ({ ...f, originalAmount: unformatNumber(e.target.value) }))}
-            placeholder="Monto"
-            className="input-field"
-          />
-
-          <input
-            type="text"
-            value={formData.description}
-            onChange={e => setFormData(f => ({ ...f, description: e.target.value }))}
-            placeholder="Descripción (opcional)"
-            className="input-field"
-          />
-
-          <select
-            value={formData.accountId}
-            onChange={e => setFormData(f => ({ ...f, accountId: e.target.value }))}
-            className="input-field"
-          >
-            <option value="">Cuenta (opcional)</option>
-            {accounts.filter(a => a.type !== 'credit').map(a => (
-              <option key={a.id} value={a.id}>{a.name}</option>
-            ))}
-          </select>
-
-          <div className="flex gap-2">
-            <button onClick={handleSubmit} className="btn-submit flex-1">
-              Registrar
-            </button>
-            <button onClick={() => setShowForm(false)} className="btn-cancel flex-1">
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Active Debts - Lent */}
-      {lentDebts.length > 0 && (
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-2 flex items-center gap-1.5">
-            <ArrowUpRight size={14} />
-            Me deben ({lentDebts.length})
+      {/* Main Card */}
+      <div className="card">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Gestionar Préstamos
           </h3>
-          <div className="space-y-2">
-            {lentDebts.map(debt => (
-              <DebtCard
-                key={debt.id}
-                debt={debt}
-                formatCurrency={formatCurrency}
-                showPaymentForm={showPaymentForm}
-                setShowPaymentForm={setShowPaymentForm}
-                paymentAmount={paymentAmount}
-                setPaymentAmount={setPaymentAmount}
-                onPayment={handlePayment}
-                onDelete={handleDelete}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Active Debts - Borrowed */}
-      {borrowedDebts.length > 0 && (
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold text-orange-700 dark:text-orange-400 mb-2 flex items-center gap-1.5">
-            <ArrowDownLeft size={14} />
-            Debo ({borrowedDebts.length})
-          </h3>
-          <div className="space-y-2">
-            {borrowedDebts.map(debt => (
-              <DebtCard
-                key={debt.id}
-                debt={debt}
-                formatCurrency={formatCurrency}
-                showPaymentForm={showPaymentForm}
-                setShowPaymentForm={setShowPaymentForm}
-                paymentAmount={paymentAmount}
-                setPaymentAmount={setPaymentAmount}
-                onPayment={handlePayment}
-                onDelete={handleDelete}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Empty state */}
-      {activeDebts.length === 0 && !showForm && (
-        <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-          <HandCoins size={40} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm">No hay préstamos activos</p>
-          <p className="text-xs mt-1">Registra un préstamo para empezar a rastrear</p>
-        </div>
-      )}
-
-      {/* Settled toggle */}
-      {settledDebts.length > 0 && (
-        <div className="mt-4">
           <button
-            onClick={() => setShowSettled(!showSettled)}
-            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+            onClick={() => setShowForm(!showForm)}
+            className="btn-submit text-sm flex items-center gap-2 shadow-lg hover:shadow-xl transition-all"
           >
-            {showSettled ? 'Ocultar' : 'Mostrar'} saldados ({settledDebts.length})
+            <Plus size={18} />
+            <span className="hidden sm:inline">Nuevo</span>
           </button>
-          {showSettled && (
-            <div className="mt-2 space-y-2 opacity-60">
-              {settledDebts.map(debt => (
-                <div key={debt.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                  <div>
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300 line-through">
-                      {debt.personName}
-                    </span>
-                    <span className="text-xs text-gray-500 ml-2">{formatCurrency(debt.originalAmount)}</span>
-                  </div>
-                  <CheckCircle2 size={16} className="text-green-500" />
-                </div>
+        </div>
+
+        {/* Form */}
+        {showForm && (
+          <div className="bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20 rounded-2xl p-5 mb-6 space-y-4 border-2 border-purple-200 dark:border-purple-800 shadow-lg">
+            <div className="flex gap-3 mb-4">
+              <button
+                onClick={() => setFormData(f => ({ ...f, type: 'lent' }))}
+                className={`flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition-all shadow-md hover:shadow-lg ${formData.type === 'lent'
+                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white ring-2 ring-blue-400 scale-105'
+                  : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600'
+                  }`}
+              >
+                <ArrowUpRight size={16} className="inline mr-2" />
+                Yo presté
+              </button>
+              <button
+                onClick={() => setFormData(f => ({ ...f, type: 'borrowed' }))}
+                className={`flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition-all shadow-md hover:shadow-lg ${formData.type === 'borrowed'
+                  ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white ring-2 ring-orange-400 scale-105'
+                  : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600'
+                  }`}
+              >
+                <ArrowDownLeft size={16} className="inline mr-2" />
+                Me prestaron
+              </button>
+            </div>
+
+            <input
+              type="text"
+              value={formData.personName}
+              onChange={e => setFormData(f => ({ ...f, personName: e.target.value }))}
+              placeholder="Nombre de la persona"
+              className="input-base"
+            />
+
+            <input
+              type="text"
+              inputMode="numeric"
+              value={formatNumberForInput(formData.originalAmount)}
+              onChange={e => setFormData(f => ({ ...f, originalAmount: unformatNumber(e.target.value) }))}
+              placeholder="Monto"
+              className="input-base"
+            />
+
+            <input
+              type="text"
+              value={formData.description}
+              onChange={e => setFormData(f => ({ ...f, description: e.target.value }))}
+              placeholder="Descripción (opcional)"
+              className="input-base"
+            />
+
+            <select
+              value={formData.accountId}
+              onChange={e => setFormData(f => ({ ...f, accountId: e.target.value }))}
+              className="input-base"
+            >
+              <option value="">Sin cuenta asociada (opcional)</option>
+              {accounts.filter(a => a.type !== 'credit').map(a => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+
+            <div className="flex gap-3">
+              <button onClick={handleSubmit} className="btn-submit flex-1 shadow-md hover:shadow-lg">
+                Registrar
+              </button>
+              <button onClick={() => setShowForm(false)} className="btn-cancel flex-1 shadow-md hover:shadow-lg">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Active Debts - Lent */}
+        {lentDebts.length > 0 && (
+          <div className="mb-4">
+            <h3 className="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-2 flex items-center gap-1.5">
+              <ArrowUpRight size={14} />
+              Me deben ({lentDebts.length})
+            </h3>
+            <div className="space-y-2">
+              {lentDebts.map(debt => (
+                <DebtCard
+                  key={debt.id}
+                  debt={debt}
+                  formatCurrency={formatCurrency}
+                  showPaymentForm={showPaymentForm}
+                  setShowPaymentForm={setShowPaymentForm}
+                  paymentAmount={paymentAmount}
+                  setPaymentAmount={setPaymentAmount}
+                  onPayment={handlePayment}
+                  onDelete={handleDelete}
+                />
               ))}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+
+        {/* Active Debts - Borrowed */}
+        {borrowedDebts.length > 0 && (
+          <div className="mb-4">
+            <h3 className="text-sm font-semibold text-orange-700 dark:text-orange-400 mb-2 flex items-center gap-1.5">
+              <ArrowDownLeft size={14} />
+              Debo ({borrowedDebts.length})
+            </h3>
+            <div className="space-y-2">
+              {borrowedDebts.map(debt => (
+                <DebtCard
+                  key={debt.id}
+                  debt={debt}
+                  formatCurrency={formatCurrency}
+                  showPaymentForm={showPaymentForm}
+                  setShowPaymentForm={setShowPaymentForm}
+                  paymentAmount={paymentAmount}
+                  setPaymentAmount={setPaymentAmount}
+                  onPayment={handlePayment}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {activeDebts.length === 0 && !showForm && (
+          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+            <HandCoins size={40} className="mx-auto mb-3 opacity-30" />
+            <p className="text-sm">No hay préstamos activos</p>
+            <p className="text-xs mt-1">Registra un préstamo para empezar a rastrear</p>
+          </div>
+        )}
+
+        {/* Settled toggle */}
+        {settledDebts.length > 0 && (
+          <div className="mt-4">
+            <button
+              onClick={() => setShowSettled(!showSettled)}
+              className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+            >
+              {showSettled ? 'Ocultar' : 'Mostrar'} saldados ({settledDebts.length})
+            </button>
+            {showSettled && (
+              <div className="mt-2 space-y-2 opacity-60">
+                {settledDebts.map(debt => (
+                  <div key={debt.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+                    <div>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300 line-through">
+                        {debt.personName}
+                      </span>
+                      <span className="text-xs text-gray-500 ml-2">{displayAmount(debt.originalAmount)}</span>
+                    </div>
+                    <CheckCircle2 size={16} className="text-green-500" />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -402,7 +441,7 @@ const DebtCard: React.FC<DebtCardProps> = ({
             value={formatNumberForInput(paymentAmount)}
             onChange={e => setPaymentAmount(unformatNumber(e.target.value))}
             placeholder="Monto del pago"
-            className="input-field flex-1 text-sm"
+            className="input-base flex-1 text-sm"
             autoFocus
           />
           <button

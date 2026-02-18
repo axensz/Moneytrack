@@ -52,6 +52,10 @@ export interface FinanceContextValue {
   defaultAccount: Account | null;
   totalBalance: number;
 
+  // ── UI State ──
+  hideBalances: boolean;
+  setHideBalances: (hide: boolean) => void;
+
   // ── Loading ──
   transactionsLoading: boolean;
   accountsLoading: boolean;
@@ -148,6 +152,20 @@ interface FinanceProviderProps {
 }
 
 export function FinanceProvider({ userId, children }: FinanceProviderProps) {
+  // Estado global para ocultar saldos
+  const [hideBalances, setHideBalances] = React.useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('moneytrack_hide_values');
+      return saved === 'true';
+    }
+    return false;
+  });
+
+  // Sincronizar con localStorage
+  React.useEffect(() => {
+    localStorage.setItem('moneytrack_hide_values', String(hideBalances));
+  }, [hideBalances]);
+
   // 1. Transacciones (base de todo)
   const {
     transactions,
@@ -228,6 +246,10 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     recurringPayments,
     defaultAccount: defaultAccount || null,
     totalBalance,
+
+    // UI State
+    hideBalances,
+    setHideBalances,
 
     // Loading
     transactionsLoading,

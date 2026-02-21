@@ -13,6 +13,7 @@ import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, d
 import { db } from '../lib/firebase';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
+import { safeFirestoreOperation, checkNetworkConnection } from '../utils/firestoreHelpers';
 import type { Debt, Transaction } from '../types/finance';
 
 const generateId = () => Date.now().toString() + Math.random().toString(36).substring(2, 11);
@@ -68,10 +69,18 @@ export function useDebts(userId: string | null, transactions: Transaction[]) {
     );
 
     if (userId) {
-      await addDoc(collection(db, `users/${userId}/debts`), {
-        ...cleanDebt,
-        createdAt: new Date(),
-      });
+      if (!checkNetworkConnection()) {
+        throw new Error('Sin conexión a internet');
+      }
+
+      await safeFirestoreOperation(
+        () => addDoc(collection(db, `users/${userId}/debts`), {
+          ...cleanDebt,
+          createdAt: new Date(),
+        }),
+        'addDebt',
+        { maxRetries: 2 }
+      );
     } else {
       const newDebt: Debt = { ...debt, id: generateId(), createdAt: new Date() };
       setLocalDebts(prev => [newDebt, ...prev]);
@@ -80,10 +89,19 @@ export function useDebts(userId: string | null, transactions: Transaction[]) {
 
   const updateDebt = useCallback(async (id: string, updates: Partial<Debt>) => {
     if (userId) {
+      if (!checkNetworkConnection()) {
+        throw new Error('Sin conexión a internet');
+      }
+
       const cleanUpdates = Object.fromEntries(
         Object.entries(updates).filter(([, v]) => v !== undefined)
       );
-      await updateDoc(doc(db, `users/${userId}/debts`, id), cleanUpdates);
+
+      await safeFirestoreOperation(
+        () => updateDoc(doc(db, `users/${userId}/debts`, id), cleanUpdates),
+        'updateDebt',
+        { maxRetries: 2 }
+      );
     } else {
       setLocalDebts(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
     }
@@ -91,7 +109,15 @@ export function useDebts(userId: string | null, transactions: Transaction[]) {
 
   const deleteDebt = useCallback(async (id: string) => {
     if (userId) {
-      await deleteDoc(doc(db, `users/${userId}/debts`, id));
+      if (!checkNetworkConnection()) {
+        throw new Error('Sin conexión a internet');
+      }
+
+      await safeFirestoreOperation(
+        () => deleteDoc(doc(db, `users/${userId}/debts`, id)),
+        'deleteDebt',
+        { maxRetries: 2 }
+      );
     } else {
       setLocalDebts(prev => prev.filter(d => d.id !== id));
     }
@@ -107,6 +133,47 @@ export function useDebts(userId: string | null, transactions: Transaction[]) {
 
     await updateDebt(debtId, {
       remainingAmount: newRemaining,
+      isSettled,
+      ...(isSettled ? { settledAt: new Date() } : {}),
+    });
+  }, [debts, updateDebt]);
+
+  // Modify debt balance (add or subtract from original amount)
+  const modifyDebtBalance = useCallback(async (
+    debtId: string,
+    amount: number,
+    operation: 'add' | 'subtract'
+  ) => {
+    const debt = debts.find(d => d.id === debtId);
+    if (!debt) {
+      throw new Error('Préstamo no encontrado');
+    }
+
+    if (debt.isSettled) {
+      throw new Error('No puedes modificar un préstamo ya saldado');
+    }
+
+    let newOriginalAmount: number;
+    let newRemainingAmount: number;
+
+    if (operation === 'add') {
+      newOriginalAmount = debt.originalAmount + amount;
+      newRemainingAmount = debt.remainingAmount + amount;
+    } else {
+      // Subtract
+      if (amount > debt.remainingAmount) {
+        throw new Error('No puedes restar más del saldo pendiente');
+      }
+      newOriginalAmount = debt.originalAmount - amount;
+      newRemainingAmount = debt.remainingAmount - amount;
+    }
+
+    // Check if debt becomes settled
+    const isSettled = newRemainingAmount === 0;
+
+    await updateDebt(debtId, {
+      originalAmount: newOriginalAmount,
+      remainingAmount: newRemainingAmount,
       isSettled,
       ...(isSettled ? { settledAt: new Date() } : {}),
     });
@@ -140,6 +207,7 @@ export function useDebts(userId: string | null, transactions: Transaction[]) {
     updateDebt,
     deleteDebt,
     registerDebtPayment,
+    modifyDebtBalance,
     getDebtTransactions,
     stats,
   };

@@ -197,15 +197,17 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
           <div className="flex gap-1">
             <button
               onClick={onEdit}
-              className="flex items-center justify-center p-2 min-h-[36px] min-w-[36px] text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
+              className="flex items-center justify-center p-2 min-h-[44px] min-w-[44px] text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
               title="Editar transacción"
+              aria-label="Editar transacción"
             >
-              <Edit2 size={16} />
+              <Edit2 size={18} />
             </button>
             <button
               onClick={onDelete}
-              className="flex items-center justify-center p-2 min-h-[36px] min-w-[36px] text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
+              className="flex items-center justify-center p-2 min-h-[44px] min-w-[44px] text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
               title="Eliminar transacción"
+              aria-label="Eliminar transacción"
             >
               <X size={18} />
             </button>

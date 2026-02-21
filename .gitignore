@@ -160,3 +160,5 @@ ui-debug.log
 # ESLint cache
 .eslintcache
 audit.md
+.kiro/specs/transaction-update-and-debt-account-fixes/.config.kiro
+

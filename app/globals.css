@@ -8,33 +8,33 @@
   /* Colores Semánticos */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  
+
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
-  
+
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
-  
+
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
-  
+
   --color-success: var(--success);
   --color-success-muted: var(--success-muted);
-  
+
   --color-destructive: var(--destructive);
   --color-destructive-muted: var(--destructive-muted);
-  
+
   --color-warning: var(--warning);
   --color-warning-muted: var(--warning-muted);
-  
+
   --color-info: var(--info);
   --color-info-muted: var(--info-muted);
-  
+
   --color-balance-accent: var(--balance-accent);
   --color-balance-accent-foreground: var(--balance-accent-foreground);
   --color-balance-foreground: var(--balance-foreground);
   --color-balance-value: var(--balance-value);
-  
+
   --color-border: var(--border);
   --color-border-accent: var(--border-accent);
   --color-input: var(--input);
@@ -46,8 +46,142 @@
 @import "./styles/utilities.css";
 
 /* 4. Estilos Globales Base */
+html,
 body {
   background-color: var(--background);
   color: var(--foreground);
   transition: background-color 0.3s ease, color 0.3s ease;
+  /* Prevent horizontal overflow */
+  overflow-x: hidden;
+  max-width: 100vw;
+  width: 100%;
+  min-height: 100vh;
+  position: relative;
+}
+
+/* Ensure root element fills viewport */
+#__next {
+  min-height: 100vh;
+  width: 100%;
+  position: relative;
+}
+
+/* Ensure all containers respect viewport width */
+* {
+  box-sizing: border-box;
+}
+
+/* Prevent images and media from causing overflow */
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Responsive image loading */
+img {
+  loading: lazy;
+  /* Native lazy loading */
+}
+
+/* Icon sizing - responsive */
+.icon-sm {
+  width: 16px;
+  height: 16px;
+}
+
+@media (min-width: 640px) {
+  .icon-sm {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+.icon-base {
+  width: 20px;
+  height: 20px;
+}
+
+@media (min-width: 640px) {
+  .icon-base {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+.icon-lg {
+  width: 24px;
+  height: 24px;
+}
+
+@media (min-width: 640px) {
+  .icon-lg {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+/* Ensure tables don't cause overflow */
+table {
+  max-width: 100%;
+  overflow-x: auto;
+  display: block;
+}
+
+/* Notification Center Animations */
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.2s ease-out;
+}
+
+/* Custom Scrollbar for Notification Center */
+.scrollbar-thin {
+  scrollbar-width: thin;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.5);
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(156, 163, 175, 0.7);
+}
+
+.dark .scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgba(75, 85, 99, 0.5);
+}
+
+.dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(75, 85, 99, 0.7);
+}
+
+/* Line clamp utilities */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }

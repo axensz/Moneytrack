@@ -7,30 +7,30 @@
   /* ─── Cards ───────────────────────────────────────── */
 
   .card-balance {
-    @apply p-6 rounded-xl border transition-all;
+    @apply p-3 sm:p-4 md:p-5 rounded-xl border transition-all;
     background: linear-gradient(135deg, #f3e8ff 0%, #ede9fe 50%, #e9d5ff 100%);
     border-color: var(--border-accent);
     box-shadow: 0 4px 6px -1px rgba(124, 58, 237, 0.08), 0 2px 4px -1px rgba(124, 58, 237, 0.04);
   }
-  
+
   .dark .card-balance {
     background: var(--balance-accent);
   }
 
   .card-stat {
-    @apply p-6 rounded-xl border transition-all;
+    @apply p-3 sm:p-4 md:p-5 rounded-xl border transition-all;
     background-color: var(--card);
     border-color: var(--border);
     box-shadow: var(--shadow-md);
   }
-  
+
   .card-stat:hover {
     box-shadow: var(--shadow-lg);
     border-color: var(--border-accent);
   }
 
   .card {
-    @apply rounded-xl p-6 border transition-colors;
+    @apply rounded-xl p-3 sm:p-4 md:p-5 border transition-colors;
     background-color: var(--card);
     color: var(--card-foreground);
     border-color: var(--border);
@@ -40,30 +40,38 @@
   /* ─── Forms & Inputs ──────────────────────────────── */
 
   .form-container {
-    @apply rounded-xl p-5 border;
+    @apply rounded-xl p-3 sm:p-4 md:p-5 border;
     background-color: var(--card);
     border-color: var(--border);
     box-shadow: var(--shadow-sm);
   }
 
   .input-base {
-    @apply w-full px-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all;
+    @apply w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all;
     background-color: var(--input);
     color: var(--foreground);
     border-color: var(--border);
-    min-height: 44px;
-    font-size: 16px; /* Previene zoom en iOS al enfocar */
+    min-height: 48px;
+    /* Touch-friendly height on mobile */
+    font-size: 16px;
+    /* Prevents zoom on iOS when focusing */
   }
 
   @media (min-width: 640px) {
     .input-base {
       font-size: 14px;
-      min-height: 42px;
+      min-height: 44px;
+      padding-top: 0.625rem;
+      padding-bottom: 0.625rem;
     }
   }
 
   .input-base:hover {
     border-color: var(--border-accent);
+  }
+
+  .input-base:focus {
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
   }
 
   select.input-base {
@@ -83,30 +91,72 @@
   }
 
   .label-base {
-    @apply block mb-1.5 text-sm font-medium;
+    @apply block mb-2 text-sm font-medium;
     color: var(--muted-foreground);
   }
 
   .icon-badge {
     @apply p-2 rounded-lg;
+    min-width: 44px;
+    min-height: 44px;
+    /* Touch-friendly icon buttons */
   }
 
   .select-filter {
-    @apply px-4 py-2.5 border rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent shadow-sm transition-all cursor-pointer;
+    @apply px-4 py-3 border rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent shadow-sm transition-all cursor-pointer;
     background-color: var(--input);
     color: var(--foreground);
     border-color: var(--border);
-    min-height: 44px;
+    min-height: 48px;
+    /* Touch-friendly on mobile */
+  }
+
+  @media (min-width: 640px) {
+    .select-filter {
+      min-height: 44px;
+      padding-top: 0.625rem;
+      padding-bottom: 0.625rem;
+    }
   }
 
   .select-filter:hover {
     border-color: var(--border-accent);
   }
 
+  .select-filter:focus {
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+  }
+
+  /* Textarea specific styles */
+  textarea.input-base {
+    min-height: 100px;
+    resize: vertical;
+  }
+
+  /* Checkbox and radio inputs */
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-width: 20px;
+    min-height: 20px;
+    cursor: pointer;
+  }
+
+  @media (max-width: 640px) {
+
+    input[type="checkbox"],
+    input[type="radio"] {
+      min-width: 24px;
+      min-height: 24px;
+      /* Larger on mobile for easier tapping */
+    }
+  }
+
   /* ─── Buttons ─────────────────────────────────────── */
 
   .btn-type {
     @apply flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all border;
+    min-height: 44px;
+    /* Ensure touch-friendly size on mobile */
   }
 
   .btn-type-inactive {
@@ -114,7 +164,7 @@
     color: var(--muted-foreground);
     border-color: var(--border);
   }
-  
+
   .btn-type-inactive:hover {
     background-color: #eeede9;
     border-color: var(--border-accent);
@@ -142,53 +192,61 @@
   }
 
   .btn-primary {
-    @apply flex items-center justify-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg font-medium shadow-md hover:shadow-lg transition-all text-sm sm:text-base min-h-[40px] sm:min-h-[44px];
+    @apply flex items-center justify-center gap-2 px-4 py-2.5 sm:px-5 sm:py-2.5 rounded-lg font-medium shadow-md hover:shadow-lg transition-all text-sm sm:text-base;
     background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%);
     color: var(--primary-foreground);
+    min-height: 44px;
+    /* Touch-friendly minimum size */
   }
-  
+
   .btn-primary:hover {
     background: linear-gradient(135deg, #6d28d9 0%, #7c3aed 100%);
     transform: translateY(-1px);
   }
 
   .btn-secondary {
-    @apply flex items-center justify-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg font-medium shadow-md hover:shadow-lg transition-all text-sm sm:text-base min-h-[40px] sm:min-h-[44px];
+    @apply flex items-center justify-center gap-2 px-4 py-2.5 sm:px-5 sm:py-2.5 rounded-lg font-medium shadow-md hover:shadow-lg transition-all text-sm sm:text-base;
     background-color: var(--primary);
     color: var(--primary-foreground);
+    min-height: 44px;
   }
 
   .btn-cancel {
-    @apply flex items-center justify-center px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg font-medium transition-colors text-sm sm:text-base min-h-[40px] sm:min-h-[44px];
+    @apply flex items-center justify-center px-4 py-2.5 sm:px-5 sm:py-2.5 rounded-lg font-medium transition-colors text-sm sm:text-base;
     background-color: var(--muted);
     color: var(--muted-foreground);
+    min-height: 44px;
   }
-  
+
   .btn-cancel:hover {
     background-color: #e5e4e0;
   }
 
   .btn-submit {
-    @apply flex items-center justify-center px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg font-medium transition-all shadow-md text-sm sm:text-base min-h-[40px] sm:min-h-[44px];
+    @apply flex items-center justify-center px-4 py-2.5 sm:px-5 sm:py-2.5 rounded-lg font-medium transition-all shadow-md text-sm sm:text-base;
     background-color: var(--primary);
     color: var(--primary-foreground);
+    min-height: 44px;
   }
-  
+
   .btn-submit:hover {
     background-color: #6d28d9;
     transform: translateY(-1px);
   }
 
   .btn-edit {
-    @apply flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[36px];
+    @apply flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors;
     background-color: var(--info-muted);
     color: var(--info);
+    min-height: 44px;
+    /* Increased from 36px for better touch accessibility */
   }
 
   .btn-danger {
-    @apply flex items-center justify-center gap-1 px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg text-sm sm:text-base font-medium transition-colors min-h-[40px] sm:min-h-[44px];
+    @apply flex items-center justify-center gap-1 px-4 py-2.5 sm:px-5 sm:py-2.5 rounded-lg text-sm sm:text-base font-medium transition-colors;
     background-color: #dc2626;
     color: white;
+    min-height: 44px;
   }
 
   .btn-danger:hover {
@@ -197,5 +255,33 @@
 
   .btn-danger:disabled {
     @apply opacity-50 cursor-not-allowed;
+  }
+
+  /* Ensure adequate spacing between adjacent buttons */
+  .btn-primary+.btn-primary,
+  .btn-primary+.btn-secondary,
+  .btn-primary+.btn-cancel,
+  .btn-secondary+.btn-primary,
+  .btn-secondary+.btn-secondary,
+  .btn-secondary+.btn-cancel,
+  .btn-cancel+.btn-primary,
+  .btn-cancel+.btn-secondary {
+    margin-left: 0.5rem;
+    /* 8px spacing */
+  }
+
+  @media (max-width: 640px) {
+
+    /* Stack buttons vertically on mobile for better touch targets */
+    .btn-group-mobile-stack {
+      @apply flex flex-col gap-3;
+    }
+
+    .btn-group-mobile-stack .btn-primary,
+    .btn-group-mobile-stack .btn-secondary,
+    .btn-group-mobile-stack .btn-cancel {
+      width: 100%;
+      margin-left: 0;
+    }
   }
 }

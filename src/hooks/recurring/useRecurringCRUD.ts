@@ -6,6 +6,7 @@
 import { useCallback } from 'react';
 import { collection, doc, addDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { safeFirestoreOperation, checkNetworkConnection } from '../../utils/firestoreHelpers';
 import type { RecurringPayment } from '../../types/finance';
 
 interface UseRecurringCRUDReturn {
@@ -34,10 +35,18 @@ export function useRecurringCRUD(
   const addRecurringPayment = useCallback(
     async (payment: Omit<RecurringPayment, 'id' | 'createdAt'>) => {
       if (userId) {
-        await addDoc(collection(db, `users/${userId}/recurringPayments`), {
-          ...payment,
-          createdAt: new Date(),
-        });
+        if (!checkNetworkConnection()) {
+          throw new Error('Sin conexión a internet');
+        }
+
+        await safeFirestoreOperation(
+          () => addDoc(collection(db, `users/${userId}/recurringPayments`), {
+            ...payment,
+            createdAt: new Date(),
+          }),
+          'addRecurringPayment',
+          { maxRetries: 2 }
+        );
       } else {
         const newPayment: RecurringPayment = {
           ...payment,
@@ -53,12 +62,21 @@ export function useRecurringCRUD(
   const updateRecurringPayment = useCallback(
     async (id: string, updates: Partial<RecurringPayment>) => {
       if (userId) {
+        if (!checkNetworkConnection()) {
+          throw new Error('Sin conexión a internet');
+        }
+
         const cleanUpdates = Object.fromEntries(
           Object.entries(updates).filter(([, value]) => value !== undefined)
         );
-        await updateDoc(
-          doc(db, `users/${userId}/recurringPayments`, id),
-          cleanUpdates
+
+        await safeFirestoreOperation(
+          () => updateDoc(
+            doc(db, `users/${userId}/recurringPayments`, id),
+            cleanUpdates
+          ),
+          'updateRecurringPayment',
+          { maxRetries: 2 }
         );
       } else {
         setLocalPayments((prev) =>
@@ -72,7 +90,15 @@ export function useRecurringCRUD(
   const deleteRecurringPayment = useCallback(
     async (id: string) => {
       if (userId) {
-        await deleteDoc(doc(db, `users/${userId}/recurringPayments`, id));
+        if (!checkNetworkConnection()) {
+          throw new Error('Sin conexión a internet');
+        }
+
+        await safeFirestoreOperation(
+          () => deleteDoc(doc(db, `users/${userId}/recurringPayments`, id)),
+          'deleteRecurringPayment',
+          { maxRetries: 2 }
+        );
       } else {
         setLocalPayments((prev) => prev.filter((p) => p.id !== id));
       }

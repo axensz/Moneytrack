@@ -22,6 +22,12 @@ export { useAddTransaction } from './useAddTransaction';
 export { useGlobalStats } from './useGlobalStats';
 export { useLocalStorage } from './useLocalStorage';
 
+// Notifications
+export { useNotifications } from './useNotifications';
+export { useNotificationStore } from './useNotificationStore';
+export { useNotificationPreferences } from './useNotificationPreferences';
+export { useNotificationMonitoring } from './useNotificationMonitoring';
+
 // Firebase (low-level)
 export { useFirestore } from './useFirestore';
 export * from './firestore';

@@ -15,6 +15,77 @@ import {
 import { db } from '../../lib/firebase';
 import { TRANSFER_CATEGORY } from '../../config/constants';
 import type { Transaction } from '../../types/finance';
+import { safeFirestoreOperation, checkNetworkConnection } from '../../utils/firestoreHelpers';
+
+/**
+ * Interfaces para validación de transacciones
+ */
+interface ValidationError {
+  field: string;
+  message: string;
+}
+
+interface ValidationResult {
+  isValid: boolean;
+  errors: ValidationError[];
+}
+
+/**
+ * Valida los campos de una actualización de transacción
+ * Verifica que todos los campos presentes sean válidos
+ */
+function validateTransactionUpdate(updates: Partial<Transaction>): ValidationResult {
+  const errors: ValidationError[] = [];
+
+  // Validate amount if present
+  if ('amount' in updates) {
+    if (updates.amount === undefined || updates.amount === null) {
+      errors.push({ field: 'amount', message: 'El monto es requerido' });
+    } else if (typeof updates.amount !== 'number' || isNaN(updates.amount)) {
+      errors.push({ field: 'amount', message: 'El monto debe ser un número válido' });
+    } else if (updates.amount <= 0) {
+      errors.push({ field: 'amount', message: 'El monto debe ser mayor a 0' });
+    }
+  }
+
+  // Validate description if present
+  if ('description' in updates) {
+    if (updates.description === undefined || updates.description === null) {
+      errors.push({ field: 'description', message: 'La descripción es requerida' });
+    } else if (typeof updates.description !== 'string') {
+      errors.push({ field: 'description', message: 'La descripción debe ser texto' });
+    } else if (updates.description.trim() === '') {
+      errors.push({ field: 'description', message: 'La descripción no puede estar vacía' });
+    }
+  }
+
+  // Validate date if present
+  if ('date' in updates) {
+    if (updates.date === undefined || updates.date === null) {
+      errors.push({ field: 'date', message: 'La fecha es requerida' });
+    } else if (!(updates.date instanceof Date)) {
+      errors.push({ field: 'date', message: 'La fecha debe ser un objeto Date válido' });
+    } else if (isNaN(updates.date.getTime())) {
+      errors.push({ field: 'date', message: 'La fecha no es válida' });
+    }
+  }
+
+  // Validate category if present
+  if ('category' in updates) {
+    if (updates.category === undefined || updates.category === null) {
+      errors.push({ field: 'category', message: 'La categoría es requerida' });
+    } else if (typeof updates.category !== 'string') {
+      errors.push({ field: 'category', message: 'La categoría debe ser texto' });
+    } else if (updates.category.trim() === '') {
+      errors.push({ field: 'category', message: 'La categoría no puede estar vacía' });
+    }
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+}
 
 /**
  * Valida el esquema básico de una transacción antes de guardar
@@ -192,7 +263,16 @@ export function useTransactionsCRUD(
   const deleteTransaction = useCallback(
     async (id: string) => {
       if (!userId) return;
-      await deleteDoc(doc(db, `users/${userId}/transactions`, id));
+
+      if (!checkNetworkConnection()) {
+        throw new Error('Sin conexión a internet');
+      }
+
+      await safeFirestoreOperation(
+        () => deleteDoc(doc(db, `users/${userId}/transactions`, id)),
+        'deleteTransaction',
+        { maxRetries: 2 }
+      );
     },
     [userId]
   );
@@ -200,13 +280,35 @@ export function useTransactionsCRUD(
   const updateTransaction = useCallback(
     async (id: string, updates: Partial<Transaction>) => {
       if (!userId) return;
+
+      // Check network connection
+      if (!checkNetworkConnection()) {
+        throw new Error('Sin conexión a internet');
+      }
+
+      // Validate updates
+      const validation = validateTransactionUpdate(updates);
+      if (!validation.isValid) {
+        const errorMessage = validation.errors.map(e => e.message).join(', ');
+        throw new Error(`Validación fallida: ${errorMessage}`);
+      }
+
+      // Filter undefined values
       const cleanUpdates = Object.fromEntries(
         Object.entries(updates).filter(([, value]) => value !== undefined)
       );
-      await updateDoc(
-        doc(db, `users/${userId}/transactions`, id),
-        cleanUpdates
-      );
+
+      try {
+        // Update in Firestore with retry logic
+        await safeFirestoreOperation(
+          () => updateDoc(doc(db, `users/${userId}/transactions`, id), cleanUpdates),
+          'updateTransaction',
+          { maxRetries: 2 }
+        );
+      } catch (error) {
+        console.error('Firestore error updating transaction:', error);
+        throw new Error('Error al actualizar la transacción. Por favor intenta de nuevo.');
+      }
     },
     [userId]
   );

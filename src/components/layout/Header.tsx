@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useRef, useEffect } from 'react';
-import { LogIn, LogOut, User as UserIcon, Settings, HelpCircle, Tag } from 'lucide-react';
+import { LogIn, LogOut, User as UserIcon, Settings, HelpCircle, Tag, Bell } from 'lucide-react';
 import { ThemeToggle } from '../theme/ThemeToggle';
+import { NotificationBell, NotificationCenter } from '../notifications/NotificationCenter';
+import { InstallPrompt } from '../pwa/InstallPrompt';
 import type { User } from 'firebase/auth';
 
 interface HeaderProps {
@@ -10,8 +12,11 @@ interface HeaderProps {
   setIsAuthModalOpen: (open: boolean) => void;
   showSettingsMenu: boolean;
   setShowSettingsMenu: (show: boolean) => void;
+  showNotifications: boolean;
+  setShowNotifications: (show: boolean) => void;
   onOpenHelp: () => void;
   onOpenCategories: () => void;
+  onOpenNotificationPreferences: () => void;
   onLogout: () => Promise<void>;
 }
 
@@ -20,13 +25,17 @@ export const Header: React.FC<HeaderProps> = ({
   setIsAuthModalOpen,
   showSettingsMenu,
   setShowSettingsMenu,
+  showNotifications,
+  setShowNotifications,
   onOpenHelp,
   onOpenCategories,
+  onOpenNotificationPreferences,
   onLogout
 }) => {
   const settingsMenuRef = useRef<HTMLDivElement>(null);
+  const notificationsRef = useRef<HTMLDivElement>(null);
 
-  // Cerrar menú al hacer clic fuera
+  // Cerrar menú de configuración al hacer clic fuera
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (settingsMenuRef.current && !settingsMenuRef.current.contains(event.target as Node)) {
@@ -41,11 +50,28 @@ export const Header: React.FC<HeaderProps> = ({
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showSettingsMenu]);
+  }, [showSettingsMenu, setShowSettingsMenu]);
+
+  // Cerrar notificaciones al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notificationsRef.current && !notificationsRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+
+    if (showNotifications) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showNotifications, setShowNotifications]);
 
   return (
-    <header className="w-full py-3 sm:py-4 bg-white/90 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200/80 dark:border-gray-800 sticky top-0 z-[100] shadow-sm">
-      <div className="px-3 sm:px-6 lg:px-8">
+    <header className="w-full py-2 sm:py-3 bg-white/90 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200/80 dark:border-gray-800 sticky top-0 z-[100] shadow-sm">
+      <div className="px-3 sm:px-4 md:px-6 lg:px-8">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2 sm:gap-3 flex-1">
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold">
@@ -53,8 +79,11 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="text-gray-800 dark:text-gray-100">Track</span>
             </h1>
           </div>
-          
+
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Install PWA Button (desktop only) */}
+            <InstallPrompt variant="button" />
+
             {/* Usuario logueado - Nombre primero */}
             {user ? (
               <div className="flex items-center gap-1.5 sm:gap-2" role="status" aria-label={`Sesión iniciada como ${user.displayName || 'Usuario'}`}>
@@ -91,6 +120,17 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Theme Toggle */}
             <ThemeToggle />
 
+            {/* Notification Bell */}
+            {user && (
+              <div className="relative" ref={notificationsRef}>
+                <NotificationBell
+                  isOpen={showNotifications}
+                  onToggle={() => setShowNotifications(!showNotifications)}
+                  onClose={() => setShowNotifications(false)}
+                />
+              </div>
+            )}
+
             {/* Menú de Configuración */}
             <div className="relative" ref={settingsMenuRef}>
               <button
@@ -121,6 +161,19 @@ export const Header: React.FC<HeaderProps> = ({
                     <Tag size={18} aria-hidden="true" />
                     <span>Categorías</span>
                   </button>
+                  {user && (
+                    <button
+                      onClick={() => {
+                        onOpenNotificationPreferences();
+                        setShowSettingsMenu(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      role="menuitem"
+                    >
+                      <Bell size={18} aria-hidden="true" />
+                      <span>Notificaciones</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       onOpenHelp();
@@ -149,6 +202,14 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Notification Center - rendered via portal */}
+      {user && (
+        <NotificationCenter
+          isOpen={showNotifications}
+          onClose={() => setShowNotifications(false)}
+        />
+      )}
     </header>
   );
 };

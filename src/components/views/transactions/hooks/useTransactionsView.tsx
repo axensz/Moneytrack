@@ -132,10 +132,23 @@ export const useTransactionsView = ({
 
   const handleSaveEdit = useCallback(
     async (id: string) => {
+      // Parse amount
       const amountStr = editForm.amount.toString().replace(/\./g, '').replace(',', '.');
       const amount = parseFloat(amountStr);
 
+      // Client-side validation
       if (isNaN(amount) || amount <= 0) {
+        showToast.error('El monto debe ser un número válido mayor a 0');
+        return;
+      }
+
+      if (!editForm.description.trim()) {
+        showToast.error('La descripción no puede estar vacía');
+        return;
+      }
+
+      if (!editForm.category) {
+        showToast.error('Debes seleccionar una categoría');
         return;
       }
 
@@ -151,7 +164,17 @@ export const useTransactionsView = ({
         setEditForm({ description: '', amount: '', date: '', category: '' });
         showToast.success(SUCCESS_MESSAGES.TRANSACTION_UPDATED);
       } catch (error) {
-        showToast.error('Error al actualizar la transacción');
+        // Enhanced error handling - close form on error
+        const errorMessage = error instanceof Error
+          ? error.message
+          : 'Error desconocido al actualizar la transacción';
+
+        console.error('Error updating transaction:', error);
+        showToast.error(errorMessage);
+
+        // Close the edit form
+        setEditingTransaction(null);
+        setEditForm({ description: '', amount: '', date: '', category: '' });
       }
     },
     [editForm, updateTransaction]

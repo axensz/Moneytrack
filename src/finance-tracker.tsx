@@ -11,6 +11,7 @@ import { AuthModal } from './components/modals/AuthModal';
 import { WelcomeModal } from './components/modals/WelcomeModal';
 import { HelpModal } from './components/modals/HelpModal';
 import { CategoriesModal } from './components/modals/CategoriesModal';
+import { NotificationPreferencesModal } from './components/modals/NotificationPreferencesModal';
 import { FirestoreProvider } from './contexts/FirestoreContext';
 import { FinanceProvider, useFinance } from './contexts/FinanceContext';
 import { TransactionsView } from './components/views/transactions';
@@ -18,7 +19,7 @@ import { useAuth } from './hooks/useAuth';
 import { useAddTransaction } from './hooks/useAddTransaction';
 import { useFilteredData } from './hooks/useFilteredData';
 import { useWelcomeModal } from './hooks/useWelcomeModal';
-import { useNotifications } from './hooks/useNotifications';
+import { useNotifications, useNotificationMonitoring } from './hooks';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { TOAST_CONFIG, INITIAL_TRANSACTION } from './config/constants';
@@ -27,6 +28,7 @@ import type { NewTransaction, ViewType, FilterValue } from './types/finance';
 import { logoutFirebase } from './lib/firebase';
 import type { User } from 'firebase/auth';
 import { OfflineBanner } from './components/layout/OfflineBanner';
+import { InstallPrompt } from './components/pwa/InstallPrompt';
 import { AIChatBot } from './components/chat/AIChatBot';
 
 // Lazy-loaded secondary views
@@ -68,7 +70,7 @@ const FinanceTracker = () => {
   useEffect(() => { setMounted(true); }, []);
 
   const { user, loading: authLoading } = useAuth();
-  const { isOnline } = useNetworkStatus();
+  const isOnline = useNetworkStatus();
 
   // Mostrar UNA sola pantalla de carga que cubre auth + data loading
   // Solo se oculta cuando dataReady es true (los datos ya cargaron)
@@ -103,6 +105,8 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     accounts,
     categories,
     recurringPayments,
+    budgets,
+    debts,
     defaultAccount,
     totalBalance,
     transactionsLoading,
@@ -117,6 +121,20 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     formatCurrency,
   } = useFinance();
 
+  // Initialize notification system
+  const { notificationManager } = useNotifications(user?.uid || null);
+
+  // Set up notification monitoring
+  useNotificationMonitoring({
+    userId: user?.uid || null,
+    transactions,
+    budgets,
+    recurringPayments,
+    accounts,
+    debts,
+    notificationManager,
+  });
+
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const newTransactionRef = useRef<NewTransaction>({ ...INITIAL_TRANSACTION });
@@ -124,7 +142,9 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showCategoriesModal, setShowCategoriesModal] = useState(false);
+  const [showNotificationPreferences, setShowNotificationPreferences] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   const [showForm, setShowForm] = useState(false);
   const [batchCount, setBatchCount] = useState(0);
@@ -151,20 +171,6 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     accountsLoading,
     accountsCount: accounts.length,
   });
-
-  const { checkAndNotifyPayments } = useNotifications();
-
-  useEffect(() => {
-    if (!recurringPayments.length) return;
-    const lastCheckDate = localStorage.getItem('lastNotificationCheck');
-    const today = new Date().toDateString();
-    if (lastCheckDate === today) return;
-    const timer = setTimeout(() => {
-      checkAndNotifyPayments(recurringPayments, getDaysUntilDue);
-      localStorage.setItem('lastNotificationCheck', today);
-    }, 5000);
-    return () => clearTimeout(timer);
-  }, [recurringPayments, getDaysUntilDue, checkAndNotifyPayments]);
 
   // Memoized keyboard shortcuts (prevents array recreation each render)
   const shortcuts = useMemo(() => [
@@ -214,8 +220,10 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const handleCloseAuthModal = useCallback(() => setIsAuthModalOpen(false), []);
   const handleOpenHelpModal = useCallback(() => setShowHelpModal(true), []);
   const handleOpenCategories = useCallback(() => setShowCategoriesModal(true), []);
+  const handleOpenNotificationPreferences = useCallback(() => setShowNotificationPreferences(true), []);
   const handleCloseCategories = useCallback(() => setShowCategoriesModal(false), []);
   const handleCloseHelpModal = useCallback(() => setShowHelpModal(false), []);
+  const handleCloseNotificationPreferences = useCallback(() => setShowNotificationPreferences(false), []);
   const handleCloseForm = useCallback(() => { setBatchCount(0); setShowForm(false); }, []);
   const handleRestoreTransaction = useCallback(
     (t: Omit<import('./types/finance').Transaction, 'id' | 'createdAt'>) => addTransaction(t),
@@ -253,6 +261,9 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
       {/* Banner de sin conexión */}
       <OfflineBanner isOnline={isOnline} />
 
+      {/* Install PWA Banner (mobile only) */}
+      <InstallPrompt variant="banner" />
+
       {/* Overlay para cerrar menú "Más" - FUERA del nav para cubrir toda la pantalla */}
       {showMoreMenu && (
         <div className="sm:hidden fixed inset-0 z-[60]" onClick={() => setShowMoreMenu(false)} onTouchStart={() => setShowMoreMenu(false)} />
@@ -274,8 +285,8 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
                 setShowMoreMenu(false);
               }}
               className={`flex items-center gap-3 w-full px-4 py-3 text-sm font-medium transition-colors ${view === tab.key
-                  ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30'
-                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 active:bg-gray-100 dark:active:bg-gray-700'
+                ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30'
+                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 active:bg-gray-100 dark:active:bg-gray-700'
                 }`}
             >
               <tab.icon size={18} />
@@ -314,8 +325,8 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
                 setShowMoreMenu(false);
               }}
               className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 min-w-[56px] rounded-xl transition-all ${view === tab.key
-                  ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 scale-105'
-                  : 'text-gray-500 dark:text-gray-400 active:scale-95 active:bg-gray-100 dark:active:bg-gray-800'
+                ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 scale-105'
+                : 'text-gray-500 dark:text-gray-400 active:scale-95 active:bg-gray-100 dark:active:bg-gray-800'
                 }`}
             >
               <tab.icon size={20} strokeWidth={view === tab.key ? 2.5 : 2} aria-hidden="true" />
@@ -333,10 +344,10 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
                 }
               }}
               className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 min-w-[56px] rounded-xl transition-all ${(['recurring', 'budgets', 'debts'] as ViewType[]).includes(view)
-                  ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 scale-105'
-                  : showMoreMenu
-                    ? 'text-purple-600 dark:text-purple-400'
-                    : 'text-gray-500 dark:text-gray-400 active:scale-95 active:bg-gray-100 dark:active:bg-gray-800'
+                ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 scale-105'
+                : showMoreMenu
+                  ? 'text-purple-600 dark:text-purple-400'
+                  : 'text-gray-500 dark:text-gray-400 active:scale-95 active:bg-gray-100 dark:active:bg-gray-800'
                 }`}
               aria-pressed={showMoreMenu}
             >
@@ -382,18 +393,26 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         deleteCategory={deleteCategory}
       />
 
+      <NotificationPreferencesModal
+        isOpen={showNotificationPreferences}
+        onClose={handleCloseNotificationPreferences}
+      />
+
       <Header
         user={user}
         setIsAuthModalOpen={setIsAuthModalOpen}
         showSettingsMenu={showSettingsMenu}
         setShowSettingsMenu={setShowSettingsMenu}
+        showNotifications={showNotifications}
+        setShowNotifications={setShowNotifications}
         onOpenHelp={handleOpenHelpModal}
         onOpenCategories={handleOpenCategories}
+        onOpenNotificationPreferences={handleOpenNotificationPreferences}
         onLogout={handleLogout}
       />
 
       <div ref={scrollContainerRef} className="flex-1 overflow-auto">
-        <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 pb-24 sm:pb-6">
+        <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-5 pb-28 sm:pb-6">
           <div className="max-w-7xl mx-auto">
             <StatsCards
               totalBalance={dynamicTotalBalance}

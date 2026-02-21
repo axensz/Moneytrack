@@ -55,7 +55,7 @@ function renderMarkdown(text: string): React.ReactNode {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    
+
     // Unordered list
     const ulMatch = line.match(/^\s*[-*+]\s+(.+)/);
     // Ordered list
@@ -101,7 +101,7 @@ function renderMarkdown(text: string): React.ReactNode {
   return elements;
 }
 
-interface AIChatBotProps {}
+interface AIChatBotProps { }
 
 const WELCOME_MESSAGE: ChatMessage = {
   role: 'model',
@@ -120,34 +120,46 @@ const TokenBadge: React.FC<{ tokenUsage: TokenUsage }> = ({ tokenUsage }) => {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="mt-1.5 select-none">
+    <div className="mt-2 select-none">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="inline-flex items-center gap-1 text-[10px] text-gray-400 dark:text-gray-500 hover:text-purple-500 dark:hover:text-purple-400 transition-colors"
+        className="inline-flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 transition-colors px-2 py-1 rounded-md hover:bg-purple-50 dark:hover:bg-purple-900/20"
         aria-label="Ver uso de tokens"
       >
-        <Info size={11} />
-        <span>{tokenUsage.totalTokens.toLocaleString()} tokens</span>
+        <Info size={12} />
+        <span className="font-medium">{tokenUsage.totalTokens.toLocaleString()} tokens</span>
       </button>
       {expanded && (
-        <div className="mt-1 p-2 bg-gray-200/60 dark:bg-gray-700/60 rounded-lg text-[10px] text-gray-600 dark:text-gray-300 space-y-0.5">
-          <div className="flex justify-between gap-4">
-            <span>↗ Entrada</span>
-            <span className="font-mono">{tokenUsage.promptTokens.toLocaleString()}</span>
+        <div className="mt-1.5 p-2.5 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800 rounded-lg text-[10px] text-gray-700 dark:text-gray-300 space-y-1 shadow-sm border border-gray-300 dark:border-gray-600 animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <div className="flex justify-between gap-4 items-center">
+            <span className="flex items-center gap-1">
+              <span className="text-blue-500">↗</span>
+              <span>Entrada</span>
+            </span>
+            <span className="font-mono font-semibold">{tokenUsage.promptTokens.toLocaleString()}</span>
           </div>
-          <div className="flex justify-between gap-4">
-            <span>↙ Respuesta</span>
-            <span className="font-mono">{tokenUsage.responseTokens.toLocaleString()}</span>
+          <div className="flex justify-between gap-4 items-center">
+            <span className="flex items-center gap-1">
+              <span className="text-green-500">↙</span>
+              <span>Respuesta</span>
+            </span>
+            <span className="font-mono font-semibold">{tokenUsage.responseTokens.toLocaleString()}</span>
           </div>
           {(tokenUsage.thinkingTokens ?? 0) > 0 && (
-            <div className="flex justify-between gap-4">
-              <span>🧠 Razonamiento</span>
-              <span className="font-mono">{tokenUsage.thinkingTokens!.toLocaleString()}</span>
+            <div className="flex justify-between gap-4 items-center">
+              <span className="flex items-center gap-1">
+                <span>🧠</span>
+                <span>Razonamiento</span>
+              </span>
+              <span className="font-mono font-semibold">{tokenUsage.thinkingTokens!.toLocaleString()}</span>
             </div>
           )}
-          <div className="flex justify-between gap-4 border-t border-gray-300 dark:border-gray-600 pt-0.5 font-semibold">
-            <span>Σ Total</span>
-            <span className="font-mono">{tokenUsage.totalTokens.toLocaleString()}</span>
+          <div className="flex justify-between gap-4 items-center border-t border-gray-300 dark:border-gray-600 pt-1 mt-1">
+            <span className="font-semibold flex items-center gap-1">
+              <span className="text-purple-500">Σ</span>
+              <span>Total</span>
+            </span>
+            <span className="font-mono font-bold text-purple-600 dark:text-purple-400">{tokenUsage.totalTokens.toLocaleString()}</span>
           </div>
         </div>
       )}
@@ -169,14 +181,17 @@ const ActionCard: React.FC<{
         const d = action.data;
         const icon = d.txType === 'income' ? '📈' : '📉';
         return (
-          <div className="space-y-1">
-            <p className="font-medium text-sm">{icon} {d.txType === 'income' ? 'Agregar ingreso' : 'Agregar gasto'}</p>
-            <div className="text-xs space-y-0.5 text-gray-600 dark:text-gray-300">
-              <p><strong>Monto:</strong> {formatCurrency(d.amount)}</p>
-              <p><strong>Categoría:</strong> {d.category}</p>
-              <p><strong>Descripción:</strong> {d.description}</p>
-              <p><strong>Cuenta:</strong> {d.accountName}</p>
-              <p><strong>Estado:</strong> {d.paid ? 'Pagado' : 'Pendiente'}</p>
+          <div className="space-y-1.5">
+            <p className="font-semibold text-sm flex items-center gap-2">
+              <span className="text-lg">{icon}</span>
+              {d.txType === 'income' ? 'Agregar ingreso' : 'Agregar gasto'}
+            </p>
+            <div className="text-xs space-y-1 text-gray-700 dark:text-gray-300 bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 border border-purple-100 dark:border-purple-800/50">
+              <p className="flex justify-between"><span className="font-medium">Monto:</span> <span className="font-semibold text-purple-700 dark:text-purple-300">{formatCurrency(d.amount)}</span></p>
+              <p className="flex justify-between"><span className="font-medium">Categoría:</span> <span className="font-medium">{d.category}</span></p>
+              <p className="flex justify-between"><span className="font-medium">Descripción:</span> <span>{d.description}</span></p>
+              <p className="flex justify-between"><span className="font-medium">Cuenta:</span> <span>{d.accountName}</span></p>
+              <p className="flex justify-between"><span className="font-medium">Estado:</span> <span className={d.paid ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>{d.paid ? '✓ Pagado' : '⏳ Pendiente'}</span></p>
             </div>
           </div>
         );
@@ -184,11 +199,18 @@ const ActionCard: React.FC<{
       case 'update_category': {
         const d = action.data;
         return (
-          <div className="space-y-1">
-            <p className="font-medium text-sm">🏷️ Recategorizar transacción</p>
-            <div className="text-xs space-y-0.5 text-gray-600 dark:text-gray-300">
-              <p><strong>Transacción:</strong> {d.description}</p>
-              <p><strong>De:</strong> {d.oldCategory} → <strong>A:</strong> {d.newCategory}</p>
+          <div className="space-y-1.5">
+            <p className="font-semibold text-sm flex items-center gap-2">
+              <span className="text-lg">🏷️</span>
+              Recategorizar transacción
+            </p>
+            <div className="text-xs space-y-1 text-gray-700 dark:text-gray-300 bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 border border-purple-100 dark:border-purple-800/50">
+              <p><span className="font-medium">Transacción:</span> {d.description}</p>
+              <p className="flex items-center gap-2">
+                <span className="px-2 py-0.5 bg-gray-200 dark:bg-gray-700 rounded">{d.oldCategory}</span>
+                <span>→</span>
+                <span className="px-2 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 rounded font-medium">{d.newCategory}</span>
+              </p>
             </div>
           </div>
         );
@@ -196,11 +218,19 @@ const ActionCard: React.FC<{
       case 'bulk_update_category': {
         const updates = action.data.updates;
         return (
-          <div className="space-y-1">
-            <p className="font-medium text-sm">🏷️ Recategorizar {updates.length} transacciones</p>
-            <div className="text-xs space-y-0.5 text-gray-600 dark:text-gray-300 max-h-24 overflow-y-auto">
+          <div className="space-y-1.5">
+            <p className="font-semibold text-sm flex items-center gap-2">
+              <span className="text-lg">🏷️</span>
+              Recategorizar {updates.length} transacciones
+            </p>
+            <div className="text-xs space-y-1 text-gray-700 dark:text-gray-300 bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 border border-purple-100 dark:border-purple-800/50 max-h-32 overflow-y-auto scrollbar-thin">
               {updates.map((u, i) => (
-                <p key={i}>• {u.description}: {u.oldCategory} → {u.newCategory}</p>
+                <p key={i} className="flex items-center gap-1.5 py-0.5">
+                  <span className="text-purple-500">•</span>
+                  <span className="flex-1 truncate">{u.description}</span>
+                  <span className="text-[10px] text-gray-500">→</span>
+                  <span className="text-purple-600 dark:text-purple-400 font-medium">{u.newCategory}</span>
+                </p>
               ))}
             </div>
           </div>
@@ -209,11 +239,14 @@ const ActionCard: React.FC<{
       case 'add_category': {
         const d = action.data;
         return (
-          <div className="space-y-1">
-            <p className="font-medium text-sm">➕ Crear categoría</p>
-            <div className="text-xs text-gray-600 dark:text-gray-300">
-              <p><strong>Nombre:</strong> {d.name}</p>
-              <p><strong>Tipo:</strong> {d.categoryType === 'expense' ? 'Gasto' : 'Ingreso'}</p>
+          <div className="space-y-1.5">
+            <p className="font-semibold text-sm flex items-center gap-2">
+              <span className="text-lg">➕</span>
+              Crear categoría
+            </p>
+            <div className="text-xs text-gray-700 dark:text-gray-300 bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 border border-purple-100 dark:border-purple-800/50">
+              <p className="flex justify-between"><span className="font-medium">Nombre:</span> <span className="font-semibold">{d.name}</span></p>
+              <p className="flex justify-between"><span className="font-medium">Tipo:</span> <span>{d.categoryType === 'expense' ? '📉 Gasto' : '📈 Ingreso'}</span></p>
             </div>
           </div>
         );
@@ -222,23 +255,23 @@ const ActionCard: React.FC<{
   };
 
   return (
-    <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-xl p-3 space-y-2">
+    <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 dark:from-purple-900/20 dark:to-purple-800/10 border-2 border-purple-300 dark:border-purple-700 rounded-xl p-3 space-y-2.5 shadow-md animate-in fade-in slide-in-from-bottom-2 duration-300">
       {getActionSummary()}
       <div className="flex gap-2 pt-1">
         <button
           onClick={onConfirm}
           disabled={isExecuting}
-          className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-700 text-white hover:from-emerald-700 hover:to-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md hover:scale-105 active:scale-95"
         >
-          {isExecuting ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+          {isExecuting ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
           {isExecuting ? 'Ejecutando...' : 'Confirmar'}
         </button>
         <button
           onClick={onReject}
           disabled={isExecuting}
-          className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 transition-colors"
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md hover:scale-105 active:scale-95"
         >
-          <XCircle size={12} />
+          <XCircle size={14} />
           Cancelar
         </button>
       </div>
@@ -488,71 +521,78 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-40 p-4 rounded-full bg-gradient-to-r from-purple-600 to-violet-600 text-white shadow-lg hover:shadow-xl hover:scale-105 transition-all group"
+        className="fixed bottom-[88px] sm:bottom-6 right-4 sm:right-6 z-40 p-4 rounded-full bg-gradient-to-br from-purple-600 via-violet-600 to-purple-700 text-white shadow-lg hover:shadow-2xl hover:scale-110 transition-all duration-300 group animate-in fade-in zoom-in"
         title="Asistente financiero IA"
+        aria-label="Abrir asistente de IA"
       >
-        <Sparkles size={24} className="group-hover:animate-pulse" />
-        {/* Badge de IA */}
-        <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-400 rounded-full flex items-center justify-center">
+        <Sparkles size={24} className="group-hover:rotate-12 transition-transform duration-300" />
+        {/* Badge de IA con animación */}
+        <span className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-br from-amber-400 to-amber-500 rounded-full flex items-center justify-center shadow-md animate-pulse">
           <span className="text-[9px] font-bold text-amber-900">AI</span>
         </span>
+        {/* Efecto de brillo */}
+        <span className="absolute inset-0 rounded-full bg-white opacity-0 group-hover:opacity-20 transition-opacity duration-300"></span>
       </button>
     );
   }
 
   return (
-    <div className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-[420px] max-h-[70vh] sm:max-h-[600px] flex flex-col bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+    <div className="fixed bottom-[88px] sm:bottom-6 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-[420px] sm:max-w-[420px] h-[calc(100vh-180px)] sm:h-[600px] max-h-[calc(100vh-180px)] sm:max-h-[85vh] flex flex-col bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-purple-200 dark:border-purple-800 overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-300">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-purple-600 to-violet-600 text-white shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 bg-white/20 rounded-lg">
-            <Bot size={18} />
+      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-br from-purple-600 via-violet-600 to-purple-700 text-white shrink-0 relative overflow-hidden">
+        {/* Efecto de brillo animado en el header */}
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full animate-shimmer"></div>
+        <div className="flex items-center gap-2 relative z-10">
+          <div className="p-1.5 bg-white/20 backdrop-blur-sm rounded-lg shadow-inner">
+            <Bot size={18} className="drop-shadow-sm" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold">Asistente MoneyTrack</h3>
+            <h3 className="text-sm font-semibold drop-shadow-sm">Asistente MoneyTrack</h3>
             {(() => {
               const total = messages.reduce((sum, m) => sum + (m.tokenUsage?.totalTokens ?? 0), 0);
               return total > 0 ? (
-                <p className="text-[10px] text-white/70 font-mono">{total.toLocaleString()} tokens usados</p>
+                <p className="text-[10px] text-white/80 font-mono drop-shadow-sm">{total.toLocaleString()} tokens usados</p>
               ) : null;
             })()}
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 relative z-10">
           <button
             onClick={handleClearChat}
-            className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+            className="p-2 hover:bg-white/20 backdrop-blur-sm rounded-lg transition-all hover:scale-110 active:scale-95"
             title="Limpiar chat"
+            aria-label="Limpiar conversación"
           >
-            <Trash2 size={16} />
+            <Trash2 size={16} className="drop-shadow-sm" />
           </button>
           <button
             onClick={() => setIsOpen(false)}
-            className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+            className="p-2 hover:bg-white/20 backdrop-blur-sm rounded-lg transition-all hover:scale-110 active:scale-95"
+            aria-label="Cerrar chat"
           >
-            <X size={18} />
+            <X size={18} className="drop-shadow-sm" />
           </button>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 space-y-3 min-h-0 bg-gradient-to-b from-gray-50/50 to-transparent dark:from-gray-800/30 dark:to-transparent scrollbar-thin">
         {messages.map((msg, i) => (
           <React.Fragment key={i}>
             <div
-              className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}
             >
               {msg.role === 'model' && (
-                <div className="shrink-0 w-7 h-7 rounded-full bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center mt-1">
+                <div className="shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-purple-100 to-purple-200 dark:from-purple-900/40 dark:to-purple-800/40 flex items-center justify-center mt-1 shadow-sm border border-purple-200 dark:border-purple-700">
                   <Bot size={14} className="text-purple-600 dark:text-purple-400" />
                 </div>
               )}
               <div
-                className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm leading-relaxed ${
-                  msg.role === 'user'
-                    ? 'bg-purple-600 text-white rounded-br-md whitespace-pre-wrap'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-md'
-                }`}
+                className={`max-w-[calc(100%-3rem)] px-3 py-2 rounded-2xl text-sm leading-relaxed break-words overflow-wrap-anywhere shadow-sm ${msg.role === 'user'
+                  ? 'bg-gradient-to-br from-purple-600 to-purple-700 text-white rounded-br-md whitespace-pre-wrap'
+                  : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-md border border-gray-200 dark:border-gray-700'
+                  }`}
+                style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
               >
                 {msg.role === 'user' ? msg.content : renderMarkdown(msg.content)}
                 {msg.role === 'model' && msg.tokenUsage && (
@@ -560,7 +600,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
                 )}
               </div>
               {msg.role === 'user' && (
-                <div className="shrink-0 w-7 h-7 rounded-full bg-purple-600 flex items-center justify-center mt-1">
+                <div className="shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-purple-600 to-purple-700 flex items-center justify-center mt-1 shadow-sm">
                   <User size={14} className="text-white" />
                 </div>
               )}
@@ -568,7 +608,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
 
             {/* Action confirmation card */}
             {msg.action && !msg.actionExecuted && (
-              <div className="ml-9 max-w-[80%]">
+              <div className="ml-9 max-w-[calc(100%-3rem)]">
                 <ActionCard
                   action={msg.action}
                   accounts={accounts}
@@ -587,19 +627,25 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
         ))}
 
         {isLoading && (
-          <div className="flex gap-2 justify-start">
-            <div className="shrink-0 w-7 h-7 rounded-full bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center mt-1">
+          <div className="flex gap-2 justify-start animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-purple-100 to-purple-200 dark:from-purple-900/40 dark:to-purple-800/40 flex items-center justify-center mt-1 shadow-sm border border-purple-200 dark:border-purple-700">
               <Bot size={14} className="text-purple-600 dark:text-purple-400" />
             </div>
-            <div className="bg-gray-100 dark:bg-gray-800 px-4 py-3 rounded-2xl rounded-bl-md">
-              <Loader2 size={16} className="animate-spin text-purple-500" />
+            <div className="bg-white dark:bg-gray-800 px-4 py-3 rounded-2xl rounded-bl-md shadow-sm border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-2">
+                <Loader2 size={16} className="animate-spin text-purple-500" />
+                <span className="text-xs text-gray-500 dark:text-gray-400">Pensando...</span>
+              </div>
             </div>
           </div>
         )}
 
         {error && (
-          <div className="text-center px-3 py-2 text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 rounded-lg">
-            {error}
+          <div className="text-center px-3 py-2 text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 rounded-lg border border-rose-200 dark:border-rose-800 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="flex items-center justify-center gap-2">
+              <XCircle size={14} />
+              <span>{error}</span>
+            </div>
           </div>
         )}
 
@@ -608,12 +654,12 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
 
       {/* Sugerencias (solo al inicio) */}
       {messages.length <= 1 && !isLoading && configured && (
-        <div className="px-4 pb-2 flex flex-wrap gap-1.5 shrink-0">
+        <div className="px-3 sm:px-4 pb-2 flex flex-wrap gap-1.5 shrink-0 animate-in fade-in slide-in-from-bottom-2 duration-500">
           {SUGGESTIONS.map((s, i) => (
             <button
               key={i}
               onClick={() => handleSuggestion(s)}
-              className="text-xs px-3 py-1.5 rounded-full bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors border border-purple-200 dark:border-purple-800"
+              className="text-xs px-3 py-1.5 rounded-full bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-900/30 text-purple-700 dark:text-purple-300 hover:from-purple-100 hover:to-purple-200 dark:hover:from-purple-900/40 dark:hover:to-purple-900/50 transition-all hover:scale-105 active:scale-95 border border-purple-200 dark:border-purple-800 shadow-sm"
             >
               {s}
             </button>
@@ -622,12 +668,12 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
       )}
 
       {/* Input */}
-      <div className="border-t border-gray-200 dark:border-gray-700 p-3 shrink-0">
+      <div className="border-t border-gray-200 dark:border-gray-700 p-3 shrink-0 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm">
         {!configured ? (
           <p className="text-xs text-center text-gray-500 dark:text-gray-400 py-2">
-            Configura <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">NEXT_PUBLIC_GEMINI_API_KEY</code> en <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">.env.local</code> para activar el asistente.
+            Configura <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-[10px]">NEXT_PUBLIC_GEMINI_API_KEY</code> en <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-[10px]">.env.local</code> para activar el asistente.
             <br />
-            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-purple-600 dark:text-purple-400 underline mt-1 inline-block">
+            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 underline mt-1 inline-block transition-colors">
               Obtener API key gratis →
             </a>
           </p>
@@ -641,12 +687,13 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
               onKeyDown={handleKeyDown}
               placeholder="Pregunta sobre tus finanzas..."
               disabled={isLoading}
-              className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
+              className="flex-1 px-3 py-2.5 text-sm rounded-xl border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 disabled:opacity-50 transition-all shadow-sm"
             />
             <button
               onClick={handleSend}
               disabled={!input.trim() || isLoading}
-              className="p-2.5 rounded-xl bg-purple-600 text-white hover:bg-purple-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="p-2.5 rounded-xl bg-gradient-to-br from-purple-600 to-purple-700 text-white hover:from-purple-700 hover:to-purple-800 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
+              aria-label="Enviar mensaje"
             >
               <Send size={16} />
             </button>

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, HandCoins, Users, CheckCircle2, ArrowDownLeft, ArrowUpRight, Trash2, X, DollarSign } from 'lucide-react';
+import { Plus, HandCoins, Users, CheckCircle2, ArrowDownLeft, ArrowUpRight, Trash2, X, DollarSign, Edit } from 'lucide-react';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { formatNumberForInput, unformatNumber } from '../../../utils/formatters';
 import { showToast } from '../../../utils/toastHelpers';
@@ -19,6 +19,7 @@ export const DebtsView: React.FC = () => {
     updateDebt,
     deleteDebt,
     registerDebtPayment,
+    modifyDebtBalance,
     getDebtTransactions,
     debtStats,
     formatCurrency,
@@ -30,6 +31,11 @@ export const DebtsView: React.FC = () => {
   const [showPaymentForm, setShowPaymentForm] = useState<string | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [showSettled, setShowSettled] = useState(false);
+
+  // Balance modifier state
+  const [showBalanceModifier, setShowBalanceModifier] = useState<string | null>(null);
+  const [modifierAmount, setModifierAmount] = useState('');
+  const [modifierOperation, setModifierOperation] = useState<'add' | 'subtract'>('add');
 
   // Form state
   const [formData, setFormData] = useState({
@@ -56,8 +62,8 @@ export const DebtsView: React.FC = () => {
       type: formData.type,
       originalAmount: amount,
       remainingAmount: amount,
-      description: formData.description.trim(),
-      accountId: formData.accountId || undefined, // Asegurar que sea undefined si está vacío
+      description: formData.description.trim() || undefined,
+      accountId: formData.accountId || undefined, // Convert empty string to undefined
       isSettled: false,
     });
 
@@ -77,6 +83,24 @@ export const DebtsView: React.FC = () => {
     showToast.success('Pago registrado');
     setPaymentAmount('');
     setShowPaymentForm(null);
+  };
+
+  const handleModifyBalance = async (debtId: string, operation: 'add' | 'subtract') => {
+    const amount = parseFloat(unformatNumber(modifierAmount));
+    if (isNaN(amount) || amount <= 0) {
+      showToast.error('El monto debe ser mayor a 0');
+      return;
+    }
+
+    try {
+      await modifyDebtBalance(debtId, amount, operation);
+      showToast.success(operation === 'add' ? 'Saldo agregado' : 'Saldo restado');
+      setModifierAmount('');
+      setShowBalanceModifier(null);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Error al modificar el saldo';
+      showToast.error(errorMessage);
+    }
   };
 
   const handleDelete = async (debt: Debt) => {
@@ -265,6 +289,13 @@ export const DebtsView: React.FC = () => {
                   setPaymentAmount={setPaymentAmount}
                   onPayment={handlePayment}
                   onDelete={handleDelete}
+                  showBalanceModifier={showBalanceModifier}
+                  setShowBalanceModifier={setShowBalanceModifier}
+                  modifierAmount={modifierAmount}
+                  setModifierAmount={setModifierAmount}
+                  modifierOperation={modifierOperation}
+                  setModifierOperation={setModifierOperation}
+                  onModifyBalance={handleModifyBalance}
                 />
               ))}
             </div>
@@ -290,6 +321,13 @@ export const DebtsView: React.FC = () => {
                   setPaymentAmount={setPaymentAmount}
                   onPayment={handlePayment}
                   onDelete={handleDelete}
+                  showBalanceModifier={showBalanceModifier}
+                  setShowBalanceModifier={setShowBalanceModifier}
+                  modifierAmount={modifierAmount}
+                  setModifierAmount={setModifierAmount}
+                  modifierOperation={modifierOperation}
+                  setModifierOperation={setModifierOperation}
+                  onModifyBalance={handleModifyBalance}
                 />
               ))}
             </div>
@@ -336,7 +374,7 @@ export const DebtsView: React.FC = () => {
   );
 };
 
-// Subcomponent for debt card
+// Subcomponent for debt card - Optimized with React.memo
 interface DebtCardProps {
   debt: Debt;
   formatCurrency: (n: number) => string;
@@ -346,9 +384,16 @@ interface DebtCardProps {
   setPaymentAmount: (v: string) => void;
   onPayment: (id: string) => void;
   onDelete: (debt: Debt) => void;
+  showBalanceModifier: string | null;
+  setShowBalanceModifier: (id: string | null) => void;
+  modifierAmount: string;
+  setModifierAmount: (v: string) => void;
+  modifierOperation: 'add' | 'subtract';
+  setModifierOperation: (op: 'add' | 'subtract') => void;
+  onModifyBalance: (id: string, operation: 'add' | 'subtract') => void;
 }
 
-const DebtCard: React.FC<DebtCardProps> = ({
+const DebtCard: React.FC<DebtCardProps> = React.memo(({
   debt,
   formatCurrency,
   showPaymentForm,
@@ -357,6 +402,13 @@ const DebtCard: React.FC<DebtCardProps> = ({
   setPaymentAmount,
   onPayment,
   onDelete,
+  showBalanceModifier,
+  setShowBalanceModifier,
+  modifierAmount,
+  setModifierAmount,
+  modifierOperation,
+  setModifierOperation,
+  onModifyBalance,
 }) => {
   const progress = debt.originalAmount > 0
     ? Math.round(((debt.originalAmount - debt.remainingAmount) / debt.originalAmount) * 100)
@@ -410,6 +462,21 @@ const DebtCard: React.FC<DebtCardProps> = ({
         <div className="flex items-center gap-1 ml-2">
           <button
             onClick={() => {
+              if (showBalanceModifier === debt.id) {
+                setShowBalanceModifier(null);
+              } else {
+                setShowBalanceModifier(debt.id!);
+                setModifierAmount('');
+                setModifierOperation('add');
+              }
+            }}
+            className="p-1.5 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/30 text-purple-600 dark:text-purple-400"
+            title="Modificar saldo"
+          >
+            <Edit size={16} />
+          </button>
+          <button
+            onClick={() => {
               if (showPaymentForm === debt.id) {
                 setShowPaymentForm(null);
               } else {
@@ -458,6 +525,57 @@ const DebtCard: React.FC<DebtCardProps> = ({
           </button>
         </div>
       )}
+
+      {/* Balance modifier form */}
+      {showBalanceModifier === debt.id && (
+        <div className="mt-3 space-y-2">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setModifierOperation('add')}
+              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${modifierOperation === 'add'
+                ? 'bg-green-500 text-white'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                }`}
+            >
+              Agregar
+            </button>
+            <button
+              onClick={() => setModifierOperation('subtract')}
+              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${modifierOperation === 'subtract'
+                ? 'bg-red-500 text-white'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                }`}
+            >
+              Restar
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              inputMode="numeric"
+              value={formatNumberForInput(modifierAmount)}
+              onChange={e => setModifierAmount(unformatNumber(e.target.value))}
+              placeholder="Monto"
+              className="input-base flex-1 text-sm"
+              autoFocus
+            />
+            <button
+              onClick={() => onModifyBalance(debt.id!, modifierOperation)}
+              className="btn-submit text-sm px-3"
+            >
+              Aplicar
+            </button>
+            <button
+              onClick={() => setShowBalanceModifier(null)}
+              className="p-2 text-gray-400 hover:text-gray-600"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
-};
+});
+
+DebtCard.displayName = 'DebtCard';

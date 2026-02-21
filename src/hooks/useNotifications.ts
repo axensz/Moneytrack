@@ -1,233 +1,120 @@
 /**
- * 🟢 Hook para notificaciones de navegador (Web Push)
- * 
- * CARACTERÍSTICAS:
- * ✅ Solicitar permisos de notificaciones
- * ✅ Verificar soporte del navegador
- * ✅ Enviar notificaciones para pagos vencidos
- * ✅ Notificaciones con acciones (ver detalles)
+ * Main hook for consuming notification functionality
+ * Provides unified API for components
+ * Validates: Requirements 6.1, 6.2, 6.3, 6.4, 7.1, 7.2, 7.3, 7.4, 7.5
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { logger } from '../utils/logger';
-import type { RecurringPayment } from '../types/finance';
+import { useMemo, useCallback } from 'react';
+import { useNotificationStore } from './useNotificationStore';
+import { useNotificationPreferences } from './useNotificationPreferences';
+import { NotificationManager } from '../services/NotificationManager';
+import type { Notification, NotificationFilter, NotificationPreferences } from '../types/finance';
 
-interface NotificationPermission {
-  granted: boolean;
-  denied: boolean;
-  default: boolean;
-}
+export function useNotifications(userId: string | null) {
+  // Get store and preferences
+  const {
+    notifications,
+    loading: storeLoading,
+    addNotification,
+    updateNotification,
+    deleteNotification,
+    clearAll: storeClearAll,
+    markAllAsRead: storeMarkAllAsRead,
+  } = useNotificationStore(userId);
 
-/**
- * Hook para gestionar notificaciones del navegador
- */
-export function useNotifications() {
-  const [permission, setPermission] = useState<NotificationPermission>({
-    granted: false,
-    denied: false,
-    default: true
-  });
+  const {
+    preferences,
+    loading: preferencesLoading,
+    updatePreferences,
+  } = useNotificationPreferences(userId);
 
-  const [isSupported, setIsSupported] = useState(false);
-
-  // Verificar soporte del navegador al cargar
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      setIsSupported(true);
-      updatePermissionState();
-    } else {
-      logger.warn('Browser does not support notifications');
-    }
-  }, []);
-
-  /**
-   * Actualiza el estado de permisos
-   */
-  const updatePermissionState = () => {
-    if (!('Notification' in window)) return;
-
-    const perm = Notification.permission;
-    setPermission({
-      granted: perm === 'granted',
-      denied: perm === 'denied',
-      default: perm === 'default'
+  // Create notification manager instance
+  const notificationManager = useMemo(() => {
+    return new NotificationManager({
+      addNotification,
+      updateNotification,
+      deleteNotification,
+      clearAll: storeClearAll,
+      markAllAsRead: storeMarkAllAsRead,
+      notifications,
+      preferences,
     });
-  };
+  }, [
+    addNotification,
+    updateNotification,
+    deleteNotification,
+    storeClearAll,
+    storeMarkAllAsRead,
+    notifications,
+    preferences,
+  ]);
 
-  /**
-   * Solicita permisos de notificaciones
-   */
-  const requestPermission = useCallback(async (): Promise<boolean> => {
-    if (!isSupported) {
-      logger.warn('Notifications not supported');
-      return false;
-    }
+  // Get unread count
+  const unreadCount = useMemo(() => {
+    return notificationManager.getUnreadCount();
+  }, [notificationManager, notifications]);
 
-    if (permission.granted) {
-      return true;
-    }
-
-    try {
-      const result = await Notification.requestPermission();
-      updatePermissionState();
-      
-      if (result === 'granted') {
-        logger.info('Notification permission granted');
-        return true;
-      } else {
-        logger.warn('Notification permission denied');
-        return false;
-      }
-    } catch (error) {
-      logger.error('Error requesting notification permission', error);
-      return false;
-    }
-  }, [isSupported, permission.granted]);
-
-  /**
-   * Envía una notificación simple
-   */
-  const sendNotification = useCallback(
-    (title: string, options?: NotificationOptions) => {
-      if (!permission.granted) {
-        logger.warn('Cannot send notification: permission not granted');
-        return null;
-      }
-
-      try {
-        const notification = new Notification(title, {
-          icon: '/icon-192.png', // Asume que existe un ícono
-          badge: '/icon-192.png',
-          ...options
-        });
-
-        // Log cuando se hace click en la notificación
-        notification.onclick = (e) => {
-          e.preventDefault();
-          window.focus();
-          notification.close();
-          
-          if (options?.data?.url) {
-            window.location.href = options.data.url;
-          }
-        };
-
-        return notification;
-      } catch (error) {
-        logger.error('Error sending notification', error);
-        return null;
-      }
+  // Mark as read
+  const markAsRead = useCallback(
+    async (id: string) => {
+      await notificationManager.markAsRead(id);
     },
-    [permission.granted]
+    [notificationManager]
   );
 
-  /**
-   * Notifica sobre un pago vencido
-   */
-  const notifyOverduePayment = useCallback(
-    (payment: RecurringPayment, daysOverdue: number) => {
-      if (!permission.granted) return;
+  // Mark all as read
+  const markAllAsRead = useCallback(async () => {
+    await notificationManager.markAllAsRead();
+  }, [notificationManager]);
 
-      const title = daysOverdue === 0 
-        ? `⏰ Pago vence hoy: ${payment.name}`
-        : `🔴 Pago vencido: ${payment.name}`;
-
-      const body = daysOverdue === 0
-        ? `Tu pago de ${payment.name} vence hoy.`
-        : `Tu pago de ${payment.name} está vencido por ${daysOverdue} día${daysOverdue > 1 ? 's' : ''}.`;
-
-      return sendNotification(title, {
-        body,
-        tag: `payment-${payment.id}`, // Evita duplicados
-        requireInteraction: daysOverdue > 0, // Mantener visible si está vencido
-        data: {
-          paymentId: payment.id,
-          url: '/recurring' // Redirigir a la vista de pagos periódicos
-        }
-      });
+  // Delete notification
+  const deleteNotif = useCallback(
+    async (id: string) => {
+      await notificationManager.deleteNotification(id);
     },
-    [permission.granted, sendNotification]
+    [notificationManager]
   );
 
-  /**
-   * Notifica sobre próximos pagos (alerta temprana)
-   */
-  const notifyUpcomingPayment = useCallback(
-    (payment: RecurringPayment, daysUntilDue: number) => {
-      if (!permission.granted) return;
+  // Clear all
+  const clearAll = useCallback(async () => {
+    await notificationManager.clearAll();
+  }, [notificationManager]);
 
-      const title = `📅 Próximo pago: ${payment.name}`;
-      const body = `Tu pago de ${payment.name} vence en ${daysUntilDue} día${daysUntilDue > 1 ? 's' : ''}.`;
-
-      return sendNotification(title, {
-        body,
-        tag: `payment-upcoming-${payment.id}`,
-        data: {
-          paymentId: payment.id,
-          url: '/recurring'
-        }
-      });
+  // Get filtered notifications
+  const getFilteredNotifications = useCallback(
+    (filter?: NotificationFilter): Notification[] => {
+      return notificationManager.getNotifications(filter);
     },
-    [permission.granted, sendNotification]
+    [notificationManager, notifications]
   );
 
-  /**
-   * Verifica y notifica sobre pagos vencidos/próximos
-   */
-  const checkAndNotifyPayments = useCallback(
-    (
-      payments: RecurringPayment[],
-      getDaysUntilDue: (payment: RecurringPayment) => number
-    ) => {
-      if (!permission.granted) return;
-
-      const notifiedToday = new Set<string>();
-
-      payments.forEach(payment => {
-        if (!payment.isActive) return;
-
-        const daysUntil = getDaysUntilDue(payment);
-        const notificationKey = `notification-${payment.id}-${new Date().toDateString()}`;
-
-        // Evitar notificar múltiples veces por día
-        if (localStorage.getItem(notificationKey)) {
-          return;
-        }
-
-        // Notificar si está vencido
-        if (daysUntil < 0) {
-          notifyOverduePayment(payment, Math.abs(daysUntil));
-          localStorage.setItem(notificationKey, 'true');
-          notifiedToday.add(payment.id!);
-        }
-        // Notificar si vence hoy
-        else if (daysUntil === 0) {
-          notifyOverduePayment(payment, 0);
-          localStorage.setItem(notificationKey, 'true');
-          notifiedToday.add(payment.id!);
-        }
-        // Notificar si vence en 3 días o menos (alerta temprana)
-        else if (daysUntil <= 3 && daysUntil > 0) {
-          notifyUpcomingPayment(payment, daysUntil);
-          localStorage.setItem(notificationKey, 'true');
-          notifiedToday.add(payment.id!);
-        }
-      });
-
-      if (notifiedToday.size > 0) {
-        logger.info('Sent payment notifications', { count: notifiedToday.size });
-      }
+  // Create notification (exposed for manual creation if needed)
+  const createNotification = useCallback(
+    async (notification: Omit<Notification, 'id' | 'createdAt'>) => {
+      await notificationManager.createNotification(notification);
     },
-    [permission.granted, notifyOverduePayment, notifyUpcomingPayment]
+    [notificationManager]
   );
 
   return {
-    isSupported,
-    permission,
-    requestPermission,
-    sendNotification,
-    notifyOverduePayment,
-    notifyUpcomingPayment,
-    checkAndNotifyPayments
+    // Data
+    notifications,
+    unreadCount,
+    loading: storeLoading || preferencesLoading,
+    preferences,
+
+    // Operations
+    markAsRead,
+    markAllAsRead,
+    deleteNotification: deleteNotif,
+    clearAll,
+    updatePreferences,
+    createNotification,
+
+    // Filters
+    getFilteredNotifications,
+
+    // Manager instance (for monitoring hook)
+    notificationManager,
   };
 }

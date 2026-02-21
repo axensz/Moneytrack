@@ -97,6 +97,7 @@ export interface FinanceContextValue {
   updateDebt: (id: string, updates: Partial<Debt>) => Promise<void>;
   deleteDebt: (id: string) => Promise<void>;
   registerDebtPayment: (debtId: string, amount: number) => Promise<void>;
+  modifyDebtBalance: (debtId: string, amount: number, operation: 'add' | 'subtract') => Promise<void>;
   getDebtTransactions: (debtId: string) => Transaction[];
   debtStats: {
     totalLent: number;
@@ -213,6 +214,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     updateDebt,
     deleteDebt,
     registerDebtPayment,
+    modifyDebtBalance,
     getDebtTransactions,
     stats: debtStats,
   } = useDebts(userId, transactions);
@@ -289,6 +291,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     updateDebt,
     deleteDebt,
     registerDebtPayment,
+    modifyDebtBalance,
     getDebtTransactions,
     debtStats,
 

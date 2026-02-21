@@ -100,7 +100,7 @@ export function BaseModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm transition-opacity duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-4 bg-black/50 backdrop-blur-sm transition-opacity duration-200 overflow-y-auto"
       onClick={closeOnBackdrop ? onClose : undefined}
       role="dialog"
       aria-modal="true"
@@ -111,26 +111,34 @@ export function BaseModal({
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
         tabIndex={-1}
-        className={`bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full ${maxWidth} max-h-[90vh] overflow-y-auto outline-none animate-in fade-in zoom-in-95 duration-200 ${className}`}
+        className={`bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full ${maxWidth} my-auto outline-none animate-in fade-in zoom-in-95 duration-200 ${className}`}
+        style={{
+          maxHeight: 'calc(100vh - 2rem)',
+          /* Ensure modal fits within viewport on mobile */
+        }}
       >
-        {title && (
-          <div className="flex justify-between items-center p-6 border-b border-gray-100 dark:border-gray-700">
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              {titleIcon}
-              {title}
-            </h3>
-            {showCloseButton && (
-              <button
-                onClick={onClose}
-                aria-label="Cerrar"
-                className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 transition-colors p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
-              >
-                <X size={24} />
-              </button>
-            )}
+        <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 2rem)' }}>
+          {title && (
+            <div className="sticky top-0 z-10 flex justify-between items-center p-4 sm:p-6 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
+              <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                {titleIcon}
+                {title}
+              </h3>
+              {showCloseButton && (
+                <button
+                  onClick={onClose}
+                  aria-label="Cerrar"
+                  className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 transition-colors p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                >
+                  <X size={20} />
+                </button>
+              )}
+            </div>
+          )}
+          <div className="p-4 sm:p-6">
+            {children}
           </div>
-        )}
-        {children}
+        </div>
       </div>
     </div>
   );

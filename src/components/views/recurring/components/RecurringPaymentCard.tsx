@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import {
   Edit2,
   Trash2,
@@ -55,7 +55,7 @@ interface RecurringPaymentCardProps {
  * Card individual de pago periódico
  * Muestra estado, próximo vencimiento e historial expandible
  */
-export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = ({
+export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = memo(({
   payment,
   isPaid,
   daysUntilDue,
@@ -211,7 +211,9 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = ({
       )}
     </div>
   );
-};
+});
+
+RecurringPaymentCard.displayName = 'RecurringPaymentCard';
 
 // Sub-componente para historial
 interface PaymentHistoryProps {
@@ -219,7 +221,7 @@ interface PaymentHistoryProps {
   formatCurrency: (amount: number) => string;
 }
 
-const PaymentHistory: React.FC<PaymentHistoryProps> = ({
+const PaymentHistory: React.FC<PaymentHistoryProps> = memo(({
   history,
   formatCurrency,
 }) => {
@@ -256,4 +258,6 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({
       )}
     </div>
   );
-};
+});
+
+PaymentHistory.displayName = 'PaymentHistory';

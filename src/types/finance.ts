@@ -126,7 +126,7 @@ export interface NewTransaction {
   // 🆕 Campos para intereses (usado en formulario)
   hasInterest: boolean;
   installments: number;
-  
+
   // 🆕 Asociación con pago periódico
   recurringPaymentId?: string;
 }
@@ -185,3 +185,78 @@ export interface ValidationResult {
   isValid: boolean;
   errors: string[];
 }
+
+// 🆕 NOTIFICACIONES
+export interface Notification {
+  id?: string;
+  type: 'budget' | 'recurring' | 'unusual_spending' | 'low_balance' | 'debt' | 'info';
+  title: string;
+  message: string;
+  severity: 'info' | 'warning' | 'error' | 'success';
+  isRead: boolean;
+  createdAt: Date;
+  actionUrl?: string;
+  metadata?: NotificationMetadata;
+}
+
+export interface NotificationMetadata {
+  budgetId?: string;
+  categoryName?: string;
+  recurringPaymentId?: string;
+  transactionId?: string;
+  accountId?: string;
+  debtId?: string;
+  percentage?: number;
+  amount?: number;
+  threshold?: number;
+}
+
+export interface NotificationPreferences {
+  enabled: {
+    budget: boolean;
+    recurring: boolean;
+    unusualSpending: boolean;
+    lowBalance: boolean;
+    debt: boolean;
+  };
+  thresholds: {
+    budgetWarning: number;      // Default: 80
+    budgetCritical: number;     // Default: 90
+    budgetExceeded: number;     // Default: 100
+    unusualSpending: number;    // Default: 200 (percentage)
+    lowBalance: number;         // Default: 100000 COP
+  };
+  quietHours: {
+    enabled: boolean;
+    startHour: number;          // 0-23
+    endHour: number;            // 0-23
+  };
+}
+
+export interface NotificationFilter {
+  type?: Notification['type'];
+  isRead?: boolean;
+  severity?: Notification['severity'];
+}
+
+export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  enabled: {
+    budget: true,
+    recurring: true,
+    unusualSpending: true,
+    lowBalance: true,
+    debt: true,
+  },
+  thresholds: {
+    budgetWarning: 80,
+    budgetCritical: 90,
+    budgetExceeded: 100,
+    unusualSpending: 200,
+    lowBalance: 100000,
+  },
+  quietHours: {
+    enabled: false,
+    startHour: 22,
+    endHour: 8,
+  },
+};

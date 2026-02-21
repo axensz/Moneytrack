@@ -27,7 +27,7 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
     <>
       {/* Desktop Navigation */}
       <nav
-        className="hidden sm:flex justify-start items-center gap-4 mb-6 sm:mb-8"
+        className="hidden sm:flex justify-start items-center gap-4 mb-4 sm:mb-5 md:mb-6"
         aria-label="Navegación principal"
       >
         <div className="flex gap-2 border-b border-gray-200 dark:border-purple-800" role="tablist">

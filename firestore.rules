@@ -40,15 +40,16 @@ service cloud.firestore {
           && request.resource.data.date is timestamp
           && request.resource.data.createdAt is timestamp;
 
-        // AUDIT-FIX: update valida campos inmutables + restringe description/category
+        // Allow update of editable fields (description, amount, date, category, paid)
+        // Keep type and accountId immutable for data integrity
         allow update: if isOwner(userId)
           && request.resource.data.type == resource.data.type
-          && request.resource.data.amount == resource.data.amount
           && request.resource.data.accountId == resource.data.accountId
-          && request.resource.data.date == resource.data.date
+          && isValidAmount(request.resource.data.amount)
           && request.resource.data.description is string
           && request.resource.data.description.size() <= 500
-          && request.resource.data.category is string;
+          && request.resource.data.category is string
+          && request.resource.data.date is timestamp;
 
         allow delete: if isOwner(userId);
       }
@@ -128,9 +129,12 @@ service cloud.firestore {
 
         allow update: if isOwner(userId)
           && request.resource.data.type == resource.data.type
-          && request.resource.data.originalAmount == resource.data.originalAmount
           && request.resource.data.personName is string
-          && request.resource.data.personName.size() > 0;
+          && request.resource.data.personName.size() > 0
+          && isValidAmount(request.resource.data.originalAmount)
+          && request.resource.data.remainingAmount is number
+          && request.resource.data.remainingAmount >= 0
+          && request.resource.data.remainingAmount <= request.resource.data.originalAmount;
 
         allow delete: if isOwner(userId);
       }
@@ -175,6 +179,32 @@ service cloud.firestore {
           && request.resource.data.currentAmount >= 0;
 
         allow delete: if isOwner(userId);
+      }
+
+      // Notifications subcollection
+      match /notifications/{notificationId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId)
+          && request.resource.data.type in ['budget', 'recurring', 'unusual_spending', 'low_balance', 'debt', 'info']
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 200
+          && request.resource.data.message is string
+          && request.resource.data.message.size() > 0
+          && request.resource.data.message.size() <= 500
+          && request.resource.data.severity in ['info', 'warning', 'error', 'success']
+          && request.resource.data.isRead is bool
+          && request.resource.data.createdAt is timestamp;
+
+        allow update: if isOwner(userId);
+        allow delete: if isOwner(userId);
+      }
+
+      // Notification Preferences document
+      match /notificationPreferences/settings {
+        allow read: if isOwner(userId);
+        allow write: if isOwner(userId);
       }
     }
 

@@ -156,6 +156,7 @@
   .btn-type {
     @apply flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all border;
     min-height: 44px;
+    cursor: pointer;
     /* Ensure touch-friendly size on mobile */
   }
 
@@ -163,6 +164,7 @@
     background-color: var(--muted);
     color: var(--muted-foreground);
     border-color: var(--border);
+    cursor: pointer;
   }
 
   .btn-type-inactive:hover {
@@ -196,6 +198,7 @@
     background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%);
     color: var(--primary-foreground);
     min-height: 44px;
+    cursor: pointer;
     /* Touch-friendly minimum size */
   }
 
@@ -209,6 +212,7 @@
     background-color: var(--primary);
     color: var(--primary-foreground);
     min-height: 44px;
+    cursor: pointer;
   }
 
   .btn-cancel {
@@ -216,6 +220,7 @@
     background-color: var(--muted);
     color: var(--muted-foreground);
     min-height: 44px;
+    cursor: pointer;
   }
 
   .btn-cancel:hover {
@@ -227,6 +232,7 @@
     background-color: var(--primary);
     color: var(--primary-foreground);
     min-height: 44px;
+    cursor: pointer;
   }
 
   .btn-submit:hover {
@@ -239,6 +245,7 @@
     background-color: var(--info-muted);
     color: var(--info);
     min-height: 44px;
+    cursor: pointer;
     /* Increased from 36px for better touch accessibility */
   }
 
@@ -247,6 +254,7 @@
     background-color: #dc2626;
     color: white;
     min-height: 44px;
+    cursor: pointer;
   }
 
   .btn-danger:hover {

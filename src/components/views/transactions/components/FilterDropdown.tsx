@@ -12,6 +12,7 @@ interface FilterDropdownProps {
   onToggle: () => void;
   onClose: () => void;
   icon?: React.ReactNode;
+  align?: 'left' | 'right';
 }
 
 export const FilterDropdown: React.FC<FilterDropdownProps> = ({
@@ -23,6 +24,7 @@ export const FilterDropdown: React.FC<FilterDropdownProps> = ({
   onToggle,
   onClose,
   icon,
+  align = 'right',
 }) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -42,7 +44,7 @@ export const FilterDropdown: React.FC<FilterDropdownProps> = ({
   }, [isOpen, onClose]);
 
   const selectedLabel = options.find((opt) => opt.value === value)?.label || label;
-  
+
   // Is active if value is not 'all'
   const isActive = value !== 'all';
 
@@ -50,11 +52,10 @@ export const FilterDropdown: React.FC<FilterDropdownProps> = ({
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={onToggle}
-        className={`flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
-          isActive
-            ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
-            : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600'
-        }`}
+        className={`flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${isActive
+          ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
+          : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600'
+          }`}
         title={isActive ? selectedLabel : undefined}
       >
         {icon}
@@ -65,39 +66,38 @@ export const FilterDropdown: React.FC<FilterDropdownProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-2 min-w-[200px] max-w-[calc(100vw-2rem)] max-h-[350px] overflow-y-auto">
-           <div className="space-y-0.5">
-             <button
-               onClick={() => {
-                 onChange('all');
-                 onClose();
-               }}
-               className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors truncate ${
-                 value === 'all'
-                   ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
-                   : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
-               }`}
-             >
-               {label} (Todos)
-             </button>
-             {options.map((option) => (
-               <button
-                 key={option.value}
-                 onClick={() => {
-                   onChange(option.value);
-                   onClose();
-                 }}
-                 className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors truncate ${
-                   value === option.value
-                     ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
-                     : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
-                 }`}
-                 title={option.label}
-               >
-                 {option.label}
-               </button>
-             ))}
-           </div>
+        <div className={`absolute top-full mt-1 z-[100] bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-2 min-w-[200px] max-w-[calc(100vw-2rem)] max-h-[350px] overflow-y-auto ${align === 'left' ? 'left-0' : 'right-0'
+          }`}>
+          <div className="space-y-0.5">
+            <button
+              onClick={() => {
+                onChange('all');
+                onClose();
+              }}
+              className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors truncate ${value === 'all'
+                ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
+                : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                }`}
+            >
+              {label} (Todos)
+            </button>
+            {options.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => {
+                  onChange(option.value);
+                  onClose();
+                }}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors truncate ${value === option.value
+                  ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
+                  : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                  }`}
+                title={option.label}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

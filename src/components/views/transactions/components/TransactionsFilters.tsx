@@ -85,15 +85,14 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
   };
 
   return (
-    <div className="mb-6">
+    <div className="mb-6 relative">
       {/* Una sola fila: Nueva, búsqueda, filtros */}
       <div className="flex items-center gap-2 flex-wrap">
         <button
           onClick={() => setShowForm(!showForm)}
           disabled={accounts.length === 0}
-          className={`btn-primary flex-shrink-0 ${
-            accounts.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
-          }`}
+          className={`btn-primary flex-shrink-0 ${accounts.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
           title={accounts.length === 0 ? 'Crea una cuenta primero' : 'Crear transacción'}
           aria-label="Crear nueva transacción"
         >
@@ -139,6 +138,7 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
           onToggle={handleOpenAccount}
           onClose={() => setActiveDropdown('none')}
           icon={<Wallet size={16} />}
+          align="left"
         />
 
         {/* Filtro de categoría */}
@@ -154,6 +154,7 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
           onToggle={handleOpenCategory}
           onClose={() => setActiveDropdown('none')}
           icon={<Tag size={16} />}
+          align="left"
         />
 
         {/* Filtro de fecha */}

@@ -42,7 +42,7 @@ export const DateFilterDropdown: React.FC<DateFilterDropdownProps> = ({
     if (showDatePicker) {
       document.addEventListener('mousedown', handleClickOutside);
     }
-    
+
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
@@ -55,11 +55,10 @@ export const DateFilterDropdown: React.FC<DateFilterDropdownProps> = ({
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setShowDatePicker(!showDatePicker)}
-        className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${
-          dateRangePreset !== 'all'
-            ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
-            : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600'
-        }`}
+        className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${dateRangePreset !== 'all'
+          ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
+          : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600'
+          }`}
       >
         <Calendar size={16} />
         <span className="truncate max-w-[50px] sm:max-w-[80px]">{currentLabel === 'Todo el tiempo' ? 'Fecha' : currentLabel}</span>
@@ -67,7 +66,7 @@ export const DateFilterDropdown: React.FC<DateFilterDropdownProps> = ({
       </button>
 
       {showDatePicker && (
-        <div className="absolute top-full left-0 sm:left-auto sm:right-0 mt-1 z-20 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-2 min-w-[180px]">
+        <div className="absolute top-full right-0 mt-1 z-[100] bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-2 min-w-[180px] max-w-[calc(100vw-2rem)]">
           <div className="space-y-0.5">
             {DATE_PRESETS.map((preset) => (
               <button
@@ -76,11 +75,10 @@ export const DateFilterDropdown: React.FC<DateFilterDropdownProps> = ({
                   setDateRangePreset(preset.value);
                   if (preset.value !== 'custom') setShowDatePicker(false);
                 }}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                  dateRangePreset === preset.value
-                    ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
-                    : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
-                }`}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${dateRangePreset === preset.value
+                  ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
+                  : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                  }`}
               >
                 {preset.label}
               </button>

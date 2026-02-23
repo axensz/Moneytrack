@@ -119,10 +119,10 @@ export function useFilteredData({
     return transactions.filter((t) => {
       // Filtro por cuenta
       if (filterAccount !== 'all' && t.accountId !== filterAccount) return false;
-      
+
       // Filtro por categoría
       if (filterCategory !== 'all' && t.category !== filterCategory) return false;
-      
+
       // 🆕 Filtro por fecha
       if (effectiveDateRange) {
         const transactionDate = new Date(t.date);
@@ -144,15 +144,17 @@ export function useFilteredData({
   // Estadísticas dinámicas basadas en datos filtrados (ingresos/gastos mensuales)
   const monthlyStats = useGlobalStats(filteredTransactions, filteredAccounts);
 
-  // Pendientes: siempre con TODAS las transacciones (no filtradas por fecha)
+  // Pendientes: filtrar por cuenta si hay filtro activo
   const pendingExpenses = useMemo(() => {
-    return accounts
-      .filter(acc => acc.type === 'credit')
-      .reduce(
-        (sum, account) => sum + CreditCardCalculator.calculateUsedCredit(account, transactions),
-        0
-      );
-  }, [accounts, transactions]);
+    const accountsToCheck = filterAccount !== 'all'
+      ? accounts.filter(acc => acc.id === filterAccount && acc.type === 'credit')
+      : accounts.filter(acc => acc.type === 'credit');
+
+    return accountsToCheck.reduce(
+      (sum, account) => sum + CreditCardCalculator.calculateUsedCredit(account, transactions),
+      0
+    );
+  }, [accounts, transactions, filterAccount]);
 
   const dynamicStats = useMemo(() => ({
     ...monthlyStats,

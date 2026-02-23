@@ -4,6 +4,7 @@
  */
 
 import { logger } from '../utils/logger';
+import { formatCurrency } from '../utils/formatters';
 import type { Debt } from '../types/finance';
 
 interface DebtMonitorDeps {
@@ -59,7 +60,7 @@ export class DebtMonitor {
                         await this.deps.createNotification({
                             type: 'debt',
                             title: `Deuda pendiente: ${debt.personName}`,
-                            message: `Debes ${this.formatCurrency(debt.remainingAmount)} a ${debt.personName} desde hace ${daysOutstanding} días`,
+                            message: `Debes ${formatCurrency(debt.remainingAmount)} a ${debt.personName} desde hace ${daysOutstanding} días`,
                             severity: 'warning',
                             isRead: false,
                             actionUrl: `/debts`,
@@ -73,7 +74,7 @@ export class DebtMonitor {
                         await this.deps.createNotification({
                             type: 'debt',
                             title: `Recordatorio de deuda: ${debt.personName}`,
-                            message: `Debes ${this.formatCurrency(debt.remainingAmount)} a ${debt.personName} desde hace ${daysOutstanding} días`,
+                            message: `Debes ${formatCurrency(debt.remainingAmount)} a ${debt.personName} desde hace ${daysOutstanding} días`,
                             severity: 'info',
                             isRead: false,
                             actionUrl: `/debts`,
@@ -90,7 +91,7 @@ export class DebtMonitor {
                         await this.deps.createNotification({
                             type: 'debt',
                             title: `Préstamo pendiente: ${debt.personName}`,
-                            message: `${debt.personName} te debe ${this.formatCurrency(debt.remainingAmount)} desde hace ${daysOutstanding} días`,
+                            message: `${debt.personName} te debe ${formatCurrency(debt.remainingAmount)} desde hace ${daysOutstanding} días`,
                             severity: 'info',
                             isRead: false,
                             actionUrl: `/debts`,
@@ -142,18 +143,6 @@ export class DebtMonitor {
         // If reminded before, wait at least 7 days before next reminder
         const daysSinceLastReminder = Math.floor((Date.now() - lastReminder) / (1000 * 60 * 60 * 24));
         return daysSinceLastReminder >= 7;
-    }
-
-    /**
-     * Format currency for display
-     */
-    private formatCurrency(amount: number): string {
-        return new Intl.NumberFormat('es-CO', {
-            style: 'currency',
-            currency: 'COP',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-        }).format(amount);
     }
 
     /**

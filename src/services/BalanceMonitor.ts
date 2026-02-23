@@ -5,6 +5,7 @@
 
 import { logger } from '../utils/logger';
 import { BalanceCalculator } from '../utils/balanceCalculator';
+import { formatCurrency } from '../utils/formatters';
 import type { Account, Transaction, NotificationPreferences } from '../types/finance';
 
 interface BalanceMonitorDeps {
@@ -50,7 +51,7 @@ export class BalanceMonitor {
                 await this.deps.createNotification({
                     type: 'low_balance',
                     title: `Saldo bajo: ${account.name}`,
-                    message: `El saldo de ${this.formatCurrency(balance)} está por debajo del umbral de ${this.formatCurrency(threshold)}`,
+                    message: `El saldo de ${formatCurrency(balance)} está por debajo del umbral de ${formatCurrency(threshold)}`,
                     severity: 'warning',
                     isRead: false,
                     actionUrl: `/accounts`,
@@ -114,18 +115,6 @@ export class BalanceMonitor {
 
         const elapsed = Date.now() - lastAlert;
         return elapsed < this.COOLDOWN_MS;
-    }
-
-    /**
-     * Format currency for display
-     */
-    private formatCurrency(amount: number): string {
-        return new Intl.NumberFormat('es-CO', {
-            style: 'currency',
-            currency: 'COP',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-        }).format(amount);
     }
 
     /**

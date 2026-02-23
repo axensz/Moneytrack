@@ -28,7 +28,7 @@ service cloud.firestore {
       match /transactions/{transactionId} {
         allow read: if isOwner(userId);
 
-        // AUDIT-FIX: description min=0 (es opcional en la UI)
+        // Description is optional but if provided must be valid
         allow create: if isOwner(userId)
           && request.resource.data.type in ['income', 'expense', 'transfer']
           && isValidAmount(request.resource.data.amount)
@@ -42,6 +42,7 @@ service cloud.firestore {
 
         // Allow update of editable fields (description, amount, date, category, paid)
         // Keep type and accountId immutable for data integrity
+        // Description is optional but if provided must be valid
         allow update: if isOwner(userId)
           && request.resource.data.type == resource.data.type
           && request.resource.data.accountId == resource.data.accountId

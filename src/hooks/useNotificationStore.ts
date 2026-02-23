@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, writeBatch, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, writeBatch, Timestamp, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
@@ -99,23 +99,75 @@ export function useNotificationStore(userId: string | null) {
         }
     }, [userId, loading]); // Only run after initial load
 
-    // Add notification
+    // ✅ FIX #2: Generar docId determinístico para deduplicación
+    const generateDedupeDocId = useCallback((notification: Omit<Notification, 'id' | 'createdAt'>): string => {
+        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        const parts: string[] = [];
+
+        // Tipo de notificación
+        parts.push(notification.type.toUpperCase());
+
+        // Identificador específico según metadata
+        if (notification.metadata) {
+            const { accountId, budgetId, categoryName, transactionId, recurringPaymentId, debtId } = notification.metadata;
+
+            if (accountId) parts.push(accountId);
+            if (budgetId) parts.push(budgetId);
+            if (categoryName) parts.push(categoryName.replace(/\s+/g, '_'));
+            if (transactionId) parts.push(transactionId);
+            if (recurringPaymentId) parts.push(recurringPaymentId);
+            if (debtId) parts.push(debtId);
+        }
+
+        // Fecha para deduplicación diaria
+        parts.push(today);
+
+        return parts.join('_');
+    }, []);
+
+    // ✅ FIX #2: Add notification con docId determinístico (idempotente)
     const addNotification = useCallback(
         async (notification: Omit<Notification, 'id' | 'createdAt'>) => {
             if (userId) {
                 try {
-                    await addDoc(collection(db, `users/${userId}/notifications`), {
-                        ...notification,
-                        createdAt: Timestamp.now(),
-                    });
+                    // Generar docId determinístico
+                    const docId = generateDedupeDocId(notification);
+
+                    // Usar setDoc con merge para idempotencia
+                    // Si el documento ya existe, no lo sobrescribe
+                    await setDoc(
+                        doc(db, `users/${userId}/notifications`, docId),
+                        {
+                            ...notification,
+                            createdAt: Timestamp.now(),
+                        },
+                        { merge: false } // No merge: si existe, no hace nada
+                    );
+
+                    logger.info('Notification created with dedupeId', { docId, type: notification.type });
                 } catch (error) {
+                    // Si el error es porque el documento ya existe, no es un error real
+                    if ((error as any).code === 'already-exists') {
+                        logger.info('Notification already exists, skipping', { type: notification.type });
+                        return;
+                    }
                     logger.error('Failed to add notification', error);
                     throw error;
                 }
             } else {
+                // LocalStorage: usar dedupeId como id
+                const docId = generateDedupeDocId(notification);
+
+                // Verificar si ya existe
+                const exists = localNotifications.some(n => n.id === docId);
+                if (exists) {
+                    logger.info('Notification already exists in localStorage, skipping', { type: notification.type });
+                    return;
+                }
+
                 const newNotification: Notification = {
                     ...notification,
-                    id: Date.now().toString() + Math.random().toString(36).substring(2, 11),
+                    id: docId,
                     createdAt: new Date(),
                 };
 
@@ -128,7 +180,7 @@ export function useNotificationStore(userId: string | null) {
                 setLocalNotifications(updatedNotifications);
             }
         },
-        [userId, localNotifications, setLocalNotifications]
+        [userId, localNotifications, setLocalNotifications, generateDedupeDocId]
     );
 
     // Update notification
@@ -167,49 +219,92 @@ export function useNotificationStore(userId: string | null) {
         [userId, setLocalNotifications]
     );
 
-    // Clear all notifications
+    // ✅ FIX #5: Clear all notifications con optimistic update
     const clearAll = useCallback(async () => {
+        console.log('[NotificationStore] clearAll called, userId:', userId, 'notifications count:', notifications.length);
+
         if (userId) {
+            // Guardar estado anterior para rollback
+            const previousNotifications = [...firestoreNotifications];
+
+            // Optimistic update: limpiar inmediatamente en UI
+            setFirestoreNotifications([]);
+
             try {
                 const batch = writeBatch(db);
-                notifications.forEach((n) => {
+                previousNotifications.forEach((n) => {
                     if (n.id) {
                         batch.delete(doc(db, `users/${userId}/notifications`, n.id));
                     }
                 });
+
+                console.log('[NotificationStore] Committing batch delete for', previousNotifications.length, 'notifications');
                 await batch.commit();
+                console.log('[NotificationStore] Batch delete committed successfully');
+                logger.info('All notifications cleared successfully');
             } catch (error) {
+                // Rollback en caso de error
+                console.error('[NotificationStore] Error clearing notifications:', error);
+                setFirestoreNotifications(previousNotifications);
                 logger.error('Failed to clear all notifications', error);
                 throw error;
             }
         } else {
+            console.log('[NotificationStore] Clearing local notifications');
             setLocalNotifications([]);
+            logger.info('All local notifications cleared');
         }
-    }, [userId, notifications, setLocalNotifications]);
+    }, [userId, firestoreNotifications, setLocalNotifications]);
 
-    // Mark all as read
+    // ✅ FIX #5: Mark all as read con optimistic update
     const markAllAsRead = useCallback(async () => {
+        console.log('[NotificationStore] markAllAsRead called, userId:', userId);
+
         if (userId) {
+            const unreadNotifications = firestoreNotifications.filter((n) => !n.isRead);
+            console.log('[NotificationStore] Found', unreadNotifications.length, 'unread notifications');
+
+            if (unreadNotifications.length === 0) {
+                console.log('[NotificationStore] No unread notifications to mark');
+                logger.info('No unread notifications to mark');
+                return;
+            }
+
+            // Guardar estado anterior para rollback
+            const previousNotifications = [...firestoreNotifications];
+
+            // Optimistic update: marcar como leídas inmediatamente en UI
+            setFirestoreNotifications(prev =>
+                prev.map(n => ({ ...n, isRead: true }))
+            );
+
             try {
                 const batch = writeBatch(db);
-                notifications
-                    .filter((n) => !n.isRead)
-                    .forEach((n) => {
-                        if (n.id) {
-                            batch.update(doc(db, `users/${userId}/notifications`, n.id), { isRead: true });
-                        }
-                    });
+                unreadNotifications.forEach((n) => {
+                    if (n.id) {
+                        batch.update(doc(db, `users/${userId}/notifications`, n.id), { isRead: true });
+                    }
+                });
+
+                console.log('[NotificationStore] Committing batch update for', unreadNotifications.length, 'notifications');
                 await batch.commit();
+                console.log('[NotificationStore] Batch update committed successfully');
+                logger.info(`Marked ${unreadNotifications.length} notifications as read`);
             } catch (error) {
+                // Rollback en caso de error
+                console.error('[NotificationStore] Error marking as read:', error);
+                setFirestoreNotifications(previousNotifications);
                 logger.error('Failed to mark all as read', error);
                 throw error;
             }
         } else {
+            console.log('[NotificationStore] Marking all local notifications as read');
             setLocalNotifications((prev) =>
                 prev.map((n) => ({ ...n, isRead: true }))
             );
+            logger.info('All local notifications marked as read');
         }
-    }, [userId, notifications, setLocalNotifications]);
+    }, [userId, firestoreNotifications, setLocalNotifications]);
 
     return {
         notifications,

@@ -48,8 +48,8 @@ export class TransactionValidator {
 
     // ===== VALIDACIONES BÁSICAS =====
 
-    // Validar descripción (opcional, pero con límite de largo)
-    if (transaction.description.length > TRANSACTION_VALIDATION.description.maxLength) {
+    // Validar descripción (opcional, pero si existe debe ser válida)
+    if (transaction.description && transaction.description.length > TRANSACTION_VALIDATION.description.maxLength) {
       errors.push(
         `La descripción no puede tener más de ${TRANSACTION_VALIDATION.description.maxLength} caracteres`
       );

@@ -5,6 +5,7 @@
 
 import { logger } from '../utils/logger';
 import { SPECIAL_CATEGORIES } from '../config/constants';
+import { formatCurrency } from '../utils/formatters';
 import type { Transaction, Budget, NotificationPreferences } from '../types/finance';
 
 export interface BudgetUtilization {
@@ -136,7 +137,7 @@ export class BudgetMonitor {
             await this.deps.createNotification({
                 type: 'budget',
                 title: `Presupuesto excedido: ${category}`,
-                message: `Has gastado ${this.formatCurrency(spent)} de ${this.formatCurrency(limit)} (${Math.round(percentage)}%)`,
+                message: `Has gastado ${formatCurrency(spent)} de ${formatCurrency(limit)} (${Math.round(percentage)}%)`,
                 severity: 'error',
                 isRead: false,
                 actionUrl: `/budgets`,
@@ -156,7 +157,7 @@ export class BudgetMonitor {
             await this.deps.createNotification({
                 type: 'budget',
                 title: `Alerta crítica: ${category}`,
-                message: `Has gastado ${this.formatCurrency(spent)} de ${this.formatCurrency(limit)} (${Math.round(percentage)}%)`,
+                message: `Has gastado ${formatCurrency(spent)} de ${formatCurrency(limit)} (${Math.round(percentage)}%)`,
                 severity: 'warning',
                 isRead: false,
                 actionUrl: `/budgets`,
@@ -176,7 +177,7 @@ export class BudgetMonitor {
             await this.deps.createNotification({
                 type: 'budget',
                 title: `Advertencia: ${category}`,
-                message: `Has gastado ${this.formatCurrency(spent)} de ${this.formatCurrency(limit)} (${Math.round(percentage)}%)`,
+                message: `Has gastado ${formatCurrency(spent)} de ${formatCurrency(limit)} (${Math.round(percentage)}%)`,
                 severity: 'warning',
                 isRead: false,
                 actionUrl: `/budgets`,
@@ -191,17 +192,7 @@ export class BudgetMonitor {
         }
     }
 
-    /**
-     * Format currency for display
-     */
-    private formatCurrency(amount: number): string {
-        return new Intl.NumberFormat('es-CO', {
-            style: 'currency',
-            currency: 'COP',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-        }).format(amount);
-    }
+
 
     /**
      * Clear utilization cache (call when budgets or transactions change significantly)

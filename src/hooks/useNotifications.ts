@@ -4,7 +4,7 @@
  * Validates: Requirements 6.1, 6.2, 6.3, 6.4, 7.1, 7.2, 7.3, 7.4, 7.5
  */
 
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useRef, useEffect } from 'react';
 import { useNotificationStore } from './useNotificationStore';
 import { useNotificationPreferences } from './useNotificationPreferences';
 import { NotificationManager } from '../services/NotificationManager';
@@ -28,26 +28,40 @@ export function useNotifications(userId: string | null) {
     updatePreferences,
   } = useNotificationPreferences(userId);
 
-  // Create notification manager instance
-  const notificationManager = useMemo(() => {
-    return new NotificationManager({
+  // ✅ FIX #1: Usar useRef para mantener instancia estable del NotificationManager
+  // Esto previene el ciclo infinito de re-inicialización
+  const notificationManagerRef = useRef<NotificationManager | null>(null);
+
+  // Crear instancia solo una vez (primera renderización)
+  if (!notificationManagerRef.current) {
+    notificationManagerRef.current = new NotificationManager({
       addNotification,
       updateNotification,
       deleteNotification,
       clearAll: storeClearAll,
       markAllAsRead: storeMarkAllAsRead,
-      notifications,
+      notifications: [],  // Inicializar vacío
       preferences,
     });
-  }, [
-    addNotification,
-    updateNotification,
-    deleteNotification,
-    storeClearAll,
-    storeMarkAllAsRead,
-    notifications,
-    preferences,
-  ]);
+  }
+
+  // Actualizar deps del manager sin recrear la instancia
+  // Esto permite que el manager tenga acceso a los datos actuales sin causar re-renders
+  useEffect(() => {
+    if (notificationManagerRef.current) {
+      notificationManagerRef.current.deps = {
+        addNotification,
+        updateNotification,
+        deleteNotification,
+        clearAll: storeClearAll,
+        markAllAsRead: storeMarkAllAsRead,
+        notifications,
+        preferences,
+      };
+    }
+  }, [addNotification, updateNotification, deleteNotification, storeClearAll, storeMarkAllAsRead, notifications, preferences]);
+
+  const notificationManager = notificationManagerRef.current;
 
   // Get unread count
   const unreadCount = useMemo(() => {

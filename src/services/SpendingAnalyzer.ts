@@ -5,6 +5,7 @@
 
 import { logger } from '../utils/logger';
 import { SPECIAL_CATEGORIES } from '../config/constants';
+import { formatCurrency } from '../utils/formatters';
 import type { Transaction, NotificationPreferences } from '../types/finance';
 
 interface SpendingAnalyzerDeps {
@@ -70,7 +71,7 @@ export class SpendingAnalyzer {
                 await this.deps.createNotification({
                     type: 'unusual_spending',
                     title: `Gasto inusual: ${transaction.category}`,
-                    message: `Gasto de ${this.formatCurrency(transaction.amount)} excede el promedio de ${this.formatCurrency(average)} en ${Math.round((transaction.amount / average) * 100)}%`,
+                    message: `Gasto de ${formatCurrency(transaction.amount)} excede el promedio de ${formatCurrency(average)} en ${Math.round((transaction.amount / average) * 100)}%`,
                     severity: 'warning',
                     isRead: false,
                     actionUrl: `/transactions`,
@@ -159,18 +160,6 @@ export class SpendingAnalyzer {
         }).length;
 
         return count >= this.MIN_TRANSACTIONS;
-    }
-
-    /**
-     * Format currency for display
-     */
-    private formatCurrency(amount: number): string {
-        return new Intl.NumberFormat('es-CO', {
-            style: 'currency',
-            currency: 'COP',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-        }).format(amount);
     }
 
     /**

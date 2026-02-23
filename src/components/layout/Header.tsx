@@ -53,20 +53,42 @@ export const Header: React.FC<HeaderProps> = ({
   }, [showSettingsMenu, setShowSettingsMenu]);
 
   // Cerrar notificaciones al hacer clic fuera
+  // NOTA: NotificationCenter maneja su propio cierre via backdrop
+  // Este efecto solo maneja el botón de campana
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (notificationsRef.current && !notificationsRef.current.contains(event.target as Node)) {
-        setShowNotifications(false);
+      // Solo cerrar si el clic es en el botón de notificaciones o fuera de él
+      // El NotificationCenter (portal) maneja su propio cierre
+      const target = event.target as Node;
+
+      // Si el clic es dentro del ref de notificaciones (el botón), no hacer nada
+      if (notificationsRef.current && notificationsRef.current.contains(target)) {
+        return;
       }
+
+      // Si el clic es dentro del portal del NotificationCenter, no cerrar
+      // El portal se renderiza en document.body, así que verificamos si el target
+      // está dentro de un elemento con clase que identifica el NotificationCenter
+      const notificationPanel = document.querySelector('[data-notification-center]');
+      if (notificationPanel && notificationPanel.contains(target)) {
+        return;
+      }
+
+      // Si llegamos aquí, el clic fue fuera de todo, cerrar
+      setShowNotifications(false);
     };
 
     if (showNotifications) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
+      // Usar un pequeño delay para evitar que el clic que abre el modal lo cierre inmediatamente
+      const timeoutId = setTimeout(() => {
+        document.addEventListener('mousedown', handleClickOutside);
+      }, 100);
 
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
+      return () => {
+        clearTimeout(timeoutId);
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
   }, [showNotifications, setShowNotifications]);
 
   return (

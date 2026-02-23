@@ -142,9 +142,16 @@ describe('formatNumberForInput', () => {
   });
 
   it('formats trailing comma input', () => {
-    // Note: current implementation strips trailing comma (pre-existing behavior)
+    // Preserves trailing comma to allow user to continue typing decimals
     const result = formatNumberForInput('1000,');
-    expect(result).toBe('1.000');
+    expect(result).toBe('1.000,');
+  });
+
+  it('preserves trailing zeros in decimal part', () => {
+    // Preserves trailing zeros to allow editing (e.g., 99,9 -> 99,90 -> 99,900)
+    expect(formatNumberForInput('99,9')).toBe('99,9');
+    expect(formatNumberForInput('99,90')).toBe('99,90');
+    expect(formatNumberForInput('99,900')).toBe('99,900');
   });
 
   it('preserves decimal part', () => {

@@ -156,6 +156,7 @@ class DateFormatter {
 class NumberFormatter {
   /**
    * Formatea un número para mostrar en input con separadores de miles
+   * Formato colombiano: punto (.) para miles, coma (,) para decimales
    * @param value - Valor a formatear
    * @returns String formateado con separadores (ej: "1.234.567" o "1.234,56")
    */
@@ -163,34 +164,23 @@ class NumberFormatter {
     if (!value && value !== 0) return '';
 
     const strValue = value.toString();
-    // Reemplazar punto decimal por coma (en caso de que sea número)
-    const normalized = strValue.replace('.', ',');
-    // Remover puntos de miles existentes y espacios
-    const numStr = normalized.replace(/[^\d,]/g, '');
+    // Normalizar: si viene con punto decimal (número JS), no hacer nada aún
+    // Remover cualquier separador de miles existente
+    const cleanStr = strValue.replace(/\./g, '');
 
-    if (!numStr) return '';
-
-    // Verificar si el usuario acaba de escribir una coma (termina con coma sin decimales)
-    const endsWithComma = numStr.endsWith(',') && !numStr.includes(',', 0);
-
-    // Separar parte entera y decimal
-    const parts = numStr.split(',');
-    const integerPart = parts[0].replace(/\./g, '');
-    const decimalPart = parts[1] !== undefined ? parts[1] : '';
+    // Separar parte entera y decimal (usando coma como decimal)
+    const parts = cleanStr.split(',');
+    const integerPart = parts[0];
+    const decimalPart = parts[1];
 
     // Si no hay parte entera válida, retornar vacío
     if (!integerPart || integerPart === '') return '';
 
-    // Formatear parte entera con separador de miles
-    const formattedInteger = new Intl.NumberFormat('es-CO').format(parseInt(integerPart) || 0);
+    // Formatear parte entera con separador de miles (punto)
+    const formattedInteger = parseInt(integerPart).toLocaleString('es-CO');
 
-    // Si el usuario escribió coma pero aún no hay decimales, preservar la coma
-    if (endsWithComma) {
-      return `${formattedInteger},`;
-    }
-
-    // Combinar con parte decimal si existe
-    if (decimalPart !== '') {
+    // Si hay parte decimal, combinar (preservando ceros finales)
+    if (decimalPart !== undefined) {
       return `${formattedInteger},${decimalPart}`;
     }
 
@@ -199,11 +189,13 @@ class NumberFormatter {
 
   /**
    * Remueve formato de un string para obtener el número
-   * @param value - String formateado
-   * @returns Número sin formato pero preservando coma decimal
+   * Remueve puntos (separador de miles) pero preserva coma (decimal)
+   * @param value - String formateado (ej: "1.234,56")
+   * @returns Número sin formato pero preservando coma decimal (ej: "1234,56")
    */
   static unformat(value: string): string {
-    return value.replace(/[^\d,]/g, '');
+    // Remover puntos (miles) pero preservar coma (decimal)
+    return value.replace(/\./g, '').replace(/[^\d,]/g, '');
   }
   /**
    * Parsea un string a número de forma segura

@@ -22,7 +22,7 @@ export class NotificationManager {
     private debounceMap: Map<string, number> = new Map();
     private toastQueue: Notification[] = [];
     private isProcessingQueue = false;
-    private readonly DEBOUNCE_MS = 1000;
+    private readonly DEBOUNCE_MS = 60000;  // ✅ FIX #6: 60 segundos (1 minuto)
     private readonly MAX_VISIBLE_TOASTS = 3;
 
     constructor(deps: NotificationManagerDeps) {
@@ -30,7 +30,8 @@ export class NotificationManager {
     }
 
     /**
-     * Create a new notification with debouncing
+     * ✅ FIX #2 & #3: Create notification with deduplication at Firestore level
+     * La deduplicación ahora se maneja en addNotification con docId determinístico
      */
     async createNotification(notification: Omit<Notification, 'id' | 'createdAt'>): Promise<void> {
         // Check if notification type is enabled
@@ -39,19 +40,19 @@ export class NotificationManager {
             return;
         }
 
-        // Check for duplicate (debouncing)
+        // Check for duplicate (debouncing en memoria - previene llamadas rápidas)
         if (this.isDuplicate(notification)) {
-            logger.info('Duplicate notification detected, skipping', { notification });
+            logger.info('Duplicate notification detected (debounce), skipping', { notification });
             return;
         }
 
         try {
-            // Store notification
+            // Store notification (addNotification maneja deduplicación con docId)
             await this.deps.addNotification(notification);
 
             // Update debounce map
-            const key = this.getDebounceKey(notification);
-            this.debounceMap.set(key, Date.now());
+            const dedupeKey = this.getDebounceKey(notification);
+            this.debounceMap.set(dedupeKey, Date.now());
 
             // Show toast if appropriate
             if (this.shouldShowToast(notification)) {
@@ -216,10 +217,14 @@ export class NotificationManager {
     }
 
     /**
-     * Generate a unique key for debouncing
+     * ✅ FIX #3: Generate a unique key for debouncing (incluye fecha para deduplicación diaria)
      */
     private getDebounceKey(notification: Omit<Notification, 'id' | 'createdAt'>): string {
         const parts = [notification.type, notification.title];
+
+        // ✅ FIX #3: Agregar fecha para deduplicación diaria
+        const today = new Date().toISOString().split('T')[0]; // "2026-02-22"
+        parts.push(today);
 
         // Add relevant metadata to key for more specific deduplication
         if (notification.metadata) {
@@ -313,16 +318,19 @@ export class NotificationManager {
     }
 
     /**
-     * Clean up old debounce entries (call periodically)
+     * ✅ FIX #6: Clean up old debounce entries (mejorado para limpiar entradas de más de 24h)
      */
     cleanupDebounceMap(): void {
         const now = Date.now();
-        const cutoff = now - this.DEBOUNCE_MS * 2; // Keep entries for 2x debounce window
+        const yesterday = now - (24 * 60 * 60 * 1000);  // 24 horas atrás
 
+        // Eliminar entradas de más de 24 horas
         for (const [key, timestamp] of this.debounceMap.entries()) {
-            if (timestamp < cutoff) {
+            if (timestamp < yesterday) {
                 this.debounceMap.delete(key);
             }
         }
+
+        logger.info(`Cleaned up debounce map, ${this.debounceMap.size} entries remaining`);
     }
 }

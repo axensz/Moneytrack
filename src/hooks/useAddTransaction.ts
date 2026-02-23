@@ -23,6 +23,7 @@ import {
   TRANSFER_CATEGORY,
   CREDIT_PAYMENT_CATEGORY,
   INITIAL_TRANSACTION,
+  TRANSACTION_VALIDATION,
 } from '../config/constants';
 import type {
   NewTransaction,
@@ -128,6 +129,12 @@ export function useAddTransaction({
 
         if (isNaN(amount)) {
           showToast.error('Monto inválido');
+          return false;
+        }
+
+        // Validar monto máximo
+        if (amount > TRANSACTION_VALIDATION.amount.max) {
+          showToast.error(TRANSACTION_VALIDATION.amount.errorMessage);
           return false;
         }
 

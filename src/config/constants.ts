@@ -92,7 +92,7 @@ export const TRANSACTION_VALIDATION = {
   amount: {
     min: 0.01,
     max: 999999999999,
-    errorMessage: 'El monto debe ser mayor a 0'
+    errorMessage: 'El monto debe estar entre $0,01 y $999.999.999.999'
   },
   description: {
     minLength: 0,

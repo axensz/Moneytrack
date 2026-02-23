@@ -4,6 +4,7 @@
  */
 
 import { logger } from '../utils/logger';
+import { formatCurrency } from '../utils/formatters';
 import type { RecurringPayment, Transaction } from '../types/finance';
 
 interface PaymentMonitorDeps {
@@ -58,7 +59,7 @@ export class PaymentMonitor {
                     await this.deps.createNotification({
                         type: 'recurring',
                         title: `Pago vence hoy: ${payment.name}`,
-                        message: `El pago de ${this.formatCurrency(payment.amount)} vence hoy`,
+                        message: `El pago de ${formatCurrency(payment.amount)} vence hoy`,
                         severity: 'warning',
                         isRead: false,
                         actionUrl: `/recurring`,
@@ -72,7 +73,7 @@ export class PaymentMonitor {
                     await this.deps.createNotification({
                         type: 'recurring',
                         title: `Pago vence mañana: ${payment.name}`,
-                        message: `El pago de ${this.formatCurrency(payment.amount)} vence mañana`,
+                        message: `El pago de ${formatCurrency(payment.amount)} vence mañana`,
                         severity: 'warning',
                         isRead: false,
                         actionUrl: `/recurring`,
@@ -86,7 +87,7 @@ export class PaymentMonitor {
                     await this.deps.createNotification({
                         type: 'recurring',
                         title: `Recordatorio: ${payment.name}`,
-                        message: `El pago de ${this.formatCurrency(payment.amount)} vence en 3 días`,
+                        message: `El pago de ${formatCurrency(payment.amount)} vence en 3 días`,
                         severity: 'info',
                         isRead: false,
                         actionUrl: `/recurring`,
@@ -187,18 +188,6 @@ export class PaymentMonitor {
         });
 
         return linkedTransactions.length > 0;
-    }
-
-    /**
-     * Format currency for display
-     */
-    private formatCurrency(amount: number): string {
-        return new Intl.NumberFormat('es-CO', {
-            style: 'currency',
-            currency: 'COP',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-        }).format(amount);
     }
 
     /**

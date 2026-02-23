@@ -23,14 +23,22 @@ describe('TransactionValidator', () => {
       expect(result.errors).toHaveLength(0);
     });
 
-    it('allows empty description (description is optional)', () => {
+    it('passes when description is empty (description is optional)', () => {
       const result = TransactionValidator.validate({ ...baseTransaction, description: '' });
       expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
     });
 
-    it('allows whitespace-only description (description is optional)', () => {
+    it('passes when description is whitespace-only (description is optional)', () => {
       const result = TransactionValidator.validate({ ...baseTransaction, description: '   ' });
       expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('passes when description is valid (MT-P0-02)', () => {
+      const result = TransactionValidator.validate({ ...baseTransaction, description: 'Compra válida' });
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
     });
 
     it('fails when amount is zero', () => {

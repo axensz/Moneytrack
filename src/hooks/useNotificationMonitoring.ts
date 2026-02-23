@@ -44,6 +44,10 @@ export function useNotificationMonitoring({
     // Track previous transaction count to detect changes
     const prevTransactionCountRef = useRef<number>(0);
     const dailyCheckDoneRef = useRef<boolean>(false);
+
+    // ✅ FIX #2: Guard para inicializar monitores SOLO UNA VEZ
+    const monitorsInitializedRef = useRef<boolean>(false);
+
     const monitorsRef = useRef<{
         budgetMonitor: BudgetMonitor | null;
         paymentMonitor: PaymentMonitor | null;
@@ -58,9 +62,10 @@ export function useNotificationMonitoring({
         debtMonitor: null,
     });
 
-    // Initialize monitors when dependencies change
+    // ✅ FIX #2: Initialize monitors SOLO UNA VEZ (no cuando cambien budgets/transactions/etc)
     useEffect(() => {
         if (!notificationManager) return;
+        if (monitorsInitializedRef.current) return;  // Guard: ya inicializados
 
         const preferences = notificationManager.deps?.preferences;
         if (!preferences) return;
@@ -97,10 +102,11 @@ export function useNotificationMonitoring({
             debts,
         });
 
+        monitorsInitializedRef.current = true;  // Marcar como inicializados
         logger.info('Notification monitors initialized');
-    }, [notificationManager, budgets, transactions, recurringPayments, accounts, debts]);
+    }, [notificationManager]);  // Solo depende de notificationManager (que ahora es estable)
 
-    // Run daily checks on mount (payments and debts)
+    // ✅ FIX #4: Run daily checks on mount (sin dependencias problemáticas)
     useEffect(() => {
         if (dailyCheckDoneRef.current) return;
         if (!monitorsRef.current.paymentMonitor || !monitorsRef.current.debtMonitor) return;
@@ -120,7 +126,7 @@ export function useNotificationMonitoring({
         };
 
         runDailyChecks();
-    }, [monitorsRef.current.paymentMonitor, monitorsRef.current.debtMonitor]);
+    }, []);  // Dependencias vacías: confiar en el guard dailyCheckDoneRef
 
     // Monitor transaction changes and trigger evaluations
     useEffect(() => {

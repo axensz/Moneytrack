@@ -6,6 +6,7 @@
 import { useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Bell, X, CheckCheck, Trash2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useNotifications } from '../../hooks/useNotifications';
 import { useAuth } from '../../hooks/useAuth';
 import { formatDistanceToNow } from 'date-fns';
@@ -35,14 +36,23 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
 
     // Handle notification click
     const handleNotificationClick = async (notification: Notification) => {
+        console.log('[NotificationCenter] Notification clicked:', notification);
+
         if (!notification.isRead && notification.id) {
             await markAsRead(notification.id);
         }
 
         // Navigate to action URL if present
         if (notification.actionUrl) {
-            window.location.href = notification.actionUrl;
-            onClose();
+            console.log('[NotificationCenter] Navigating to:', notification.actionUrl);
+            // Verificar que la URL sea válida antes de navegar
+            try {
+                const url = new URL(notification.actionUrl, window.location.origin);
+                window.location.href = url.href;
+                onClose();
+            } catch (error) {
+                console.error('[NotificationCenter] Invalid action URL:', notification.actionUrl, error);
+            }
         }
     };
 
@@ -80,15 +90,22 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
 
     // Use portal to render outside of header DOM hierarchy
     return createPortal(
-        <>
+        <div className="fixed inset-0 z-50 flex items-start justify-end p-4 pt-20">
             {/* Backdrop */}
             <div
-                className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40 animate-in fade-in duration-200"
-                onClick={onClose}
+                className="absolute inset-0 bg-black/30 backdrop-blur-sm -z-10 animate-in fade-in duration-200"
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onClose();
+                }}
             />
 
             {/* Panel */}
-            <div className="fixed top-20 right-4 w-[calc(100vw-2rem)] sm:w-[420px] max-h-[calc(100vh-6rem)] bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200/50 dark:border-gray-700/50 z-50 flex flex-col animate-in slide-in-from-top-4 fade-in duration-300">
+            <div
+                data-notification-center
+                className="relative w-[calc(100vw-2rem)] sm:w-[420px] max-h-[calc(100vh-6rem)] bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200/50 dark:border-gray-700/50 flex flex-col animate-in slide-in-from-top-4 fade-in duration-300"
+                onClick={(e) => e.stopPropagation()}
+            >
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200/80 dark:border-gray-700/80 bg-gradient-to-r from-purple-50/50 to-blue-50/50 dark:from-purple-900/10 dark:to-blue-900/10 rounded-t-2xl">
                     <div className="flex items-center gap-3">
@@ -201,7 +218,20 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                 {notifications.length > 0 && (
                     <div className="flex gap-2 p-4 border-t border-gray-200/80 dark:border-gray-700/80 bg-gray-50/50 dark:bg-gray-800/50 rounded-b-2xl">
                         <button
-                            onClick={markAllAsRead}
+                            onClick={async (e) => {
+                                console.log('[NotificationCenter] Mark all as read button clicked');
+                                e.stopPropagation();
+                                e.preventDefault();
+                                try {
+                                    console.log('[NotificationCenter] Calling markAllAsRead...');
+                                    await markAllAsRead();
+                                    console.log('[NotificationCenter] markAllAsRead completed');
+                                    toast.success('Todas las notificaciones marcadas como leídas');
+                                } catch (error) {
+                                    console.error('[NotificationCenter] Error marking all as read:', error);
+                                    toast.error('Error al marcar notificaciones como leídas');
+                                }
+                            }}
                             disabled={unreadCount === 0}
                             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-xl transition-all shadow-sm hover:shadow disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm hover:scale-[1.02] active:scale-[0.98]"
                         >
@@ -210,7 +240,21 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                             <span className="sm:hidden">Leídas</span>
                         </button>
                         <button
-                            onClick={clearAll}
+                            onClick={async (e) => {
+                                console.log('[NotificationCenter] Clear all button clicked');
+                                e.stopPropagation();
+                                e.preventDefault();
+                                try {
+                                    console.log('[NotificationCenter] Calling clearAll...');
+                                    await clearAll();
+                                    console.log('[NotificationCenter] clearAll completed');
+                                    toast.success('Todas las notificaciones eliminadas');
+                                    onClose();
+                                } catch (error) {
+                                    console.error('[NotificationCenter] Error clearing all notifications:', error);
+                                    toast.error('Error al eliminar notificaciones');
+                                }
+                            }}
                             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-xl transition-all shadow-sm hover:shadow hover:scale-[1.02] active:scale-[0.98]"
                         >
                             <Trash2 className="w-4 h-4" />
@@ -220,7 +264,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                     </div>
                 )}
             </div>
-        </>,
+        </div>,
         document.body
     );
 }

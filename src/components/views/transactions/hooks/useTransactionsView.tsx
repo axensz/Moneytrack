@@ -11,7 +11,7 @@ import type {
 import { formatNumberForInput, parseDateFromInput } from '../../../../utils/formatters';
 import { getDateRangeFromPreset } from '../../../../utils/dateUtils';
 import { showToast } from '../../../../utils/toastHelpers';
-import { SUCCESS_MESSAGES } from '../../../../config/constants';
+import { SUCCESS_MESSAGES, TRANSACTION_VALIDATION } from '../../../../config/constants';
 
 interface UseTransactionsViewParams {
   transactions: Transaction[];
@@ -139,6 +139,12 @@ export const useTransactionsView = ({
       // Client-side validation
       if (isNaN(amount) || amount <= 0) {
         showToast.error('El monto debe ser un número válido mayor a 0');
+        return;
+      }
+
+      // Validar monto máximo
+      if (amount > TRANSACTION_VALIDATION.amount.max) {
+        showToast.error(TRANSACTION_VALIDATION.amount.errorMessage);
         return;
       }
 

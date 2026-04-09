@@ -99,27 +99,41 @@ export function useCreditCardStatement(
         account.paymentDay!
       );
 
-      // Filter transactions for this account in the current cycle
+      // Filter transactions for this account in the current cycle.
+      // Charges: transactions where this account is the source (expenses/income).
+      // Payments: transfers INTO this account (e.g. paying the bill from a savings account).
       const cycleTransactions = transactions.filter(t => {
         const tDate = new Date(t.date);
-        return t.accountId === account.id && tDate >= cycleStart && tDate <= cycleEnd;
+        const inRange = tDate >= cycleStart && tDate <= cycleEnd;
+        const isCharge = t.accountId === account.id;
+        const isIncomingTransfer = t.type === 'transfer' && t.toAccountId === account.id;
+        return inRange && (isCharge || isIncomingTransfer);
       });
 
-      // Calculate totals
+      // Calculate totals.
+      // For installment expenses, use the monthly installment amount — not the full purchase
+      // amount — since only one installment is due per cycle.
       const totalCharges = cycleTransactions
         .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + t.amount, 0);
+        .reduce((sum, t) => {
+          if (t.installments && t.installments > 1) {
+            return sum + (t.monthlyInstallmentAmount ?? t.amount);
+          }
+          return sum + t.amount;
+        }, 0);
 
       const totalPayments = cycleTransactions
-        .filter(t => t.type === 'income')
+        .filter(t => t.type === 'income' || (t.type === 'transfer' && t.toAccountId === account.id))
         .reduce((sum, t) => sum + t.amount, 0);
 
       const installmentCharges = cycleTransactions
         .filter(t => t.type === 'expense' && t.installments && t.installments > 1)
-        .reduce((sum, t) => sum + (t.monthlyInstallmentAmount || t.amount), 0);
+        .reduce((sum, t) => sum + (t.monthlyInstallmentAmount ?? t.amount), 0);
 
-      const regularCharges = totalCharges - cycleTransactions
-        .filter(t => t.type === 'expense' && t.installments && t.installments > 1)
+      // regularCharges = charges from non-installment expenses.
+      // Now consistent with totalCharges (both use monthly amounts for installments).
+      const regularCharges = cycleTransactions
+        .filter(t => t.type === 'expense' && !(t.installments && t.installments > 1))
         .reduce((sum, t) => sum + t.amount, 0);
 
       return {

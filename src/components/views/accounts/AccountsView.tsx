@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Wallet, CreditCard, Banknote } from 'lucide-react';
 import { showToast } from '../../../utils/toastHelpers';
 import { BalanceCalculator } from '../../../utils/balanceCalculator';
@@ -40,12 +40,20 @@ export const AccountsView: React.FC = () => {
     formatCurrency,
     addTransaction,
   } = useFinance();
-  // Helpers (definidos antes de los hooks que los usan)
-  const getCreditUsed = useCallback((accountId: string): number => {
-    const account = accounts.find((a) => a.id === accountId);
-    if (!account || account.type !== 'credit') return 0;
-    return BalanceCalculator.calculateCreditCardUsed(account, transactions);
+  // Mapa memoizado de cupo usado por tarjeta (evita recalcular en cada render)
+  const creditUsedMap = useMemo(() => {
+    const map = new Map<string, number>();
+    accounts.forEach(a => {
+      if (a.type === 'credit' && a.id) {
+        map.set(a.id, BalanceCalculator.calculateCreditCardUsed(a, transactions));
+      }
+    });
+    return map;
   }, [accounts, transactions]);
+
+  const getCreditUsed = useCallback((accountId: string): number => {
+    return creditUsedMap.get(accountId) ?? 0;
+  }, [creditUsedMap]);
 
   // Custom hooks
   const dragDrop = useDragAndDrop({ accounts, updateAccount });
@@ -85,28 +93,33 @@ export const AccountsView: React.FC = () => {
 
     const today = new Date();
     const cutoffDay = account.cutoffDay;
-    const cutoffDate = new Date(today.getFullYear(), today.getMonth(), cutoffDay);
 
-    if (today.getDate() < cutoffDay) {
-      cutoffDate.setMonth(cutoffDate.getMonth() - 1);
+    // Próximo corte: si hoy ya pasó el día de corte, es el mes siguiente
+    let month = today.getMonth();
+    let year = today.getFullYear();
+    if (today.getDate() > cutoffDay) {
+      month++;
+      if (month > 11) { month = 0; year++; }
     }
-
-    return cutoffDate;
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    return new Date(year, month, Math.min(cutoffDay, daysInMonth));
   };
 
   const getNextPaymentDate = (account: Account): Date | null => {
     if (account.type !== 'credit' || !account.paymentDay) return null;
 
     const today = new Date();
-    const cutoffDay = account.cutoffDay || 1;
     const paymentDay = account.paymentDay;
 
-    let paymentMonth = today.getMonth();
-    if (today.getDate() >= cutoffDay) {
-      paymentMonth = today.getMonth() + 1;
+    // Próximo pago: si hoy ya pasó el día de pago, es el mes siguiente
+    let month = today.getMonth();
+    let year = today.getFullYear();
+    if (today.getDate() > paymentDay) {
+      month++;
+      if (month > 11) { month = 0; year++; }
     }
-
-    return new Date(today.getFullYear(), paymentMonth, paymentDay);
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    return new Date(year, month, Math.min(paymentDay, daysInMonth));
   };
 
   const handleDeleteAccount = async () => {

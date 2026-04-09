@@ -151,19 +151,35 @@ export class CreditCardStrategy implements AccountBalanceStrategy {
    * Calcula el cupo utilizado (deuda pendiente)
    *
    * REGLA DE NEGOCIO:
-   * Cupo Usado = TODOS los gastos - Pagos recibidos (ingresos + transferencias)
+   * Cupo Usado = Gastos efectivos - Pagos recibidos (ingresos + transferencias)
    *
-   * IMPORTANTE: Se consideran TODOS los gastos (pagados y no pagados) porque
-   * representan el dinero que ya se usó del cupo. Los pagos reducen la deuda.
+   * Para compras en cuotas, solo se cuenta el monto de las cuotas vencidas
+   * hasta el mes actual (no el monto total de la compra).
+   * Para compras de contado, se cuenta el monto completo.
    */
   private calculateUsedCredit(account: Account, transactions: Transaction[]): number {
-    // 1. TODOS los gastos en esta tarjeta (pagados y no pagados)
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+
+    // 1. Gastos en esta tarjeta — ajustados por cuotas
     const totalExpenses = transactions
       .filter(t =>
         t.accountId === account.id &&
         t.type === 'expense'
       )
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => {
+        // Compra en cuotas: solo contar cuotas vencidas hasta hoy
+        if (t.installments && t.installments > 1) {
+          const txDate = new Date(t.date);
+          const monthsSince = (currentYear - txDate.getFullYear()) * 12 + (currentMonth - txDate.getMonth());
+          // Cuotas cobradas = mínimo entre meses transcurridos+1 y total de cuotas
+          const installmentsDue = Math.min(Math.max(0, monthsSince + 1), t.installments);
+          const perInstallment = t.monthlyInstallmentAmount ?? (t.amount / t.installments);
+          return sum + (installmentsDue * perInstallment);
+        }
+        return sum + t.amount;
+      }, 0);
 
     // 2. Ingresos directos a esta TC (pagos mediante "Ingreso")
     const directPayments = transactions
@@ -181,7 +197,7 @@ export class CreditCardStrategy implements AccountBalanceStrategy {
       )
       .reduce((sum, t) => sum + t.amount, 0);
 
-    // 4. Cupo utilizado = gastos totales - pagos totales
+    // 4. Cupo utilizado = gastos efectivos - pagos totales
     const usedCredit = totalExpenses - directPayments - transferPayments;
 
     return Math.max(0, usedCredit);

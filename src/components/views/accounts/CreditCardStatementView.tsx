@@ -64,11 +64,10 @@ const StatementCard: React.FC<StatementCardProps> = ({ statement, formatCurrency
           <h3 className="text-base font-bold text-gray-900 dark:text-white">{account.name}</h3>
         </div>
         {(isPaymentSoon || isOverdue) && (
-          <div className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${
-            isOverdue
+          <div className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${isOverdue
               ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
               : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-          }`}>
+            }`}>
             <AlertCircle size={12} />
             {isOverdue ? 'Pago vencido' : `Pago en ${daysUntilPayment} días`}
           </div>
@@ -93,29 +92,27 @@ const StatementCard: React.FC<StatementCardProps> = ({ statement, formatCurrency
           <div>
             <p className="text-xs text-gray-500">Saldo</p>
             <p className={`text-sm font-bold ${balance > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
-              {formatCurrency(Math.abs(balance))}
+              {balance < 0 ? 'A favor: ' : ''}{formatCurrency(Math.abs(balance))}
             </p>
           </div>
         </div>
       </div>
 
       {/* Payment due date */}
-      <div className={`flex items-center justify-between p-3 rounded-xl mb-3 ${
-        isOverdue
+      <div className={`flex items-center justify-between p-3 rounded-xl mb-3 ${isOverdue
           ? 'bg-red-50 dark:bg-red-900/20'
           : isPaymentSoon
-          ? 'bg-amber-50 dark:bg-amber-900/20'
-          : 'bg-blue-50 dark:bg-blue-900/20'
-      }`}>
+            ? 'bg-amber-50 dark:bg-amber-900/20'
+            : 'bg-blue-50 dark:bg-blue-900/20'
+        }`}>
         <div>
           <p className="text-xs text-gray-500 dark:text-gray-400">Fecha de pago</p>
           <p className="text-sm font-semibold text-gray-900 dark:text-white">
             {paymentDueDate.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}
           </p>
         </div>
-        <span className={`text-xs font-medium ${
-          isOverdue ? 'text-red-600' : isPaymentSoon ? 'text-amber-600' : 'text-blue-600'
-        }`}>
+        <span className={`text-xs font-medium ${isOverdue ? 'text-red-600' : isPaymentSoon ? 'text-amber-600' : 'text-blue-600'
+          }`}>
           {isOverdue
             ? `Vencido hace ${Math.abs(daysUntilPayment)} días`
             : `En ${daysUntilPayment} días`
@@ -144,9 +141,8 @@ const StatementCard: React.FC<StatementCardProps> = ({ statement, formatCurrency
                       <span className="text-xs text-gray-500 ml-1.5">— {t.description}</span>
                     )}
                   </div>
-                  <span className={`font-medium ml-2 ${
-                    t.type === 'expense' ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'
-                  }`}>
+                  <span className={`font-medium ml-2 ${t.type === 'expense' ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'
+                    }`}>
                     {t.type === 'expense' ? '-' : '+'}{formatCurrency(t.amount)}
                   </span>
                 </div>

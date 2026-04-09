@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Plus, Target, Trophy, Calendar, Trash2, DollarSign, X, Clock, CheckCircle2 } from 'lucide-react';
 import { useFinance } from '../../../contexts/FinanceContext';
+import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { formatNumberForInput, unformatNumber } from '../../../utils/formatters';
 import { showToast } from '../../../utils/toastHelpers';
 import type { SavingsGoal } from '../../../types/finance';
@@ -20,9 +21,8 @@ export const GoalsView: React.FC = () => {
     goalStatuses,
     goalStats,
     formatCurrency,
-    hideBalances,
-    setHideBalances,
   } = useFinance();
+  const { hideBalances } = useUIPreferences();
 
   const [showForm, setShowForm] = useState(false);
   const [showAddSavings, setShowAddSavings] = useState<string | null>(null);

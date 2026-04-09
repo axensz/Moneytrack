@@ -3,6 +3,7 @@
 import React from 'react';
 import type { Transaction, Account } from '../../../types/finance';
 import { useFinance } from '../../../contexts/FinanceContext';
+import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { CashFlowChart } from './components/CashFlowChart';
 import { MonthlyComparisonChart } from './components/MonthlyComparisonChart';
 import { CategoryPieChart } from './components/CategoryPieChart';
@@ -23,7 +24,8 @@ import { useStatsData } from './hooks/useStatsData';
  * @author Refactored following Clean Code principles
  */
 export const StatsView: React.FC = () => {
-  const { transactions, accounts, formatCurrency, hideBalances } = useFinance();
+  const { transactions, accounts, formatCurrency } = useFinance();
+  const { hideBalances } = useUIPreferences();
   // Custom hooks para procesamiento de datos
   const { monthlyData, yearlyData, categoryData } = useStatsData(transactions);
   const { creditCardInterests, totals } = useCreditCardInterests(accounts, transactions);

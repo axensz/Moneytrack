@@ -14,7 +14,7 @@ interface PaymentMonitorDeps {
 }
 
 export class PaymentMonitor {
-    private deps: PaymentMonitorDeps;
+    public deps: PaymentMonitorDeps;
     private lastCheckDate: Date | null = null;
 
     constructor(deps: PaymentMonitorDeps) {

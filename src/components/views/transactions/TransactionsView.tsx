@@ -12,9 +12,9 @@ import { useFinance } from '../../../contexts/FinanceContext';
 // Componentes
 import { NoAccountsMessage } from './components/NoAccountsMessage';
 import { TransactionsFilters } from './components/TransactionsFilters';
-import { TransactionItem } from './components/TransactionItem';
 import { TransactionsEmptyState } from './components/TransactionsEmptyState';
 import { TransactionsListSkeleton } from './components/TransactionsListSkeleton';
+import { TransactionsList } from './components/TransactionsList';
 
 // Hook
 import { useTransactionsView } from './hooks/useTransactionsView';
@@ -52,6 +52,9 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     deleteTransaction,
     updateTransaction,
     formatCurrency,
+    hasMoreTransactions,
+    loadingMoreTransactions,
+    loadMoreTransactions,
   } = useFinance();
   const {
     filteredTransactions,
@@ -139,27 +142,23 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           onClearFilters={handleClearFilters}
         />
       ) : (
-        <div className="space-y-2 max-h-[65vh] overflow-y-auto pr-1 scrollbar-thin">
-          {filteredTransactions.map((transaction) => (
-            <TransactionItem
-              key={transaction.id}
-              transaction={transaction}
-              account={getAccountForTransaction(transaction.accountId)}
-              isEditing={editingTransaction === transaction.id}
-              editForm={editForm}
-              categories={categories}
-              recurringPaymentName={getRecurringPaymentName(
-                transaction.recurringPaymentId
-              )}
-              formatCurrency={formatCurrency}
-              onEdit={() => startEditTransaction(transaction)}
-              onDelete={() => handleDeleteTransaction(transaction)}
-              onSave={() => handleSaveEdit(transaction.id!)}
-              onCancel={handleCancelEdit}
-              onEditFormChange={setEditForm}
-            />
-          ))}
-        </div>
+        <TransactionsList
+          transactions={filteredTransactions}
+          editingTransaction={editingTransaction}
+          editForm={editForm}
+          categories={categories}
+          formatCurrency={formatCurrency}
+          getAccountForTransaction={getAccountForTransaction}
+          getRecurringPaymentName={getRecurringPaymentName}
+          startEditTransaction={startEditTransaction}
+          handleDeleteTransaction={handleDeleteTransaction}
+          handleSaveEdit={handleSaveEdit}
+          handleCancelEdit={handleCancelEdit}
+          setEditForm={setEditForm}
+          hasMoreTransactions={hasMoreTransactions}
+          loadingMoreTransactions={loadingMoreTransactions}
+          loadMoreTransactions={loadMoreTransactions}
+        />
       )}
     </div>
   );

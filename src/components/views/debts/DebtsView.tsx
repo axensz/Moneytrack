@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Plus, HandCoins, Users, CheckCircle2, ArrowDownLeft, ArrowUpRight, Trash2, X, DollarSign, Edit } from 'lucide-react';
 import { useFinance } from '../../../contexts/FinanceContext';
+import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { formatNumberForInput, unformatNumber } from '../../../utils/formatters';
 import { showToast } from '../../../utils/toastHelpers';
 import type { Debt } from '../../../types/finance';
@@ -23,9 +24,8 @@ export const DebtsView: React.FC = () => {
     getDebtTransactions,
     debtStats,
     formatCurrency,
-    hideBalances,
-    setHideBalances,
   } = useFinance();
+  const { hideBalances } = useUIPreferences();
 
   const [showForm, setShowForm] = useState(false);
   const [showPaymentForm, setShowPaymentForm] = useState<string | null>(null);

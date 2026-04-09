@@ -23,7 +23,7 @@ import {
   Film,
 } from 'lucide-react';
 import type { RecurringPayment, Account, Transaction } from '../../../../types/finance';
-import { useFinance } from '@/contexts/FinanceContext';
+import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 
 // Mapeo de categorías a iconos mejorados
 const CATEGORY_ICONS: Record<string, React.ElementType> = {
@@ -66,7 +66,7 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = memo(({
   onEdit,
   onDelete,
 }) => {
-  const { hideBalances } = useFinance();
+  const { hideBalances } = useUIPreferences();
   const [isExpanded, setIsExpanded] = useState(false);
 
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
@@ -225,7 +225,7 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = memo(({
   history,
   formatCurrency,
 }) => {
-  const { hideBalances } = useFinance();
+  const { hideBalances } = useUIPreferences();
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
 
   return (

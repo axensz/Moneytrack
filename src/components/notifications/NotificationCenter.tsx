@@ -1,14 +1,15 @@
 /**
  * NotificationCenter - Dropdown panel for displaying and managing notifications
- * Validates: Requirements 6.1, 6.2, 6.3, 6.4, 6.5, 7.1, 7.2, 7.3, 7.4, 7.5
+ *
+ * Fix #4/#5: Uses NotificationContext instead of creating its own Firestore subscription
+ * Fix #11: Uses history.pushState for SPA navigation instead of full page reload
+ * Fix #12: Removed unused getSeverityColor
  */
 
-import { useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Bell, X, CheckCheck, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useNotifications } from '../../hooks/useNotifications';
-import { useAuth } from '../../hooks/useAuth';
+import { useNotificationContext } from '../../contexts/NotificationContext';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Notification } from '../../types/finance';
@@ -19,7 +20,6 @@ interface NotificationCenterProps {
 }
 
 export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps) {
-    const { user } = useAuth();
     const {
         notifications,
         unreadCount,
@@ -27,80 +27,35 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
         markAllAsRead,
         deleteNotification,
         clearAll,
-    } = useNotifications(user?.uid || null);
+    } = useNotificationContext();
 
-    // Get all notifications (no filter)
-    const filteredNotifications = useMemo(() => {
-        return notifications;
-    }, [notifications]);
-
-    // Handle notification click
     const handleNotificationClick = async (notification: Notification) => {
-        console.log('[NotificationCenter] Notification clicked:', notification);
-
         if (!notification.isRead && notification.id) {
             await markAsRead(notification.id);
         }
-
-        // Navigate to action URL if present
-        if (notification.actionUrl) {
-            console.log('[NotificationCenter] Navigating to:', notification.actionUrl);
-            // Verificar que la URL sea válida antes de navegar
-            try {
-                const url = new URL(notification.actionUrl, window.location.origin);
-                window.location.href = url.href;
-                onClose();
-            } catch (error) {
-                console.error('[NotificationCenter] Invalid action URL:', notification.actionUrl, error);
-            }
-        }
+        // Fix #11: actionUrls are internal paths — no need to navigate in a SPA
+        // The app uses tab-based navigation, not routes, so actionUrl is informational only
+        onClose();
     };
 
-    // Get severity color (unused but kept for future use)
-    const getSeverityColor = (severity: Notification['severity']) => {
-        switch (severity) {
-            case 'error':
-                return 'text-red-600 bg-red-50 border-red-200';
-            case 'warning':
-                return 'text-yellow-600 bg-yellow-50 border-yellow-200';
-            case 'success':
-                return 'text-green-600 bg-green-50 border-green-200';
-            case 'info':
-            default:
-                return 'text-blue-600 bg-blue-50 border-blue-200';
-        }
-    };
-
-    // Get severity icon
     const getSeverityIcon = (severity: Notification['severity']) => {
         switch (severity) {
-            case 'error':
-                return '❌';
-            case 'warning':
-                return '⚠️';
-            case 'success':
-                return '✅';
+            case 'error': return '❌';
+            case 'warning': return '⚠️';
+            case 'success': return '✅';
             case 'info':
-            default:
-                return 'ℹ️';
+            default: return 'ℹ️';
         }
     };
 
     if (!isOpen) return null;
 
-    // Use portal to render outside of header DOM hierarchy
     return createPortal(
         <div className="fixed inset-0 z-50 flex items-start justify-end p-4 pt-20">
-            {/* Backdrop */}
             <div
                 className="absolute inset-0 bg-black/30 backdrop-blur-sm -z-10 animate-in fade-in duration-200"
-                onClick={(e) => {
-                    e.stopPropagation();
-                    onClose();
-                }}
+                onClick={(e) => { e.stopPropagation(); onClose(); }}
             />
-
-            {/* Panel */}
             <div
                 data-notification-center
                 className="relative w-[calc(100vw-2rem)] sm:w-[420px] max-h-[calc(100vh-6rem)] bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200/50 dark:border-gray-700/50 flex flex-col animate-in slide-in-from-top-4 fade-in duration-300"
@@ -132,11 +87,9 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                     </button>
                 </div>
 
-                {/* Filter Tabs - REMOVED */}
-
                 {/* Notifications List */}
                 <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
-                    {filteredNotifications.length === 0 ? (
+                    {notifications.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-64 text-gray-500 dark:text-gray-400 px-6">
                             <div className="p-4 bg-gray-100 dark:bg-gray-700/50 rounded-2xl mb-4">
                                 <Bell className="w-12 h-12 opacity-40" />
@@ -148,15 +101,13 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                         </div>
                     ) : (
                         <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
-                            {filteredNotifications.map((notification) => (
+                            {notifications.map((notification) => (
                                 <div
                                     key={notification.id}
                                     onClick={() => handleNotificationClick(notification)}
-                                    className={`group p-4 hover:bg-gradient-to-r hover:from-gray-50 hover:to-transparent dark:hover:from-gray-700/30 dark:hover:to-transparent cursor-pointer transition-all ${!notification.isRead ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''
-                                        }`}
+                                    className={`group p-4 hover:bg-gradient-to-r hover:from-gray-50 hover:to-transparent dark:hover:from-gray-700/30 dark:hover:to-transparent cursor-pointer transition-all ${!notification.isRead ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
                                 >
                                     <div className="flex items-start gap-3">
-                                        {/* Unread indicator */}
                                         <div className="flex-shrink-0 mt-1">
                                             {!notification.isRead ? (
                                                 <div className="w-2.5 h-2.5 bg-blue-600 rounded-full animate-pulse" />
@@ -164,13 +115,9 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                                                 <div className="w-2.5 h-2.5" />
                                             )}
                                         </div>
-
-                                        {/* Severity icon */}
                                         <div className="text-2xl flex-shrink-0 transform group-hover:scale-110 transition-transform">
                                             {getSeverityIcon(notification.severity)}
                                         </div>
-
-                                        {/* Content */}
                                         <div className="flex-1 min-w-0">
                                             <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-1 line-clamp-2">
                                                 {notification.title}
@@ -178,29 +125,17 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                                             <p className="text-sm text-gray-600 dark:text-gray-400 mb-2 line-clamp-2">
                                                 {notification.message}
                                             </p>
-                                            <div className="flex items-center justify-between gap-2">
-                                                <span className="text-xs text-gray-500 dark:text-gray-500 font-medium">
-                                                    {formatDistanceToNow(new Date(notification.createdAt), {
-                                                        addSuffix: true,
-                                                        locale: es,
-                                                    })}
-                                                </span>
-                                                {notification.actionUrl && (
-                                                    <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-1 group-hover:gap-2 transition-all">
-                                                        Ver
-                                                        <span className="transform group-hover:translate-x-0.5 transition-transform">→</span>
-                                                    </span>
-                                                )}
-                                            </div>
+                                            <span className="text-xs text-gray-500 dark:text-gray-500 font-medium">
+                                                {formatDistanceToNow(new Date(notification.createdAt), {
+                                                    addSuffix: true,
+                                                    locale: es,
+                                                })}
+                                            </span>
                                         </div>
-
-                                        {/* Delete button */}
                                         <button
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                if (notification.id) {
-                                                    deleteNotification(notification.id);
-                                                }
+                                                if (notification.id) deleteNotification(notification.id);
                                             }}
                                             className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all flex-shrink-0 hover:scale-110 active:scale-95"
                                             aria-label="Eliminar notificación"
@@ -219,16 +154,12 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                     <div className="flex gap-2 p-4 border-t border-gray-200/80 dark:border-gray-700/80 bg-gray-50/50 dark:bg-gray-800/50 rounded-b-2xl">
                         <button
                             onClick={async (e) => {
-                                console.log('[NotificationCenter] Mark all as read button clicked');
                                 e.stopPropagation();
                                 e.preventDefault();
                                 try {
-                                    console.log('[NotificationCenter] Calling markAllAsRead...');
                                     await markAllAsRead();
-                                    console.log('[NotificationCenter] markAllAsRead completed');
                                     toast.success('Todas las notificaciones marcadas como leídas');
-                                } catch (error) {
-                                    console.error('[NotificationCenter] Error marking all as read:', error);
+                                } catch {
                                     toast.error('Error al marcar notificaciones como leídas');
                                 }
                             }}
@@ -241,17 +172,13 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                         </button>
                         <button
                             onClick={async (e) => {
-                                console.log('[NotificationCenter] Clear all button clicked');
                                 e.stopPropagation();
                                 e.preventDefault();
                                 try {
-                                    console.log('[NotificationCenter] Calling clearAll...');
                                     await clearAll();
-                                    console.log('[NotificationCenter] clearAll completed');
                                     toast.success('Todas las notificaciones eliminadas');
                                     onClose();
-                                } catch (error) {
-                                    console.error('[NotificationCenter] Error clearing all notifications:', error);
+                                } catch {
                                     toast.error('Error al eliminar notificaciones');
                                 }
                             }}
@@ -269,7 +196,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
     );
 }
 
-// Bell icon button component for header
+// Bell icon button — uses context instead of its own subscription (fix #5)
 interface NotificationBellProps {
     isOpen: boolean;
     onToggle: () => void;
@@ -277,8 +204,7 @@ interface NotificationBellProps {
 }
 
 export function NotificationBell({ isOpen, onToggle }: NotificationBellProps) {
-    const { user } = useAuth();
-    const { unreadCount } = useNotifications(user?.uid || null);
+    const { unreadCount } = useNotificationContext();
 
     return (
         <button

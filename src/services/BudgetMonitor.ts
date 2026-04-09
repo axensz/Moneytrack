@@ -24,7 +24,7 @@ interface BudgetMonitorDeps {
 }
 
 export class BudgetMonitor {
-    private deps: BudgetMonitorDeps;
+    public deps: BudgetMonitorDeps;
     private utilizationCache: Map<string, { utilization: BudgetUtilization; timestamp: number }> = new Map();
     private readonly CACHE_TTL_MS = 30000; // 30 seconds
 

@@ -1,7 +1,9 @@
 /**
  * Hook orchestrator for notification monitoring
  * Integrates all monitors and triggers evaluations based on data changes
- * Validates: Requirements 11.1, 11.2, 11.4
+ *
+ * Fix #2: Monitors now update their deps when data changes (no stale data)
+ * Fix #3: Transaction detection uses ID-based diffing instead of slice
  */
 
 import { useEffect, useRef } from 'react';
@@ -18,8 +20,6 @@ import type {
     RecurringPayment,
     Account,
     Debt,
-    NotificationPreferences,
-    Notification,
 } from '../types/finance';
 
 interface UseNotificationMonitoringProps {
@@ -41,11 +41,8 @@ export function useNotificationMonitoring({
     debts,
     notificationManager,
 }: UseNotificationMonitoringProps) {
-    // Track previous transaction count to detect changes
-    const prevTransactionCountRef = useRef<number>(0);
+    const prevTransactionIdsRef = useRef<Set<string>>(new Set());
     const dailyCheckDoneRef = useRef<boolean>(false);
-
-    // ✅ FIX #2: Guard para inicializar monitores SOLO UNA VEZ
     const monitorsInitializedRef = useRef<boolean>(false);
 
     const monitorsRef = useRef<{
@@ -62,15 +59,14 @@ export function useNotificationMonitoring({
         debtMonitor: null,
     });
 
-    // ✅ FIX #2: Initialize monitors SOLO UNA VEZ (no cuando cambien budgets/transactions/etc)
+    // Initialize monitors once
     useEffect(() => {
         if (!notificationManager) return;
-        if (monitorsInitializedRef.current) return;  // Guard: ya inicializados
+        if (monitorsInitializedRef.current) return;
 
         const preferences = notificationManager.deps?.preferences;
         if (!preferences) return;
 
-        // Create monitor instances
         monitorsRef.current.budgetMonitor = new BudgetMonitor({
             createNotification: (n) => notificationManager.createNotification(n),
             preferences,
@@ -102,11 +98,47 @@ export function useNotificationMonitoring({
             debts,
         });
 
-        monitorsInitializedRef.current = true;  // Marcar como inicializados
+        monitorsInitializedRef.current = true;
         logger.info('Notification monitors initialized');
-    }, [notificationManager]);  // Solo depende de notificationManager (que ahora es estable)
+    }, [notificationManager]);
 
-    // ✅ FIX #4: Run daily checks on mount (sin dependencias problemáticas)
+    // Fix #2: Keep monitor deps in sync with current data
+    useEffect(() => {
+        const m = monitorsRef.current;
+        if (!m.budgetMonitor) return;
+
+        const preferences = notificationManager?.deps?.preferences;
+        if (!preferences) return;
+
+        m.budgetMonitor.deps = {
+            ...m.budgetMonitor.deps,
+            budgets,
+            transactions,
+            preferences,
+        };
+        m.paymentMonitor!.deps = {
+            ...m.paymentMonitor!.deps,
+            recurringPayments,
+            transactions,
+        };
+        m.spendingAnalyzer!.deps = {
+            ...m.spendingAnalyzer!.deps,
+            transactions,
+            preferences,
+        };
+        m.balanceMonitor!.deps = {
+            ...m.balanceMonitor!.deps,
+            accounts,
+            transactions,
+            preferences,
+        };
+        m.debtMonitor!.deps = {
+            ...m.debtMonitor!.deps,
+            debts,
+        };
+    }, [transactions, budgets, recurringPayments, accounts, debts, notificationManager]);
+
+    // Run daily checks on mount
     useEffect(() => {
         if (dailyCheckDoneRef.current) return;
         if (!monitorsRef.current.paymentMonitor || !monitorsRef.current.debtMonitor) return;
@@ -114,10 +146,8 @@ export function useNotificationMonitoring({
         const runDailyChecks = async () => {
             try {
                 logger.info('Running daily notification checks');
-
                 await monitorsRef.current.paymentMonitor?.checkUpcomingPayments();
                 await monitorsRef.current.debtMonitor?.checkOverdueDebts();
-
                 dailyCheckDoneRef.current = true;
                 logger.info('Daily notification checks completed');
             } catch (error) {
@@ -126,41 +156,35 @@ export function useNotificationMonitoring({
         };
 
         runDailyChecks();
-    }, []);  // Dependencias vacías: confiar en el guard dailyCheckDoneRef
+    }, []);
 
-    // Monitor transaction changes and trigger evaluations
+    // Fix #3: Detect new transactions by comparing IDs, not array slicing
     useEffect(() => {
-        const currentCount = transactions.length;
-        const prevCount = prevTransactionCountRef.current;
+        const currentIds = new Set(transactions.map(t => t.id).filter(Boolean) as string[]);
+        const prevIds = prevTransactionIdsRef.current;
 
         // Skip initial load
-        if (prevCount === 0 && currentCount > 0) {
-            prevTransactionCountRef.current = currentCount;
+        if (prevIds.size === 0 && currentIds.size > 0) {
+            prevTransactionIdsRef.current = currentIds;
             return;
         }
 
-        // Detect new or modified transactions
-        if (currentCount !== prevCount) {
-            const newTransactions = transactions.slice(0, currentCount - prevCount);
+        // Find truly new transaction IDs
+        const newIds = [...currentIds].filter(id => !prevIds.has(id));
 
-            // Evaluate each new transaction
+        if (newIds.length > 0) {
+            const newTransactions = transactions.filter(t => t.id && newIds.includes(t.id));
+
             newTransactions.forEach(async (transaction) => {
                 try {
-                    // Budget alerts
                     if (monitorsRef.current.budgetMonitor) {
                         await monitorsRef.current.budgetMonitor.evaluateBudgetAlerts(transaction);
                     }
-
-                    // Unusual spending alerts
                     if (monitorsRef.current.spendingAnalyzer) {
                         await monitorsRef.current.spendingAnalyzer.evaluateUnusualSpending(transaction);
                     }
-
-                    // Balance alerts (for affected accounts)
                     if (monitorsRef.current.balanceMonitor && transaction.accountId) {
                         await monitorsRef.current.balanceMonitor.evaluateBalanceAlerts(transaction.accountId);
-
-                        // Also check toAccountId for transfers
                         if (transaction.type === 'transfer' && transaction.toAccountId) {
                             await monitorsRef.current.balanceMonitor.evaluateBalanceAlerts(transaction.toAccountId);
                         }
@@ -169,12 +193,12 @@ export function useNotificationMonitoring({
                     logger.error('Transaction evaluation failed', { transaction, error });
                 }
             });
-
-            prevTransactionCountRef.current = currentCount;
         }
+
+        prevTransactionIdsRef.current = currentIds;
     }, [transactions]);
 
-    // Cleanup: periodically clean up caches and debounce maps
+    // Cleanup caches periodically
     useEffect(() => {
         const cleanupInterval = setInterval(() => {
             try {
@@ -182,11 +206,10 @@ export function useNotificationMonitoring({
                 monitorsRef.current.spendingAnalyzer?.cleanupCache();
                 monitorsRef.current.balanceMonitor?.cleanupCooldowns();
                 notificationManager?.cleanupDebounceMap();
-                logger.info('Notification monitoring cleanup completed');
             } catch (error) {
                 logger.error('Notification monitoring cleanup failed', error);
             }
-        }, 5 * 60 * 1000); // Every 5 minutes
+        }, 5 * 60 * 1000);
 
         return () => clearInterval(cleanupInterval);
     }, [notificationManager]);

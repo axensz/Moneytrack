@@ -8,6 +8,13 @@ import { formatCurrency } from '../../utils/formatters';
 import { logger } from '../../utils/logger';
 import { useFinance } from '../../contexts/FinanceContext';
 
+// Unique ID generator for chat messages
+let _msgIdCounter = 0;
+const nextMsgId = () => `msg-${++_msgIdCounter}-${Date.now()}`;
+
+// Local message type with unique ID for React keys
+type UIChatMessage = ChatMessage & { id: string };
+
 // Máximo de mensajes del historial enviados a la API para evitar exceder tokens
 const MAX_HISTORY_MESSAGES = 20;
 
@@ -103,7 +110,8 @@ function renderMarkdown(text: string): React.ReactNode {
 
 interface AIChatBotProps { }
 
-const WELCOME_MESSAGE: ChatMessage = {
+const WELCOME_MESSAGE: UIChatMessage = {
+  id: 'welcome',
   role: 'model',
   content: '¡Hola! 👋 Soy tu asistente financiero. Puedo analizar tus gastos, darte consejos, **agregar transacciones** y **recategorizar** movimientos. ¿En qué te puedo ayudar?',
 };
@@ -224,8 +232,8 @@ const ActionCard: React.FC<{
               Recategorizar {updates.length} transacciones
             </p>
             <div className="text-xs space-y-1 text-gray-700 dark:text-gray-300 bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 border border-purple-100 dark:border-purple-800/50 max-h-32 overflow-y-auto scrollbar-thin">
-              {updates.map((u, i) => (
-                <p key={i} className="flex items-center gap-1.5 py-0.5">
+              {updates.map((u) => (
+                <p key={u.transactionId} className="flex items-center gap-1.5 py-0.5">
                   <span className="text-purple-500">•</span>
                   <span className="flex-1 truncate">{u.description}</span>
                   <span className="text-[10px] text-gray-500">→</span>
@@ -289,7 +297,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
     addCategory: onAddCategory,
   } = useFinance();
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
+  const [messages, setMessages] = useState<UIChatMessage[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -322,7 +330,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
     const trimmed = text.trim();
     if (!trimmed || isLoading) return;
 
-    const userMessage: ChatMessage = { role: 'user', content: trimmed };
+    const userMessage: UIChatMessage = { id: nextMsgId(), role: 'user', content: trimmed };
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
@@ -342,7 +350,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
 
       // Parsear acciones del response
       const { text, action } = parseActionFromResponse(rawText);
-      setMessages(prev => [...prev, { role: 'model', content: text, action, tokenUsage }]);
+      setMessages(prev => [...prev, { id: nextMsgId(), role: 'model', content: text, action, tokenUsage }]);
     } catch (err) {
       logger.error('[AIChatBot] Error sending message', err);
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -430,7 +438,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
           setMessages(prev => {
             const updated = [...prev];
             updated[msgIndex] = { ...updated[msgIndex], actionExecuted: true };
-            updated.push({ role: 'model', content: `✅ ¡Listo! Se agregó el ${d.txType === 'income' ? 'ingreso' : 'gasto'} de **${formatCurrency(d.amount)}** en **${d.category}** (${d.accountName}).` });
+            updated.push({ id: nextMsgId(), role: 'model', content: `✅ ¡Listo! Se agregó el ${d.txType === 'income' ? 'ingreso' : 'gasto'} de **${formatCurrency(d.amount)}** en **${d.category}** (${d.accountName}).` });
             return updated;
           });
           break;
@@ -455,7 +463,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
           setMessages(prev => {
             const updated = [...prev];
             updated[msgIndex] = { ...updated[msgIndex], actionExecuted: true };
-            updated.push({ role: 'model', content: `✅ ¡Listo! "${d.description}" se movió de **${d.oldCategory}** a **${d.newCategory}**.` });
+            updated.push({ id: nextMsgId(), role: 'model', content: `✅ ¡Listo! "${d.description}" se movió de **${d.oldCategory}** a **${d.newCategory}**.` });
             return updated;
           });
           break;
@@ -479,7 +487,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
           setMessages(prev => {
             const updated = [...prev];
             updated[msgIndex] = { ...updated[msgIndex], actionExecuted: true };
-            updated.push({ role: 'model', content: `✅ ¡Listo! Se recategorizaron **${updates.length} transacciones** correctamente.` });
+            updated.push({ id: nextMsgId(), role: 'model', content: `✅ ¡Listo! Se recategorizaron **${updates.length} transacciones** correctamente.` });
             return updated;
           });
           break;
@@ -490,7 +498,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
           setMessages(prev => {
             const updated = [...prev];
             updated[msgIndex] = { ...updated[msgIndex], actionExecuted: true };
-            updated.push({ role: 'model', content: `✅ ¡Listo! Se creó la categoría **"${d.name}"** en ${d.categoryType === 'expense' ? 'gastos' : 'ingresos'}.` });
+            updated.push({ id: nextMsgId(), role: 'model', content: `✅ ¡Listo! Se creó la categoría **"${d.name}"** en ${d.categoryType === 'expense' ? 'gastos' : 'ingresos'}.` });
             return updated;
           });
           break;
@@ -498,7 +506,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      setMessages(prev => [...prev, { role: 'model', content: `❌ Error al ejecutar la acción: ${errorMsg}` }]);
+      setMessages(prev => [...prev, { id: nextMsgId(), role: 'model', content: `❌ Error al ejecutar la acción: ${errorMsg}` }]);
     } finally {
       setExecutingAction(null);
     }
@@ -508,7 +516,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
     setMessages(prev => {
       const updated = [...prev];
       updated[msgIndex] = { ...updated[msgIndex], action: undefined };
-      updated.push({ role: 'model', content: 'Entendido, no se realizó ningún cambio. 👍' });
+      updated.push({ id: nextMsgId(), role: 'model', content: 'Entendido, no se realizó ningún cambio. 👍' });
       return updated;
     });
   }, []);
@@ -578,7 +586,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 space-y-3 min-h-0 bg-gradient-to-b from-gray-50/50 to-transparent dark:from-gray-800/30 dark:to-transparent scrollbar-thin">
         {messages.map((msg, i) => (
-          <React.Fragment key={i}>
+          <React.Fragment key={msg.id}>
             <div
               className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}
             >
@@ -655,9 +663,9 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
       {/* Sugerencias (solo al inicio) */}
       {messages.length <= 1 && !isLoading && configured && (
         <div className="px-3 sm:px-4 pb-2 flex flex-wrap gap-1.5 shrink-0 animate-in fade-in slide-in-from-bottom-2 duration-500">
-          {SUGGESTIONS.map((s, i) => (
+          {SUGGESTIONS.map((s) => (
             <button
-              key={i}
+              key={s}
               onClick={() => handleSuggestion(s)}
               className="text-xs px-3 py-1.5 rounded-full bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-900/30 text-purple-700 dark:text-purple-300 hover:from-purple-100 hover:to-purple-200 dark:hover:from-purple-900/40 dark:hover:to-purple-900/50 transition-all hover:scale-105 active:scale-95 border border-purple-200 dark:border-purple-800 shadow-sm"
             >

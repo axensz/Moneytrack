@@ -26,13 +26,17 @@ export interface BudgetStatus {
   status: 'ok' | 'warning' | 'exceeded';
 }
 
-export function useBudgets(userId: string | null, transactions: Transaction[]) {
+export function useBudgets(userId: string | null, transactions: Transaction[], externalBudgets?: Budget[]) {
   const [firestoreBudgets, setFirestoreBudgets] = useState<Budget[]>([]);
   const [loading, setLoading] = useState(true);
   const [localBudgets, setLocalBudgets] = useLocalStorage<Budget[]>('budgets', []);
 
-  // Firestore subscription
+  // Firestore subscription — skip if data provided externally (centralized)
   useEffect(() => {
+    if (externalBudgets !== undefined) {
+      setLoading(false);
+      return;
+    }
     if (!userId) {
       setFirestoreBudgets([]);
       setLoading(false);
@@ -61,9 +65,9 @@ export function useBudgets(userId: string | null, transactions: Transaction[]) {
     );
 
     return () => unsubscribe();
-  }, [userId]);
+  }, [userId, externalBudgets !== undefined]);
 
-  const budgets = userId ? firestoreBudgets : localBudgets;
+  const budgets = externalBudgets ?? (userId ? firestoreBudgets : localBudgets);
 
   // CRUD
   const addBudget = useCallback(async (budget: Omit<Budget, 'id' | 'createdAt'>) => {

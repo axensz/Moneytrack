@@ -16,7 +16,7 @@ interface BalanceMonitorDeps {
 }
 
 export class BalanceMonitor {
-    private deps: BalanceMonitorDeps;
+    public deps: BalanceMonitorDeps;
     private cooldownMap: Map<string, number> = new Map();
     private readonly COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
 

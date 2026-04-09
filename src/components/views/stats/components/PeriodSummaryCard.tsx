@@ -5,7 +5,7 @@ import { Search, Calendar, Tag, Wallet, TrendingUp, TrendingDown, ArrowRightLeft
 import type { Transaction, Account } from '../../../../types/finance';
 import { TRANSFER_CATEGORY } from '../../../../config/constants';
 import { formatCurrency } from '../../../../utils/formatters';
-import { useFinance } from '../../../../contexts/FinanceContext';
+import { useUIPreferences } from '../../../../contexts/UIPreferencesContext';
 
 interface PeriodSummaryCardProps {
   transactions: Transaction[];
@@ -18,7 +18,7 @@ export const PeriodSummaryCard: React.FC<PeriodSummaryCardProps> = ({
   transactions,
   accounts,
 }) => {
-  const { hideBalances } = useFinance();
+  const { hideBalances } = useUIPreferences();
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');

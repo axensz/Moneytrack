@@ -4,7 +4,7 @@ import React, { memo } from 'react';
 import { Edit2, X, Check } from 'lucide-react';
 import type { Transaction, Account, Categories } from '../../../../types/finance';
 import { formatNumberForInput, unformatNumber } from '../../../../utils/formatters';
-import { useFinance } from '@/contexts/FinanceContext';
+import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 
 interface TransactionItemProps {
   transaction: Transaction;
@@ -44,7 +44,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
   onCancel,
   onEditFormChange,
 }) => {
-  const { hideBalances } = useFinance();
+  const { hideBalances } = useUIPreferences();
 
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
 

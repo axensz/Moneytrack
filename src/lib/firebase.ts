@@ -1,7 +1,8 @@
-import { initializeApp } from "firebase/app";
+import { initializeApp, type FirebaseApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
-import { getAuth, signInWithPopup, GoogleAuthProvider, signOut } from "firebase/auth";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
+import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, type Auth } from "firebase/auth";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, type Firestore } from "firebase/firestore";
+import { logger } from "../utils/logger";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -13,50 +14,64 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
-// Validate Firebase configuration
-if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-  throw new Error(
-    '🔥 Firebase configuration is missing!\n\n' +
-    'Please follow these steps:\n' +
-    '1. Go to https://console.firebase.google.com\n' +
-    '2. Select your project: "moneytrack-889fe"\n' +
-    '3. Click ⚙️ > Project settings > Your apps\n' +
-    '4. Copy your Firebase config values\n' +
-    '5. Update the .env.local file with real credentials\n\n' +
-    'See .env.local for detailed instructions.'
-  );
-}
+const isMissingConfig = !firebaseConfig.apiKey || !firebaseConfig.projectId;
 
 // Detect placeholder/dummy values
-const isDummyConfig = 
-  firebaseConfig.apiKey.includes('YOUR_') || 
-  firebaseConfig.apiKey.includes('Dummy') ||
-  firebaseConfig.apiKey.length < 30;
+const isDummyConfig = firebaseConfig.apiKey
+  ? (firebaseConfig.apiKey.includes('YOUR_') ||
+    firebaseConfig.apiKey.includes('Dummy') ||
+    firebaseConfig.apiKey.length < 30)
+  : false;
 
-if (isDummyConfig) {
-  throw new Error(
-    '🔥 Firebase API key is invalid!\n\n' +
-    'You are using a placeholder API key. Please:\n' +
-    '1. Open .env.local file\n' +
-    '2. Replace placeholder values with real Firebase credentials\n' +
-    '3. Get your credentials from: https://console.firebase.google.com\n\n' +
-    'Current API key: ' + firebaseConfig.apiKey.substring(0, 20) + '...'
+/**
+ * Firebase is optional — when config is missing or invalid,
+ * the app runs in guest mode (localStorage only, no auth).
+ * This prevents build failures and lets devs run without credentials.
+ */
+export const isFirebaseConfigured = !isMissingConfig && !isDummyConfig;
+
+let _app: FirebaseApp | null = null;
+let _auth: Auth | null = null;
+let _db: Firestore | null = null;
+
+if (isFirebaseConfigured) {
+  try {
+    _app = initializeApp(firebaseConfig);
+    _auth = getAuth(_app);
+    _db = initializeFirestore(_app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+      })
+    });
+  } catch (err) {
+    logger.error('Failed to initialize Firebase', err);
+  }
+} else if (typeof window !== 'undefined') {
+  logger.warn(
+    '🔥 Firebase not configured — running in guest mode (localStorage only).\n' +
+    'To enable auth & sync, create .env.local with your Firebase credentials.\n' +
+    'See .env.example for details.'
   );
 }
 
-const app = initializeApp(firebaseConfig);
-const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
-const auth = getAuth(app);
+const analytics = typeof window !== 'undefined' && _app ? getAnalytics(_app) : null;
 
-// Firestore con persistencia offline nativa
-const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
-  })
-});
+// Export with non-null types — safe because:
+// 1. useAuth guards with !auth → returns no user → userId is null
+// 2. All Firestore hooks guard with !userId → never call db when unconfigured
+const app = _app as FirebaseApp;
+const auth = _auth as Auth;
+const db = _db as Firestore;
 
-const googleProvider = new GoogleAuthProvider();
+export const loginWithGoogle = async () => {
+  if (!_auth) throw new Error('Firebase no está configurado. Crea .env.local con tus credenciales.');
+  const googleProvider = new GoogleAuthProvider();
+  return signInWithPopup(_auth, googleProvider);
+};
 
-export const loginWithGoogle = () => signInWithPopup(auth, googleProvider);
-export const logoutFirebase = () => signOut(auth);
+export const logoutFirebase = async () => {
+  if (!_auth) return;
+  return signOut(_auth);
+};
+
 export { app, analytics, auth, db };

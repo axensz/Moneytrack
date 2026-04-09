@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "RTK Shell Rewrite",
+  "description": "Intercepta comandos de shell y los reescribe para pasar por rtk, reduciendo el consumo de tokens en 60-90% en las salidas de comandos comunes como git, npm test, ls, grep, etc.",
+  "version": "1",
+  "when": {
+    "type": "preToolUse",
+    "toolTypes": [
+      "shell"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Before executing this shell command, check if it can be optimized with rtk. If the command starts with any of these: git, gh, cargo, cat, head, tail, rg, grep, ls, vitest, jest, tsc, eslint, biome, prettier, playwright, prisma, ruff, pytest, pip, go, golangci-lint, rake, rspec, rubocop, bundle, aws, docker, kubectl, curl, pnpm, npm test, npm run build, npm run lint — then rewrite the command to prefix it with \"rtk\". For example: \"git status\" becomes \"rtk git status\", \"npm test\" becomes \"rtk test npm test\", \"cat file.ts\" becomes \"rtk read file.ts\". Do NOT rewrite commands that already start with \"rtk\". Do NOT rewrite heredocs (<<) or commands that are not in the supported list. Execute the rewritten command instead of the original."
+  }
+}

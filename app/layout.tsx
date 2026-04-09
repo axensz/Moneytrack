@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "../src/components/theme/ThemeProvider";
@@ -16,17 +16,18 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  themeColor: "#8b5cf6",
+};
+
 export const metadata: Metadata = {
   title: "Control de Finanzas - MoneyTrack",
   description: "Gestiona tus ingresos, gastos y cuentas de forma simple",
   manifest: "/manifest.json",
-  themeColor: "#8b5cf6",
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 5,
-    userScalable: true,
-  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

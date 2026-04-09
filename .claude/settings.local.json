@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rtk next:*)",
+      "Bash(rtk tsc:*)",
+      "Bash(rtk lint:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npx vitest:*)",
+      "Bash(rtk ls:*)",
+      "Bash(xargs -I {} grep -l \"useState\\\\|useCallback\\\\|useEffect\\\\|useMemo\" {})",
+      "Bash(xargs grep:*)",
+      "Bash(rtk find:*)"
+    ]
+  }
+}

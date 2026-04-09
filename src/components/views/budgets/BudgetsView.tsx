@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Plus, PieChart, AlertTriangle, CheckCircle2, XCircle, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
 import { useFinance } from '../../../contexts/FinanceContext';
+import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { formatNumberForInput, unformatNumber } from '../../../utils/formatters';
 import { showToast } from '../../../utils/toastHelpers';
 
@@ -20,9 +21,8 @@ export const BudgetsView: React.FC = () => {
     budgetStatuses,
     budgetStats,
     formatCurrency,
-    hideBalances,
-    setHideBalances,
   } = useFinance();
+  const { hideBalances } = useUIPreferences();
 
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({

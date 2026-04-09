@@ -13,7 +13,7 @@ interface DebtMonitorDeps {
 }
 
 export class DebtMonitor {
-    private deps: DebtMonitorDeps;
+    public deps: DebtMonitorDeps;
     private lastCheckDate: Date | null = null;
     private lastReminderMap: Map<string, number> = new Map(); // debtId -> timestamp
 

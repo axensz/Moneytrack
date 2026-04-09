@@ -16,7 +16,8 @@ import type { Transaction, RecurringPayment } from '../types/finance';
 
 export function useRecurringPayments(
   userId: string | null,
-  transactions: Transaction[]
+  transactions: Transaction[],
+  externalPayments?: RecurringPayment[]
 ) {
   // LocalStorage para modo invitado
   const [localPayments, setLocalPayments] = useLocalStorage<RecurringPayment[]>(
@@ -24,11 +25,13 @@ export function useRecurringPayments(
     []
   );
 
-  // Subscripción a Firestore
-  const { firestorePayments, loading, error } = useRecurringSubscription(userId);
+  // Subscripción a Firestore — skip if data provided externally
+  const { firestorePayments, loading, error } = useRecurringSubscription(
+    externalPayments !== undefined ? null : userId
+  );
 
-  // Usar Firebase si hay usuario, localStorage si no
-  const recurringPayments = userId ? firestorePayments : localPayments;
+  // Use external data if provided, otherwise Firestore or localStorage
+  const recurringPayments = externalPayments ?? (userId ? firestorePayments : localPayments);
 
   // Operaciones CRUD
   const { addRecurringPayment, updateRecurringPayment, deleteRecurringPayment } =

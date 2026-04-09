@@ -265,11 +265,10 @@ export class NotificationManager {
         this.isProcessingQueue = true;
 
         while (this.toastQueue.length > 0) {
-            // Check how many toasts are currently visible
-            const visibleCount = document.querySelectorAll('[data-sonner-toast]').length;
+            // Fix #10: react-hot-toast uses [role="status"] not [data-sonner-toast]
+            const visibleCount = document.querySelectorAll('[role="status"]').length;
 
             if (visibleCount >= this.MAX_VISIBLE_TOASTS) {
-                // Wait a bit before checking again
                 await new Promise((resolve) => setTimeout(resolve, 1000));
                 continue;
             }

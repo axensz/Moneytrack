@@ -29,6 +29,6 @@ export async function withOfflineSupport<T>(
     } else {
         // Queue for later if offline
         await offlineQueue.addToQueue(queueData);
-        console.log('Operation queued for offline sync:', queueData);
+        console.log('[Offline] Operation queued for sync:', queueData.type);
     }
 }

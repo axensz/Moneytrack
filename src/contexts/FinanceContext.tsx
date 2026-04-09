@@ -26,6 +26,7 @@ import { useCategories } from '../hooks/useCategories';
 import { useDebts } from '../hooks/useDebts';
 import { useBudgets } from '../hooks/useBudgets';
 import { useSavingsGoals } from '../hooks/useSavingsGoals';
+import { useFirestoreData } from './FirestoreContext';
 import { formatCurrency } from '../utils/formatters';
 import type { Transaction, Account, Categories, RecurringPayment, Debt, Budget, SavingsGoal } from '../types/finance';
 import type { BudgetStatus } from '../hooks/useBudgets';
@@ -52,13 +53,18 @@ export interface FinanceContextValue {
   defaultAccount: Account | null;
   totalBalance: number;
 
-  // ── UI State ──
-  hideBalances: boolean;
-  setHideBalances: (hide: boolean) => void;
-
   // ── Loading ──
   transactionsLoading: boolean;
   accountsLoading: boolean;
+
+  // ── Pagination ──
+  hasMoreTransactions: boolean;
+  loadingMoreTransactions: boolean;
+  loadMoreTransactions: () => Promise<void>;
+
+  // ── Error ──
+  firestoreError: Error | null;
+  retryLoad: () => void;
 
   // ── Transaction CRUD ──
   addTransaction: (tx: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
@@ -153,19 +159,9 @@ interface FinanceProviderProps {
 }
 
 export function FinanceProvider({ userId, children }: FinanceProviderProps) {
-  // Estado global para ocultar saldos
-  const [hideBalances, setHideBalances] = React.useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('moneytrack_hide_values');
-      return saved === 'true';
-    }
-    return false;
-  });
-
-  // Sincronizar con localStorage
-  React.useEffect(() => {
-    localStorage.setItem('moneytrack_hide_values', String(hideBalances));
-  }, [hideBalances]);
+  // Centralized Firestore data (all 7 collections from a single set of listeners)
+  const firestoreData = useFirestoreData();
+  const { hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions, retryLoad, error: firestoreError } = firestoreData;
 
   // 1. Transacciones (base de todo)
   const {
@@ -191,7 +187,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     loading: accountsLoading,
   } = useAccounts(userId, transactions, deleteTransaction);
 
-  // 3. Pagos recurrentes (depende de transactions)
+  // 3. Pagos recurrentes — uses centralized data when authenticated
   const {
     recurringPayments,
     addRecurringPayment,
@@ -202,12 +198,12 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     getDaysUntilDue,
     getPaymentHistory,
     stats: recurringStats,
-  } = useRecurringPayments(userId, transactions);
+  } = useRecurringPayments(userId, transactions, userId ? firestoreData.recurringPayments : undefined);
 
   // 4. Categorías (depende de transactions)
   const { categories, addCategory, deleteCategory } = useCategories(transactions, userId);
 
-  // 5. Deudas/Préstamos (depende de transactions)
+  // 5. Deudas/Préstamos — uses centralized data when authenticated
   const {
     debts,
     addDebt,
@@ -217,9 +213,9 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     modifyDebtBalance,
     getDebtTransactions,
     stats: debtStats,
-  } = useDebts(userId, transactions);
+  } = useDebts(userId, transactions, userId ? firestoreData.debts : undefined);
 
-  // 6. Presupuestos (depende de transactions)
+  // 6. Presupuestos — uses centralized data when authenticated
   const {
     budgets,
     addBudget,
@@ -227,9 +223,9 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     deleteBudget,
     budgetStatuses,
     stats: budgetStats,
-  } = useBudgets(userId, transactions);
+  } = useBudgets(userId, transactions, userId ? firestoreData.budgets : undefined);
 
-  // 7. Metas de ahorro
+  // 7. Metas de ahorro — uses centralized data when authenticated
   const {
     goals: savingsGoals,
     addGoal,
@@ -238,7 +234,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     addSavings,
     goalStatuses,
     stats: goalStats,
-  } = useSavingsGoals(userId);
+  } = useSavingsGoals(userId, userId ? firestoreData.savingsGoals : undefined);
 
   const value: FinanceContextValue = {
     // Datos
@@ -249,13 +245,18 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     defaultAccount: defaultAccount || null,
     totalBalance,
 
-    // UI State
-    hideBalances,
-    setHideBalances,
-
     // Loading
     transactionsLoading,
     accountsLoading,
+
+    // Pagination
+    hasMoreTransactions,
+    loadingMoreTransactions,
+    loadMoreTransactions,
+
+    // Error
+    firestoreError,
+    retryLoad,
 
     // Transaction CRUD
     addTransaction,

@@ -16,6 +16,7 @@ import { db } from '../../lib/firebase';
 import { TRANSFER_CATEGORY } from '../../config/constants';
 import type { Transaction } from '../../types/finance';
 import { safeFirestoreOperation, checkNetworkConnection } from '../../utils/firestoreHelpers';
+import { logger } from '../../utils/logger';
 
 /**
  * Interfaces para validación de transacciones
@@ -306,7 +307,7 @@ export function useTransactionsCRUD(
           { maxRetries: 2 }
         );
       } catch (error) {
-        console.error('Firestore error updating transaction:', error);
+        logger.error('Firestore error updating transaction:', error);
         throw new Error('Error al actualizar la transacción. Por favor intenta de nuevo.');
       }
     },

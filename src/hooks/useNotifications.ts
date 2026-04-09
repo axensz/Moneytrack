@@ -7,11 +7,15 @@
 import { useMemo, useCallback, useRef, useEffect } from 'react';
 import { useNotificationStore } from './useNotificationStore';
 import { useNotificationPreferences } from './useNotificationPreferences';
+import { useFirestoreData } from '../contexts/FirestoreContext';
 import { NotificationManager } from '../services/NotificationManager';
 import type { Notification, NotificationFilter, NotificationPreferences } from '../types/finance';
 
 export function useNotifications(userId: string | null) {
-  // Get store and preferences
+  // Get centralized Firestore data to avoid separate listeners
+  const firestoreData = useFirestoreData();
+
+  // Get store and preferences — pass centralized data when authenticated
   const {
     notifications,
     loading: storeLoading,
@@ -20,13 +24,13 @@ export function useNotifications(userId: string | null) {
     deleteNotification,
     clearAll: storeClearAll,
     markAllAsRead: storeMarkAllAsRead,
-  } = useNotificationStore(userId);
+  } = useNotificationStore(userId, userId ? firestoreData.notifications : undefined);
 
   const {
     preferences,
     loading: preferencesLoading,
     updatePreferences,
-  } = useNotificationPreferences(userId);
+  } = useNotificationPreferences(userId, userId ? firestoreData.notificationPreferences : undefined);
 
   // ✅ FIX #1: Usar useRef para mantener instancia estable del NotificationManager
   // Esto previene el ciclo infinito de re-inicialización

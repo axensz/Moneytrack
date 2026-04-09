@@ -11,6 +11,7 @@ import type {
 import { formatNumberForInput, parseDateFromInput } from '../../../../utils/formatters';
 import { getDateRangeFromPreset } from '../../../../utils/dateUtils';
 import { showToast } from '../../../../utils/toastHelpers';
+import { logger } from '../../../../utils/logger';
 import { SUCCESS_MESSAGES, TRANSACTION_VALIDATION } from '../../../../config/constants';
 
 interface UseTransactionsViewParams {
@@ -175,7 +176,7 @@ export const useTransactionsView = ({
           ? error.message
           : 'Error desconocido al actualizar la transacción';
 
-        console.error('Error updating transaction:', error);
+        logger.error('Error updating transaction:', error);
         showToast.error(errorMessage);
 
         // Close the edit form

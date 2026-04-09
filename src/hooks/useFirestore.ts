@@ -1,14 +1,7 @@
 /**
- * 🆕 REFACTORED: useFirestore
+ * useFirestore — Hook compositor que combina subscripciones + CRUD.
  *
- * Hook compositor que combina los módulos de Firestore especializados.
- * Mantiene la misma API pública para compatibilidad.
- *
- * ARQUITECTURA:
- * - useFirestoreSubscriptions: Listeners en tiempo real
- * - useTransactionsCRUD: CRUD de transacciones (+ atomicidad)
- * - useAccountsCRUD: CRUD de cuentas
- * - useCategoriesCRUD: CRUD de categorías
+ * Ahora incluye las 7 colecciones centralizadas en useFirestoreSubscriptions.
  */
 
 import {
@@ -19,11 +12,14 @@ import {
 } from './firestore';
 
 export function useFirestore(userId: string | null) {
-  // Datos y subscripciones
-  const { transactions, accounts, categories, loading, error } =
-    useFirestoreSubscriptions(userId);
+  const {
+    transactions, accounts, categories,
+    recurringPayments, debts, budgets, savingsGoals,
+    notifications, notificationPreferences,
+    loading, error,
+    hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions, retryLoad,
+  } = useFirestoreSubscriptions(userId);
 
-  // Operaciones CRUD
   const { addTransaction, addCreditPaymentAtomic, deleteTransaction, updateTransaction } =
     useTransactionsCRUD(userId);
 
@@ -32,23 +28,17 @@ export function useFirestore(userId: string | null) {
   const { addCategory, deleteCategory } = useCategoriesCRUD(userId);
 
   return {
-    // Data
-    transactions,
-    accounts,
-    categories,
-    loading,
-    error,
+    // Data (all 7 collections + notifications)
+    transactions, accounts, categories,
+    recurringPayments, debts, budgets, savingsGoals,
+    notifications, notificationPreferences,
+    loading, error,
+    hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions, retryLoad,
     // Transactions CRUD
-    addTransaction,
-    addCreditPaymentAtomic,
-    deleteTransaction,
-    updateTransaction,
+    addTransaction, addCreditPaymentAtomic, deleteTransaction, updateTransaction,
     // Accounts CRUD
-    addAccount,
-    deleteAccount,
-    updateAccount,
+    addAccount, deleteAccount, updateAccount,
     // Categories CRUD
-    addCategory,
-    deleteCategory,
+    addCategory, deleteCategory,
   };
 }

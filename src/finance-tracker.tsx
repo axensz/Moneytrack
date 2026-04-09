@@ -6,6 +6,7 @@ import { Activity, BarChart3, Wallet, Repeat, HandCoins, PieChart, Target, MoreH
 import { Header } from './components/layout/Header';
 import { TabNavigation } from './components/layout/TabNavigation';
 import { LoadingScreen } from './components/layout/LoadingScreen';
+import { FirestoreErrorBanner } from './components/layout/FirestoreErrorBanner';
 import { StatsCards, TransactionForm } from './components/shared';
 import { AuthModal } from './components/modals/AuthModal';
 import { WelcomeModal } from './components/modals/WelcomeModal';
@@ -19,7 +20,9 @@ import { useAuth } from './hooks/useAuth';
 import { useAddTransaction } from './hooks/useAddTransaction';
 import { useFilteredData } from './hooks/useFilteredData';
 import { useWelcomeModal } from './hooks/useWelcomeModal';
-import { useNotifications, useNotificationMonitoring } from './hooks';
+import { useNotificationMonitoring } from './hooks';
+import { NotificationProvider, useNotificationContext } from './contexts/NotificationContext';
+import { UIPreferencesProvider } from './contexts/UIPreferencesContext';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { TOAST_CONFIG, INITIAL_TRANSACTION } from './config/constants';
@@ -29,7 +32,9 @@ import { logoutFirebase } from './lib/firebase';
 import type { User } from 'firebase/auth';
 import { OfflineBanner } from './components/layout/OfflineBanner';
 import { InstallPrompt } from './components/pwa/InstallPrompt';
-import { AIChatBot } from './components/chat/AIChatBot';
+const AIChatBot = lazy(() =>
+  import('./components/chat/AIChatBot').then(m => ({ default: m.AIChatBot }))
+);
 
 // Lazy-loaded secondary views
 const StatsView = lazy(() =>
@@ -82,13 +87,17 @@ const FinanceTracker = () => {
       {mounted && !authLoading && (
         <div style={{ display: showLoading ? 'none' : undefined }}>
           <FirestoreProvider userId={user?.uid || null}>
-            <FinanceProvider userId={user?.uid || null}>
-              <FinanceTrackerContent
-                user={user}
-                isOnline={isOnline}
-                onDataReady={setDataReady}
-              />
-            </FinanceProvider>
+            <UIPreferencesProvider>
+              <FinanceProvider userId={user?.uid || null}>
+                <NotificationProvider userId={user?.uid || null}>
+                  <FinanceTrackerContent
+                    user={user}
+                    isOnline={isOnline}
+                    onDataReady={setDataReady}
+                  />
+                </NotificationProvider>
+              </FinanceProvider>
+            </UIPreferencesProvider>
           </FirestoreProvider>
         </div>
       )}
@@ -119,10 +128,12 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     getDaysUntilDue,
     getAccountBalance,
     formatCurrency,
+    firestoreError,
+    retryLoad,
   } = useFinance();
 
   // Initialize notification system
-  const { notificationManager } = useNotifications(user?.uid || null);
+  const { notificationManager } = useNotificationContext();
 
   // Set up notification monitoring
   useNotificationMonitoring({
@@ -369,34 +380,44 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         }}
       />
 
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={handleCloseAuthModal}
-      />
+      {isAuthModalOpen && (
+        <AuthModal
+          isOpen={isAuthModalOpen}
+          onClose={handleCloseAuthModal}
+        />
+      )}
 
-      <WelcomeModal
-        isOpen={showWelcomeModal}
-        onClose={handleDismissWelcomeModal}
-        onGoToAccounts={handleGoToAccounts}
-      />
+      {showWelcomeModal && (
+        <WelcomeModal
+          isOpen={showWelcomeModal}
+          onClose={handleDismissWelcomeModal}
+          onGoToAccounts={handleGoToAccounts}
+        />
+      )}
 
-      <HelpModal
-        isOpen={showHelpModal}
-        onClose={handleCloseHelpModal}
-      />
+      {showHelpModal && (
+        <HelpModal
+          isOpen={showHelpModal}
+          onClose={handleCloseHelpModal}
+        />
+      )}
 
-      <CategoriesModal
-        isOpen={showCategoriesModal}
-        onClose={handleCloseCategories}
-        categories={categories}
-        addCategory={addCategory}
-        deleteCategory={deleteCategory}
-      />
+      {showCategoriesModal && (
+        <CategoriesModal
+          isOpen={showCategoriesModal}
+          onClose={handleCloseCategories}
+          categories={categories}
+          addCategory={addCategory}
+          deleteCategory={deleteCategory}
+        />
+      )}
 
-      <NotificationPreferencesModal
-        isOpen={showNotificationPreferences}
-        onClose={handleCloseNotificationPreferences}
-      />
+      {showNotificationPreferences && (
+        <NotificationPreferencesModal
+          isOpen={showNotificationPreferences}
+          onClose={handleCloseNotificationPreferences}
+        />
+      )}
 
       <Header
         user={user}
@@ -422,6 +443,15 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
               formatCurrency={formatCurrency}
               balanceLabel={balanceLabel}
             />
+
+            {/* Error banner when Firestore fails */}
+            {firestoreError && (
+              <FirestoreErrorBanner
+                error={firestoreError}
+                onRetry={retryLoad}
+                isOnline={isOnline}
+              />
+            )}
 
             <TabNavigation
               view={view}
@@ -508,9 +538,11 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         </div>
       </div>
 
-      {/* AI ChatBot */}
+      {/* AI ChatBot — lazy loaded */}
       {user && (
-        <AIChatBot />
+        <Suspense fallback={null}>
+          <AIChatBot />
+        </Suspense>
       )}
     </div>
   );

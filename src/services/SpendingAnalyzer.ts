@@ -21,7 +21,7 @@ interface CategoryAverageCache {
 }
 
 export class SpendingAnalyzer {
-    private deps: SpendingAnalyzerDeps;
+    public deps: SpendingAnalyzerDeps;
     private categoryAverageCache: Map<string, CategoryAverageCache> = new Map();
     private readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
     private readonly LOOKBACK_DAYS = 90; // 3 months

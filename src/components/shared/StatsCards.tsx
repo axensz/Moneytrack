@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { TrendingUp, TrendingDown, Wallet, Calendar, Eye, EyeOff } from 'lucide-react';
-import { useFinance } from '@/contexts/FinanceContext';
+import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 
 interface StatsCardsProps {
   totalBalance: number;
@@ -19,7 +19,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
   formatCurrency,
   balanceLabel = 'Balance'
 }) => {
-  const { hideBalances, setHideBalances } = useFinance();
+  const { hideBalances, setHideBalances } = useUIPreferences();
 
   const displayValue = (value: number) => hideBalances ? '••••••' : formatCurrency(value);
 

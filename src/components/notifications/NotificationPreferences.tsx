@@ -5,8 +5,7 @@
 
 import { useState } from 'react';
 import { Bell, Clock, AlertTriangle, DollarSign, CreditCard, Users, Save } from 'lucide-react';
-import { useNotifications } from '../../hooks/useNotifications';
-import { useAuth } from '../../hooks/useAuth';
+import { useNotificationContext } from '../../contexts/NotificationContext';
 import toast from 'react-hot-toast';
 import type { NotificationPreferences as NotificationPreferencesType } from '../../types/finance';
 
@@ -15,8 +14,7 @@ interface NotificationPreferencesProps {
 }
 
 export function NotificationPreferences({ onSave }: NotificationPreferencesProps) {
-    const { user } = useAuth();
-    const { preferences, updatePreferences } = useNotifications(user?.uid || null);
+    const { preferences, updatePreferences } = useNotificationContext();
     const [localPreferences, setLocalPreferences] = useState<NotificationPreferencesType>(preferences);
     const [saving, setSaving] = useState(false);
 

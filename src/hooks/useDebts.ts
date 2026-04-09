@@ -18,7 +18,7 @@ import type { Debt, Transaction } from '../types/finance';
 
 const generateId = () => Date.now().toString() + Math.random().toString(36).substring(2, 11);
 
-export function useDebts(userId: string | null, transactions: Transaction[]) {
+export function useDebts(userId: string | null, transactions: Transaction[], externalDebts?: Debt[]) {
   // Firestore state
   const [firestoreDebts, setFirestoreDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,8 +26,12 @@ export function useDebts(userId: string | null, transactions: Transaction[]) {
   // LocalStorage for guest mode
   const [localDebts, setLocalDebts] = useLocalStorage<Debt[]>('debts', []);
 
-  // Firestore subscription
+  // Firestore subscription — skip if data provided externally (centralized)
   useEffect(() => {
+    if (externalDebts !== undefined) {
+      setLoading(false);
+      return;
+    }
     if (!userId) {
       setFirestoreDebts([]);
       setLoading(false);
@@ -57,9 +61,9 @@ export function useDebts(userId: string | null, transactions: Transaction[]) {
     );
 
     return () => unsubscribe();
-  }, [userId]);
+  }, [userId, externalDebts !== undefined]);
 
-  const debts = userId ? firestoreDebts : localDebts;
+  const debts = externalDebts ?? (userId ? firestoreDebts : localDebts);
 
   // CRUD Operations
   const addDebt = useCallback(async (debt: Omit<Debt, 'id' | 'createdAt'>) => {

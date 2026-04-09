@@ -5,6 +5,7 @@ import { Plus, Repeat } from 'lucide-react';
 
 import type { RecurringPayment, Account, Transaction } from '../../../types/finance';
 import { useFinance } from '../../../contexts/FinanceContext';
+import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 
 // Componentes
 import { RecurringStatsCards } from './components/RecurringStatsCards';
@@ -27,8 +28,6 @@ export const RecurringPaymentsView: React.FC = () => {
     accounts,
     categories,
     formatCurrency,
-    hideBalances,
-    setHideBalances,
     addRecurringPayment,
     updateRecurringPayment,
     deleteRecurringPayment,
@@ -38,6 +37,7 @@ export const RecurringPaymentsView: React.FC = () => {
     getPaymentHistory,
     recurringStats: stats,
   } = useFinance();
+  const { hideBalances } = useUIPreferences();
   const {
     sortedPayments,
     inactivePayments,

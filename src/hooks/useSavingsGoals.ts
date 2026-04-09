@@ -27,13 +27,17 @@ export interface GoalStatus {
   isOverdue: boolean;
 }
 
-export function useSavingsGoals(userId: string | null) {
+export function useSavingsGoals(userId: string | null, externalGoals?: SavingsGoal[]) {
   const [firestoreGoals, setFirestoreGoals] = useState<SavingsGoal[]>([]);
   const [loading, setLoading] = useState(true);
   const [localGoals, setLocalGoals] = useLocalStorage<SavingsGoal[]>('savingsGoals', []);
 
-  // Firestore subscription
+  // Firestore subscription — skip if data provided externally (centralized)
   useEffect(() => {
+    if (externalGoals !== undefined) {
+      setLoading(false);
+      return;
+    }
     if (!userId) {
       setFirestoreGoals([]);
       setLoading(false);
@@ -64,9 +68,9 @@ export function useSavingsGoals(userId: string | null) {
     );
 
     return () => unsubscribe();
-  }, [userId]);
+  }, [userId, externalGoals !== undefined]);
 
-  const goals = userId ? firestoreGoals : localGoals;
+  const goals = externalGoals ?? (userId ? firestoreGoals : localGoals);
 
   // CRUD
   const addGoal = useCallback(async (goal: Omit<SavingsGoal, 'id' | 'createdAt'>) => {

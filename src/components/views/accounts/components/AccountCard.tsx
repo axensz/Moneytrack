@@ -3,7 +3,7 @@
 import React, { memo } from 'react';
 import { Edit2, Trash2, GripVertical, Wallet, CreditCard, Banknote } from 'lucide-react';
 import type { Account, Transaction } from '../../../../types/finance';
-import { useFinance } from '@/contexts/FinanceContext';
+import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 
 const ACCOUNT_TYPES = [
   { value: 'savings' as const, label: 'Cuenta de Ahorros', icon: Wallet },
@@ -64,7 +64,7 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
   onTouchMove,
   onTouchEnd,
 }) => {
-  const { hideBalances } = useFinance();
+  const { hideBalances } = useUIPreferences();
   const isCredit = account.type === 'credit';
   const accountTypeInfo = ACCOUNT_TYPES.find((t) => t.value === account.type);
 
@@ -270,7 +270,7 @@ const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
   formatCurrency,
   isAssociated,
 }) => {
-  const { hideBalances } = useFinance();
+  const { hideBalances } = useUIPreferences();
   const usagePercentage = Math.min((creditUsed / creditLimit) * 100, 100);
   const isHighUsage = creditUsed > creditLimit * 0.8;
 

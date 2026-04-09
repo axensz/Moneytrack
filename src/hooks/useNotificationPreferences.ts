@@ -3,7 +3,7 @@
  * Soporta Firebase (usuario autenticado) y localStorage (modo invitado)
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useLocalStorage } from './useLocalStorage';
@@ -11,7 +11,7 @@ import { logger } from '../utils/logger';
 import type { NotificationPreferences } from '../types/finance';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../types/finance';
 
-export function useNotificationPreferences(userId: string | null) {
+export function useNotificationPreferences(userId: string | null, externalPreferences?: NotificationPreferences) {
     // Firestore state
     const [firestorePreferences, setFirestorePreferences] = useState<NotificationPreferences>(
         DEFAULT_NOTIFICATION_PREFERENCES
@@ -24,8 +24,15 @@ export function useNotificationPreferences(userId: string | null) {
         DEFAULT_NOTIFICATION_PREFERENCES
     );
 
-    // Firestore subscription
+    // Guard to only auto-init defaults once per userId
+    const initDoneRef = useRef<string | null>(null);
+
+    // Firestore subscription — skip if data provided externally
     useEffect(() => {
+        if (externalPreferences !== undefined) {
+            setLoading(false);
+            return;
+        }
         if (!userId) {
             setFirestorePreferences(DEFAULT_NOTIFICATION_PREFERENCES);
             setLoading(false);
@@ -40,8 +47,9 @@ export function useNotificationPreferences(userId: string | null) {
             (snapshot) => {
                 if (snapshot.exists()) {
                     setFirestorePreferences(snapshot.data() as NotificationPreferences);
-                } else {
-                    // Initialize with defaults if doesn't exist
+                } else if (initDoneRef.current !== userId) {
+                    // Initialize with defaults only once per user session
+                    initDoneRef.current = userId;
                     setDoc(preferencesRef, DEFAULT_NOTIFICATION_PREFERENCES).catch((error) => {
                         logger.error('Failed to initialize notification preferences', error);
                     });
@@ -60,7 +68,7 @@ export function useNotificationPreferences(userId: string | null) {
     }, [userId]);
 
     // Usar Firebase si hay usuario, localStorage si no
-    const preferences = userId ? firestorePreferences : localPreferences;
+    const preferences = externalPreferences ?? (userId ? firestorePreferences : localPreferences);
 
     // Update preferences
     const updatePreferences = useCallback(

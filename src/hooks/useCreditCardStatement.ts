@@ -99,20 +99,36 @@ export function useCreditCardStatement(
         account.paymentDay!
       );
 
-      // Filter transactions for this account in the current cycle.
-      // Charges: transactions where this account is the source (expenses/income).
-      // Payments: transfers INTO this account (e.g. paying the bill from a savings account).
-      const cycleTransactions = transactions.filter(t => {
+      // 1. Regular expenses + payments within this cycle date range.
+      const inCycleTransactions = transactions.filter(t => {
         const tDate = new Date(t.date);
         const inRange = tDate >= cycleStart && tDate <= cycleEnd;
         const isCharge = t.accountId === account.id;
-        const isIncomingTransfer = t.type === 'transfer' && t.toAccountId === account.id;
-        return inRange && (isCharge || isIncomingTransfer);
+        const isIncomingPayment = t.type === 'transfer' && t.toAccountId === account.id;
+        return inRange && (isCharge || isIncomingPayment);
       });
 
+      // 2. Installment transactions from ANY previous cycle that are still active.
+      // An installment is active in this cycle if monthsElapsed is within [0, installments).
+      // We include only those whose purchase date falls BEFORE cycleStart to avoid duplicates
+      // with inCycleTransactions.
+      const activeInstallmentTransactions = transactions.filter(t => {
+        if (t.accountId !== account.id) return false;
+        if (t.type !== 'expense') return false;
+        if (!t.installments || t.installments <= 1) return false;
+        const tDate = new Date(t.date);
+        if (tDate >= cycleStart) return false; // Already covered by inCycleTransactions
+        const monthsElapsed =
+          (cycleStart.getFullYear() - tDate.getFullYear()) * 12 +
+          (cycleStart.getMonth() - tDate.getMonth());
+        return monthsElapsed >= 0 && monthsElapsed < t.installments;
+      });
+
+      // Combine: regular cycle transactions + active installments from past cycles.
+      const cycleTransactions = [...inCycleTransactions, ...activeInstallmentTransactions];
+
       // Calculate totals.
-      // For installment expenses, use the monthly installment amount — not the full purchase
-      // amount — since only one installment is due per cycle.
+      // For installment expenses, use the monthly installment amount (not the full purchase amount).
       const totalCharges = cycleTransactions
         .filter(t => t.type === 'expense')
         .reduce((sum, t) => {
@@ -122,7 +138,7 @@ export function useCreditCardStatement(
           return sum + t.amount;
         }, 0);
 
-      const totalPayments = cycleTransactions
+      const totalPayments = inCycleTransactions
         .filter(t => t.type === 'income' || (t.type === 'transfer' && t.toAccountId === account.id))
         .reduce((sum, t) => sum + t.amount, 0);
 
@@ -130,9 +146,7 @@ export function useCreditCardStatement(
         .filter(t => t.type === 'expense' && t.installments && t.installments > 1)
         .reduce((sum, t) => sum + (t.monthlyInstallmentAmount ?? t.amount), 0);
 
-      // regularCharges = charges from non-installment expenses.
-      // Now consistent with totalCharges (both use monthly amounts for installments).
-      const regularCharges = cycleTransactions
+      const regularCharges = inCycleTransactions
         .filter(t => t.type === 'expense' && !(t.installments && t.installments > 1))
         .reduce((sum, t) => sum + t.amount, 0);
 

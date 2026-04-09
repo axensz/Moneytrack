@@ -170,11 +170,13 @@ export class CreditCardStrategy implements AccountBalanceStrategy {
       )
       .reduce((sum, t) => {
         // Compra en cuotas: solo contar cuotas vencidas hasta hoy
+        // Primera cuota se cobra el mes siguiente a la compra
         if (t.installments && t.installments > 1) {
           const txDate = new Date(t.date);
           const monthsSince = (currentYear - txDate.getFullYear()) * 12 + (currentMonth - txDate.getMonth());
-          // Cuotas cobradas = mínimo entre meses transcurridos+1 y total de cuotas
-          const installmentsDue = Math.min(Math.max(0, monthsSince + 1), t.installments);
+          // monthsSince=0 → mismo mes de compra → 0 cuotas cobradas
+          // monthsSince=1 → mes siguiente → 1 cuota cobrada
+          const installmentsDue = Math.min(Math.max(0, monthsSince), t.installments);
           const perInstallment = t.monthlyInstallmentAmount ?? (t.amount / t.installments);
           return sum + (installmentsDue * perInstallment);
         }

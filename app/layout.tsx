@@ -3,7 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "../src/components/theme/ThemeProvider";
 import { ServiceWorkerRegistration } from "../src/components/pwa/ServiceWorkerRegistration";
-import { OfflineIndicator } from "../src/components/pwa/OfflineIndicator";
 import { PWAWelcomeModal } from "../src/components/pwa/PWAWelcomeModal";
 
 const geistSans = Geist({
@@ -47,7 +46,6 @@ export default function RootLayout({
       >
         <ThemeProvider>
           <ServiceWorkerRegistration />
-          <OfflineIndicator />
           <PWAWelcomeModal />
           {children}
         </ThemeProvider>

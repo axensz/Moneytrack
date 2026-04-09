@@ -1,7 +1,6 @@
 // Service Worker for MoneyTrack PWA
-// Version 1.0.0
-
-const CACHE_VERSION = 'v1';
+// Bump CACHE_VERSION on each deploy to invalidate old caches
+const CACHE_VERSION = 'v2-20260409';
 const CACHE_NAMES = {
     static: `moneytrack-static-${CACHE_VERSION}`,
     api: `moneytrack-api-${CACHE_VERSION}`,

@@ -132,7 +132,7 @@ export function useOfflineQueue() {
     };
 
     /**
-     * Sync all queued operations
+     * Sync all queued operations with exponential backoff on retry
      */
     const syncQueue = useCallback(async () => {
         if (isSyncing || queue.length === 0) return;
@@ -140,21 +140,20 @@ export function useOfflineQueue() {
         setIsSyncing(true);
         console.log(`Syncing ${queue.length} queued operations...`);
 
-        const results = await Promise.allSettled(
-            queue.map((op) => executeOperation(op))
-        );
-
-        // Collect successful operation IDs
         const successfulIds: string[] = [];
         const failedOps: QueuedOperation[] = [];
 
-        results.forEach((result, index) => {
-            if (result.status === 'fulfilled') {
-                successfulIds.push(queue[index].id);
-            } else {
-                failedOps.push(queue[index]);
+        for (const op of queue) {
+            try {
+                await executeOperation(op);
+                successfulIds.push(op.id);
+            } catch {
+                failedOps.push(op);
+                // Exponential backoff: 1s, 2s, 4s based on retry count
+                const delay = Math.min(1000 * Math.pow(2, op.retryCount), 8000);
+                await new Promise(r => setTimeout(r, delay));
             }
-        });
+        }
 
         // Remove successful operations from queue
         if (successfulIds.length > 0) {

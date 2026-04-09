@@ -17,6 +17,8 @@ export function useAccounts(
 ) {
   const {
     accounts: firestoreAccounts,
+    recurringPayments: firestoreRecurringPayments,
+    debts: firestoreDebts,
     loading: firestoreLoading,
     addAccount: firestoreAddAccount,
     deleteAccount: firestoreDeleteAccount,
@@ -98,7 +100,7 @@ export function useAccounts(
       throw new Error('No puedes eliminar la cuenta por defecto');
     }
 
-    // AUDIT-FIX: Eliminación en cascada atómica con writeBatch
+    // Cascade: transactions, recurring payments, and debts linked to this account
     const relatedTransactions = transactions.filter(
       t => t.accountId === id || t.toAccountId === id
     );
@@ -108,26 +110,34 @@ export function useAccounts(
         throw new Error('Sin conexión a internet');
       }
 
+      // Find recurring payments and debts linked to this account
+      const relatedRecurring = firestoreRecurringPayments.filter(p => p.accountId === id);
+      const relatedDebts = firestoreDebts.filter(d => d.accountId === id);
+
       await safeFirestoreOperation(
         async () => {
-          // Usar batch para atomicidad — máximo 500 operaciones por batch
-          const BATCH_SIZE = 499; // 499 deletes + 1 account delete
+          const BATCH_LIMIT = 490; // Leave room for account + recurring + debts
           const txIds = relatedTransactions.map(t => t.id!);
+          const recurringIds = relatedRecurring.map(p => p.id!);
+          const debtIds = relatedDebts.map(d => d.id!);
+          const allDeletes = [
+            ...txIds.map(txId => doc(db, `users/${userId}/transactions`, txId)),
+            ...recurringIds.map(rId => doc(db, `users/${userId}/recurringPayments`, rId)),
+            ...debtIds.map(dId => doc(db, `users/${userId}/debts`, dId)),
+          ];
 
-          for (let i = 0; i < txIds.length; i += BATCH_SIZE) {
+          for (let i = 0; i < allDeletes.length; i += BATCH_LIMIT) {
             const batch = writeBatch(db);
-            const chunk = txIds.slice(i, i + BATCH_SIZE);
-            chunk.forEach(txId => {
-              batch.delete(doc(db, `users/${userId}/transactions`, txId));
-            });
-            // Incluir la cuenta en el último batch
-            if (i + BATCH_SIZE >= txIds.length) {
+            const chunk = allDeletes.slice(i, i + BATCH_LIMIT);
+            chunk.forEach(ref => batch.delete(ref));
+            // Include the account in the last batch
+            if (i + BATCH_LIMIT >= allDeletes.length) {
               batch.delete(doc(db, `users/${userId}/accounts`, id));
             }
             await batch.commit();
           }
-          // Si no hubo transacciones, eliminar solo la cuenta
-          if (txIds.length === 0) {
+          // If nothing to cascade, just delete the account
+          if (allDeletes.length === 0) {
             await firestoreDeleteAccount(id);
           }
         },

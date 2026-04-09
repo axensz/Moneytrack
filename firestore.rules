@@ -19,6 +19,23 @@ service cloud.firestore {
       return str is string && str.size() >= minLength && str.size() <= maxLength;
     }
 
+    // Helper: validate optional installment fields on transactions
+    function hasValidInstallments(data) {
+      // If no installments field, it's a regular transaction — valid
+      return !('installments' in data.keys()) || (
+        data.installments is int
+        && data.installments >= 1
+        && data.installments <= 36
+      );
+    }
+
+    function hasValidInterestFields(data) {
+      // Optional fields: only validate if present
+      return (!('totalInterestAmount' in data.keys()) || (data.totalInterestAmount is number && data.totalInterestAmount >= 0))
+        && (!('monthlyInstallmentAmount' in data.keys()) || (data.monthlyInstallmentAmount is number && data.monthlyInstallmentAmount > 0))
+        && (!('interestRate' in data.keys()) || (data.interestRate is number && data.interestRate >= 0 && data.interestRate <= 200));
+    }
+
     // User data collections
     match /users/{userId} {
       // Only authenticated users can read/write their own data
@@ -38,7 +55,9 @@ service cloud.firestore {
           && request.resource.data.paid is bool
           && request.resource.data.accountId is string
           && request.resource.data.date is timestamp
-          && request.resource.data.createdAt is timestamp;
+          && request.resource.data.createdAt is timestamp
+          && hasValidInstallments(request.resource.data)
+          && hasValidInterestFields(request.resource.data);
 
         // Allow update of editable fields (description, amount, date, category, paid)
         // Keep type and accountId immutable for data integrity

@@ -30,7 +30,7 @@ import { logger } from './utils/logger';
 import type { NewTransaction, ViewType, FilterValue } from './types/finance';
 import { logoutFirebase } from './lib/firebase';
 import type { User } from 'firebase/auth';
-import { OfflineBanner } from './components/layout/OfflineBanner';
+import { OfflineIndicator } from './components/pwa/OfflineIndicator';
 import { InstallPrompt } from './components/pwa/InstallPrompt';
 const AIChatBot = lazy(() =>
   import('./components/chat/AIChatBot').then(m => ({ default: m.AIChatBot }))
@@ -269,8 +269,8 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
 
   return (
     <div className="flex flex-col h-screen bg-background bg-gradient-to-br from-violet-50/30 via-purple-50/20 to-fuchsia-50/10 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-      {/* Banner de sin conexión */}
-      <OfflineBanner isOnline={isOnline} />
+      {/* Banner de sin conexión + sync status */}
+      <OfflineIndicator />
 
       {/* Install PWA Banner (mobile only) */}
       <InstallPrompt variant="banner" />

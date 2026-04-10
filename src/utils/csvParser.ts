@@ -176,122 +176,296 @@ export function parseDate(raw: string): Date | null {
 
 // ── Auto-categorización por palabras clave en la descripción ─────────────────
 
+// Prefijos de medios de pago que ocultan el comercio real.
+// Ej: "PAGO PSE TIGO" → extraer "TIGO" para matchear Servicios
+const PAYMENT_PREFIXES = [
+  'compra en ', 'compra intl ', 'compra pos ',
+  'pago pse ', 'pago llave ', 'pago qr ', 'pago suc virt ',
+  'transf a ', 'transf qr ', 'transferencia a ',
+  'recarga de ', 'pago de nomi ', 'pago nomi ',
+  'cobro ', 'cargo ',
+];
+
+function extractMerchant(description: string): string {
+  const lower = description.toLowerCase();
+  for (const prefix of PAYMENT_PREFIXES) {
+    if (lower.startsWith(prefix)) {
+      return description.slice(prefix.length).trim();
+    }
+  }
+  return description;
+}
+
+const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
 const CATEGORY_RULES: Array<{ keywords: string[]; category: string; type?: 'income' | 'expense' }> = [
-  // ── INGRESOS ──
-  { keywords: ['nomina', 'nómina', 'sueldo', 'salario', 'pago empresa', 'pago empleador', 'pago nomina', 'abono nomina'], category: 'Salario', type: 'income' },
-  { keywords: ['freelance', 'honorarios', 'consulting', 'prestacion servicio', 'cuenta cobro'], category: 'Freelance', type: 'income' },
-  { keywords: ['dividendo', 'rendimiento', 'inversion', 'inversión', 'cdt', 'fiducuenta', 'fondo inversion', 'tyba', 'a2censo', 'bold'], category: 'Inversiones', type: 'income' },
-  { keywords: ['cesantia', 'cesantía', 'prima', 'liquidacion', 'liquidación', 'vacaciones'], category: 'Cesantías', type: 'income' },
-
-  // ── TRANSPORTE ──
+  // ── INGRESOS ──────────────────────────────────────────────────────────────
   {
     keywords: [
-      'uber', 'cabify', 'indriver', 'didi', 'beat', 'taxi', 'peaje', 'gasolina', 'terpel', 'primax', 'texaco',
-      'parqueadero', 'parking', 'transmilenio', 'sitp', 'metro', 'mio', 'megabus', 'metrolinea',
-      'soat', 'revision tecno', 'pico y placa', 'waze', 'movilidad', 'taller', 'mecanico',
-      'lavadero', 'lavautos', 'autolavado'
-    ], category: 'Transporte'
+      'nomina', 'nómina', 'sueldo', 'salario', 'pago empresa', 'pago empleador',
+      'pago nomina', 'abono nomina', 'pago de nomi', 'pago nomi',
+    ],
+    category: 'Salario', type: 'income',
+  },
+  {
+    keywords: [
+      'freelance', 'honorarios', 'consulting', 'prestacion servicio',
+      'cuenta cobro', 'factura cobro', 'pago honorarios',
+    ],
+    category: 'Freelance', type: 'income',
+  },
+  {
+    keywords: [
+      'dividendo', 'rendimiento', 'inversion', 'inversión', 'cdt', 'fiducuenta',
+      'fondo inversion', 'tyba', 'a2censo', 'bold', 'nu bank', 'nequi ahorros',
+      'abono interes', 'intereses ahorros', 'rendimiento cdt',
+    ],
+    category: 'Inversiones', type: 'income',
+  },
+  {
+    keywords: [
+      'cesantia', 'cesantía', 'prima ', 'prima de', 'liquidacion', 'liquidación', 'vacaciones',
+    ],
+    category: 'Cesantías', type: 'income',
+  },
+  {
+    keywords: ['desembolso', 'prestamo', 'préstamo', 'compra de cartera', 'credito aprobado'],
+    category: 'Otros', type: 'income',
   },
 
-  // ── ALIMENTACIÓN ──
+  // ── TRANSPORTE ────────────────────────────────────────────────────────────
   {
     keywords: [
-      'supermercado', 'exito', 'éxito', 'carulla', 'jumbo', 'alkosto', 'makro', 'pricesmart',
-      'ara', 'd1', 'justo bueno', 'surtimax', 'olimpica', 'olímpica', 'mercado', 'fruver', 'plaza mercado',
-      'restaurante', 'rest ', 'domicilio', 'rappi', 'ifood', 'uber eats', 'didi food', 'pedidos ya',
-      'mcdonalds', 'burger king', 'subway', 'kfc', 'frisby', 'el corral', 'crepes', 'wok',
-      'panaderia', 'panadería', 'cafeteria', 'cafetería', 'juan valdez', 'starbucks', 'tostao',
-      'cigarreria', 'cigarrería', 'tienda', 'minimercado', 'surtifruver'
-    ], category: 'Alimentación'
+      // Apps
+      'uber', 'cabify', 'indriver', 'didi', 'beat', 'picap', 'rappi moto',
+      // Combustible
+      'gasolina', 'terpel', 'primax', 'texaco', 'biomax', 'combustible', 'estacion servicio',
+      // Parqueo
+      'parqueadero', 'parking', 'apcoa', 'parque',
+      // Transporte público
+      'transmilenio', 'sitp', 'tarjeta civica', 'civica', 'metro de medellin', 'metro medellin',
+      'mio', 'megabus', 'metrolinea', 'metroplús', 'metroplus', 'transcaribe', 'transmetro',
+      'recarga civica', 'recarga tu llave',
+      // Peajes
+      'peaje', 'tunel', 'concesion vial',
+      // Vehículo
+      'soat', 'revision tecno', 'tecnomecanica', 'taller', 'mecanico', 'repuesto',
+      'lubricante', 'lavadero', 'autolavado', 'lavautos',
+      // Vuelos / bus
+      'avianca', 'latam', 'wingo', 'jetsmart', 'flota', 'expreso', 'copetran',
+      'bolivariano', 'terminal', 'aeropuerto', 'tiquete', 'tiquete aereo',
+    ],
+    category: 'Transporte',
   },
 
-  // ── ENTRETENIMIENTO ──
+  // ── ALIMENTACIÓN ─────────────────────────────────────────────────────────
   {
     keywords: [
-      'netflix', 'spotify', 'disney', 'hbo', 'max', 'prime video', 'youtube premium', 'apple tv',
-      'deezer', 'crunchyroll', 'twitch', 'steam', 'playstation', 'xbox', 'nintendo', 'epic games',
-      'cine', 'cinecolombia', 'cinemark', 'procinal', 'royal films',
-      'bar ', 'discoteca', 'club', 'concierto', 'teatro', 'museo', 'parque diversiones',
-      'salitre magico', 'mundo aventura', 'maloka'
-    ], category: 'Entretenimiento'
+      // Supermercados
+      'exito', 'éxito', 'carulla', 'jumbo', 'alkosto', 'makro', 'pricesmart', 'costco',
+      'd1', 'ara ', 'justo y bueno', 'justo bueno', 'surtimax', 'olimpica', 'olímpica',
+      'supermercado', 'surtifruver', 'fruver', 'plaza mercado', 'galeria', 'minimercado',
+      // Comida rápida
+      'mcdonalds', 'burger king', 'subway', 'kfc', 'frisby', 'el corral', 'crepes waffles',
+      'crepes', 'wok', 'papa johns', 'dominos', 'pizza hut', 'presto', 'oma',
+      'kokoriko', 'pollo olímpico', 'pollo olimpico', 'ajiaco', 'la brasa',
+      // Cafeterías / café
+      'juan valdez', 'starbucks', 'tostao', 'cafe', 'cafeteria', 'cafetería', 'cocorollo',
+      'el laboratori', 'laboratorio cafe', 'pergamino', 'velvet', 'amor perfecto',
+      // Domicilios
+      'rappi', 'ifood', 'uber eats', 'didi food', 'pedidos ya', 'domicilio',
+      // Restaurantes genéricos
+      'restaurante', 'rest ', 'asadero', 'parrilla', 'sushi', 'pizza', 'empanada',
+      // Panadería / tiendas
+      'panaderia', 'panadería', 'cigarreria', 'cigarrería', 'tienda ', 'miscelanea',
+      // Bebidas
+      'cerveza', 'licoreria', 'licorera', 'vinos y licores',
+    ],
+    category: 'Alimentación',
   },
 
-  // ── SERVICIOS ──
+  // ── ENTRETENIMIENTO ──────────────────────────────────────────────────────
   {
     keywords: [
-      'energia', 'energía', 'epm', 'codensa', 'enel', 'celsia', 'electricaribe',
-      'gas natural', 'vanti', 'gases del caribe',
-      'acueducto', 'eaab', 'aguas de bogota',
-      'claro', 'tigo', 'movistar', 'wom', 'virgin', 'etb', 'une',
-      'internet', 'telefonia', 'telefonía', 'fibra optica',
-      'directv', 'dish', 'cable',
-      'pse ', 'pago servicio', 'recaudo', 'factura'
-    ], category: 'Servicios'
+      // Streaming video
+      'netflix', 'disney', 'hbo', 'max ', 'prime video', 'apple tv', 'paramount', 'star+',
+      'crunchyroll', 'mubi', 'youtube premium',
+      // Streaming música
+      'spotify', 'deezer', 'apple music', 'tidal',
+      // Gaming
+      'steam', 'playstation', 'xbox', 'nintendo', 'epic games', 'twitch', 'riot games',
+      'blizzard', 'ea games', 'ubisoft',
+      // Google / Apple digital
+      'google play', 'google one', 'google on', 'dlo*google', 'apple one', 'icloud',
+      // Cines
+      'cine', 'cinecolombia', 'cinemark', 'procinal', 'royal films', 'multiplex',
+      // Salidas
+      'bar ', 'discoteca', 'concierto', 'teatro', 'museo', 'parque diversiones',
+      'salitre magico', 'mundo aventura', 'maloka', 'acuapark', 'parque acuatico',
+      // Deportes
+      'gym', 'gimnasio', 'smartfit', 'bodytech', 'spinning', 'crossfit', 'zumba',
+    ],
+    category: 'Entretenimiento',
   },
 
-  // ── VIVIENDA ──
+  // ── SERVICIOS (facturas, telefonía, utilities) ────────────────────────────
   {
     keywords: [
-      'arriendo', 'renta', 'canon', 'administracion', 'administración', 'cuota copropiedad',
-      'inmobiliaria', 'predial', 'impuesto predial', 'valorizacion',
-      'hipoteca', 'credito vivienda', 'leasing habitacional'
-    ], category: 'Vivienda'
+      // Energía
+      'energia', 'energía', 'epm', 'codensa', 'enel', 'celsia', 'electricaribe', 'afinia',
+      'chec', 'cens', 'essa', 'electrohuila',
+      // Gas
+      'gas natural', 'vanti', 'gases del caribe', 'surtigas', 'alcanos', 'llanogas',
+      // Agua
+      'acueducto', 'eaab', 'aguas de bogota', 'triple a', 'emcali', 'empas',
+      // Telefonía / internet
+      'claro', 'tigo', 'movistar', 'wom ', 'virgin mobile', 'etb', 'une ', 'edatel',
+      'internet', 'telefonia', 'telefonía', 'fibra optica', 'plan datos',
+      // TV
+      'directv', 'dish ', 'une tv', 'claro tv', 'tigo une',
+      // Wompi — intermediario de pago usado por Tigo, servicios públicos, etc.
+      'wompi',
+      // Comisiones bancarias
+      'comision', 'comisión', 'cuota manejo', 'cargo bancario', 'gravamen',
+      'gmt ', '4x1000',
+      // Seguros
+      'seguros', 'seguro ', 'axa', 'liberty', 'mapfre', 'allianz', 'sura seguro',
+      'proteccion ', 'vida group',
+      // Pagos genéricos de servicios
+      'pago servicio', 'recaudo', 'factura servicio',
+    ],
+    category: 'Servicios',
   },
 
-  // ── SALUD ──
+  // ── VIVIENDA ─────────────────────────────────────────────────────────────
   {
     keywords: [
-      'eps', 'nueva eps', 'sura eps', 'sanitas', 'compensar', 'famisanar', 'salud total', 'coomeva',
-      'clinica', 'clínica', 'hospital', 'medico', 'médico', 'consultorio',
-      'farmacia', 'drogueria', 'droguería', 'locatel', 'farmatodo', 'cruz verde', 'la rebaja',
-      'laboratorio', 'consulta', 'odontologia', 'odontología', 'optometria', 'lentes', 'optica',
-      'medicina prepagada', 'colmedica', 'colmédica'
-    ], category: 'Salud'
+      'arriendo', 'arrendamiento', 'renta ', 'canon ', 'administracion', 'administración',
+      'cuota copropiedad', 'inmobiliaria', 'predial', 'impuesto predial', 'valorizacion',
+      'hipoteca', 'credito vivienda', 'leasing habitacional', 'conjunto residencial',
+      'cuota admon', 'aseo urbano', 'aseo y recoleccion',
+    ],
+    category: 'Vivienda',
   },
 
-  // ── EDUCACIÓN ──
+  // ── SALUD ────────────────────────────────────────────────────────────────
   {
     keywords: [
+      // EPS
+      'eps', 'nueva eps', 'sura eps', 'sanitas', 'compensar eps', 'famisanar',
+      'salud total', 'coomeva', 'medimas', 'aliansalud', 'coosalud',
+      // Clínicas / hospitales
+      'clinica', 'clínica', 'hospital', 'medico', 'médico', 'consultorio', 'ips ',
+      // Farmacias
+      'farmacia', 'drogueria', 'droguería', 'locatel', 'farmatodo', 'cruz verde',
+      'la rebaja', 'colsubsidio farmacia',
+      // Diagnóstico (ir antes que Alimentación para "laboratorio")
+      'laboratorio medico', 'laboratorio clinico', 'rayos x', 'ecografia',
+      'resonancia', 'diagnostico', 'examen medico',
+      // Especialistas
+      'odontologia', 'odontología', 'optometria', 'optica', 'lentes ', 'ortodoncia',
+      'psicologia', 'psiquiatria', 'fisioterapia',
+      // Medicina prepagada
+      'medicina prepagada', 'colmedica', 'colmédica', 'medicina integral',
+    ],
+    category: 'Salud',
+  },
+
+  // ── EDUCACIÓN ────────────────────────────────────────────────────────────
+  {
+    keywords: [
+      // Colegios y universidades
       'colegio', 'universidad', 'uniandes', 'javeriana', 'nacional', 'icetex',
-      'matricula', 'matrícula', 'pensión educativa', 'pension colegio',
-      'curso', 'capacitacion', 'capacitación', 'udemy', 'coursera', 'platzi', 'domestika',
-      'sena', 'diplomado', 'especializacion', 'maestria', 'maestría',
-      'libreria', 'librería', 'papeleria', 'papelería', 'panamericana'
-    ], category: 'Educación'
+      'eafit', 'upb ', 'udea', 'udem', 'uninorte', 'unisabana', 'ean ', 'ceipa',
+      'minuto de dios', 'uniminuto', 'politecnico', 'politécnico', 'sena ',
+      // Matrículas
+      'matricula', 'matrícula', 'pensión educativa', 'pension colegio', 'cuota educacion',
+      // Cursos online
+      'udemy', 'coursera', 'platzi', 'domestika', 'linkedin learning', 'skillshare',
+      'duolingo', 'babbel',
+      // Postgrados
+      'diplomado', 'especializacion', 'especialización', 'maestria', 'maestría',
+      // Librerías y útiles
+      'libreria', 'librería', 'papeleria', 'papelería', 'panamericana', 'lerner',
+      'utiles escolares', 'utiles',
+      // Niquiadici (librería local del extracto)
+      'niquiadici',
+    ],
+    category: 'Educación',
   },
 
-  // ── COMPRAS PERSONALES ──
+  // ── FINANZAS (pagos de deuda, créditos) ──────────────────────────────────
   {
     keywords: [
-      'falabella', 'zara', 'h&m', 'pull bear', 'bershka', 'stradivarius',
-      'adidas', 'nike', 'decathlon', 'tennis', 'arturo calle', 'studio f', 'ela',
-      'homecenter', 'ikea', 'tugó', 'tugo', 'easy',
-      'amazon', 'mercado libre', 'linio', 'shein', 'temu', 'aliexpress',
-      'samsung', 'apple store', 'mac center', 'ishop', 'ktronix', 'alkomprar',
-      'compra pos', 'compra pse'
-    ], category: 'Compras Personales'
+      // Pagos de tarjeta / crédito
+      'pago tc', 'pago tarjeta', 'pago credito', 'cuota credito', 'cuota prestamo',
+      'pago suc virt tc', 'tc master', 'tc visa', 'amex', 'credibanco',
+      // Entidades financieras
+      'falabella credito', 'banco falabella', 'davivienda', 'bancolombia',
+      'banco bogota', 'bbva', 'occidente', 'scotiabank', 'av villas', 'caja social',
+      'nu compan', 'nu financ', 'nufin',
+      'addi', 'sistecredito', 'cuota facil', 'alkosto credito',
+      // Fondos / pensiones
+      'porvenir', 'proteccion pensiones', 'colfondos', 'horizonte', 'skandia',
+      'colpensiones',
+    ],
+    category: 'Otros',
   },
 
-  // ── REGALOS ──
-  { keywords: ['regalo', 'cumpleaños', 'navidad', 'amor y amistad', 'dia madre', 'dia padre'], category: 'Regalos' },
+  // ── COMPRAS PERSONALES ───────────────────────────────────────────────────
+  {
+    keywords: [
+      // Ropa / moda
+      'zara', 'h&m', 'pull bear', 'bershka', 'stradivarius', 'mango', 'forever 21',
+      'adidas', 'nike', 'puma', 'reebok', 'converse', 'vans',
+      'arturo calle', 'studio f', 'ela ', 'tennis ', 'mario hernandez',
+      // Hogar
+      'homecenter', 'easy ', 'tugó', 'tugo', 'ikea', 'mueblemundo', 'jamar ',
+      'colchones el dorado', 'muebles',
+      // Tecnología
+      'samsung', 'apple store', 'mac center', 'ishop', 'ktronix', 'alkomprar',
+      'pc mac', 'tienda apple', 'fnac',
+      // E-commerce
+      'amazon', 'mercado libre', 'linio', 'shein', 'temu', 'aliexpress',
+      // Variedad
+      'dollarcity', 'dollar city', 'miniso', 'daiso', 'flying tiger',
+      'bazar', 'todo a', 'artesanias',
+    ],
+    category: 'Compras Personales',
+  },
 
-  // ── PATRONES BANCARIOS (fallback por tipo de operación) ──
-  { keywords: ['retiro atm', 'retiro cajero', 'avance', 'retiro efectivo'], category: 'Otros' },
-  { keywords: ['transferencia', 'envio nequi', 'envío nequi', 'daviplata', 'transfiya'], category: 'Otros' },
+  // ── REGALOS ──────────────────────────────────────────────────────────────
+  {
+    keywords: [
+      'regalo', 'cumpleaños', 'navidad', 'amor y amistad', 'dia madre', 'dia padre',
+      'flores', 'floristeria', 'florería', 'tarjeta regalo',
+    ],
+    category: 'Regalos',
+  },
+
+  // ── FALLBACK: PATRONES BANCARIOS GENÉRICOS ───────────────────────────────
+  { keywords: ['retiro atm', 'retiro cajero', 'avance cajero', 'retiro efectivo', 'retiro corresponsal'], category: 'Otros' },
+  { keywords: ['transferencia', 'envio nequi', 'envío nequi', 'daviplata', 'transfiya', 'nequi'], category: 'Otros' },
 ];
 
 export function suggestCategory(description: string, type: 'income' | 'expense'): string {
-  const lower = description.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  // Intentar primero con el comercio real (quitando prefijo de medio de pago)
+  // Ej: "PAGO PSE TIGO" → probar con "TIGO" antes que con la descripción completa
+  const merchant = extractMerchant(description);
+  const candidates = merchant !== description ? [merchant, description] : [description];
 
-  for (const rule of CATEGORY_RULES) {
-    if (rule.type && rule.type !== type) continue;
-    if (rule.keywords.some(k => lower.includes(k.normalize('NFD').replace(/[\u0300-\u036f]/g, '')))) {
-      return rule.category;
+  for (const candidate of candidates) {
+    const lower = norm(candidate);
+    for (const rule of CATEGORY_RULES) {
+      if (rule.type && rule.type !== type) continue;
+      if (rule.keywords.some(k => lower.includes(norm(k)))) {
+        return rule.category;
+      }
     }
   }
 
   return type === 'income'
-    ? DEFAULT_CATEGORIES.income[DEFAULT_CATEGORIES.income.length - 1]  // 'Otros'
+    ? DEFAULT_CATEGORIES.income[DEFAULT_CATEGORIES.income.length - 1]   // 'Otros'
     : DEFAULT_CATEGORIES.expense[DEFAULT_CATEGORIES.expense.length - 1]; // 'Otros'
 }
 

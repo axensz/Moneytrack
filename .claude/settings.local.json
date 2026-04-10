@@ -16,7 +16,8 @@
       "Bash(git stash:*)",
       "Bash(python3 -c ':*)",
       "Bash(rtk npm:*)",
-      "Bash(node -e ':*)"
+      "Bash(node -e ':*)",
+      "Bash(grep -r \"useEffect\" /c/Users/camil/Desktop/Moneytrack/src/hooks/*.ts)"
     ]
   }
 }

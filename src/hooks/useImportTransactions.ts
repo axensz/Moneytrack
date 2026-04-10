@@ -7,6 +7,7 @@ import { useCallback, useState } from 'react';
 import { collection, doc, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { logger } from '../utils/logger';
+import { setBatchImporting } from '../utils/importBatchFlag';
 import type { Transaction } from '../types/finance';
 
 export interface ImportRow {
@@ -54,6 +55,9 @@ export function useImportTransactions(userId: string | null) {
       setProgress(0);
       setResult(null);
 
+      // Suppress individual notifications during batch import
+      setBatchImporting(true);
+
       const errors: string[] = [];
       let imported = 0;
 
@@ -93,6 +97,8 @@ export function useImportTransactions(userId: string | null) {
         const r: ImportResult = { imported, skipped: rows.length - selected.length, errors };
         setResult(r);
         setStatus('done');
+        // Re-enable notifications after a short delay (let Firestore listeners settle)
+        setTimeout(() => setBatchImporting(false), 3000);
         return r;
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'Error desconocido al importar';
@@ -101,6 +107,7 @@ export function useImportTransactions(userId: string | null) {
         const r: ImportResult = { imported, skipped: rows.length - imported, errors };
         setResult(r);
         setStatus('error');
+        setBatchImporting(false);
         return r;
       }
     },

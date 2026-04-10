@@ -65,7 +65,7 @@ export async function parsePDF(buffer: ArrayBuffer): Promise<ParseResult> {
   try {
     const ai = new GoogleGenAI({ apiKey: API_KEY });
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash',
       contents: [
         {
           role: 'user',
@@ -88,9 +88,13 @@ export async function parsePDF(buffer: ArrayBuffer): Promise<ParseResult> {
     rawText = (response.text || '').trim();
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
+    const isQuotaError = msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('free_tier');
+    const userMessage = isQuotaError
+      ? 'Cuota de Gemini AI agotada. La capa gratuita tiene un límite diario de solicitudes. Espera unas horas e intenta de nuevo, o revisa tu plan en ai.google.dev.'
+      : `Error al procesar el PDF con IA: ${msg}`;
     return {
       rows: [],
-      errors: [`Error al procesar el PDF con IA: ${msg}`],
+      errors: [userMessage],
       totalRows: 0,
       skippedRows: 0,
     };

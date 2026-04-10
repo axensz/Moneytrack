@@ -7,9 +7,10 @@ import { useAuth } from '../../hooks/useAuth';
 import { useImportTransactions } from '../../hooks/useImportTransactions';
 import { parseCSV } from '../../utils/csvParser';
 import { parseXLSX } from '../../utils/xlsxParser';
-import { parsePDF, isPDFParsingAvailable } from '../../utils/pdfParser';
+import { parsePDF } from '../../utils/pdfParser';
 import { categorizeWithAI, isAIAvailable } from '../../utils/aiCategorizer';
 import { DEFAULT_CATEGORIES } from '../../config/constants';
+import { formatCurrency } from '../../utils/formatters';
 import type { ImportRow } from '../../hooks/useImportTransactions';
 
 interface ImportTransactionsModalProps {
@@ -226,12 +227,12 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={handleClose} />
-      <div className="relative w-full max-w-3xl max-h-[90vh] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="relative w-full sm:max-w-3xl max-h-[100dvh] sm:max-h-[90dvh] bg-white dark:bg-gray-900 sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col overflow-hidden sm:my-auto">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20">
           <div className="flex items-center gap-3">
             {step === 'review' && (
               <button
@@ -264,7 +265,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
         </div>
 
         {/* Stepper */}
-        <div className="flex items-center gap-0 px-6 pt-4">
+        <div className="flex items-center gap-0 px-4 sm:px-6 pt-3 sm:pt-4">
           {(['upload', 'review', 'done'] as Step[]).map((s, i) => (
             <React.Fragment key={s}>
               <div className={`flex items-center gap-1.5 text-xs font-medium ${step === s ? 'text-purple-600 dark:text-purple-400' : i < ['upload', 'review', 'done'].indexOf(step) ? 'text-green-600' : 'text-gray-400'}`}>
@@ -279,7 +280,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4">
 
           {/* ── PASO 1: UPLOAD ── */}
           {step === 'upload' && (
@@ -320,7 +321,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
                 onDrop={handleDrop}
                 onDragOver={e => e.preventDefault()}
                 onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-purple-300 dark:border-purple-700 rounded-2xl p-8 text-center cursor-pointer hover:border-purple-500 hover:bg-purple-50/50 dark:hover:bg-purple-900/10 transition-all"
+                className="border-2 border-dashed border-purple-300 dark:border-purple-700 rounded-2xl p-5 sm:p-8 text-center cursor-pointer hover:border-purple-500 hover:bg-purple-50/50 dark:hover:bg-purple-900/10 transition-all"
               >
                 {pdfParsing ? (
                   <Loader2 size={32} className="mx-auto mb-3 text-purple-400 animate-spin" />
@@ -340,7 +341,10 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
                       Arrastra tu extracto aquí o haz clic para seleccionar
                     </p>
                     <p className="text-xs text-gray-400 mt-1">
-                      CSV, Excel (.xlsx){isPDFParsingAvailable() ? ' o PDF (analizado con IA)' : ' — PDF requiere IA configurada'} · Bancolombia, Davivienda, BBVA, Nequi y más
+                      CSV · Excel (.xlsx) · PDF con IA
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Bancolombia, Davivienda, BBVA, Nequi y más
                     </p>
                   </>
                 )}
@@ -382,10 +386,6 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
                 </div>
               )}
 
-              {/* Tip */}
-              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-xs text-blue-700 dark:text-blue-300">
-                <strong>Tip:</strong> En tu banco, busca la opción "Descargar movimientos" o "Exportar" en formato CSV. El archivo debe tener columnas de fecha, descripción y monto.
-              </div>
             </div>
           )}
 
@@ -393,8 +393,8 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
           {step === 'review' && (
             <div className="space-y-3">
               {/* Controles bulk */}
-              <div className="flex items-center justify-between">
-                <div className="flex gap-2">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button onClick={() => handleToggleAll(true)} className="text-xs px-3 py-1.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg hover:bg-purple-200 transition-colors">
                     Todas
                   </button>
@@ -434,8 +434,8 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
 
               {/* Tabla de transacciones */}
               <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-                <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
-                  <table className="w-full text-sm">
+                <div className="overflow-x-auto max-h-[40vh] sm:max-h-[400px] overflow-y-auto">
+                  <table className="w-full text-sm min-w-[540px]">
                     <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800 z-10">
                       <tr className="border-b border-gray-200 dark:border-gray-700">
                         <th className="w-8 py-2 px-3 text-center"></th>
@@ -516,7 +516,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
                           {/* Monto */}
                           <td className={`py-2 px-3 text-right font-semibold text-xs whitespace-nowrap ${row.type === 'income' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                             {row.type === 'income' ? '+' : '-'}
-                            {row.amount.toLocaleString('es-CO')}
+                            {formatCurrency(row.amount)}
                           </td>
                         </tr>
                       ))}
@@ -579,7 +579,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between gap-3">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 flex justify-between gap-3">
           {step === 'upload' && (
             <>
               <button onClick={handleClose} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors">
@@ -588,7 +588,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
               <button
                 onClick={() => setStep('review')}
                 disabled={rows.length === 0 || !selectedAccountId}
-                className="px-5 py-2 text-sm font-semibold bg-purple-600 hover:bg-purple-700 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 sm:flex-none px-5 py-2 text-sm font-semibold bg-purple-600 hover:bg-purple-700 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Revisar {rows.length > 0 ? `(${rows.length})` : ''}
               </button>
@@ -603,7 +603,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
               <button
                 onClick={handleImport}
                 disabled={includedCount === 0 || status === 'importing'}
-                className="px-5 py-2 text-sm font-semibold bg-purple-600 hover:bg-purple-700 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="flex-1 sm:flex-none px-5 py-2 text-sm font-semibold bg-purple-600 hover:bg-purple-700 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {status === 'importing' && <Loader2 size={14} className="animate-spin" />}
                 Importar {includedCount} transacciones

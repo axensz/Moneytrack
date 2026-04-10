@@ -163,23 +163,37 @@ class NumberFormatter {
   static formatForInput(value: string | number): string {
     if (!value && value !== 0) return '';
 
-    const strValue = value.toString();
-    // Normalizar: si viene con punto decimal (número JS), no hacer nada aún
-    // Remover cualquier separador de miles existente
-    const cleanStr = strValue.replace(/\./g, '');
+    // Si es número JS, redondearlo a 2 decimales para evitar float imprecision
+    // (ej: 2701537.619999999 → 2701537.62)
+    if (typeof value === 'number') {
+      const rounded = Math.round(value * 100) / 100;
+      const [intStr, decStr] = rounded.toFixed(2).split('.');
+      const formattedInt = parseInt(intStr).toLocaleString('es-CO');
+      return decStr === '00' ? formattedInt : `${formattedInt},${decStr}`;
+    }
 
-    // Separar parte entera y decimal (usando coma como decimal)
+    const strValue = value.toString();
+
+    // Si el string tiene formato JS decimal (punto como decimal, sin comas de miles)
+    // ej: "2701537.62" — distinguible porque no tiene comas
+    if (/^\d+\.\d+$/.test(strValue)) {
+      const rounded = Math.round(parseFloat(strValue) * 100) / 100;
+      const [intStr, decStr] = rounded.toFixed(2).split('.');
+      const formattedInt = parseInt(intStr).toLocaleString('es-CO');
+      return decStr === '00' ? formattedInt : `${formattedInt},${decStr}`;
+    }
+
+    // Formato colombiano existente: "2.701.537,62" o "97.515"
+    // Remover separadores de miles (puntos) y separar por coma decimal
+    const cleanStr = strValue.replace(/\./g, '');
     const parts = cleanStr.split(',');
     const integerPart = parts[0];
     const decimalPart = parts[1];
 
-    // Si no hay parte entera válida, retornar vacío
     if (!integerPart || integerPart === '') return '';
 
-    // Formatear parte entera con separador de miles (punto)
     const formattedInteger = parseInt(integerPart).toLocaleString('es-CO');
 
-    // Si hay parte decimal, combinar (preservando ceros finales)
     if (decimalPart !== undefined) {
       return `${formattedInteger},${decimalPart}`;
     }

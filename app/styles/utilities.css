@@ -21,6 +21,10 @@
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+.safe-area-top {
+  padding-top: env(safe-area-inset-top);
+}
+
 /* Focus visible mejorado para accesibilidad */
 *:focus-visible {
   outline: 2px solid theme('colors.purple.500');
@@ -225,9 +229,7 @@ span {
 /* Asegurar que los modales y overlays cubran toda la pantalla en móviles */
 @media (max-width: 640px) {
   .fixed.inset-0 {
-    height: 100vh;
     height: 100dvh;
-    /* Dynamic viewport height para navegadores modernos */
   }
 }
 

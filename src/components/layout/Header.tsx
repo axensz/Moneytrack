@@ -92,7 +92,7 @@ export const Header: React.FC<HeaderProps> = ({
   }, [showNotifications, setShowNotifications]);
 
   return (
-    <header className="w-full py-2 sm:py-3 bg-white/90 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200/80 dark:border-gray-800 sticky top-0 z-[100] shadow-sm">
+    <header className="w-full py-2 sm:py-3 bg-white/90 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200/80 dark:border-gray-800 z-[100] shadow-sm shrink-0">
       <div className="px-3 sm:px-4 md:px-6 lg:px-8">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2 sm:gap-3 flex-1">

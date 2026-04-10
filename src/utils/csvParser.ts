@@ -557,8 +557,8 @@ export function parseCSV(text: string): ParseResult {
           ? 'income'
           : 'expense';
       } else {
-        // Signo del monto o heurística por descripción
-        type = parsed < 0 ? 'income' : 'expense';
+        // Signo del monto: negativo = gasto, positivo = ingreso
+        type = parsed < 0 ? 'expense' : 'income';
       }
     }
 

@@ -55,9 +55,6 @@ const BudgetsView = lazy(() =>
 const GoalsView = lazy(() =>
   import('./components/views/goals/GoalsView').then(m => ({ default: m.GoalsView }))
 );
-const CreditCardStatementView = lazy(() =>
-  import('./components/views/accounts/CreditCardStatementView').then(m => ({ default: m.CreditCardStatementView }))
-);
 
 const ViewFallback = () => (
   <div className="space-y-4 animate-pulse">
@@ -270,7 +267,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   }
 
   return (
-    <div className="flex flex-col h-screen bg-background bg-gradient-to-br from-violet-50/30 via-purple-50/20 to-fuchsia-50/10 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <div className="flex flex-col h-dvh bg-background bg-gradient-to-br from-violet-50/30 via-purple-50/20 to-fuchsia-50/10 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
       {/* Banner de sin conexión + sync status */}
       <OfflineIndicator />
 
@@ -434,8 +431,8 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         onLogout={handleLogout}
       />
 
-      <div ref={scrollContainerRef} className="flex-1 overflow-auto">
-        <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-5 pb-28 sm:pb-6">
+      <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-auto">
+        <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-5 pb-24 sm:pb-6">
           <div className="max-w-7xl mx-auto">
             <StatsCards
               totalBalance={dynamicTotalBalance}
@@ -506,9 +503,6 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
               <div id="panel-accounts" role="tabpanel" aria-labelledby="tab-accounts">
                 <Suspense fallback={<ViewFallback />}>
                   <AccountsView />
-                  <div className="mt-4">
-                    <CreditCardStatementView />
-                  </div>
                 </Suspense>
               </div>
             )}

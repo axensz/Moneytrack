@@ -100,7 +100,7 @@ export function BaseModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-4 bg-black/50 backdrop-blur-sm transition-opacity duration-200 overflow-y-auto"
+      className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity duration-200 overflow-y-auto"
       onClick={closeOnBackdrop ? onClose : undefined}
       role="dialog"
       aria-modal="true"
@@ -113,11 +113,10 @@ export function BaseModal({
         tabIndex={-1}
         className={`bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full ${maxWidth} my-auto outline-none animate-in fade-in zoom-in-95 duration-200 ${className}`}
         style={{
-          maxHeight: 'calc(100vh - 2rem)',
-          /* Ensure modal fits within viewport on mobile */
+          maxHeight: 'calc(100dvh - 2rem)',
         }}
       >
-        <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 2rem)' }}>
+        <div className="overflow-y-auto" style={{ maxHeight: 'calc(100dvh - 2rem)' }}>
           {title && (
             <div className="sticky top-0 z-10 flex justify-between items-center p-4 sm:p-6 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
               <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">

@@ -51,7 +51,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
     if (!isOpen) return null;
 
     return createPortal(
-        <div className="fixed inset-0 z-50 flex items-start justify-end p-4 pt-20">
+        <div className="fixed inset-0 z-[110] flex items-start justify-end p-4 pt-20">
             <div
                 className="absolute inset-0 bg-black/30 backdrop-blur-sm -z-10 animate-in fade-in duration-200"
                 onClick={(e) => { e.stopPropagation(); onClose(); }}

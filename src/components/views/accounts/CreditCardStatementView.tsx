@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { CreditCard, Calendar, ChevronDown, ChevronUp, AlertCircle, Wallet } from 'lucide-react';
+import { CreditCard, Calendar, ChevronDown, ChevronUp } from 'lucide-react';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { useCreditCardStatement } from '../../../hooks/useCreditCardStatement';
 import type { CreditCardStatement as StatementType } from '../../../hooks/useCreditCardStatement';
@@ -53,15 +53,6 @@ const StatementCard: React.FC<StatementCardProps> = ({ statement, formatCurrency
     balance,
     cycleTransactions,
   } = statement;
-
-  const now = new Date();
-  const daysUntilPayment = Math.ceil((paymentDueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  const isPaymentSoon = daysUntilPayment <= 5 && daysUntilPayment >= 0;
-  const isOverdue = daysUntilPayment < 0;
-
-  const creditLimit = account.creditLimit;
-  const availableCredit = creditLimit != null ? creditLimit - Math.max(0, balance) : null;
-  const utilizationPct = creditLimit ? Math.min(100, Math.round((Math.max(0, balance) / creditLimit) * 100)) : null;
 
   const formatDate = (date: Date) =>
     date.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
@@ -116,24 +107,14 @@ const StatementCard: React.FC<StatementCardProps> = ({ statement, formatCurrency
           <CreditCard size={20} className="text-purple-600" />
           <h3 className="text-base font-bold text-gray-900 dark:text-white">{account.name}</h3>
         </div>
-        {(isPaymentSoon || isOverdue) && (
-          <div className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${
-            isOverdue
-              ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-              : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-          }`}>
-            <AlertCircle size={12} />
-            {isOverdue ? 'Pago vencido' : `Pago en ${daysUntilPayment} días`}
-          </div>
-        )}
+        <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+          <Calendar size={12} />
+          <span>{formatDate(cycleStart)} — {formatDate(cycleEnd)}</span>
+        </div>
       </div>
 
       {/* Cycle summary */}
       <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 mb-3">
-        <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mb-2">
-          <Calendar size={12} />
-          <span>Ciclo: {formatDate(cycleStart)} — {formatDate(cycleEnd)}</span>
-        </div>
         <div className="grid grid-cols-3 gap-3">
           <div>
             <p className="text-xs text-gray-500">Cargos</p>
@@ -148,79 +129,12 @@ const StatementCard: React.FC<StatementCardProps> = ({ statement, formatCurrency
             </p>
           </div>
           <div>
-            <p className="text-xs text-gray-500">Saldo</p>
+            <p className="text-xs text-gray-500">Saldo ciclo</p>
             <p className={`text-sm font-bold ${balance > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
               {balance < 0 ? 'A favor: ' : ''}{formatCurrency(Math.abs(balance))}
             </p>
           </div>
         </div>
-      </div>
-
-      {/* Available credit bar — only when creditLimit is configured */}
-      {creditLimit != null && availableCredit != null && utilizationPct != null && (
-        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 mb-3">
-          <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mb-2">
-            <Wallet size={12} />
-            <span>Cupo</span>
-          </div>
-          <div className="grid grid-cols-3 gap-3 mb-2">
-            <div>
-              <p className="text-xs text-gray-500">Total</p>
-              <p className="text-sm font-bold text-gray-700 dark:text-gray-300">
-                {formatCurrency(creditLimit)}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Utilizado</p>
-              <p className="text-sm font-bold text-orange-600 dark:text-orange-400">
-                {utilizationPct}%
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Disponible</p>
-              <p className={`text-sm font-bold ${availableCredit <= 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
-                {formatCurrency(Math.max(0, availableCredit))}
-              </p>
-            </div>
-          </div>
-          {/* Utilization progress bar */}
-          <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${
-                utilizationPct >= 90
-                  ? 'bg-red-500'
-                  : utilizationPct >= 70
-                  ? 'bg-orange-400'
-                  : 'bg-green-500'
-              }`}
-              style={{ width: `${utilizationPct}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Payment due date */}
-      <div className={`flex items-center justify-between p-3 rounded-xl mb-3 ${
-        isOverdue
-          ? 'bg-red-50 dark:bg-red-900/20'
-          : isPaymentSoon
-          ? 'bg-amber-50 dark:bg-amber-900/20'
-          : 'bg-blue-50 dark:bg-blue-900/20'
-      }`}>
-        <div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Fecha de pago</p>
-          <p className="text-sm font-semibold text-gray-900 dark:text-white">
-            {paymentDueDate.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}
-          </p>
-        </div>
-        <span className={`text-xs font-medium ${
-          isOverdue ? 'text-red-600' : isPaymentSoon ? 'text-amber-600' : 'text-blue-600'
-        }`}>
-          {isOverdue
-            ? `Vencido hace ${Math.abs(daysUntilPayment)} días`
-            : `En ${daysUntilPayment} días`
-          }
-        </span>
       </div>
 
       {/* Transactions toggle */}
@@ -263,6 +177,12 @@ const StatementCard: React.FC<StatementCardProps> = ({ statement, formatCurrency
             </div>
           )}
         </>
+      )}
+
+      {cycleTransactions.length === 0 && (
+        <p className="text-center text-sm text-gray-400 dark:text-gray-500">
+          Sin movimientos en este ciclo
+        </p>
       )}
     </div>
   );

@@ -19,7 +19,7 @@ export const DeletePaymentModal: React.FC<DeletePaymentModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 max-w-sm w-full">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
           ¿Eliminar pago periódico?

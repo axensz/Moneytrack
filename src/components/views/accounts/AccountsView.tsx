@@ -164,33 +164,26 @@ export const AccountsView: React.FC = () => {
 
   return (
     <div className="card">
-      {/* Header con descripción */}
-      <div className="mb-6">
-        <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-          Cuentas
-        </h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Administra tus cuentas bancarias y tarjetas de crédito
-        </p>
-      </div>
-
-      {/* Header con botones */}
-      <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-          Mis Cuentas
-        </h3>
-
-        <div className="flex gap-3">
-          <button
-            onClick={() => {
-              accountForm.openCreateForm();
-            }}
-            className="btn-primary"
-          >
-            <Plus size={18} />
-            Nueva Cuenta
-          </button>
+      {/* Header con botón */}
+      <div className="flex justify-between items-start mb-6 flex-wrap gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+            Cuentas
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Administra tus cuentas bancarias y tarjetas de crédito
+          </p>
         </div>
+
+        <button
+          onClick={() => {
+            accountForm.openCreateForm();
+          }}
+          className="btn-primary"
+        >
+          <Plus size={18} />
+          Nueva Cuenta
+        </button>
       </div>
 
       {/* Modales */}

@@ -60,44 +60,58 @@ export async function parsePDF(buffer: ArrayBuffer): Promise<ParseResult> {
   }
   const base64 = btoa(binary);
 
-  // ── Llamar a Gemini con el PDF inline ─────────────────────────────────────
+  // ── Llamar a Gemini con el PDF inline (con retry) ────────────────────────
   let rawText = '';
-  try {
-    const ai = new GoogleGenAI({ apiKey: API_KEY });
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              inlineData: {
-                mimeType: 'application/pdf',
-                data: base64,
+  const ai = new GoogleGenAI({ apiKey: API_KEY });
+  const RETRY_DELAYS = [5_000, 15_000, 30_000];
+
+  for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: 'application/pdf',
+                  data: base64,
+                },
               },
-            },
-            { text: SYSTEM_PROMPT },
-          ],
+              { text: SYSTEM_PROMPT },
+            ],
+          },
+        ],
+        config: {
+          temperature: 0.05,
+          maxOutputTokens: 16384,
         },
-      ],
-      config: {
-        temperature: 0.05,
-        maxOutputTokens: 16384,
-      },
-    });
-    rawText = (response.text || '').trim();
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    const isQuotaError = msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('free_tier');
-    const userMessage = isQuotaError
-      ? 'Cuota de Gemini AI agotada. La capa gratuita tiene un límite diario de solicitudes. Espera unas horas e intenta de nuevo, o revisa tu plan en ai.google.dev.'
-      : `Error al procesar el PDF con IA: ${msg}`;
-    return {
-      rows: [],
-      errors: [userMessage],
-      totalRows: 0,
-      skippedRows: 0,
-    };
+      });
+      rawText = (response.text || '').trim();
+      break;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      const isRetryable = msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('overloaded');
+      const isQuotaError = msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('free_tier');
+
+      if (isRetryable && attempt < RETRY_DELAYS.length) {
+        await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
+        continue;
+      }
+
+      const userMessage = isQuotaError
+        ? 'Cuota de Gemini AI agotada. La capa gratuita tiene un límite diario de solicitudes. Espera unas horas e intenta de nuevo, o revisa tu plan en ai.google.dev.'
+        : isRetryable
+        ? 'Gemini AI está con alta demanda en este momento. Intenta de nuevo en unos segundos.'
+        : `Error al procesar el PDF con IA: ${msg}`;
+      return {
+        rows: [],
+        errors: [userMessage],
+        totalRows: 0,
+        skippedRows: 0,
+      };
+    }
   }
 
   // ── Limpiar posible markdown del response ─────────────────────────────────

@@ -135,7 +135,7 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <div className="flex justify-between items-center mb-6">
@@ -277,15 +277,14 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
             <button
               onClick={handleSubmit}
               disabled={isSubmitting}
-              className={`btn-submit flex-1 ${
-                isSubmitting ? 'opacity-70 cursor-not-allowed' : ''
-              }`}
+              className={`btn-submit flex-1 ${isSubmitting ? 'opacity-70 cursor-not-allowed' : ''
+                }`}
             >
               {isSubmitting
                 ? 'Guardando...'
                 : editingPayment
-                ? 'Actualizar'
-                : 'Crear'}
+                  ? 'Actualizar'
+                  : 'Crear'}
             </button>
             <button
               onClick={onClose}

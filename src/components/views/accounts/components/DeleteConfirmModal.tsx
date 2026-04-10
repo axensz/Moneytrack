@@ -36,7 +36,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
     (transactionCount === 0 || confirmDeleteWithTransactions);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md">
         <div className="p-6">
           <h3 className="text-lg font-semibold text-rose-600 dark:text-rose-400 mb-4">

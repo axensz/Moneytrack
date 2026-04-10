@@ -9,7 +9,9 @@
       "Bash(rtk ls:*)",
       "Bash(xargs -I {} grep -l \"useState\\\\|useCallback\\\\|useEffect\\\\|useMemo\" {})",
       "Bash(xargs grep:*)",
-      "Bash(rtk find:*)"
+      "Bash(rtk find:*)",
+      "Bash(wc -l /c/Users/camil/Desktop/Moneytrack/src/components/**/*.tsx)",
+      "Bash(find /c/Users/camil/Desktop/Moneytrack/src -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) -exec wc -l {} +)"
     ]
   }
 }

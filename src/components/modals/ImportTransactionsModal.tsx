@@ -75,6 +75,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
       setRows(
         result.rows.map(r => ({
           ...r,
+          category: r.suggestedCategory,
           accountId,
           include: true,
         }))
@@ -168,13 +169,13 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
         <div className="flex items-center gap-0 px-6 pt-4">
           {(['upload', 'review', 'done'] as Step[]).map((s, i) => (
             <React.Fragment key={s}>
-              <div className={`flex items-center gap-1.5 text-xs font-medium ${step === s ? 'text-purple-600 dark:text-purple-400' : i < ['upload','review','done'].indexOf(step) ? 'text-green-600' : 'text-gray-400'}`}>
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${step === s ? 'bg-purple-600 text-white' : i < ['upload','review','done'].indexOf(step) ? 'bg-green-500 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500'}`}>
-                  {i < ['upload','review','done'].indexOf(step) ? '✓' : i + 1}
+              <div className={`flex items-center gap-1.5 text-xs font-medium ${step === s ? 'text-purple-600 dark:text-purple-400' : i < ['upload', 'review', 'done'].indexOf(step) ? 'text-green-600' : 'text-gray-400'}`}>
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${step === s ? 'bg-purple-600 text-white' : i < ['upload', 'review', 'done'].indexOf(step) ? 'bg-green-500 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500'}`}>
+                  {i < ['upload', 'review', 'done'].indexOf(step) ? '✓' : i + 1}
                 </div>
                 <span className="hidden sm:inline">{s === 'upload' ? 'Cargar' : s === 'review' ? 'Revisar' : 'Listo'}</span>
               </div>
-              {i < 2 && <div className={`flex-1 h-px mx-2 ${i < ['upload','review','done'].indexOf(step) ? 'bg-green-400' : 'bg-gray-200 dark:bg-gray-700'}`} />}
+              {i < 2 && <div className={`flex-1 h-px mx-2 ${i < ['upload', 'review', 'done'].indexOf(step) ? 'bg-green-400' : 'bg-gray-200 dark:bg-gray-700'}`} />}
             </React.Fragment>
           ))}
         </div>

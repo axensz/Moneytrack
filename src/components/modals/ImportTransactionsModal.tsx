@@ -6,6 +6,8 @@ import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useImportTransactions } from '../../hooks/useImportTransactions';
 import { parseCSV } from '../../utils/csvParser';
+import { parseXLSX } from '../../utils/xlsxParser';
+import { parsePDF, isPDFParsingAvailable } from '../../utils/pdfParser';
 import { categorizeWithAI, isAIAvailable } from '../../utils/aiCategorizer';
 import { DEFAULT_CATEGORIES } from '../../config/constants';
 import type { ImportRow } from '../../hooks/useImportTransactions';
@@ -35,6 +37,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
   const [parseStats, setParseStats] = useState<{ total: number; skipped: number } | null>(null);
   const [aiCategorizing, setAiCategorizing] = useState(false);
   const [aiApplied, setAiApplied] = useState(false);
+  const [pdfParsing, setPdfParsing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const nonCreditAccounts = accounts.filter(a => a.type !== 'credit');
@@ -48,6 +51,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
     setFileName('');
     setParseStats(null);
     setAiApplied(false);
+    setPdfParsing(false);
     reset();
     onClose();
   }, [onClose, reset]);
@@ -59,11 +63,11 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
     setParseError('');
     setFileName(file.name);
 
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      const result = parseCSV(text);
+    const name = file.name.toLowerCase();
+    const isXLSX = name.endsWith('.xlsx') || name.endsWith('.xls');
+    const isPDF = name.endsWith('.pdf');
 
+    const applyResult = (result: ReturnType<typeof parseCSV>) => {
       if (result.rows.length === 0) {
         setParseError(
           result.errors.length > 0
@@ -72,9 +76,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
         );
         return;
       }
-
       setParseStats({ total: result.rows.length, skipped: result.skippedRows });
-
       const accountId = selectedAccountId || nonCreditAccounts[0]?.id || accounts[0]?.id || '';
       setRows(
         result.rows.map(r => ({
@@ -85,7 +87,32 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
         }))
       );
     };
-    reader.readAsText(file, 'UTF-8');
+
+    if (isPDF) {
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const buffer = ev.target?.result as ArrayBuffer;
+        setPdfParsing(true);
+        const result = await parsePDF(buffer);
+        setPdfParsing(false);
+        applyResult(result);
+      };
+      reader.readAsArrayBuffer(file);
+    } else if (isXLSX) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const buffer = ev.target?.result as ArrayBuffer;
+        applyResult(parseXLSX(buffer));
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const text = ev.target?.result as string;
+        applyResult(parseCSV(text));
+      };
+      reader.readAsText(file, 'UTF-8');
+    }
   }, [selectedAccountId, accounts, nonCreditAccounts]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -261,21 +288,32 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
                 onClick={() => fileInputRef.current?.click()}
                 className="border-2 border-dashed border-purple-300 dark:border-purple-700 rounded-2xl p-8 text-center cursor-pointer hover:border-purple-500 hover:bg-purple-50/50 dark:hover:bg-purple-900/10 transition-all"
               >
-                <Upload size={32} className="mx-auto mb-3 text-purple-400" />
-                {fileName ? (
+                {pdfParsing ? (
+                  <Loader2 size={32} className="mx-auto mb-3 text-purple-400 animate-spin" />
+                ) : (
+                  <Upload size={32} className="mx-auto mb-3 text-purple-400" />
+                )}
+                {pdfParsing ? (
+                  <div className="text-center">
+                    <p className="text-sm font-semibold text-purple-700 dark:text-purple-300">Analizando PDF con IA...</p>
+                    <p className="text-xs text-gray-400 mt-1">Gemini está extrayendo las transacciones</p>
+                  </div>
+                ) : fileName ? (
                   <p className="text-sm font-semibold text-purple-700 dark:text-purple-300">{fileName}</p>
                 ) : (
                   <>
                     <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
                       Arrastra tu extracto aquí o haz clic para seleccionar
                     </p>
-                    <p className="text-xs text-gray-400 mt-1">Formato CSV — Bancolombia, Davivienda, BBVA, Nequi y más</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      CSV, Excel (.xlsx){isPDFParsingAvailable() ? ' o PDF (analizado con IA)' : ' — PDF requiere IA configurada'} · Bancolombia, Davivienda, BBVA, Nequi y más
+                    </p>
                   </>
                 )}
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".csv,.txt"
+                  accept=".csv,.txt,.xlsx,.xls,.pdf"
                   className="hidden"
                   onChange={handleFileChange}
                 />

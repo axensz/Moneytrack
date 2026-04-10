@@ -470,24 +470,30 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
         }
         case 'bulk_update_category': {
           const updates = action.data.updates;
+          // Filtrar solo las que existen en el estado actual
+          const validUpdates = updates.filter((u: { transactionId: string }) =>
+            transactions.some(t => t.id === u.transactionId)
+          );
           // Recoger categorías nuevas que no existen y crearlas primero
           const newCatsToCreate = new Set<string>();
-          for (const u of updates) {
-            const tx = transactions.find(t => t.id === u.transactionId);
-            const cType = tx?.type === 'income' ? 'income' : 'expense';
+          for (const u of validUpdates) {
+            const tx = transactions.find(t => t.id === u.transactionId)!;
+            const cType = tx.type === 'income' ? 'income' : 'expense';
             const existing = cType === 'income' ? categories.income : categories.expense;
             if (!existing.includes(u.newCategory) && !newCatsToCreate.has(`${cType}:${u.newCategory}`)) {
               newCatsToCreate.add(`${cType}:${u.newCategory}`);
               await onAddCategory(cType, u.newCategory);
             }
           }
-          for (const u of updates) {
+          for (const u of validUpdates) {
             await onUpdateTransaction(u.transactionId, { category: u.newCategory });
           }
+          const skipped = updates.length - validUpdates.length;
+          const skipNote = skipped > 0 ? ` (${skipped} no encontradas)` : '';
           setMessages(prev => {
             const updated = [...prev];
             updated[msgIndex] = { ...updated[msgIndex], actionExecuted: true };
-            updated.push({ id: nextMsgId(), role: 'model', content: `✅ ¡Listo! Se recategorizaron **${updates.length} transacciones** correctamente.` });
+            updated.push({ id: nextMsgId(), role: 'model', content: `✅ ¡Listo! Se recategorizaron **${validUpdates.length} transacciones** correctamente${skipNote}.` });
             return updated;
           });
           break;

@@ -79,7 +79,7 @@ Responde SOLO el JSON array, sin markdown ni explicaciones.`;
         const parsed: Array<{ i: number; c: string; conf: string }> = JSON.parse(jsonStr);
 
         return parsed
-            .filter(r => ALL_CATEGORIES.includes(r.c))
+            .filter(r => (ALL_CATEGORIES as string[]).includes(r.c))
             .map(r => ({
                 index: r.i,
                 category: r.c,

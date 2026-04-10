@@ -96,34 +96,19 @@ export async function removeFromQueue(id: string): Promise<void> {
  * Remove multiple operations from queue
  */
 export async function removeMultipleFromQueue(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+
     const db = await openDB();
 
     return new Promise((resolve, reject) => {
         const transaction = db.transaction([STORE_NAME], 'readwrite');
         const store = transaction.objectStore(STORE_NAME);
 
-        let completed = 0;
-        let hasError = false;
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB transaction aborted'));
 
-        ids.forEach((id) => {
-            const request = store.delete(id);
-
-            request.onsuccess = () => {
-                completed++;
-                if (completed === ids.length && !hasError) {
-                    resolve();
-                }
-            };
-
-            request.onerror = () => {
-                hasError = true;
-                reject(request.error);
-            };
-        });
-
-        if (ids.length === 0) {
-            resolve();
-        }
+        ids.forEach((id) => store.delete(id));
     });
 }
 

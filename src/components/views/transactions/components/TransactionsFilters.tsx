@@ -106,7 +106,7 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
           <button
             onClick={onImport}
             disabled={accounts.length === 0}
-            className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg transition-colors flex-shrink-0 ${accounts.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg transition-colors flex-shrink-0 ${accounts.length === 0 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
             title="Importar desde extracto bancario"
             aria-label="Importar transacciones"
           >

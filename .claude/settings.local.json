@@ -11,7 +11,12 @@
       "Bash(xargs grep:*)",
       "Bash(rtk find:*)",
       "Bash(wc -l /c/Users/camil/Desktop/Moneytrack/src/components/**/*.tsx)",
-      "Bash(find /c/Users/camil/Desktop/Moneytrack/src -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) -exec wc -l {} +)"
+      "Bash(find /c/Users/camil/Desktop/Moneytrack/src -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) -exec wc -l {} +)",
+      "Bash(rtk grep:*)",
+      "Bash(git stash:*)",
+      "Bash(python3 -c ':*)",
+      "Bash(rtk npm:*)",
+      "Bash(node -e ':*)"
     ]
   }
 }

@@ -60,8 +60,10 @@ const CreditCardStatementView = lazy(() =>
 );
 
 const ViewFallback = () => (
-  <div className="flex items-center justify-center py-12">
-    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600" />
+  <div className="space-y-4 animate-pulse">
+    <div className="h-24 bg-gray-200 dark:bg-gray-700 rounded-xl" />
+    <div className="h-16 bg-gray-200 dark:bg-gray-700 rounded-xl" />
+    <div className="h-16 bg-gray-200 dark:bg-gray-700 rounded-xl" />
   </div>
 );
 

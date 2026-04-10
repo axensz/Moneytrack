@@ -10,8 +10,7 @@ import { logger } from './logger';
 const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
 
 const ALL_CATEGORIES = [
-    ...DEFAULT_CATEGORIES.expense,
-    ...DEFAULT_CATEGORIES.income,
+    ...new Set([...DEFAULT_CATEGORIES.expense, ...DEFAULT_CATEGORIES.income]),
 ];
 
 interface TransactionToCateg {

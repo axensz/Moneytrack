@@ -16,7 +16,8 @@ export interface ImportRow {
   type: 'income' | 'expense';
   category: string;
   accountId: string;
-  include: boolean; // si el usuario la marcó para importar
+  include: boolean;    // si el usuario la marcó para importar
+  isDuplicate?: boolean; // posible duplicado detectado contra transacciones existentes
 }
 
 export interface ImportResult {

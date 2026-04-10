@@ -20,12 +20,11 @@ interface ImportTransactionsModalProps {
 type Step = 'upload' | 'review' | 'done';
 
 const ALL_CATEGORIES = [
-  ...DEFAULT_CATEGORIES.expense,
-  ...DEFAULT_CATEGORIES.income,
+  ...new Set([...DEFAULT_CATEGORIES.expense, ...DEFAULT_CATEGORIES.income]),
 ];
 
 export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsModalProps) {
-  const { accounts } = useFinance();
+  const { accounts, transactions: existingTransactions } = useFinance();
   const { user } = useAuth();
   const { importTransactions, status, progress, result, reset } = useImportTransactions(user?.uid || null);
 
@@ -34,7 +33,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [parseError, setParseError] = useState('');
   const [fileName, setFileName] = useState('');
-  const [parseStats, setParseStats] = useState<{ total: number; skipped: number } | null>(null);
+  const [parseStats, setParseStats] = useState<{ total: number; skipped: number; duplicates: number } | null>(null);
   const [aiCategorizing, setAiCategorizing] = useState(false);
   const [aiApplied, setAiApplied] = useState(false);
   const [pdfParsing, setPdfParsing] = useState(false);
@@ -76,16 +75,51 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
         );
         return;
       }
-      setParseStats({ total: result.rows.length, skipped: result.skippedRows });
+
       const accountId = selectedAccountId || nonCreditAccounts[0]?.id || accounts[0]?.id || '';
-      setRows(
-        result.rows.map(r => ({
+
+      // ── Detección de duplicados (todo en memoria, sin llamadas a Firestore) ──
+
+      // Clave de identidad: tipo|día|monto
+      const dayKey = (d: Date) =>
+        `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+      const txKey = (type: string, date: Date, amount: number) =>
+        `${type}|${dayKey(date)}|${amount.toFixed(2)}`;
+
+      // 1. Índice de transacciones existentes ya en memoria (cero reads Firestore)
+      const existingKeys = new Set(
+        existingTransactions
+          .filter(tx => tx.accountId === accountId)
+          .map(tx => {
+            const d = tx.date instanceof Date ? tx.date : new Date(tx.date);
+            return txKey(tx.type, d, tx.amount);
+          })
+      );
+
+      // 2. Detectar duplicados dentro del propio archivo (misma fila repetida)
+      const seenInFile = new Set<string>();
+
+      const mapped = result.rows.map(r => {
+        const key = txKey(r.type, r.date, r.amount);
+
+        const duplicateInDB = existingKeys.has(key);
+        const duplicateInFile = seenInFile.has(key);
+
+        if (!duplicateInFile) seenInFile.add(key);
+
+        const isDuplicate = duplicateInDB || duplicateInFile;
+        return {
           ...r,
           category: r.suggestedCategory,
           accountId,
-          include: true,
-        }))
-      );
+          include: !isDuplicate,
+          isDuplicate,
+        };
+      });
+
+      const duplicateCount = mapped.filter(r => r.isDuplicate).length;
+      setParseStats({ total: result.rows.length, skipped: result.skippedRows, duplicates: duplicateCount });
+      setRows(mapped);
     };
 
     if (isPDF) {
@@ -329,12 +363,22 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
 
               {/* Stats del parse */}
               {parseStats && rows.length > 0 && (
-                <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 rounded-xl text-sm text-green-700 dark:text-green-400">
-                  <CheckCircle size={16} className="flex-shrink-0" />
-                  <span>
-                    <strong>{rows.length} transacciones</strong> detectadas
-                    {parseStats.skipped > 0 && `, ${parseStats.skipped} filas ignoradas (sin fecha o monto válido)`}
-                  </span>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 rounded-xl text-sm text-green-700 dark:text-green-400">
+                    <CheckCircle size={16} className="flex-shrink-0" />
+                    <span>
+                      <strong>{rows.length} transacciones</strong> detectadas
+                      {parseStats.skipped > 0 && `, ${parseStats.skipped} ignoradas`}
+                    </span>
+                  </div>
+                  {parseStats.duplicates > 0 && (
+                    <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl text-sm text-amber-700 dark:text-amber-400">
+                      <AlertCircle size={16} className="flex-shrink-0" />
+                      <span>
+                        <strong>{parseStats.duplicates} posibles duplicados</strong> detectados y excluidos automáticamente. Puedes incluirlos manualmente si lo necesitas.
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -372,7 +416,12 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
                   )}
                 </div>
                 <span className="text-xs text-gray-500">
-                  {includedCount} seleccionadas · {rows.length - includedCount} excluidas
+                  {includedCount} seleccionadas
+                  {rows.filter(r => r.isDuplicate).length > 0 && (
+                    <span className="text-amber-600 dark:text-amber-400">
+                      {' · '}{rows.filter(r => r.isDuplicate).length} duplicados
+                    </span>
+                  )}
                 </span>
               </div>
 
@@ -420,6 +469,11 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
                           {/* Descripción */}
                           <td className="py-2 px-3 text-gray-700 dark:text-gray-300 max-w-[200px]">
                             <span className="block truncate text-xs" title={row.description}>{row.description}</span>
+                            {row.isDuplicate && (
+                              <span className="inline-block text-[10px] px-1.5 py-0.5 mt-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded font-medium">
+                                duplicado
+                              </span>
+                            )}
                           </td>
 
                           {/* Categoría */}

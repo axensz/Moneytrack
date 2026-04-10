@@ -14,9 +14,8 @@ import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, d
 import { db } from '../lib/firebase';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
+import { generateId } from '../utils/formatters';
 import type { SavingsGoal } from '../types/finance';
-
-const generateId = () => Date.now().toString() + Math.random().toString(36).substring(2, 11);
 
 export interface GoalStatus {
   goal: SavingsGoal;

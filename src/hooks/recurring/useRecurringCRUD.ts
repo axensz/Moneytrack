@@ -7,6 +7,7 @@ import { useCallback } from 'react';
 import { collection, doc, addDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { safeFirestoreOperation, checkNetworkConnection } from '../../utils/firestoreHelpers';
+import { generateId } from '../../utils/formatters';
 import type { RecurringPayment } from '../../types/finance';
 
 interface UseRecurringCRUDReturn {
@@ -19,12 +20,6 @@ interface UseRecurringCRUDReturn {
   ) => Promise<void>;
   deleteRecurringPayment: (id: string) => Promise<void>;
 }
-
-/**
- * Genera un ID único para localStorage
- */
-const generateId = () =>
-  Date.now().toString() + Math.random().toString(36).substring(2, 11);
 
 export function useRecurringCRUD(
   userId: string | null,

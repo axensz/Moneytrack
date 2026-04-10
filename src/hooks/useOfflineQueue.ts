@@ -27,18 +27,6 @@ export function useOfflineQueue() {
     const [isSyncing, setIsSyncing] = useState(false);
     const isOnline = useNetworkStatus();
 
-    // Load queue from IndexedDB on mount
-    useEffect(() => {
-        loadQueue();
-    }, []);
-
-    // Sync when coming back online
-    useEffect(() => {
-        if (isOnline && queue.length > 0 && !isSyncing) {
-            syncQueue();
-        }
-    }, [isOnline, queue.length]);
-
     /**
      * Load queue from IndexedDB
      */
@@ -50,32 +38,6 @@ export function useOfflineQueue() {
             console.error('Failed to load offline queue:', error);
         }
     };
-
-    /**
-     * Add operation to queue
-     */
-    const addToQueue = useCallback(
-        async (
-            operation: Omit<QueuedOperation, 'id' | 'timestamp' | 'retryCount'>
-        ) => {
-            const queuedOp: QueuedOperation = {
-                ...operation,
-                id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                timestamp: Date.now(),
-                retryCount: 0,
-            };
-
-            try {
-                await addToIndexedDB(queuedOp);
-                setQueue((prev) => [...prev, queuedOp]);
-                console.log('Operation added to offline queue:', queuedOp);
-            } catch (error) {
-                console.error('Failed to add operation to queue:', error);
-                throw error;
-            }
-        },
-        []
-    );
 
     /**
      * Execute a single queued operation
@@ -91,7 +53,6 @@ export function useOfflineQueue() {
             switch (type) {
                 case 'create':
                     await addDoc(collectionRef, data);
-                    console.log(`Created ${collectionName} document:`, data);
                     break;
 
                 case 'update':
@@ -101,7 +62,6 @@ export function useOfflineQueue() {
                     const updateDocRef = doc(db, collectionName, data.id);
                     const { id, ...updateData } = data;
                     await updateDoc(updateDocRef, updateData);
-                    console.log(`Updated ${collectionName} document:`, data.id);
                     break;
 
                 case 'delete':
@@ -110,7 +70,6 @@ export function useOfflineQueue() {
                     }
                     const deleteDocRef = doc(db, collectionName, data.id);
                     await deleteDoc(deleteDocRef);
-                    console.log(`Deleted ${collectionName} document:`, data.id);
                     break;
 
                 default:
@@ -138,7 +97,6 @@ export function useOfflineQueue() {
         if (isSyncing || queue.length === 0) return;
 
         setIsSyncing(true);
-        console.log(`Syncing ${queue.length} queued operations...`);
 
         const successfulIds: string[] = [];
         const failedOps: QueuedOperation[] = [];
@@ -160,18 +118,42 @@ export function useOfflineQueue() {
             try {
                 await removeMultipleFromQueue(successfulIds);
                 setQueue((prev) => prev.filter((op) => !successfulIds.includes(op.id)));
-                console.log(`Successfully synced ${successfulIds.length} operations`);
             } catch (error) {
                 console.error('Failed to remove operations from queue:', error);
             }
         }
 
         if (failedOps.length > 0) {
-            console.warn(`${failedOps.length} operations failed to sync`);
+            console.error(`[OfflineQueue] ${failedOps.length} operations failed to sync`);
         }
 
         setIsSyncing(false);
     }, [queue, isSyncing]);
+
+    /**
+     * Add operation to queue
+     */
+    const addToQueue = useCallback(
+        async (
+            operation: Omit<QueuedOperation, 'id' | 'timestamp' | 'retryCount'>
+        ) => {
+            const queuedOp: QueuedOperation = {
+                ...operation,
+                id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                timestamp: Date.now(),
+                retryCount: 0,
+            };
+
+            try {
+                await addToIndexedDB(queuedOp);
+                setQueue((prev) => [...prev, queuedOp]);
+            } catch (error) {
+                console.error('Failed to add operation to queue:', error);
+                throw error;
+            }
+        },
+        []
+    );
 
     /**
      * Manually retry sync
@@ -181,6 +163,18 @@ export function useOfflineQueue() {
             syncQueue();
         }
     }, [isOnline, syncQueue]);
+
+    // Load queue from IndexedDB on mount
+    useEffect(() => {
+        loadQueue();
+    }, []);
+
+    // Sync when coming back online
+    useEffect(() => {
+        if (isOnline && queue.length > 0 && !isSyncing) {
+            syncQueue();
+        }
+    }, [isOnline, queue.length, isSyncing, syncQueue]);
 
     return {
         queue,

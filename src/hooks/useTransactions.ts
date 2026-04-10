@@ -16,10 +16,8 @@ import { useFirestoreData } from '../contexts/FirestoreContext';
 import { useLocalStorage } from './useLocalStorage';
 import { useOfflineQueue } from './useOfflineQueue';
 import { withOfflineSupport } from '../lib/offlineFirestore';
+import { generateId } from '../utils/formatters';
 import type { Transaction } from '../types/finance';
-
-// Generar ID único para localStorage (hoisted fuera del hook)
-const generateId = () => Date.now().toString() + Math.random().toString(36).substring(2, 11);
 
 export function useTransactions(userId: string | null) {
   const {

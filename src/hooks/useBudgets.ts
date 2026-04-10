@@ -13,10 +13,9 @@ import { collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc } from
 import { db } from '../lib/firebase';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
+import { generateId } from '../utils/formatters';
 import type { Budget, Transaction } from '../types/finance';
 import { SPECIAL_CATEGORIES } from '../config/constants';
-
-const generateId = () => Date.now().toString() + Math.random().toString(36).substring(2, 11);
 
 export interface BudgetStatus {
   budget: Budget;

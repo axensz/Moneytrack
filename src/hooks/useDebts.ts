@@ -14,9 +14,8 @@ import { db } from '../lib/firebase';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
 import { safeFirestoreOperation, checkNetworkConnection } from '../utils/firestoreHelpers';
+import { generateId } from '../utils/formatters';
 import type { Debt, Transaction } from '../types/finance';
-
-const generateId = () => Date.now().toString() + Math.random().toString(36).substring(2, 11);
 
 export function useDebts(userId: string | null, transactions: Transaction[], externalDebts?: Debt[]) {
   // Firestore state

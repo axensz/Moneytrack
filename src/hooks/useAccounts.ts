@@ -5,10 +5,8 @@ import { useFirestoreData } from '../contexts/FirestoreContext';
 import { useLocalStorage } from './useLocalStorage';
 import { BalanceCalculator, CreditCardCalculator } from '../utils/balanceCalculator';
 import { safeFirestoreOperation, checkNetworkConnection } from '../utils/firestoreHelpers';
+import { generateId } from '../utils/formatters';
 import type { Account, Transaction } from '../types/finance';
-
-// Generar ID único para localStorage (hoisted fuera del hook)
-const generateId = () => Date.now().toString() + Math.random().toString(36).substring(2, 11);
 
 export function useAccounts(
   userId: string | null,

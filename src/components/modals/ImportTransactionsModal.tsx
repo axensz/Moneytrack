@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useRef, useCallback } from 'react';
-import { X, Upload, FileText, CheckCircle, AlertCircle, ChevronDown, Loader2, ToggleLeft, ToggleRight, ArrowLeft } from 'lucide-react';
+import { X, Upload, FileText, CheckCircle, AlertCircle, ChevronDown, Loader2, ToggleLeft, ToggleRight, ArrowLeft, Sparkles } from 'lucide-react';
 import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useImportTransactions } from '../../hooks/useImportTransactions';
 import { parseCSV } from '../../utils/csvParser';
+import { categorizeWithAI, isAIAvailable } from '../../utils/aiCategorizer';
 import { DEFAULT_CATEGORIES } from '../../config/constants';
 import type { ImportRow } from '../../hooks/useImportTransactions';
 
@@ -32,6 +33,8 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
   const [parseError, setParseError] = useState('');
   const [fileName, setFileName] = useState('');
   const [parseStats, setParseStats] = useState<{ total: number; skipped: number } | null>(null);
+  const [aiCategorizing, setAiCategorizing] = useState(false);
+  const [aiApplied, setAiApplied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const nonCreditAccounts = accounts.filter(a => a.type !== 'credit');
@@ -44,6 +47,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
     setParseError('');
     setFileName('');
     setParseStats(null);
+    setAiApplied(false);
     reset();
     onClose();
   }, [onClose, reset]);
@@ -122,6 +126,39 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
     await importTransactions(rows);
     setStep('done');
   }, [importTransactions, rows]);
+
+  const handleAICategorize = useCallback(async () => {
+    if (aiCategorizing || rows.length === 0) return;
+    setAiCategorizing(true);
+    try {
+      const toAnalyze = rows
+        .filter(r => r.include)
+        .map((r, i) => ({
+          index: rows.indexOf(r),
+          description: r.description,
+          amount: r.amount,
+          type: r.type,
+          currentCategory: r.category,
+        }));
+      const results = await categorizeWithAI(toAnalyze);
+      if (results.length > 0) {
+        setRows(prev => {
+          const updated = [...prev];
+          results.forEach(r => {
+            if (updated[r.index]) {
+              updated[r.index] = { ...updated[r.index], category: r.category };
+            }
+          });
+          return updated;
+        });
+        setAiApplied(true);
+      }
+    } catch {
+      // silently fail — categories stay as keyword-based
+    } finally {
+      setAiCategorizing(false);
+    }
+  }, [aiCategorizing, rows]);
 
   const includedCount = rows.filter(r => r.include).length;
 
@@ -282,11 +319,31 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
                   <button onClick={() => handleToggleAll(false)} className="text-xs px-3 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
                     Ninguna
                   </button>
+                  {isAIAvailable() && (
+                    <button
+                      onClick={handleAICategorize}
+                      disabled={aiCategorizing || includedCount === 0}
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg hover:from-blue-600 hover:to-purple-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {aiCategorizing ? (
+                        <><Loader2 size={12} className="animate-spin" /> Analizando...</>
+                      ) : (
+                        <><Sparkles size={12} /> {aiApplied ? 'Re-categorizar con IA' : 'Categorizar con IA'}</>
+                      )}
+                    </button>
+                  )}
                 </div>
                 <span className="text-xs text-gray-500">
                   {includedCount} seleccionadas · {rows.length - includedCount} excluidas
                 </span>
               </div>
+
+              {aiApplied && (
+                <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-xs text-blue-700 dark:text-blue-300">
+                  <Sparkles size={12} />
+                  Categorías actualizadas con IA. Revisa y ajusta si es necesario.
+                </div>
+              )}
 
               {/* Tabla de transacciones */}
               <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">

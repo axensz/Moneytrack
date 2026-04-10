@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import type {
   Transaction,
   Account,
@@ -8,6 +8,7 @@ import type {
   RecurringPayment,
 } from '../../../types/finance';
 import { useFinance } from '../../../contexts/FinanceContext';
+import { ImportTransactionsModal } from '../../modals/ImportTransactionsModal';
 
 // Componentes
 import { NoAccountsMessage } from './components/NoAccountsMessage';
@@ -90,12 +91,15 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     onRestore,
   });
 
+  const [showImport, setShowImport] = useState(false);
+
   const handleClearFilters = () => {
     clearFilters(setFilterAccount, setFilterCategory);
   };
 
   return (
     <div className="card">
+      <ImportTransactionsModal isOpen={showImport} onClose={() => setShowImport(false)} />
       {/* Mensaje de ayuda cuando no hay cuentas */}
       {accounts.length === 0 && <NoAccountsMessage />}
 
@@ -111,6 +115,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
         onClearFilters={handleClearFilters}
         showForm={showForm}
         setShowForm={setShowForm}
+        onImport={() => setShowImport(true)}
         dateRangePreset={dateRangePreset}
         setDateRangePreset={setDateRangePreset}
         customStartDate={customStartDate}

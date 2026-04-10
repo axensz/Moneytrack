@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { PlusCircle, FilterX, Wallet, Tag, Search, X } from 'lucide-react';
+import { PlusCircle, FilterX, Wallet, Tag, Search, X, Upload } from 'lucide-react';
 import type { Account, FilterValue } from '../../../../types/finance';
 import { DateFilterDropdown } from './DateFilterDropdown';
 import { FilterDropdown } from './FilterDropdown';
@@ -20,6 +20,7 @@ interface TransactionsFiltersProps {
   onClearFilters: () => void;
   showForm: boolean;
   setShowForm: (show: boolean) => void;
+  onImport?: () => void;
   // Date filter props
   dateRangePreset: import('../../../../types/finance').DateRangePreset;
   setDateRangePreset: (preset: import('../../../../types/finance').DateRangePreset) => void;
@@ -58,6 +59,7 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
   setShowDatePicker,
   searchQuery,
   setSearchQuery,
+  onImport,
 }) => {
   const [activeDropdown, setActiveDropdown] = useState<'none' | 'account' | 'category'>('none');
 
@@ -91,8 +93,7 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
         <button
           onClick={() => setShowForm(!showForm)}
           disabled={accounts.length === 0}
-          className={`btn-primary flex-shrink-0 ${accounts.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
-            }`}
+          className={`btn-primary flex-shrink-0 ${accounts.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
           title={accounts.length === 0 ? 'Crea una cuenta primero' : 'Crear transacción'}
           aria-label="Crear nueva transacción"
         >
@@ -100,6 +101,19 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
           <span className="hidden xs:inline">Nueva</span>
           <span className="xs:hidden">Nueva</span>
         </button>
+
+        {onImport && (
+          <button
+            onClick={onImport}
+            disabled={accounts.length === 0}
+            className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg transition-colors flex-shrink-0 ${accounts.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            title="Importar desde extracto bancario"
+            aria-label="Importar transacciones"
+          >
+            <Upload size={16} aria-hidden="true" />
+            <span className="hidden sm:inline">Importar</span>
+          </button>
+        )}
 
         {/* Barra de búsqueda */}
         <div className="relative flex-1 min-w-[120px] max-w-xs">

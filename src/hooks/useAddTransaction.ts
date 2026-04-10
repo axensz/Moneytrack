@@ -225,7 +225,10 @@ export function useAddTransaction({
 
         return true;
       } catch (error) {
-        showToast.error(ERROR_MESSAGES.ADD_TRANSACTION_ERROR);
+        const message = error instanceof Error && error.message
+          ? error.message
+          : ERROR_MESSAGES.ADD_TRANSACTION_ERROR;
+        showToast.error(message);
         logger.error('Error adding transaction', error);
         return false;
       }

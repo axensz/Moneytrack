@@ -243,7 +243,8 @@ export function useNotificationStore(userId: string | null, externalNotification
     // Clear all notifications con optimistic update (fix #8: chunked batches)
     const clearAll = useCallback(async () => {
         if (userId) {
-            const previousNotifications = [...firestoreNotifications];
+            const currentNotifications = firestoreNotificationsRef.current;
+            const previousNotifications = [...currentNotifications];
             setFirestoreNotifications([]);
 
             try {
@@ -260,15 +261,16 @@ export function useNotificationStore(userId: string | null, externalNotification
         } else {
             setLocalNotifications([]);
         }
-    }, [userId, firestoreNotifications, setLocalNotifications, commitInBatches]);
+    }, [userId, setLocalNotifications, commitInBatches]);
 
     // Mark all as read con optimistic update (fix #8: chunked batches)
     const markAllAsRead = useCallback(async () => {
         if (userId) {
-            const unreadNotifications = firestoreNotifications.filter((n) => !n.isRead);
+            const currentNotifications = firestoreNotificationsRef.current;
+            const unreadNotifications = currentNotifications.filter((n) => !n.isRead);
             if (unreadNotifications.length === 0) return;
 
-            const previousNotifications = [...firestoreNotifications];
+            const previousNotifications = [...currentNotifications];
             setFirestoreNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
 
             try {
@@ -285,7 +287,7 @@ export function useNotificationStore(userId: string | null, externalNotification
         } else {
             setLocalNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
         }
-    }, [userId, firestoreNotifications, setLocalNotifications, commitInBatches]);
+    }, [userId, setLocalNotifications, commitInBatches]);
 
     return {
         notifications,

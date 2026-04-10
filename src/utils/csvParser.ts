@@ -74,11 +74,11 @@ function splitCSVLine(line: string, delimiter: string): string[] {
 
 const DATE_KEYWORDS = ['fecha', 'date', 'fecha mov', 'fec', 'fecha y hora', 'f.mov'];
 const DESC_KEYWORDS = ['descripcion', 'descripción', 'concepto', 'detalle', 'referencia',
-                       'glosa', 'narración', 'narracion', 'movimiento', 'detail', 'concept'];
+  'glosa', 'narración', 'narracion', 'movimiento', 'detail', 'concept'];
 const DEBIT_KEYWORDS = ['debito', 'débito', 'cargo', 'retiro', 'egreso', 'debitos',
-                        'débitos', 'cargos', 'debit', 'salida', 'salidas'];
+  'débitos', 'cargos', 'debit', 'salida', 'salidas'];
 const CREDIT_KEYWORDS = ['credito', 'crédito', 'abono', 'ingreso', 'creditos',
-                         'créditos', 'abonos', 'credit', 'entrada', 'entradas'];
+  'créditos', 'abonos', 'credit', 'entrada', 'entradas'];
 const AMOUNT_KEYWORDS = ['valor', 'monto', 'importe', 'amount', 'vlr', 'vr'];
 const TYPE_KEYWORDS = ['d/c', 'tipo', 'type', 'db/cr', 'signo', 'clase'];
 
@@ -177,20 +177,107 @@ export function parseDate(raw: string): Date | null {
 // ── Auto-categorización por palabras clave en la descripción ─────────────────
 
 const CATEGORY_RULES: Array<{ keywords: string[]; category: string; type?: 'income' | 'expense' }> = [
-  { keywords: ['nomina', 'nómina', 'sueldo', 'salario', 'pago empresa', 'pago empleador'], category: 'Salario', type: 'income' },
-  { keywords: ['freelance', 'honorarios', 'consulting'], category: 'Freelance', type: 'income' },
-  { keywords: ['dividendo', 'rendimiento', 'inversion', 'inversión', 'cdт', 'cdt'], category: 'Inversiones', type: 'income' },
-  { keywords: ['cesantia', 'cesantía', 'prima'], category: 'Cesantías', type: 'income' },
+  // ── INGRESOS ──
+  { keywords: ['nomina', 'nómina', 'sueldo', 'salario', 'pago empresa', 'pago empleador', 'pago nomina', 'abono nomina'], category: 'Salario', type: 'income' },
+  { keywords: ['freelance', 'honorarios', 'consulting', 'prestacion servicio', 'cuenta cobro'], category: 'Freelance', type: 'income' },
+  { keywords: ['dividendo', 'rendimiento', 'inversion', 'inversión', 'cdt', 'fiducuenta', 'fondo inversion', 'tyba', 'a2censo', 'bold'], category: 'Inversiones', type: 'income' },
+  { keywords: ['cesantia', 'cesantía', 'prima', 'liquidacion', 'liquidación', 'vacaciones'], category: 'Cesantías', type: 'income' },
 
-  { keywords: ['uber', 'cabify', 'indriver', 'taxi', 'peaje', 'gasolina', 'parqueadero', 'transmilenio', 'sitp', 'metro'], category: 'Transporte' },
-  { keywords: ['supermercado', 'exito', 'éxito', 'carulla', 'jumbo', 'alkosto', 'ara', 'd1', 'mercado', 'fruver', 'restaurante', 'domicilio', 'rappi food', 'ifood', 'uber eats'], category: 'Alimentación' },
-  { keywords: ['netflix', 'spotify', 'disney', 'hbo', 'prime video', 'youtube premium', 'deezer', 'crunchyroll', 'twitch', 'steam', 'playstation', 'xbox'], category: 'Entretenimiento' },
-  { keywords: ['energia', 'energía', 'epm', 'codensa', 'gas natural', 'acueducto', 'claro', 'tigo', 'movistar', 'wom', 'internet', 'telefonia', 'telefonía'], category: 'Servicios' },
-  { keywords: ['arriendo', 'renta', 'administracion', 'administración', 'cuota copropiedad'], category: 'Vivienda' },
-  { keywords: ['eps', 'clinica', 'clínica', 'hospital', 'medico', 'médico', 'farmacia', 'drogueria', 'droguería', 'laboratorio', 'consulta'], category: 'Salud' },
-  { keywords: ['colegio', 'universidad', 'matricula', 'matrícula', 'pensión educativa', 'curso', 'capacitacion'], category: 'Educación' },
-  { keywords: ['falabella', 'zara', 'h&m', 'adidas', 'nike', 'decathlon', 'homecenter', 'ikea', 'amazon', 'mercado libre'], category: 'Compras Personales' },
-  { keywords: ['regalo', 'cumpleaños'], category: 'Regalos' },
+  // ── TRANSPORTE ──
+  {
+    keywords: [
+      'uber', 'cabify', 'indriver', 'didi', 'beat', 'taxi', 'peaje', 'gasolina', 'terpel', 'primax', 'texaco',
+      'parqueadero', 'parking', 'transmilenio', 'sitp', 'metro', 'mio', 'megabus', 'metrolinea',
+      'soat', 'revision tecno', 'pico y placa', 'waze', 'movilidad', 'taller', 'mecanico',
+      'lavadero', 'lavautos', 'autolavado'
+    ], category: 'Transporte'
+  },
+
+  // ── ALIMENTACIÓN ──
+  {
+    keywords: [
+      'supermercado', 'exito', 'éxito', 'carulla', 'jumbo', 'alkosto', 'makro', 'pricesmart',
+      'ara', 'd1', 'justo bueno', 'surtimax', 'olimpica', 'olímpica', 'mercado', 'fruver', 'plaza mercado',
+      'restaurante', 'rest ', 'domicilio', 'rappi', 'ifood', 'uber eats', 'didi food', 'pedidos ya',
+      'mcdonalds', 'burger king', 'subway', 'kfc', 'frisby', 'el corral', 'crepes', 'wok',
+      'panaderia', 'panadería', 'cafeteria', 'cafetería', 'juan valdez', 'starbucks', 'tostao',
+      'cigarreria', 'cigarrería', 'tienda', 'minimercado', 'surtifruver'
+    ], category: 'Alimentación'
+  },
+
+  // ── ENTRETENIMIENTO ──
+  {
+    keywords: [
+      'netflix', 'spotify', 'disney', 'hbo', 'max', 'prime video', 'youtube premium', 'apple tv',
+      'deezer', 'crunchyroll', 'twitch', 'steam', 'playstation', 'xbox', 'nintendo', 'epic games',
+      'cine', 'cinecolombia', 'cinemark', 'procinal', 'royal films',
+      'bar ', 'discoteca', 'club', 'concierto', 'teatro', 'museo', 'parque diversiones',
+      'salitre magico', 'mundo aventura', 'maloka'
+    ], category: 'Entretenimiento'
+  },
+
+  // ── SERVICIOS ──
+  {
+    keywords: [
+      'energia', 'energía', 'epm', 'codensa', 'enel', 'celsia', 'electricaribe',
+      'gas natural', 'vanti', 'gases del caribe',
+      'acueducto', 'eaab', 'aguas de bogota',
+      'claro', 'tigo', 'movistar', 'wom', 'virgin', 'etb', 'une',
+      'internet', 'telefonia', 'telefonía', 'fibra optica',
+      'directv', 'dish', 'cable',
+      'pse ', 'pago servicio', 'recaudo', 'factura'
+    ], category: 'Servicios'
+  },
+
+  // ── VIVIENDA ──
+  {
+    keywords: [
+      'arriendo', 'renta', 'canon', 'administracion', 'administración', 'cuota copropiedad',
+      'inmobiliaria', 'predial', 'impuesto predial', 'valorizacion',
+      'hipoteca', 'credito vivienda', 'leasing habitacional'
+    ], category: 'Vivienda'
+  },
+
+  // ── SALUD ──
+  {
+    keywords: [
+      'eps', 'nueva eps', 'sura eps', 'sanitas', 'compensar', 'famisanar', 'salud total', 'coomeva',
+      'clinica', 'clínica', 'hospital', 'medico', 'médico', 'consultorio',
+      'farmacia', 'drogueria', 'droguería', 'locatel', 'farmatodo', 'cruz verde', 'la rebaja',
+      'laboratorio', 'consulta', 'odontologia', 'odontología', 'optometria', 'lentes', 'optica',
+      'medicina prepagada', 'colmedica', 'colmédica'
+    ], category: 'Salud'
+  },
+
+  // ── EDUCACIÓN ──
+  {
+    keywords: [
+      'colegio', 'universidad', 'uniandes', 'javeriana', 'nacional', 'icetex',
+      'matricula', 'matrícula', 'pensión educativa', 'pension colegio',
+      'curso', 'capacitacion', 'capacitación', 'udemy', 'coursera', 'platzi', 'domestika',
+      'sena', 'diplomado', 'especializacion', 'maestria', 'maestría',
+      'libreria', 'librería', 'papeleria', 'papelería', 'panamericana'
+    ], category: 'Educación'
+  },
+
+  // ── COMPRAS PERSONALES ──
+  {
+    keywords: [
+      'falabella', 'zara', 'h&m', 'pull bear', 'bershka', 'stradivarius',
+      'adidas', 'nike', 'decathlon', 'tennis', 'arturo calle', 'studio f', 'ela',
+      'homecenter', 'ikea', 'tugó', 'tugo', 'easy',
+      'amazon', 'mercado libre', 'linio', 'shein', 'temu', 'aliexpress',
+      'samsung', 'apple store', 'mac center', 'ishop', 'ktronix', 'alkomprar',
+      'compra pos', 'compra pse'
+    ], category: 'Compras Personales'
+  },
+
+  // ── REGALOS ──
+  { keywords: ['regalo', 'cumpleaños', 'navidad', 'amor y amistad', 'dia madre', 'dia padre'], category: 'Regalos' },
+
+  // ── PATRONES BANCARIOS (fallback por tipo de operación) ──
+  { keywords: ['retiro atm', 'retiro cajero', 'avance', 'retiro efectivo'], category: 'Otros' },
+  { keywords: ['transferencia', 'envio nequi', 'envío nequi', 'daviplata', 'transfiya'], category: 'Otros' },
 ];
 
 export function suggestCategory(description: string, type: 'income' | 'expense'): string {

@@ -216,19 +216,20 @@ export function useAccounts(
 
     const bankIds = allCardsForBankCheck
       .map(account => account.bankAccountId)
-      .filter(Boolean);
+      .filter((id): id is string => id != null);
 
-    if (bankIds.length > 0) {
-      const uniqueBanks = new Set(bankIds);
-      if (uniqueBanks.size > 1) {
-        throw new Error('Solo se pueden unificar tarjetas de crédito del mismo banco');
-      }
-      // Si alguna tiene banco y otra no, también es inconsistente
-      const cardsWithBank = allCardsForBankCheck.filter(a => a.bankAccountId);
-      const cardsWithoutBank = allCardsForBankCheck.filter(a => !a.bankAccountId);
-      if (cardsWithBank.length > 0 && cardsWithoutBank.length > 0) {
-        throw new Error('Solo se pueden unificar tarjetas de crédito del mismo banco (algunas tarjetas no tienen banco asignado)');
-      }
+    if (bankIds.length === 0) {
+      throw new Error('Las tarjetas deben estar asociadas a una cuenta bancaria para poder unificarse');
+    }
+
+    const uniqueBanks = new Set(bankIds);
+    if (uniqueBanks.size > 1) {
+      throw new Error('Solo se pueden unificar tarjetas de crédito del mismo banco');
+    }
+
+    // Si alguna tiene banco y otra no, también es inconsistente
+    if (bankIds.length < allCardsForBankCheck.length) {
+      throw new Error('Solo se pueden unificar tarjetas de crédito del mismo banco (algunas tarjetas no tienen banco asignado)');
     }
 
     const sourceHadDefault = sourceAccounts.some(account => account?.isDefault);

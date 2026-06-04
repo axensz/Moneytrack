@@ -169,7 +169,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
                 className="font-semibold text-gray-900 dark:text-gray-100 truncate text-base"
                 title={transaction.description || transaction.category}
               >
-                {transaction.description || <span className="text-gray-400 dark:text-gray-500 italic">{transaction.category}</span>}
+                {transaction.description || transaction.category}
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate" title={accountRoute}>
                 {accountRoute}

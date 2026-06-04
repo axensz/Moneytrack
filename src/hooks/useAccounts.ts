@@ -92,16 +92,16 @@ export function useAccounts(
     }
   };
 
-  const deleteAccount = async (id: string) => {
+  const deleteAccount = async (id: string, options: { preserveTransactions?: boolean; allowDefaultDelete?: boolean } = {}) => {
     const account = accounts.find(a => a.id === id);
-    if (account?.isDefault) {
+    if (account?.isDefault && !options.allowDefaultDelete) {
       throw new Error('No puedes eliminar la cuenta por defecto');
     }
 
     // Cascade: transactions, recurring payments, and debts linked to this account
-    const relatedTransactions = transactions.filter(
-      t => t.accountId === id || t.toAccountId === id
-    );
+    const relatedTransactions = options.preserveTransactions
+      ? []
+      : transactions.filter(t => t.accountId === id || t.toAccountId === id);
 
     if (userId) {
       if (!checkNetworkConnection()) {

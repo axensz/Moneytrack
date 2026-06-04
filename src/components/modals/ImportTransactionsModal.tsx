@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import { X, Upload, FileText, CheckCircle, AlertCircle, ChevronDown, Loader2, ToggleLeft, ToggleRight, ArrowLeft, Sparkles, Calendar } from 'lucide-react';
+import { GoogleGenAI } from '@google/genai';
 import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useImportTransactions } from '../../hooks/useImportTransactions';
@@ -12,6 +13,104 @@ import { categorizeWithAI, isAIAvailable } from '../../utils/aiCategorizer';
 import { DEFAULT_CATEGORIES } from '../../config/constants';
 import { formatCurrency } from '../../utils/formatters';
 import type { ImportRow } from '../../hooks/useImportTransactions';
+
+/** Sub-component: AI-powered date range adjuster for imported rows */
+function AIDateAdjuster({ rows, setRows }: { rows: ImportRow[]; setRows: React.Dispatch<React.SetStateAction<ImportRow[]>> }) {
+  const [prompt, setPrompt] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [feedback, setFeedback] = useState('');
+
+  const handleAdjust = async () => {
+    if (!prompt.trim()) return;
+    setLoading(true);
+    setFeedback('');
+
+    const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    if (!apiKey) { setFeedback('API Key no configurada'); setLoading(false); return; }
+
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const dayName = today.toLocaleDateString('es-CO', { weekday: 'long' });
+
+    // Get date range from current rows
+    const dates = rows.map(r => r.date.getTime());
+    const minDate = new Date(Math.min(...dates)).toISOString().split('T')[0];
+    const maxDate = new Date(Math.max(...dates)).toISOString().split('T')[0];
+
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: `Hoy es ${dayName} ${todayStr}. Tengo ${rows.length} transacciones importadas con fechas entre ${minDate} y ${maxDate}. El usuario dice: "${prompt.trim()}". Necesito que me des el rango de fechas correcto. Responde SOLO un JSON: {"startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD"}. Sin explicaciones.`,
+        config: { temperature: 0 },
+      });
+
+      const text = response.text?.trim() || '';
+      const jsonMatch = text.match(/\{[^}]+\}/);
+      if (!jsonMatch) { setFeedback('No pude interpretar. Intenta ser más específico.'); setLoading(false); return; }
+
+      const { startDate, endDate } = JSON.parse(jsonMatch[0]);
+      if (!startDate || !endDate) { setFeedback('Respuesta incompleta de la IA.'); setLoading(false); return; }
+
+      const start = new Date(startDate + 'T12:00:00');
+      const end = new Date(endDate + 'T12:00:00');
+      const totalDays = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+
+      if (totalDays <= 0) { setFeedback('El rango de fechas no es válido (inicio >= fin).'); setLoading(false); return; }
+
+      // Redistribute dates proportionally within the new range
+      const oldMin = Math.min(...dates);
+      const oldMax = Math.max(...dates);
+      const oldRange = oldMax - oldMin || 1;
+
+      setRows(prev => prev.map(r => {
+        const ratio = (r.date.getTime() - oldMin) / oldRange;
+        const newTime = start.getTime() + ratio * (end.getTime() - start.getTime());
+        return { ...r, date: new Date(newTime) };
+      }));
+
+      setFeedback(`✓ Fechas ajustadas: ${start.toLocaleDateString('es-CO')} → ${end.toLocaleDateString('es-CO')}`);
+      setPrompt('');
+    } catch {
+      setFeedback('Error al consultar la IA.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl border border-purple-200 dark:border-purple-800/50">
+      <div className="flex items-center gap-2 mb-2">
+        <Sparkles size={14} className="text-purple-600 dark:text-purple-400" />
+        <span className="text-xs font-semibold text-purple-700 dark:text-purple-300">Ajustar fechas con IA</span>
+      </div>
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleAdjust()}
+          placeholder='Ej: "las fechas van del jueves pasado a hoy"'
+          className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-purple-200 dark:border-purple-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
+          disabled={loading}
+        />
+        <button
+          onClick={handleAdjust}
+          disabled={loading || !prompt.trim()}
+          className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition-colors"
+        >
+          {loading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+          Ajustar
+        </button>
+      </div>
+      {feedback && (
+        <p className={`text-[11px] mt-1.5 ${feedback.startsWith('✓') ? 'text-green-600 dark:text-green-400' : 'text-rose-500 dark:text-rose-400'}`}>
+          {feedback}
+        </p>
+      )}
+    </div>
+  );
+}
 
 interface ImportTransactionsModalProps {
   isOpen: boolean;
@@ -382,6 +481,11 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
                         <strong>{parseStats.duplicates} posibles duplicados</strong> detectados y excluidos automáticamente. Puedes incluirlos manualmente si lo necesitas.
                       </span>
                     </div>
+                  )}
+
+                  {/* AI Date Adjustment */}
+                  {isAIAvailable() && (
+                    <AIDateAdjuster rows={rows} setRows={setRows} />
                   )}
                 </div>
               )}

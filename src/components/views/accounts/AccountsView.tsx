@@ -5,11 +5,12 @@ import { Plus, Wallet, CreditCard, Banknote } from 'lucide-react';
 import { showToast } from '../../../utils/toastHelpers';
 import { BalanceCalculator } from '../../../utils/balanceCalculator';
 import { useFinance } from '../../../contexts/FinanceContext';
-import type { Account, Transaction, NewAccount } from '../../../types/finance';
+import type { Account } from '../../../types/finance';
 
 import { AccountFormModal } from './components/AccountFormModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { AccountCard } from './components/AccountCard';
+import { CreditCardsConsolidatedSummary } from './components/CreditCardsConsolidatedSummary';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
 import { useAccountForm } from './hooks/useAccountForm';
 
@@ -54,6 +55,43 @@ export const AccountsView: React.FC = () => {
   const getCreditUsed = useCallback((accountId: string): number => {
     return creditUsedMap.get(accountId) ?? 0;
   }, [creditUsedMap]);
+
+  const creditCardSummary = useMemo(() => {
+    const cards = accounts
+      .filter((account) => account.type === 'credit' && account.id)
+      .map((account) => {
+        const creditLimit = account.creditLimit || 0;
+        const used = creditUsedMap.get(account.id!) ?? 0;
+        const available = Math.max(0, creditLimit - used);
+        const usagePercentage = creditLimit > 0
+          ? Math.min((used / creditLimit) * 100, 100)
+          : 0;
+
+        return {
+          id: account.id!,
+          name: account.name,
+          creditLimit,
+          used,
+          available,
+          usagePercentage,
+        };
+      });
+
+    const totalLimit = cards.reduce((sum, card) => sum + card.creditLimit, 0);
+    const totalUsed = cards.reduce((sum, card) => sum + card.used, 0);
+    const totalAvailable = Math.max(0, totalLimit - totalUsed);
+    const usagePercentage = totalLimit > 0
+      ? Math.min((totalUsed / totalLimit) * 100, 100)
+      : 0;
+
+    return {
+      cards,
+      totalLimit,
+      totalUsed,
+      totalAvailable,
+      usagePercentage,
+    };
+  }, [accounts, creditUsedMap]);
 
   // Custom hooks
   const dragDrop = useDragAndDrop({ accounts, updateAccount });
@@ -229,6 +267,15 @@ export const AccountsView: React.FC = () => {
         }
         onConfirm={handleDeleteAccount}
         onClose={() => setDeleteConfirm(null)}
+      />
+
+      <CreditCardsConsolidatedSummary
+        cards={creditCardSummary.cards}
+        totalLimit={creditCardSummary.totalLimit}
+        totalUsed={creditCardSummary.totalUsed}
+        totalAvailable={creditCardSummary.totalAvailable}
+        usagePercentage={creditCardSummary.usagePercentage}
+        formatCurrency={formatCurrency}
       />
 
       {/* Lista de cuentas */}

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback } from 'react';
-import { X, Upload, FileText, CheckCircle, AlertCircle, ChevronDown, Loader2, ToggleLeft, ToggleRight, ArrowLeft, Sparkles } from 'lucide-react';
+import { X, Upload, FileText, CheckCircle, AlertCircle, ChevronDown, Loader2, ToggleLeft, ToggleRight, ArrowLeft, Sparkles, Calendar } from 'lucide-react';
 import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useImportTransactions } from '../../hooks/useImportTransactions';
@@ -425,6 +425,31 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
                 </span>
               </div>
 
+              {/* Ajuste masivo de año */}
+              <div className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                <Calendar size={14} className="text-gray-400 flex-shrink-0" />
+                <span className="text-xs text-gray-600 dark:text-gray-400">Ajustar año:</span>
+                <select
+                  onChange={(e) => {
+                    const targetYear = parseInt(e.target.value);
+                    if (!targetYear) return;
+                    setRows(prev => prev.map(r => {
+                      const d = new Date(r.date);
+                      d.setFullYear(targetYear);
+                      return { ...r, date: d };
+                    }));
+                  }}
+                  className="text-xs px-2 py-1 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  defaultValue=""
+                >
+                  <option value="" disabled>Cambiar todas a...</option>
+                  <option value="2024">2024</option>
+                  <option value="2025">2025</option>
+                  <option value="2026">2026</option>
+                </select>
+                <span className="text-[10px] text-gray-400">o edita individual</span>
+              </div>
+
               {aiApplied && (
                 <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-xs text-blue-700 dark:text-blue-300">
                   <Sparkles size={12} />
@@ -461,9 +486,20 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
                             </button>
                           </td>
 
-                          {/* Fecha */}
-                          <td className="py-2 px-3 text-gray-600 dark:text-gray-400 whitespace-nowrap text-xs">
-                            {row.date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: '2-digit' })}
+                          {/* Fecha - editable */}
+                          <td className="py-2 px-3 whitespace-nowrap">
+                            <input
+                              type="date"
+                              value={row.date.toISOString().split('T')[0]}
+                              onChange={(e) => {
+                                const newDate = new Date(e.target.value + 'T12:00:00');
+                                if (!isNaN(newDate.getTime())) {
+                                  setRows(prev => prev.map((r, idx) => idx === i ? { ...r, date: newDate } : r));
+                                }
+                              }}
+                              disabled={!row.include}
+                              className="text-xs px-1.5 py-1 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-purple-500 w-[120px]"
+                            />
                           </td>
 
                           {/* Descripción */}

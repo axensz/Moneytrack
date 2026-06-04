@@ -33,7 +33,7 @@ describe('detectDuplicates', () => {
     const existing = [makeTransaction()];
     const result = detectDuplicates(baseTx, existing);
     expect(result.length).toBe(1);
-    expect(result[0].matchScore).toBe(100);
+    expect(result[0].matchScore).toBe(110);
     expect(result[0].reasons).toContain('Mismo monto');
     expect(result[0].reasons).toContain('Misma categoría');
     expect(result[0].reasons).toContain('Misma descripción');
@@ -52,14 +52,14 @@ describe('detectDuplicates', () => {
     expect(result.length).toBe(0);
   });
 
-  it('should match with score >= 60 (amount + category)', () => {
+  it('should match with score >= 70 (amount + category)', () => {
     const existing = [makeTransaction({
       description: 'Diferente descripción',
-      date: new Date('2026-02-15T12:00:00'), // far date
+      date: new Date('2026-02-12T12:00:00'),
     })];
     const result = detectDuplicates(baseTx, existing);
     expect(result.length).toBe(1);
-    expect(result[0].matchScore).toBe(60); // 40 amount + 20 category
+    expect(result[0].matchScore).toBe(70); // 50 amount + 20 category
   });
 
   it('should not match below threshold', () => {
@@ -99,11 +99,11 @@ describe('detectDuplicates', () => {
     const existing = [makeTransaction({
       description: 'Compra en Supermercado Éxito',
       category: 'Otros',
-      date: new Date('2026-03-01T12:00:00'),
+      date: new Date('2026-02-10T12:00:00'),
     })];
     const tx: NewTransaction = { ...baseTx, description: 'Supermercado', category: 'Otros' };
     const result = detectDuplicates(tx, existing);
-    // 40 (amount) + 20 (category) + 10 (partial desc) = 70
+    // 50 (amount) + 20 (category) + 15 (partial desc) + 10 (close date) = 95
     expect(result.length).toBe(1);
     expect(result[0].reasons).toContain('Descripción similar');
   });

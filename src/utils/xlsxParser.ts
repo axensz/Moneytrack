@@ -2,11 +2,16 @@
  * Parser de extractos bancarios en formato Excel (.xlsx)
  * Soporta el formato de extractos de Bancolombia (Cuenta de Ahorros / Corriente)
  * con detección automática de metadatos, desbordamiento de columnas y año inferido.
+ *
+ * También incluye un parser tabular genérico para extractos detallados de tarjetas
+ * Bancolombia Visa/Mastercard, cuyos movimientos suelen venir con encabezados
+ * completos (fecha, descripción/comercio y valor) en lugar de fechas D/MM en la
+ * primera columna.
  */
 
 import * as XLSX from 'xlsx';
 import type { ParseResult, ParsedRow } from './csvParser';
-import { suggestCategory } from './csvParser';
+import { parseDate, suggestCategory } from './csvParser';
 
 // Fecha en formato D/MM o DD/MM (sin año)
 const DATE_REGEX = /^\d{1,2}\/\d{2}$/;
@@ -20,8 +25,52 @@ const SKIP_KEYWORDS = [
   'movimientos', 'fin estado', 'sucursal',
 ];
 
+const DATE_HEADER_KEYWORDS = ['fecha', 'date', 'f.mov', 'f. mov'];
+const DESCRIPTION_HEADER_KEYWORDS = [
+  'descripcion', 'descripción', 'detalle', 'concepto', 'referencia',
+  'establecimiento', 'comercio', 'movimiento', 'operacion', 'operación',
+];
+const DEBIT_HEADER_KEYWORDS = [
+  'debito', 'débito', 'cargo', 'cargos', 'consumo', 'compra', 'compras',
+  'retiro', 'egreso', 'utilizacion', 'utilización',
+];
+const CREDIT_HEADER_KEYWORDS = [
+  'credito', 'crédito', 'abono', 'abonos', 'pago', 'pagos', 'reintegro',
+  'devolucion', 'devolución',
+];
+const AMOUNT_HEADER_KEYWORDS = [
+  'valor', 'monto', 'importe', 'amount', 'vlr', 'vr', 'pesos', 'cop',
+  'colombianos', 'total',
+];
+const TYPE_HEADER_KEYWORDS = ['d/c', 'tipo', 'naturaleza', 'signo', 'clase', 'db/cr'];
+const BALANCE_HEADER_KEYWORDS = ['saldo', 'balance', 'cupo'];
+const INSTALLMENT_HEADER_KEYWORDS = ['cuota', 'cuotas', 'plazo'];
+const CARD_STATEMENT_KEYWORDS = [
+  'mastercard', 'visa', 'american express', 'tarjeta de credito',
+  'tarjeta de crédito', 'pago minimo', 'pago mínimo', 'fecha de corte',
+  'cupo disponible', 'extracto detallado',
+];
+const PAYMENT_DESCRIPTION_KEYWORDS = [
+  'pago', 'abono', 'reintegro', 'devolucion', 'devolución', 'reversion',
+  'reversión', 'ajuste credito', 'ajuste crédito',
+];
+
+interface GenericColumnMapping {
+  date: number;
+  description: number;
+  debit: number | null;
+  credit: number | null;
+  amount: number | null;
+  typeIndicator: number | null;
+}
+
 function normalize(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function includesAny(value: string, keywords: string[]): boolean {
+  const normalized = normalize(value);
+  return keywords.some(keyword => normalized.includes(normalize(keyword)));
 }
 
 function isMetadataRow(cols: unknown[]): boolean {
@@ -37,23 +86,26 @@ function parseColombianAmount(raw: unknown): number | null {
   if (typeof raw === 'number') return raw;
 
   const str = String(raw).trim();
-  if (!str || str === 'nan' || str === '#N/A') return null;
+  if (!str || str === 'nan' || str === '#N/A' || str === '-') return null;
 
-  // Quitar símbolo de moneda y espacios
-  let cleaned = str.replace(/[$\sCOP]/g, '');
+  // Quitar símbolos/moneda y conservar solo caracteres numéricos relevantes
+  let cleaned = str
+    .replace(/\(([^)]+)\)/, '-$1')
+    .replace(/cop/gi, '')
+    .replace(/[$\s]/g, '');
 
   // Añadir cero inicial si empieza con punto: ".60" → "0.60"
   cleaned = cleaned.replace(/^(-?)\./, '$10.');
 
   // Detectar formato colombiano (punto como miles, coma como decimal)
-  let normalized: string;
+  let normalizedAmount: string;
   if (/\d\.\d{3}/.test(cleaned)) {
-    normalized = cleaned.replace(/\./g, '').replace(',', '.');
+    normalizedAmount = cleaned.replace(/\./g, '').replace(',', '.');
   } else {
-    normalized = cleaned.replace(/,/g, '');
+    normalizedAmount = cleaned.replace(/,/g, '');
   }
 
-  const num = parseFloat(normalized);
+  const num = parseFloat(normalizedAmount);
   return isNaN(num) ? null : num;
 }
 
@@ -92,44 +144,185 @@ function extractHastaDate(data: unknown[][]): { year: number; month: number } {
   return fallback;
 }
 
-export function parseXLSX(buffer: ArrayBuffer): ParseResult {
+function excelDateToDate(serial: number): Date | null {
+  if (!Number.isFinite(serial) || serial < 1 || serial > 100000) return null;
+  const parsed = XLSX.SSF.parse_date_code(serial);
+  if (!parsed) return null;
+  const date = new Date(parsed.y, parsed.m - 1, parsed.d);
+  return isNaN(date.getTime()) ? null : date;
+}
+
+function parseGenericDate(raw: unknown): Date | null {
+  if (raw instanceof Date) return isNaN(raw.getTime()) ? null : raw;
+  if (typeof raw === 'number') return excelDateToDate(raw);
+  const text = String(raw ?? '').trim();
+  if (!text) return null;
+  return parseDate(text.replace(/\//g, '-')) ?? parseDate(text);
+}
+
+function rowText(row: unknown[]): string {
+  return row.map(cell => String(cell ?? '')).join(' ');
+}
+
+function isLikelyCardStatement(data: unknown[][]): boolean {
+  const sample = data.slice(0, 30).map(rowText).join(' ');
+  return includesAny(sample, CARD_STATEMENT_KEYWORDS);
+}
+
+function findGenericHeader(data: unknown[][]): { index: number; mapping: GenericColumnMapping } | null {
+  for (let index = 0; index < Math.min(data.length, 80); index++) {
+    const headers = data[index].map(cell => String(cell ?? '').trim());
+    const mapping = detectGenericColumns(headers);
+    if (mapping.date >= 0 && mapping.description >= 0 && (mapping.amount !== null || mapping.debit !== null || mapping.credit !== null)) {
+      return { index, mapping };
+    }
+  }
+  return null;
+}
+
+function detectGenericColumns(headers: string[]): GenericColumnMapping {
+  let date = -1;
+  let description = -1;
+  let debit: number | null = null;
+  let credit: number | null = null;
+  let amount: number | null = null;
+  let typeIndicator: number | null = null;
+
+  headers.forEach((header, index) => {
+    if (!header) return;
+    const isBalanceColumn = includesAny(header, BALANCE_HEADER_KEYWORDS);
+    const isInstallmentColumn = includesAny(header, INSTALLMENT_HEADER_KEYWORDS) && !includesAny(header, AMOUNT_HEADER_KEYWORDS);
+
+    if (date === -1 && includesAny(header, DATE_HEADER_KEYWORDS)) date = index;
+    if (description === -1 && includesAny(header, DESCRIPTION_HEADER_KEYWORDS)) description = index;
+    if (typeIndicator === null && includesAny(header, TYPE_HEADER_KEYWORDS)) typeIndicator = index;
+
+    if (!isBalanceColumn && !isInstallmentColumn) {
+      if (debit === null && includesAny(header, DEBIT_HEADER_KEYWORDS)) debit = index;
+      if (credit === null && includesAny(header, CREDIT_HEADER_KEYWORDS)) credit = index;
+      if (amount === null && includesAny(header, AMOUNT_HEADER_KEYWORDS)) amount = index;
+    }
+  });
+
+  // Evitar usar la misma columna dos veces cuando el encabezado genérico contiene
+  // palabras como "valor compra"; en ese caso es una columna única de monto.
+  if (amount !== null && amount === debit) debit = null;
+  if (amount !== null && amount === credit) credit = null;
+
+  return { date, description, debit, credit, amount, typeIndicator };
+}
+
+function parseDescription(row: unknown[], descriptionIndex: number): string {
+  const parts = [row[descriptionIndex], row[descriptionIndex + 1]]
+    .map(value => String(value ?? '').trim())
+    .filter(Boolean);
+
+  // Algunos extractos dividen el comercio/ciudad en la columna siguiente. Solo
+  // concatenamos si esa columna no parece monto ni fecha.
+  if (parts.length > 1) {
+    const nextAmount = parseColombianAmount(row[descriptionIndex + 1]);
+    const nextDate = parseGenericDate(row[descriptionIndex + 1]);
+    if (nextAmount !== null || nextDate) return parts[0];
+  }
+
+  return parts.join(' ').trim();
+}
+
+function typeFromIndicator(raw: unknown): 'income' | 'expense' | null {
+  const value = normalize(String(raw ?? '').trim());
+  if (!value) return null;
+  if (['c', 'cr', 'credito', 'abono', 'ingreso'].some(token => value === token || value.includes(token))) return 'income';
+  if (['d', 'db', 'debito', 'cargo', 'egreso', 'compra'].some(token => value === token || value.includes(token))) return 'expense';
+  return null;
+}
+
+function isPaymentLike(description: string): boolean {
+  return includesAny(description, PAYMENT_DESCRIPTION_KEYWORDS);
+}
+
+function parseGenericXLSXRows(data: unknown[][]): ParseResult | null {
+  const header = findGenericHeader(data);
+  if (!header) return null;
+
+  const rows: ParsedRow[] = [];
+  const errors: string[] = [];
+  let totalRows = 0;
+  let skippedRows = 0;
+  const isCardStatement = isLikelyCardStatement(data);
+  const amountHeader = header.mapping.amount !== null
+    ? String(data[header.index][header.mapping.amount] ?? '')
+    : '';
+
+  for (const row of data.slice(header.index + 1)) {
+    const date = parseGenericDate(row[header.mapping.date]);
+    if (!date) continue;
+
+    totalRows++;
+    const description = parseDescription(row, header.mapping.description);
+    if (!description || isMetadataRow([description])) {
+      skippedRows++;
+      continue;
+    }
+
+    const debitAmount = header.mapping.debit !== null ? parseColombianAmount(row[header.mapping.debit]) : null;
+    const creditAmount = header.mapping.credit !== null ? parseColombianAmount(row[header.mapping.credit]) : null;
+    const unifiedAmount = header.mapping.amount !== null ? parseColombianAmount(row[header.mapping.amount]) : null;
+
+    let amount: number | null = null;
+    let type: 'income' | 'expense' | null = null;
+
+    if (debitAmount !== null && Math.abs(debitAmount) > 0) {
+      amount = debitAmount;
+      type = 'expense';
+    } else if (creditAmount !== null && Math.abs(creditAmount) > 0) {
+      amount = creditAmount;
+      type = 'income';
+    } else if (unifiedAmount !== null && Math.abs(unifiedAmount) > 0) {
+      amount = unifiedAmount;
+      type = header.mapping.typeIndicator !== null ? typeFromIndicator(row[header.mapping.typeIndicator]) : null;
+
+      if (!type) {
+        if (amount < 0) {
+          type = isCardStatement ? 'income' : 'expense';
+        } else if (isCardStatement) {
+          type = includesAny(amountHeader, CREDIT_HEADER_KEYWORDS) || isPaymentLike(description) ? 'income' : 'expense';
+        } else {
+          type = 'income';
+        }
+      }
+    }
+
+    if (amount === null || amount === 0 || !type) {
+      skippedRows++;
+      continue;
+    }
+
+    rows.push({
+      date,
+      description,
+      amount: Math.abs(amount),
+      type,
+      suggestedCategory: suggestCategory(description, type),
+      rawLine: row.map(cell => cell ?? '').join('|'),
+    });
+  }
+
+  if (rows.length === 0) {
+    errors.push(
+      totalRows > 0
+        ? `Se encontraron ${totalRows} filas con fecha pero no pudieron parsearse. Verifica las columnas de descripción y valor.`
+        : 'No se encontraron movimientos debajo del encabezado del extracto.'
+    );
+  }
+
+  return { rows, errors, totalRows, skippedRows };
+}
+
+function parseBancolombiaAccountRows(data: unknown[][]): ParseResult {
   const rows: ParsedRow[] = [];
   const errors: string[] = [];
   let skippedRows = 0;
   let totalRows = 0;
-
-  let wb: XLSX.WorkBook;
-  try {
-    wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
-  } catch {
-    return {
-      rows: [],
-      errors: ['No se pudo leer el archivo Excel. Verifica que no esté dañado.'],
-      totalRows: 0,
-      skippedRows: 0,
-    };
-  }
-
-  const sheetName = wb.SheetNames[0];
-  if (!sheetName) {
-    return { rows: [], errors: ['El archivo Excel no contiene hojas.'], totalRows: 0, skippedRows: 0 };
-  }
-
-  const ws = wb.Sheets[sheetName];
-  const data: unknown[][] = XLSX.utils.sheet_to_json(ws, {
-    header: 1,
-    defval: null,
-    raw: true,
-  });
-
-  if (data.length < 3) {
-    return {
-      rows: [],
-      errors: ['El archivo no contiene suficientes filas.'],
-      totalRows: 0,
-      skippedRows: 0,
-    };
-  }
 
   // Inferir año desde metadatos del extracto
   const { year: hastaYear, month: hastaMonth } = extractHastaDate(data);
@@ -206,10 +399,50 @@ export function parseXLSX(buffer: ArrayBuffer): ParseResult {
       );
     } else {
       errors.push(
-        'No se encontraron transacciones. Asegúrate de que sea un extracto bancario de Bancolombia en formato Excel.'
+        'No se encontraron transacciones. Asegúrate de que sea un extracto bancario o de tarjeta Bancolombia en formato Excel.'
       );
     }
   }
 
   return { rows, errors, totalRows, skippedRows };
+}
+
+export function parseXLSX(buffer: ArrayBuffer): ParseResult {
+  let wb: XLSX.WorkBook;
+  try {
+    wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+  } catch {
+    return {
+      rows: [],
+      errors: ['No se pudo leer el archivo Excel. Verifica que no esté dañado.'],
+      totalRows: 0,
+      skippedRows: 0,
+    };
+  }
+
+  const sheetName = wb.SheetNames[0];
+  if (!sheetName) {
+    return { rows: [], errors: ['El archivo Excel no contiene hojas.'], totalRows: 0, skippedRows: 0 };
+  }
+
+  const ws = wb.Sheets[sheetName];
+  const data: unknown[][] = XLSX.utils.sheet_to_json(ws, {
+    header: 1,
+    defval: null,
+    raw: true,
+  });
+
+  if (data.length < 3) {
+    return {
+      rows: [],
+      errors: ['El archivo no contiene suficientes filas.'],
+      totalRows: 0,
+      skippedRows: 0,
+    };
+  }
+
+  const accountResult = parseBancolombiaAccountRows(data);
+  if (accountResult.rows.length > 0) return accountResult;
+
+  return parseGenericXLSXRows(data) ?? accountResult;
 }

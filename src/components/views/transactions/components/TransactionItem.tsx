@@ -166,7 +166,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <p
-                className="font-semibold text-gray-900 dark:text-gray-100 truncate text-sm sm:text-base"
+                className="font-semibold text-gray-900 dark:text-gray-100 truncate text-base"
                 title={transaction.description || transaction.category}
               >
                 {transaction.description || <span className="text-gray-400 dark:text-gray-500 italic">{transaction.category}</span>}
@@ -175,7 +175,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
                 {accountRoute}
               </p>
             </div>
-            <span className={`text-sm sm:text-base font-bold whitespace-nowrap shrink-0 ${amountClass} dark:${transaction.type === 'income' ? 'text-emerald-400' : transaction.type === 'expense' ? 'text-rose-400' : 'text-purple-400'}`}>
+            <span className={`text-base sm:text-lg font-bold whitespace-nowrap shrink-0 ${amountClass} dark:${transaction.type === 'income' ? 'text-emerald-400' : transaction.type === 'expense' ? 'text-rose-400' : 'text-purple-400'}`}>
               {amountPrefix} {displayAmount(transaction.amount)}
             </span>
           </div>
@@ -183,7 +183,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
           {/* Info row */}
           <div className="flex items-center justify-between mt-2">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="inline-flex items-center px-2 py-0.5 text-[11px] font-medium rounded-md bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+              <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
                 {transaction.category}
               </span>
               <span className="text-[11px] text-gray-400 dark:text-gray-500">

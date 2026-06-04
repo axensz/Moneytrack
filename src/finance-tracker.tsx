@@ -26,8 +26,10 @@ import { UIPreferencesProvider } from './contexts/UIPreferencesContext';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { TOAST_CONFIG, INITIAL_TRANSACTION } from './config/constants';
+import { DATE_PRESETS } from './utils/dateUtils';
+import { parseDateFromInput } from './utils/formatters';
 import { logger } from './utils/logger';
-import type { NewTransaction, ViewType, FilterValue } from './types/finance';
+import type { NewTransaction, ViewType, FilterValue, DateRange, DateRangePreset } from './types/finance';
 import { logoutFirebase } from './lib/firebase';
 import type { User } from 'firebase/auth';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
@@ -124,7 +126,6 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     deleteCategory,
     addCategory,
     updateRecurringPayment,
-    getDaysUntilDue,
     getAccountBalance,
     formatCurrency,
     firestoreError,
@@ -162,7 +163,28 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [filterCategory, setFilterCategory] = useState<FilterValue>('all');
   const [filterAccount, setFilterAccount] = useState<FilterValue>('all');
-  const [dateRange, setDateRange] = useState<import('./types/finance').DateRange>({ preset: 'this-month' });
+  const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>('this-month');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const dateRange = useMemo<DateRange>(() => {
+    const range: DateRange = { preset: dateRangePreset };
+
+    if (dateRangePreset === 'custom' && customStartDate) {
+      range.startDate = parseDateFromInput(customStartDate);
+    }
+
+    if (dateRangePreset === 'custom' && customEndDate) {
+      const endDate = parseDateFromInput(customEndDate);
+      endDate.setHours(23, 59, 59, 999);
+      range.endDate = endDate;
+    }
+
+    return range;
+  }, [customEndDate, customStartDate, dateRangePreset]);
+  const statsPeriodLabel = useMemo(() => {
+    if (dateRangePreset === 'custom') return 'rango elegido';
+    return DATE_PRESETS.find((preset) => preset.value === dateRangePreset)?.label.toLowerCase() || 'todo el tiempo';
+  }, [dateRangePreset]);
 
   const { dynamicStats, dynamicTotalBalance, balanceLabel } = useFilteredData({
     transactions, accounts, filterAccount, filterCategory, dateRange, totalBalance, getAccountBalance,
@@ -441,6 +463,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
               pendingExpenses={dynamicStats.pendingExpenses}
               formatCurrency={formatCurrency}
               balanceLabel={balanceLabel}
+              periodLabel={statsPeriodLabel}
             />
 
             {/* Error banner when Firestore fails */}
@@ -477,6 +500,12 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
                   setFilterCategory={setFilterCategory}
                   filterAccount={filterAccount}
                   setFilterAccount={setFilterAccount}
+                  dateRangePreset={dateRangePreset}
+                  setDateRangePreset={setDateRangePreset}
+                  customStartDate={customStartDate}
+                  setCustomStartDate={setCustomStartDate}
+                  customEndDate={customEndDate}
+                  setCustomEndDate={setCustomEndDate}
                   loading={transactionsLoading || accountsLoading}
                   onRestore={handleRestoreTransaction}
                 />

@@ -15,6 +15,7 @@ import { useMemo } from 'react';
 import { useGlobalStats } from './useGlobalStats';
 import { CreditCardCalculator } from '../utils/balanceCalculator';
 import { transactionUsesAccount } from '../utils/accountTransactions';
+import { getDateRangeFromPreset } from '../utils/dateUtils';
 import type { Transaction, Account, FilterValue, DateRange } from '../types/finance';
 
 interface UseFilteredDataParams {
@@ -38,67 +39,23 @@ interface FilteredDataResult {
 /**
  * Calcula el rango de fechas efectivo según el preset o custom
  */
-function getEffectiveDateRange(dateRange?: DateRange | null): { startDate: Date; endDate: Date } | null {
+function getEffectiveDateRange(dateRange?: DateRange | null): { startDate: Date | null; endDate: Date | null } | null {
   if (!dateRange || dateRange.preset === 'all') {
     return null;
   }
 
-  if (dateRange.preset === 'custom' && dateRange.startDate && dateRange.endDate) {
-    return { startDate: dateRange.startDate, endDate: dateRange.endDate };
+  if (dateRange.preset === 'custom') {
+    const endDate = dateRange.endDate ? new Date(dateRange.endDate) : null;
+    endDate?.setHours(23, 59, 59, 999);
+
+    return {
+      startDate: dateRange.startDate || null,
+      endDate
+    };
   }
 
-  // Calcular rangos según preset
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-  switch (dateRange.preset) {
-    case 'today':
-      return {
-        startDate: today,
-        endDate: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59)
-      };
-
-    case 'this-week': {
-      const dayOfWeek = now.getDay();
-      const startOfWeek = new Date(today);
-      startOfWeek.setDate(today.getDate() - dayOfWeek);
-      const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setDate(startOfWeek.getDate() + 6);
-      endOfWeek.setHours(23, 59, 59);
-      return { startDate: startOfWeek, endDate: endOfWeek };
-    }
-
-    case 'this-month':
-      return {
-        startDate: new Date(now.getFullYear(), now.getMonth(), 1),
-        endDate: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
-      };
-
-    case 'last-month': {
-      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      return {
-        startDate: lastMonth,
-        endDate: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59)
-      };
-    }
-
-    case 'this-year':
-      return {
-        startDate: new Date(now.getFullYear(), 0, 1),
-        endDate: new Date(now.getFullYear(), 11, 31, 23, 59, 59)
-      };
-
-    case 'last-year': {
-      const lastYear = now.getFullYear() - 1;
-      return {
-        startDate: new Date(lastYear, 0, 1),
-        endDate: new Date(lastYear, 11, 31, 23, 59, 59)
-      };
-    }
-
-    default:
-      return null;
-  }
+  const { start, end } = getDateRangeFromPreset(dateRange.preset);
+  return { startDate: start, endDate: end };
 }
 
 /**
@@ -132,7 +89,10 @@ export function useFilteredData({
       // 🆕 Filtro por fecha
       if (effectiveDateRange) {
         const transactionDate = new Date(t.date);
-        if (transactionDate < effectiveDateRange.startDate || transactionDate > effectiveDateRange.endDate) {
+        if (effectiveDateRange.startDate && transactionDate < effectiveDateRange.startDate) {
+          return false;
+        }
+        if (effectiveDateRange.endDate && transactionDate > effectiveDateRange.endDate) {
           return false;
         }
       }

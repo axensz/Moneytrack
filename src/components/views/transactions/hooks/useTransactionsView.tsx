@@ -10,6 +10,7 @@ import type {
 } from '../../../../types/finance';
 import { formatNumberForInput, parseDateFromInput } from '../../../../utils/formatters';
 import { getDateRangeFromPreset } from '../../../../utils/dateUtils';
+import { findAccountForTransaction, transactionUsesAccount } from '../../../../utils/accountTransactions';
 import { showToast } from '../../../../utils/toastHelpers';
 import { logger } from '../../../../utils/logger';
 import { SUCCESS_MESSAGES, TRANSACTION_VALIDATION } from '../../../../config/constants';
@@ -20,6 +21,12 @@ interface UseTransactionsViewParams {
   recurringPayments: RecurringPayment[];
   filterCategory: FilterValue;
   filterAccount: FilterValue;
+  dateRangePreset: DateRangePreset;
+  setDateRangePreset: (preset: DateRangePreset) => void;
+  customStartDate: string;
+  setCustomStartDate: (date: string) => void;
+  customEndDate: string;
+  setCustomEndDate: (date: string) => void;
   deleteTransaction: (id: string) => Promise<void>;
   updateTransaction: (id: string, updates: Partial<Transaction>) => Promise<void>;
   onRestore?: (transaction: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
@@ -37,6 +44,12 @@ export const useTransactionsView = ({
   recurringPayments,
   filterCategory,
   filterAccount,
+  dateRangePreset,
+  setDateRangePreset,
+  customStartDate,
+  setCustomStartDate,
+  customEndDate,
+  setCustomEndDate,
   deleteTransaction,
   updateTransaction,
   onRestore,
@@ -51,26 +64,58 @@ export const useTransactionsView = ({
   });
 
   // Estado de filtro de fecha
-  const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>('all');
-  const [customStartDate, setCustomStartDate] = useState<string>('');
-  const [customEndDate, setCustomEndDate] = useState<string>('');
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   // 🆕 Estado de búsqueda por texto
   const [searchQuery, setSearchQuery] = useState<string>('');
 
+  const accountsById = useMemo(() => {
+    return new Map(accounts.map((account) => [account.id, account]));
+  }, [accounts]);
+
+  const recurringPaymentsById = useMemo(() => {
+    return new Map(recurringPayments.map((payment) => [payment.id, payment]));
+  }, [recurringPayments]);
+
   // Filtrado con rango de fecha y búsqueda de texto
   const filteredTransactions = useMemo(() => {
+    const selectedAccount =
+      filterAccount === 'all' ? null : accounts.find((account) => account.id === filterAccount);
+    const normalizedQuery = searchQuery.trim().toLocaleLowerCase('es-CO');
+
     return transactions.filter((t) => {
       // Filtro por categoría
       if (filterCategory !== 'all' && t.category !== filterCategory) return false;
       // Filtro por cuenta
-      if (filterAccount !== 'all' && t.accountId !== filterAccount) return false;
+      if (filterAccount !== 'all') {
+        if (!selectedAccount || !transactionUsesAccount(t, selectedAccount)) return false;
+      }
 
       // 🆕 Filtro por texto (búsqueda en descripción)
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        if (!t.description.toLowerCase().includes(query)) {
+      if (normalizedQuery) {
+        const sourceAccount = accountsById.get(t.accountId);
+        const destinationAccount = t.toAccountId ? accountsById.get(t.toAccountId) : null;
+        const recurringPayment = t.recurringPaymentId
+          ? recurringPaymentsById.get(t.recurringPaymentId)
+          : null;
+        const typeLabel =
+          t.type === 'income' ? 'ingreso' : t.type === 'expense' ? 'gasto' : 'transferencia';
+        const searchableText = [
+          t.description,
+          t.category,
+          typeLabel,
+          sourceAccount?.name,
+          destinationAccount?.name,
+          recurringPayment?.name,
+          t.amount.toString(),
+          t.amount.toLocaleString('es-CO'),
+          new Date(t.date).toLocaleDateString('es-CO'),
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLocaleLowerCase('es-CO');
+
+        if (!searchableText.includes(normalizedQuery)) {
           return false;
         }
       }
@@ -81,12 +126,12 @@ export const useTransactionsView = ({
 
         if (dateRangePreset === 'custom') {
           if (customStartDate) {
-            const start = new Date(customStartDate);
+            const start = parseDateFromInput(customStartDate);
             start.setHours(0, 0, 0, 0);
             if (transactionDate < start) return false;
           }
           if (customEndDate) {
-            const end = new Date(customEndDate);
+            const end = parseDateFromInput(customEndDate);
             end.setHours(23, 59, 59, 999);
             if (transactionDate > end) return false;
           }
@@ -99,7 +144,18 @@ export const useTransactionsView = ({
 
       return true;
     });
-  }, [transactions, filterCategory, filterAccount, searchQuery, dateRangePreset, customStartDate, customEndDate]);
+  }, [
+    transactions,
+    accounts,
+    accountsById,
+    recurringPaymentsById,
+    filterCategory,
+    filterAccount,
+    searchQuery,
+    dateRangePreset,
+    customStartDate,
+    customEndDate,
+  ]);
 
   // Verificar si hay filtros activos
   const isMetadataFiltersActive =
@@ -118,7 +174,7 @@ export const useTransactionsView = ({
       setCustomEndDate('');
       setSearchQuery(''); // 🆕 Limpiar búsqueda
     },
-    []
+    [setCustomEndDate, setCustomStartDate, setDateRangePreset]
   );
 
   const startEditTransaction = useCallback((transaction: Transaction) => {
@@ -146,11 +202,6 @@ export const useTransactionsView = ({
       // Validar monto máximo
       if (amount > TRANSACTION_VALIDATION.amount.max) {
         showToast.error(TRANSACTION_VALIDATION.amount.errorMessage);
-        return;
-      }
-
-      if (!editForm.description.trim()) {
-        showToast.error('La descripción no puede estar vacía');
         return;
       }
 
@@ -207,8 +258,10 @@ export const useTransactionsView = ({
                 <button
                   onClick={async () => {
                     toast.dismiss(t.id);
-                    const { id, createdAt, ...rest } = transaction;
-                    await onRestore(rest);
+                    const transactionToRestore = { ...transaction };
+                    delete transactionToRestore.id;
+                    delete transactionToRestore.createdAt;
+                    await onRestore(transactionToRestore);
                     toast.success('Restaurado');
                   }}
                   className="px-2 py-1 text-xs bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors flex items-center gap-1"
@@ -237,7 +290,7 @@ export const useTransactionsView = ({
 
   const getAccountForTransaction = useCallback(
     (accountId: string) => {
-      return accounts.find((a) => a.id === accountId);
+      return findAccountForTransaction(accounts, accountId);
     },
     [accounts]
   );

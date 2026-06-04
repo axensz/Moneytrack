@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { PlusCircle, FilterX, Wallet, Tag, Search, X, Upload } from 'lucide-react';
-import type { Account, FilterValue } from '../../../../types/finance';
+import { FilterX, PlusCircle, Search, Tag, Upload, Wallet, X } from 'lucide-react';
+import type { Account, DateRangePreset, FilterValue } from '../../../../types/finance';
 import { DateFilterDropdown } from './DateFilterDropdown';
 import { FilterDropdown } from './FilterDropdown';
 
@@ -21,23 +21,18 @@ interface TransactionsFiltersProps {
   showForm: boolean;
   setShowForm: (show: boolean) => void;
   onImport?: () => void;
-  // Date filter props
-  dateRangePreset: import('../../../../types/finance').DateRangePreset;
-  setDateRangePreset: (preset: import('../../../../types/finance').DateRangePreset) => void;
+  dateRangePreset: DateRangePreset;
+  setDateRangePreset: (preset: DateRangePreset) => void;
   customStartDate: string;
   setCustomStartDate: (date: string) => void;
   customEndDate: string;
   setCustomEndDate: (date: string) => void;
   showDatePicker: boolean;
   setShowDatePicker: (show: boolean) => void;
-  // 🆕 Search filter
   searchQuery: string;
   setSearchQuery: (query: string) => void;
 }
 
-/**
- * Barra de filtros para transacciones
- */
 export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
   accounts,
   categories,
@@ -62,23 +57,16 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
   onImport,
 }) => {
   const [activeDropdown, setActiveDropdown] = useState<'none' | 'account' | 'category'>('none');
+  const isDisabled = accounts.length === 0;
 
   const handleOpenAccount = () => {
-    if (activeDropdown === 'account') {
-      setActiveDropdown('none');
-    } else {
-      setActiveDropdown('account');
-      setShowDatePicker(false);
-    }
+    setActiveDropdown(activeDropdown === 'account' ? 'none' : 'account');
+    setShowDatePicker(false);
   };
 
   const handleOpenCategory = () => {
-    if (activeDropdown === 'category') {
-      setActiveDropdown('none');
-    } else {
-      setActiveDropdown('category');
-      setShowDatePicker(false);
-    }
+    setActiveDropdown(activeDropdown === 'category' ? 'none' : 'category');
+    setShowDatePicker(false);
   };
 
   const handleOpenDate = (show: boolean) => {
@@ -86,37 +74,42 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
     if (show) setActiveDropdown('none');
   };
 
+  const handleClearFilters = () => {
+    onClearFilters();
+    setActiveDropdown('none');
+    setShowDatePicker(false);
+  };
+
   return (
-    <div className="mb-6 relative">
-      {/* Una sola fila: Nueva, búsqueda, filtros */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <button
-          onClick={() => setShowForm(!showForm)}
-          disabled={accounts.length === 0}
-          className={`btn-primary flex-shrink-0 ${accounts.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
-          title={accounts.length === 0 ? 'Crea una cuenta primero' : 'Crear transacción'}
-          aria-label="Crear nueva transacción"
-        >
-          <PlusCircle size={18} aria-hidden="true" />
-          <span className="hidden xs:inline">Nueva</span>
-          <span className="xs:hidden">Nueva</span>
-        </button>
-
-        {onImport && (
+    <div className="mb-5 relative space-y-3">
+      <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+        <div className="flex gap-2">
           <button
-            onClick={onImport}
-            disabled={accounts.length === 0}
-            className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg transition-colors flex-shrink-0 ${accounts.length === 0 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-            title="Importar desde extracto bancario"
-            aria-label="Importar transacciones"
+            onClick={() => setShowForm(!showForm)}
+            disabled={isDisabled}
+            className={`btn-primary flex-1 sm:flex-none ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+            title={isDisabled ? 'Crea una cuenta primero' : 'Crear transaccion'}
+            aria-label="Crear nueva transaccion"
           >
-            <Upload size={16} aria-hidden="true" />
-            <span className="hidden sm:inline">Importar</span>
+            <PlusCircle size={18} aria-hidden="true" />
+            Nueva
           </button>
-        )}
 
-        {/* Barra de búsqueda */}
-        <div className="relative flex-1 min-w-[120px] max-w-xs">
+          {onImport && (
+            <button
+              onClick={onImport}
+              disabled={isDisabled}
+              className={`flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium border border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg transition-colors min-h-[44px] ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              title="Importar desde extracto bancario"
+              aria-label="Importar transacciones"
+            >
+              <Upload size={16} aria-hidden="true" />
+              <span className="hidden sm:inline">Importar</span>
+            </button>
+          )}
+        </div>
+
+        <div className="relative flex-1 min-w-0">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <Search size={16} className="text-gray-400" aria-hidden="true" />
           </div>
@@ -124,25 +117,23 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar..."
-            className="w-full pl-9 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 text-sm"
-            aria-label="Buscar transacciones por descripción"
+            placeholder="Buscar descripcion, cuenta, categoria o monto"
+            className="w-full pl-9 pr-9 py-2.5 min-h-[44px] border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 text-sm"
+            aria-label="Buscar transacciones por descripcion, cuenta, categoria o monto"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
               className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-              aria-label="Limpiar búsqueda"
+              aria-label="Limpiar busqueda"
             >
               <X size={16} />
             </button>
           )}
         </div>
+      </div>
 
-        {/* Separador visual */}
-        <div className="hidden sm:block w-px h-6 bg-gray-300 dark:bg-gray-600 ml-auto" />
-
-        {/* Filtros inline */}
+      <div className="flex flex-wrap items-center gap-2">
         <FilterDropdown
           label="Cuenta"
           value={filterAccount}
@@ -155,9 +146,8 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
           align="left"
         />
 
-        {/* Filtro de categoría */}
         <FilterDropdown
-          label="Categoría"
+          label="Categoria"
           value={filterCategory}
           options={[...new Set([...categories.expense, ...categories.income])].map((cat) => ({
             value: cat,
@@ -171,7 +161,6 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
           align="left"
         />
 
-        {/* Filtro de fecha */}
         <DateFilterDropdown
           dateRangePreset={dateRangePreset}
           setDateRangePreset={setDateRangePreset}
@@ -183,15 +172,10 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
           setShowDatePicker={handleOpenDate}
         />
 
-        {/* Botón limpiar filtros */}
         {isMetadataFiltersActive && (
           <button
-            onClick={() => {
-              onClearFilters();
-              setActiveDropdown('none');
-              setShowDatePicker(false);
-            }}
-            className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
+            onClick={handleClearFilters}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors min-h-[44px]"
             aria-label="Limpiar todos los filtros"
           >
             <FilterX size={16} aria-hidden="true" />

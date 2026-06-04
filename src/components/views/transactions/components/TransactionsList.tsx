@@ -24,6 +24,7 @@ interface TransactionsListProps {
     hasMoreTransactions?: boolean;
     loadingMoreTransactions?: boolean;
     loadMoreTransactions?: () => Promise<void>;
+    hasActiveFilters?: boolean;
 }
 
 /**
@@ -47,6 +48,7 @@ export function TransactionsList({
     hasMoreTransactions = false,
     loadingMoreTransactions = false,
     loadMoreTransactions,
+    hasActiveFilters = false,
 }: TransactionsListProps) {
     const [visibleCount, setVisibleCount] = useState(INITIAL_BATCH);
     const sentinelRef = useRef<HTMLDivElement>(null);
@@ -78,31 +80,56 @@ export function TransactionsList({
     const hasMore = visibleCount < transactions.length;
 
     return (
-        <div className="space-y-2 max-h-[65vh] overflow-y-auto pr-1 scrollbar-thin">
-            {visible.map((transaction) => (
-                <TransactionItem
-                    key={transaction.id}
-                    transaction={transaction}
-                    account={getAccountForTransaction(transaction.accountId)}
-                    isEditing={editingTransaction === transaction.id}
-                    editForm={editForm}
-                    categories={categories}
-                    recurringPaymentName={getRecurringPaymentName(transaction.recurringPaymentId)}
-                    formatCurrency={formatCurrency}
-                    onEdit={() => startEditTransaction(transaction)}
-                    onDelete={() => handleDeleteTransaction(transaction)}
-                    onSave={() => handleSaveEdit(transaction.id!)}
-                    onCancel={handleCancelEdit}
-                    onEditFormChange={setEditForm}
-                />
-            ))}
+        <div className="space-y-2">
+            {visible.map((transaction, index) => {
+                const currentDate = new Date(transaction.date).toDateString();
+                const previousDate = index > 0 ? new Date(visible[index - 1].date).toDateString() : null;
+                const showDateHeader = currentDate !== previousDate;
+
+                return (
+                    <React.Fragment key={transaction.id}>
+                        {showDateHeader && (
+                            <div className="sticky top-0 z-10 -mx-1 px-1 pt-2 pb-1 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm">
+                                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                    {new Date(transaction.date).toLocaleDateString('es-CO', {
+                                        weekday: 'short',
+                                        year: 'numeric',
+                                        month: 'short',
+                                        day: 'numeric',
+                                    })}
+                                </span>
+                            </div>
+                        )}
+                        <TransactionItem
+                            transaction={transaction}
+                            account={getAccountForTransaction(transaction.accountId)}
+                            destinationAccount={transaction.toAccountId ? getAccountForTransaction(transaction.toAccountId) : undefined}
+                            isEditing={editingTransaction === transaction.id}
+                            editForm={editForm}
+                            categories={categories}
+                            recurringPaymentName={getRecurringPaymentName(transaction.recurringPaymentId)}
+                            formatCurrency={formatCurrency}
+                            onEdit={() => startEditTransaction(transaction)}
+                            onDelete={() => handleDeleteTransaction(transaction)}
+                            onSave={() => handleSaveEdit(transaction.id!)}
+                            onCancel={handleCancelEdit}
+                            onEditFormChange={setEditForm}
+                        />
+                    </React.Fragment>
+                );
+            })}
             {hasMore && (
                 <div ref={sentinelRef} className="flex justify-center py-3">
-                    <span className="text-xs text-gray-400">Cargando más...</span>
+                    <span className="text-xs text-gray-400">Cargando mas...</span>
                 </div>
             )}
             {!hasMore && hasMoreTransactions && (
-                <div className="flex justify-center py-4">
+                <div className="flex flex-col items-center gap-2 py-4">
+                    {hasActiveFilters && (
+                        <p className="max-w-sm text-center text-xs text-gray-500 dark:text-gray-400">
+                            La busqueda y los filtros aplican sobre las transacciones cargadas. Carga mas antiguas si esperas resultados anteriores.
+                        </p>
+                    )}
                     <button
                         onClick={loadMoreTransactions}
                         disabled={loadingMoreTransactions}
@@ -116,7 +143,7 @@ export function TransactionsList({
                         ) : (
                             <>
                                 <ChevronDown size={16} />
-                                Cargar transacciones más antiguas
+                                Cargar transacciones mas antiguas
                             </>
                         )}
                     </button>

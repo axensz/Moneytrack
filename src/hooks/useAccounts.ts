@@ -7,6 +7,7 @@ import { useLocalStorage } from './useLocalStorage';
 import { BalanceCalculator, CreditCardCalculator } from '../utils/balanceCalculator';
 import { safeFirestoreOperation, checkNetworkConnection } from '../utils/firestoreHelpers';
 import { generateId } from '../utils/formatters';
+import { transactionUsesAccount } from '../utils/accountTransactions';
 import type { Account, Transaction, RecurringPayment, Debt } from '../types/finance';
 
 export type MergeCreditCardsDestination = Pick<Account, 'name'> & Partial<Omit<Account, 'id' | 'name' | 'type' | 'createdAt'>> & {
@@ -65,8 +66,10 @@ export function useAccounts(
   }, [accounts, transactions]);
 
   const getTransactionCountForAccount = useCallback((accountId: string): number => {
-    return transactions.filter(t => t.accountId === accountId || t.toAccountId === accountId).length;
-  }, [transactions]);
+    const account = accounts.find(a => a.id === accountId);
+    if (!account) return 0;
+    return transactions.filter(t => transactionUsesAccount(t, account)).length;
+  }, [accounts, transactions]);
 
   const totalBalance = useMemo(() => {
     return BalanceCalculator.calculateTotalBalance(accounts, transactions);
@@ -117,16 +120,16 @@ export function useAccounts(
     }
   };
 
-  const deleteAccount = async (id: string) => {
+  const deleteAccount = async (id: string, options: { preserveTransactions?: boolean; allowDefaultDelete?: boolean } = {}) => {
     const account = accounts.find(a => a.id === id);
-    if (account?.isDefault) {
+    if (account?.isDefault && !options.allowDefaultDelete) {
       throw new Error('No puedes eliminar la cuenta por defecto');
     }
 
     // Cascade: transactions, recurring payments, and debts linked to this account
-    const relatedTransactions = transactions.filter(
-      t => t.accountId === id || t.toAccountId === id
-    );
+    const relatedTransactions = options.preserveTransactions
+      ? []
+      : transactions.filter(t => t.accountId === id || t.toAccountId === id);
 
     if (userId) {
       if (!checkNetworkConnection()) {
@@ -226,7 +229,7 @@ export function useAccounts(
       createdAt: existingDestination?.createdAt ?? new Date(),
     };
 
-    const migrateAccountReference = (accountId?: string) => (
+    const migrateAccountReference = (accountId?: string): string | undefined => (
       accountId && sourceIdSet.has(accountId) ? destinationId : accountId
     );
 
@@ -354,12 +357,12 @@ export function useAccounts(
 
       setLocalRecurringPayments(prev => prev.map(payment => ({
         ...payment,
-        accountId: migrateAccountReference(payment.accountId),
+        accountId: migrateAccountReference(payment.accountId) ?? payment.accountId,
       })));
 
       setLocalDebts(prev => prev.map(debt => ({
         ...debt,
-        accountId: migrateAccountReference(debt.accountId),
+        accountId: migrateAccountReference(debt.accountId) ?? debt.accountId,
       })));
     }
   };

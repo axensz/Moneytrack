@@ -1,7 +1,7 @@
 'use client';
 
 import React, { memo } from 'react';
-import { Edit2, Trash2, GripVertical, Wallet, CreditCard, Banknote } from 'lucide-react';
+import { Edit2, Trash2, GripVertical, Wallet, CreditCard, Banknote, Combine } from 'lucide-react';
 import type { Account, Transaction } from '../../../../types/finance';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 
@@ -26,6 +26,7 @@ interface AccountCardProps {
   onEdit: () => void;
   onSetDefault: () => void;
   onDelete: () => void;
+  onMerge?: () => void;
   onDragStart: (e: React.DragEvent) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDragLeave: () => void;
@@ -55,6 +56,7 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
   onEdit,
   onSetDefault,
   onDelete,
+  onMerge,
   onDragStart,
   onDragOver,
   onDragLeave,
@@ -222,6 +224,16 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
             <Edit2 size={14} />
             Editar
           </button>
+
+          {isCredit && onMerge && (
+            <button
+              onClick={onMerge}
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[36px] text-purple-700 bg-purple-50 hover:bg-purple-100 dark:text-purple-300 dark:bg-purple-900/20 dark:hover:bg-purple-900/40"
+            >
+              <Combine size={14} />
+              Unificar
+            </button>
+          )}
 
           {!account.isDefault && (
             <>

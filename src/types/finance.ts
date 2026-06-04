@@ -95,6 +95,7 @@ export interface Account {
   cutoffDay?: number;
   paymentDay?: number;
   bankAccountId?: string; // ID de cuenta bancaria asociada (para tarjetas de crédito)
+  mergedAccountIds?: string[]; // IDs históricos fusionados en esta cuenta
   createdAt?: Date;
   order?: number; // Orden de visualización
 

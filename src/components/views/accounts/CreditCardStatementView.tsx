@@ -6,6 +6,7 @@ import { useFinance } from '../../../contexts/FinanceContext';
 import { useCreditCardStatement } from '../../../hooks/useCreditCardStatement';
 import type { CreditCardStatement as StatementType } from '../../../hooks/useCreditCardStatement';
 import type { Transaction } from '../../../types/finance';
+import { transactionAccountIs, transactionDestinationIs } from '../../../utils/accountTransactions';
 
 export const CreditCardStatementView: React.FC = () => {
   const { accounts, transactions, formatCurrency } = useFinance();
@@ -61,9 +62,9 @@ const StatementCard: React.FC<StatementCardProps> = ({ statement, formatCurrency
   const getTxDisplay = (t: Transaction) => {
     const isIncomingPayment =
       t.type === 'income' ||
-      (t.type === 'transfer' && t.toAccountId === account.id);
+      (t.type === 'transfer' && transactionDestinationIs(t, account));
     const isOutgoingTransfer =
-      t.type === 'transfer' && t.accountId === account.id;
+      t.type === 'transfer' && transactionAccountIs(t, account);
 
     const sign = isIncomingPayment ? '+' : '-';
     const colorClass = isIncomingPayment
@@ -71,7 +72,7 @@ const StatementCard: React.FC<StatementCardProps> = ({ statement, formatCurrency
       : 'text-red-600 dark:text-red-400';
 
     let label: string;
-    if (t.type === 'transfer' && t.toAccountId === account.id) {
+    if (t.type === 'transfer' && transactionDestinationIs(t, account)) {
       label = 'Pago de tarjeta';
     } else if (isOutgoingTransfer) {
       label = 'Avance de efectivo';

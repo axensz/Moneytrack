@@ -17,6 +17,7 @@
  */
 
 import type { Account, Transaction } from '../types/finance';
+import { transactionAccountIs, transactionDestinationIs } from './accountTransactions';
 
 /**
  * Interfaz base para estrategias de cuenta
@@ -165,7 +166,7 @@ export class CreditCardStrategy implements AccountBalanceStrategy {
     // 1. Gastos en esta tarjeta — ajustados por cuotas
     const totalExpenses = transactions
       .filter(t =>
-        t.accountId === account.id &&
+        transactionAccountIs(t, account) &&
         t.type === 'expense'
       )
       .reduce((sum, t) => {
@@ -186,7 +187,7 @@ export class CreditCardStrategy implements AccountBalanceStrategy {
     // 2. Ingresos directos a esta TC (pagos mediante "Ingreso")
     const directPayments = transactions
       .filter(t =>
-        t.accountId === account.id &&
+        transactionAccountIs(t, account) &&
         t.type === 'income'
       )
       .reduce((sum, t) => sum + t.amount, 0);
@@ -194,7 +195,7 @@ export class CreditCardStrategy implements AccountBalanceStrategy {
     // 3. Transferencias HACIA esta TC (pagos desde otra cuenta)
     const transferPayments = transactions
       .filter(t =>
-        t.toAccountId === account.id &&
+        transactionDestinationIs(t, account) &&
         t.type === 'transfer'
       )
       .reduce((sum, t) => sum + t.amount, 0);

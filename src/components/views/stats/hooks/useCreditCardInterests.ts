@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import type { Transaction, Account } from '../../../../types/finance';
+import { transactionAccountIs } from '../../../../utils/accountTransactions';
 
 interface CreditCardInterest {
   id: string;
@@ -51,7 +52,7 @@ export function useCreditCardInterests(
       .map(card => {
         // Transacciones de esta tarjeta con intereses
         const cardTransactions = transactions.filter(
-          t => t.accountId === card.id &&
+          t => transactionAccountIs(t, card) &&
             t.type === 'expense' &&
             t.totalInterestAmount &&
             t.totalInterestAmount > 0

@@ -7,6 +7,7 @@ import { useLocalStorage } from './useLocalStorage';
 import { BalanceCalculator, CreditCardCalculator } from '../utils/balanceCalculator';
 import { safeFirestoreOperation, checkNetworkConnection } from '../utils/firestoreHelpers';
 import { generateId } from '../utils/formatters';
+import { transactionUsesAccount } from '../utils/accountTransactions';
 import type { Account, Transaction, RecurringPayment, Debt } from '../types/finance';
 
 export type MergeCreditCardsDestination = Pick<Account, 'name'> & Partial<Omit<Account, 'id' | 'name' | 'type' | 'createdAt'>> & {
@@ -65,8 +66,10 @@ export function useAccounts(
   }, [accounts, transactions]);
 
   const getTransactionCountForAccount = useCallback((accountId: string): number => {
-    return transactions.filter(t => t.accountId === accountId || t.toAccountId === accountId).length;
-  }, [transactions]);
+    const account = accounts.find(a => a.id === accountId);
+    if (!account) return 0;
+    return transactions.filter(t => transactionUsesAccount(t, account)).length;
+  }, [accounts, transactions]);
 
   const totalBalance = useMemo(() => {
     return BalanceCalculator.calculateTotalBalance(accounts, transactions);

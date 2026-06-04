@@ -6,11 +6,13 @@ import { BALANCE_ADJUSTMENT_CATEGORY } from '../../../config/constants';
 import { showToast } from '../../../utils/toastHelpers';
 import { CreditCardCalculator } from '../../../utils/balanceCalculator';
 import { useFinance } from '../../../contexts/FinanceContext';
-import type { Account, Transaction, NewAccount } from '../../../types/finance';
+import type { Account } from '../../../types/finance';
+import type { MergeCreditCardsParams } from '../../../hooks/useAccounts';
 
 import { AccountFormModal } from './components/AccountFormModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { MergeCreditCardsModal } from './components/MergeCreditCardsModal';
+import { CreditCardsConsolidatedSummary } from './components/CreditCardsConsolidatedSummary';
 import { AccountCard } from './components/AccountCard';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
 import { useAccountForm } from './hooks/useAccountForm';
@@ -36,12 +38,12 @@ export const AccountsView: React.FC = () => {
     addAccount,
     updateAccount,
     deleteAccount,
+    mergeCreditCards: mergeCreditCardsDomain,
     setDefaultAccount,
     getAccountBalance,
     getTransactionCountForAccount,
     formatCurrency,
     addTransaction,
-    updateTransaction,
   } = useFinance();
   // Mapa memoizado de cupo usado por tarjeta (evita recalcular en cada render)
   const creditUsedMap = useMemo(() => {
@@ -57,6 +59,43 @@ export const AccountsView: React.FC = () => {
   const getCreditUsed = useCallback((accountId: string): number => {
     return creditUsedMap.get(accountId) ?? 0;
   }, [creditUsedMap]);
+
+  const creditCardSummary = useMemo(() => {
+    const cards = accounts
+      .filter((account) => account.type === 'credit' && account.id)
+      .map((account) => {
+        const creditLimit = account.creditLimit || 0;
+        const used = creditUsedMap.get(account.id!) ?? 0;
+        const available = Math.max(0, creditLimit - used);
+        const usagePercentage = creditLimit > 0
+          ? Math.min((used / creditLimit) * 100, 100)
+          : 0;
+
+        return {
+          id: account.id!,
+          name: account.name,
+          creditLimit,
+          used,
+          available,
+          usagePercentage,
+        };
+      });
+
+    const totalLimit = cards.reduce((sum, card) => sum + card.creditLimit, 0);
+    const totalUsed = cards.reduce((sum, card) => sum + card.used, 0);
+    const totalAvailable = Math.max(0, totalLimit - totalUsed);
+    const usagePercentage = totalLimit > 0
+      ? Math.min((totalUsed / totalLimit) * 100, 100)
+      : 0;
+
+    return {
+      cards,
+      totalLimit,
+      totalUsed,
+      totalAvailable,
+      usagePercentage,
+    };
+  }, [accounts, creditUsedMap]);
 
   // Custom hooks
   const dragDrop = useDragAndDrop({ accounts, updateAccount });
@@ -164,22 +203,24 @@ export const AccountsView: React.FC = () => {
     }
 
     const debtDifference = desiredDebt - mergeCombinedUsedDebt;
-    const transactionsToMove = transactions.filter(
-      (transaction) => transaction.accountId === mergeSourceCard.id || transaction.toAccountId === mergeSourceCard.id
-    );
 
     try {
       setIsMergingCreditCards(true);
 
-      await updateAccount(mergeTargetCard.id, { creditLimit: newCreditLimit });
+      // Usar la operación de dominio atómica que migra transacciones, recurring payments y debts
+      const params: MergeCreditCardsParams = {
+        sourceAccountIds: [mergeSourceCard.id],
+        destination: {
+          id: mergeTargetCard.id,
+          name: mergeTargetCard.name,
+          creditLimit: newCreditLimit,
+          isDefault: mergeSourceCard.isDefault || mergeTargetCard.isDefault,
+        },
+      };
 
-      for (const transaction of transactionsToMove) {
-        const updates: Partial<Transaction> = {};
-        if (transaction.accountId === mergeSourceCard.id) updates.accountId = mergeTargetCard.id;
-        if (transaction.toAccountId === mergeSourceCard.id) updates.toAccountId = mergeTargetCard.id;
-        await updateTransaction(transaction.id!, updates);
-      }
+      await mergeCreditCardsDomain(params);
 
+      // Si la deuda deseada difiere de la combinada, crear ajuste
       if (Math.abs(debtDifference) >= 0.01) {
         await addTransaction({
           type: debtDifference > 0 ? 'expense' : 'income',
@@ -191,12 +232,6 @@ export const AccountsView: React.FC = () => {
           accountId: mergeTargetCard.id,
         });
       }
-
-      if (mergeSourceCard.isDefault) {
-        await setDefaultAccount(mergeTargetCard.id);
-      }
-
-      await deleteAccount(mergeSourceCard.id, { preserveTransactions: true, allowDefaultDelete: mergeSourceCard.isDefault });
 
       showToast.success(`Tarjetas unificadas en ${mergeTargetCard.name}`);
       setMergeSourceCard(null);
@@ -351,6 +386,15 @@ export const AccountsView: React.FC = () => {
         }
         onConfirm={handleDeleteAccount}
         onClose={() => setDeleteConfirm(null)}
+      />
+
+      <CreditCardsConsolidatedSummary
+        cards={creditCardSummary.cards}
+        totalLimit={creditCardSummary.totalLimit}
+        totalUsed={creditCardSummary.totalUsed}
+        totalAvailable={creditCardSummary.totalAvailable}
+        usagePercentage={creditCardSummary.usagePercentage}
+        formatCurrency={formatCurrency}
       />
 
       <MergeCreditCardsModal

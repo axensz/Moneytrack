@@ -175,37 +175,37 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
       {/* Título con contador */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-            Transacciones{' '}
-            <span className="text-sm font-normal text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+            Transacciones
+            <span className="text-xs font-medium text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/40 px-2 py-0.5 rounded-full">
               {filteredTransactions.length}
             </span>
           </h3>
-          <p className="mt-1 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-            {activeFilterSummary || 'Todo el tiempo'} - {transactions.length} cargadas
+          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+            {activeFilterSummary || 'Todo el tiempo'} · {transactions.length} cargadas
           </p>
         </div>
       </div>
 
       {filteredTransactions.length > 0 && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
-          <div className="rounded-lg border border-emerald-100 dark:border-emerald-900/50 bg-emerald-50/70 dark:bg-emerald-900/20 px-3 py-2">
-            <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">Ingresos filtrados</p>
-            <p className="text-sm sm:text-base font-semibold text-emerald-800 dark:text-emerald-100">{displayCurrency(filteredSummary.income)}</p>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-5">
+          <div className="rounded-xl border border-emerald-100 dark:border-emerald-800/40 bg-gradient-to-br from-emerald-50 to-emerald-50/50 dark:from-emerald-900/20 dark:to-emerald-950/10 px-3 py-2.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Ingresos</p>
+            <p className="text-sm sm:text-base font-bold text-emerald-700 dark:text-emerald-200 mt-0.5">{displayCurrency(filteredSummary.income)}</p>
           </div>
-          <div className="rounded-lg border border-rose-100 dark:border-rose-900/50 bg-rose-50/70 dark:bg-rose-900/20 px-3 py-2">
-            <p className="text-[11px] font-medium text-rose-700 dark:text-rose-300">Gastos filtrados</p>
-            <p className="text-sm sm:text-base font-semibold text-rose-800 dark:text-rose-100">{displayCurrency(filteredSummary.expense)}</p>
+          <div className="rounded-xl border border-rose-100 dark:border-rose-800/40 bg-gradient-to-br from-rose-50 to-rose-50/50 dark:from-rose-900/20 dark:to-rose-950/10 px-3 py-2.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-rose-600 dark:text-rose-400">Gastos</p>
+            <p className="text-sm sm:text-base font-bold text-rose-700 dark:text-rose-200 mt-0.5">{displayCurrency(filteredSummary.expense)}</p>
           </div>
-          <div className="rounded-lg border border-blue-100 dark:border-blue-900/50 bg-blue-50/70 dark:bg-blue-900/20 px-3 py-2">
-            <p className="text-[11px] font-medium text-blue-700 dark:text-blue-300">Neto filtrado</p>
-            <p className={`text-sm sm:text-base font-semibold ${filteredSummary.income - filteredSummary.expense >= 0 ? 'text-blue-800 dark:text-blue-100' : 'text-rose-800 dark:text-rose-100'}`}>
+          <div className="rounded-xl border border-purple-100 dark:border-purple-800/40 bg-gradient-to-br from-purple-50 to-purple-50/50 dark:from-purple-900/20 dark:to-purple-950/10 px-3 py-2.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-purple-600 dark:text-purple-400">Neto</p>
+            <p className={`text-sm sm:text-base font-bold mt-0.5 ${filteredSummary.income - filteredSummary.expense >= 0 ? 'text-purple-700 dark:text-purple-200' : 'text-rose-700 dark:text-rose-200'}`}>
               {displayCurrency(filteredSummary.income - filteredSummary.expense)}
             </p>
           </div>
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/70 px-3 py-2">
-            <p className="text-[11px] font-medium text-gray-600 dark:text-gray-400">Transferencias</p>
-            <p className="text-sm sm:text-base font-semibold text-gray-900 dark:text-gray-100">{filteredSummary.transfers}</p>
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gradient-to-br from-gray-50 to-gray-50/50 dark:from-gray-800/40 dark:to-gray-800/20 px-3 py-2.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Transferencias</p>
+            <p className="text-sm sm:text-base font-bold text-gray-800 dark:text-gray-200 mt-0.5">{filteredSummary.transfers}</p>
           </div>
         </div>
       )}

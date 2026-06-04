@@ -89,15 +89,18 @@ export function TransactionsList({
                 return (
                     <React.Fragment key={transaction.id}>
                         {showDateHeader && (
-                            <div className="sticky top-0 z-10 -mx-1 px-1 pt-2 pb-1 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm">
-                                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                    {new Date(transaction.date).toLocaleDateString('es-CO', {
-                                        weekday: 'short',
-                                        year: 'numeric',
-                                        month: 'short',
-                                        day: 'numeric',
-                                    })}
-                                </span>
+                            <div className="sticky top-0 z-10 -mx-1 px-1 pt-3 pb-1.5 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                                        {new Date(transaction.date).toLocaleDateString('es-CO', {
+                                            weekday: 'short',
+                                            year: 'numeric',
+                                            month: 'short',
+                                            day: 'numeric',
+                                        })}
+                                    </span>
+                                    <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                                </div>
                             </div>
                         )}
                         <TransactionItem

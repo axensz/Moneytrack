@@ -226,7 +226,7 @@ export function useAccounts(
       createdAt: existingDestination?.createdAt ?? new Date(),
     };
 
-    const migrateAccountReference = (accountId?: string) => (
+    const migrateAccountReference = (accountId?: string): string | undefined => (
       accountId && sourceIdSet.has(accountId) ? destinationId : accountId
     );
 
@@ -354,12 +354,12 @@ export function useAccounts(
 
       setLocalRecurringPayments(prev => prev.map(payment => ({
         ...payment,
-        accountId: migrateAccountReference(payment.accountId) ?? payment.accountId,
+        accountId: migrateAccountReference(payment.accountId),
       })));
 
       setLocalDebts(prev => prev.map(debt => ({
         ...debt,
-        accountId: migrateAccountReference(debt.accountId) ?? debt.accountId,
+        accountId: migrateAccountReference(debt.accountId),
       })));
     }
   };

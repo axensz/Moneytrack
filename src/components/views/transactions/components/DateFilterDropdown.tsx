@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
-import { Calendar, ChevronDown } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Calendar, ChevronDown, Sparkles, Loader2 } from 'lucide-react';
 import type { DateRangePreset } from '../../../../types/finance';
 import { DATE_PRESETS } from '../../../../utils/dateUtils';
+import { isGeminiConfigured } from '../../../../lib/gemini';
+import { GoogleGenAI } from '@google/genai';
 
 interface DateFilterDropdownProps {
   dateRangePreset: DateRangePreset;
@@ -14,6 +16,34 @@ interface DateFilterDropdownProps {
   setCustomEndDate: (date: string) => void;
   showDatePicker: boolean;
   setShowDatePicker: (show: boolean) => void;
+}
+
+async function parseDateWithAI(query: string): Promise<{ startDate: string; endDate: string } | null> {
+  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  if (!apiKey) return null;
+
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  const dayOfWeek = today.toLocaleDateString('es-CO', { weekday: 'long' });
+
+  const ai = new GoogleGenAI({ apiKey });
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: `Hoy es ${dayOfWeek} ${todayStr}. El usuario quiere filtrar por rango de fechas y dice: "${query}". Responde SOLO un JSON con formato {"startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD"}. Sin explicaciones.`,
+    config: { temperature: 0 },
+  });
+
+  const text = response.text?.trim() || '';
+  const jsonMatch = text.match(/\{[^}]+\}/);
+  if (!jsonMatch) return null;
+
+  try {
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (parsed.startDate && parsed.endDate) return parsed;
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -30,6 +60,9 @@ export const DateFilterDropdown: React.FC<DateFilterDropdownProps> = ({
   setShowDatePicker,
 }) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [aiQuery, setAiQuery] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
 
   // Cerrar al hacer clic fuera
   useEffect(() => {
@@ -47,6 +80,29 @@ export const DateFilterDropdown: React.FC<DateFilterDropdownProps> = ({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showDatePicker, setShowDatePicker]);
+
+  const handleAIDateParse = async () => {
+    if (!aiQuery.trim()) return;
+    setAiLoading(true);
+    setAiError('');
+
+    try {
+      const result = await parseDateWithAI(aiQuery.trim());
+      if (result) {
+        setDateRangePreset('custom');
+        setCustomStartDate(result.startDate);
+        setCustomEndDate(result.endDate);
+        setAiQuery('');
+        setShowDatePicker(false);
+      } else {
+        setAiError('No pude interpretar las fechas. Intenta de otra forma.');
+      }
+    } catch {
+      setAiError('Error al consultar la IA. Intenta de nuevo.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const currentLabel =
     DATE_PRESETS.find((p) => p.value === dateRangePreset)?.label || 'Fecha';
@@ -66,7 +122,33 @@ export const DateFilterDropdown: React.FC<DateFilterDropdownProps> = ({
       </button>
 
       {showDatePicker && (
-        <div className="absolute top-full right-0 mt-1 z-[100] bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-2 min-w-[180px] max-w-[calc(100vw-2rem)]">
+        <div className="absolute top-full right-0 mt-1 z-[100] bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-2 min-w-[240px] max-w-[calc(100vw-2rem)]">
+          {/* AI date input */}
+          {isGeminiConfigured() && (
+            <div className="mb-2 pb-2 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  value={aiQuery}
+                  onChange={(e) => setAiQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAIDateParse()}
+                  placeholder="Ej: desde el lunes pasado hasta hoy"
+                  className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+                  disabled={aiLoading}
+                />
+                <button
+                  onClick={handleAIDateParse}
+                  disabled={aiLoading || !aiQuery.trim()}
+                  className="flex items-center justify-center px-2 py-1.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                  title="Interpretar con IA"
+                >
+                  {aiLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                </button>
+              </div>
+              {aiError && <p className="text-[10px] text-rose-500 mt-1">{aiError}</p>}
+            </div>
+          )}
+
           <div className="space-y-0.5">
             {DATE_PRESETS.map((preset) => (
               <button

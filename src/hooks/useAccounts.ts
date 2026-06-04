@@ -117,16 +117,16 @@ export function useAccounts(
     }
   };
 
-  const deleteAccount = async (id: string) => {
+  const deleteAccount = async (id: string, options: { preserveTransactions?: boolean; allowDefaultDelete?: boolean } = {}) => {
     const account = accounts.find(a => a.id === id);
-    if (account?.isDefault) {
+    if (account?.isDefault && !options.allowDefaultDelete) {
       throw new Error('No puedes eliminar la cuenta por defecto');
     }
 
     // Cascade: transactions, recurring payments, and debts linked to this account
-    const relatedTransactions = transactions.filter(
-      t => t.accountId === id || t.toAccountId === id
-    );
+    const relatedTransactions = options.preserveTransactions
+      ? []
+      : transactions.filter(t => t.accountId === id || t.toAccountId === id);
 
     if (userId) {
       if (!checkNetworkConnection()) {
@@ -226,7 +226,7 @@ export function useAccounts(
       createdAt: existingDestination?.createdAt ?? new Date(),
     };
 
-    const migrateAccountReference = (accountId?: string) => (
+    const migrateAccountReference = (accountId?: string): string | undefined => (
       accountId && sourceIdSet.has(accountId) ? destinationId : accountId
     );
 
@@ -354,12 +354,12 @@ export function useAccounts(
 
       setLocalRecurringPayments(prev => prev.map(payment => ({
         ...payment,
-        accountId: migrateAccountReference(payment.accountId),
+        accountId: migrateAccountReference(payment.accountId) ?? payment.accountId,
       })));
 
       setLocalDebts(prev => prev.map(debt => ({
         ...debt,
-        accountId: migrateAccountReference(debt.accountId),
+        accountId: migrateAccountReference(debt.accountId) ?? debt.accountId,
       })));
     }
   };

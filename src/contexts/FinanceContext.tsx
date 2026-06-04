@@ -79,7 +79,7 @@ export interface FinanceContextValue {
   // ── Account CRUD ──
   addAccount: (account: Omit<Account, 'id'>) => Promise<void>;
   updateAccount: (id: string, updates: Partial<Account>) => Promise<void>;
-  deleteAccount: (id: string) => Promise<void>;
+  deleteAccount: (id: string, options?: { preserveTransactions?: boolean; allowDefaultDelete?: boolean }) => Promise<void>;
   mergeCreditCards: (params: MergeCreditCardsParams) => Promise<void>;
   setDefaultAccount: (id: string) => Promise<void>;
   getAccountBalance: (id: string) => number;

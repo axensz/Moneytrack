@@ -11,12 +11,33 @@ import {
   deleteDoc,
   updateDoc,
   runTransaction,
+  increment,
+  getDoc,
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { TRANSFER_CATEGORY } from '../../config/constants';
-import type { Transaction } from '../../types/finance';
+import type { Transaction, Account } from '../../types/finance';
 import { safeFirestoreOperation, checkNetworkConnection } from '../../utils/firestoreHelpers';
 import { logger } from '../../utils/logger';
+
+/**
+ * Calcula el delta de usedCredit que una transacción aporta a una cuenta TC.
+ * Positivo = aumenta deuda, Negativo = reduce deuda.
+ */
+function getCreditDelta(tx: { type: string; amount: number; accountId: string; toAccountId?: string; installments?: number; monthlyInstallmentAmount?: number }, accountId: string): number {
+  if (tx.type === 'expense' && tx.accountId === accountId) {
+    // Para cuotas, el delta es el monto completo (se ajustará mensualmente via recálculo)
+    // Simplificación: almacenamos el monto total y el cálculo de cuotas vencidas se hace al leer
+    return tx.amount;
+  }
+  if (tx.type === 'income' && tx.accountId === accountId) {
+    return -tx.amount;
+  }
+  if (tx.type === 'transfer' && tx.toAccountId === accountId) {
+    return -tx.amount;
+  }
+  return 0;
+}
 
 /**
  * Interfaces para validación de transacciones
@@ -185,6 +206,17 @@ export function useTransactionsCRUD(
           paid: true,
           createdAt: new Date(),
         });
+
+        // Actualizar usedCredit en cuentas TC afectadas
+        const toAccountData = toAccountSnap.data() as Account;
+        if (toAccountData.type === 'credit') {
+          firestoreTransaction.update(toAccountRef, { usedCredit: increment(-amount) });
+        }
+        const fromAccountData = fromAccountSnap.data() as Account;
+        if (fromAccountData.type === 'credit') {
+          // Transferir DESDE una TC (raro, pero posible) — no afecta usedCredit
+          // ya que usedCredit solo cuenta expenses/incomes/transfersIn
+        }
       });
     },
     []
@@ -228,6 +260,12 @@ export function useTransactionsCRUD(
 
         firestoreTransaction.set(creditTxRef, { ...cleanCredit, createdAt: new Date() });
         firestoreTransaction.set(sourceTxRef, { ...cleanSource, createdAt: new Date() });
+
+        // Actualizar usedCredit en la TC (el creditTx es un ingreso que reduce deuda)
+        const creditDelta = getCreditDelta(creditTx, creditTx.accountId);
+        if (creditDelta !== 0) {
+          firestoreTransaction.update(creditAccountRef, { usedCredit: increment(creditDelta) });
+        }
       });
     },
     [userId]
@@ -257,6 +295,13 @@ export function useTransactionsCRUD(
         ...cleanTransaction,
         createdAt: new Date(),
       });
+
+      // Actualizar usedCredit atómicamente si afecta a una TC
+      const delta = getCreditDelta(transaction, transaction.accountId);
+      if (delta !== 0) {
+        const accountRef = doc(db, `users/${userId}/accounts`, transaction.accountId);
+        await updateDoc(accountRef, { usedCredit: increment(delta) });
+      }
     },
     [userId, addTransferAtomic]
   );
@@ -269,11 +314,33 @@ export function useTransactionsCRUD(
         throw new Error('Sin conexión a internet');
       }
 
+      // Leer la transacción antes de eliminarla para revertir usedCredit
+      const txRef = doc(db, `users/${userId}/transactions`, id);
+      const txSnap = await getDoc(txRef);
+      const txData = txSnap.exists() ? txSnap.data() as Transaction : null;
+
       await safeFirestoreOperation(
-        () => deleteDoc(doc(db, `users/${userId}/transactions`, id)),
+        () => deleteDoc(txRef),
         'deleteTransaction',
         { maxRetries: 2 }
       );
+
+      // Revertir usedCredit si afectaba a una TC
+      if (txData) {
+        const delta = getCreditDelta(txData, txData.accountId);
+        if (delta !== 0) {
+          const accountRef = doc(db, `users/${userId}/accounts`, txData.accountId);
+          await updateDoc(accountRef, { usedCredit: increment(-delta) });
+        }
+        // También manejar transferencias hacia una TC
+        if (txData.type === 'transfer' && txData.toAccountId) {
+          const toDelta = getCreditDelta(txData, txData.toAccountId);
+          if (toDelta !== 0) {
+            const toAccountRef = doc(db, `users/${userId}/accounts`, txData.toAccountId);
+            await updateDoc(toAccountRef, { usedCredit: increment(-toDelta) });
+          }
+        }
+      }
     },
     [userId]
   );
@@ -300,12 +367,29 @@ export function useTransactionsCRUD(
       );
 
       try {
+        // Read old transaction to compute delta change
+        const txRef = doc(db, `users/${userId}/transactions`, id);
+        const txSnap = await getDoc(txRef);
+        const oldData = txSnap.exists() ? txSnap.data() as Transaction : null;
+
         // Update in Firestore with retry logic
         await safeFirestoreOperation(
-          () => updateDoc(doc(db, `users/${userId}/transactions`, id), cleanUpdates),
+          () => updateDoc(txRef, cleanUpdates),
           'updateTransaction',
           { maxRetries: 2 }
         );
+
+        // Adjust usedCredit if amount or type changed
+        if (oldData && ('amount' in updates || 'type' in updates)) {
+          const oldDelta = getCreditDelta(oldData, oldData.accountId);
+          const newData = { ...oldData, ...updates };
+          const newDelta = getCreditDelta(newData, newData.accountId);
+          const diff = newDelta - oldDelta;
+          if (diff !== 0) {
+            const accountRef = doc(db, `users/${userId}/accounts`, oldData.accountId);
+            await updateDoc(accountRef, { usedCredit: increment(diff) });
+          }
+        }
       } catch (error) {
         logger.error('Firestore error updating transaction:', error);
         throw new Error('Error al actualizar la transacción. Por favor intenta de nuevo.');

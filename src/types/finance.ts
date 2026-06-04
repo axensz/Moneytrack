@@ -101,6 +101,9 @@ export interface Account {
 
   // 🆕 Tasa de interés para TC
   interestRate?: number; // Tasa de Interés Efectiva Anual (E.A.) en porcentaje (ej: 23.99)
+
+  // 🆕 Cupo utilizado persistido (se actualiza atómicamente en cada transacción)
+  usedCredit?: number;
 }
 
 export interface Category {

@@ -6,3 +6,4 @@ export { useFirestoreSubscriptions, type FirestoreData } from './useFirestoreSub
 export { useTransactionsCRUD } from './useTransactionsCRUD';
 export { useAccountsCRUD } from './useAccountsCRUD';
 export { useCategoriesCRUD } from './useCategoriesCRUD';
+export { useCreditMigration } from './useCreditMigration';

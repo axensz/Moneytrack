@@ -28,6 +28,7 @@ import { useDebts } from '../hooks/useDebts';
 import { useBudgets } from '../hooks/useBudgets';
 import { useSavingsGoals } from '../hooks/useSavingsGoals';
 import { useFirestoreData } from './FirestoreContext';
+import { useCreditMigration } from '../hooks/firestore/useCreditMigration';
 import { formatCurrency } from '../utils/formatters';
 import type { Transaction, Account, Categories, RecurringPayment, Debt, Budget, SavingsGoal } from '../types/finance';
 import type { BudgetStatus } from '../hooks/useBudgets';
@@ -189,6 +190,9 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     defaultAccount,
     loading: accountsLoading,
   } = useAccounts(userId, transactions, deleteTransaction);
+
+  // Migración one-time: calcula usedCredit para TC existentes sin el campo
+  useCreditMigration(userId, accounts);
 
   // 3. Pagos recurrentes — uses centralized data when authenticated
   const {

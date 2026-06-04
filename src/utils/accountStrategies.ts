@@ -159,6 +159,12 @@ export class CreditCardStrategy implements AccountBalanceStrategy {
    * Para compras de contado, se cuenta el monto completo.
    */
   private calculateUsedCredit(account: Account, transactions: Transaction[]): number {
+    // Si hay campo persistido en la cuenta, usarlo (no depende de paginación)
+    if (account.usedCredit != null) {
+      return Math.max(0, account.usedCredit);
+    }
+
+    // Fallback: calcular desde transacciones en memoria (puede ser incompleto si hay paginación)
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();

@@ -354,12 +354,12 @@ export function useAccounts(
 
       setLocalRecurringPayments(prev => prev.map(payment => ({
         ...payment,
-        accountId: migrateAccountReference(payment.accountId),
+        accountId: migrateAccountReference(payment.accountId) ?? payment.accountId,
       })));
 
       setLocalDebts(prev => prev.map(debt => ({
         ...debt,
-        accountId: migrateAccountReference(debt.accountId),
+        accountId: migrateAccountReference(debt.accountId) ?? debt.accountId,
       })));
     }
   };

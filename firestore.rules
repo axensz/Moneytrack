@@ -60,11 +60,11 @@ service cloud.firestore {
           && hasValidInterestFields(request.resource.data);
 
         // Allow update of editable fields (description, amount, date, category, paid)
-        // Keep type and accountId immutable for data integrity
+        // accountId can change during credit card merge operations
         // Description is optional but if provided must be valid
         allow update: if isOwner(userId)
           && request.resource.data.type == resource.data.type
-          && request.resource.data.accountId == resource.data.accountId
+          && request.resource.data.accountId is string
           && isValidAmount(request.resource.data.amount)
           && request.resource.data.description is string
           && request.resource.data.description.size() <= 500

@@ -5,6 +5,7 @@
 
 import { useMemo } from 'react';
 import type { Transaction, Account } from '../types/finance';
+import { transactionAccountIs, transactionDestinationIs } from '../utils/accountTransactions';
 
 export interface CreditCardStatement {
   account: Account;
@@ -103,8 +104,8 @@ export function useCreditCardStatement(
       const inCycleTransactions = transactions.filter(t => {
         const tDate = new Date(t.date);
         const inRange = tDate >= cycleStart && tDate <= cycleEnd;
-        const isCharge = t.accountId === account.id;
-        const isIncomingPayment = t.type === 'transfer' && t.toAccountId === account.id;
+        const isCharge = transactionAccountIs(t, account);
+        const isIncomingPayment = t.type === 'transfer' && transactionDestinationIs(t, account);
         return inRange && (isCharge || isIncomingPayment);
       });
 
@@ -113,7 +114,7 @@ export function useCreditCardStatement(
       // We include only those whose purchase date falls BEFORE cycleStart to avoid duplicates
       // with inCycleTransactions.
       const activeInstallmentTransactions = transactions.filter(t => {
-        if (t.accountId !== account.id) return false;
+        if (!transactionAccountIs(t, account)) return false;
         if (t.type !== 'expense') return false;
         if (!t.installments || t.installments <= 1) return false;
         const tDate = new Date(t.date);
@@ -139,7 +140,7 @@ export function useCreditCardStatement(
         }, 0);
 
       const totalPayments = inCycleTransactions
-        .filter(t => t.type === 'income' || (t.type === 'transfer' && t.toAccountId === account.id))
+        .filter(t => t.type === 'income' || (t.type === 'transfer' && transactionDestinationIs(t, account)))
         .reduce((sum, t) => sum + t.amount, 0);
 
       const installmentCharges = cycleTransactions

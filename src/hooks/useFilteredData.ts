@@ -14,6 +14,7 @@
 import { useMemo } from 'react';
 import { useGlobalStats } from './useGlobalStats';
 import { CreditCardCalculator } from '../utils/balanceCalculator';
+import { transactionUsesAccount } from '../utils/accountTransactions';
 import type { Transaction, Account, FilterValue, DateRange } from '../types/finance';
 
 interface UseFilteredDataParams {
@@ -115,10 +116,15 @@ export function useFilteredData({
   // Filtrar transacciones por cuenta, categoría y fecha
   const filteredTransactions = useMemo(() => {
     const effectiveDateRange = getEffectiveDateRange(dateRange);
+    const selectedAccount = filterAccount === 'all'
+      ? null
+      : accounts.find((acc) => acc.id === filterAccount);
 
     return transactions.filter((t) => {
       // Filtro por cuenta
-      if (filterAccount !== 'all' && t.accountId !== filterAccount) return false;
+      if (filterAccount !== 'all') {
+        if (!selectedAccount || !transactionUsesAccount(t, selectedAccount)) return false;
+      }
 
       // Filtro por categoría
       if (filterCategory !== 'all' && t.category !== filterCategory) return false;
@@ -133,7 +139,7 @@ export function useFilteredData({
 
       return true;
     });
-  }, [transactions, filterAccount, filterCategory, dateRange]);
+  }, [transactions, accounts, filterAccount, filterCategory, dateRange]);
 
   // Filtrar cuentas si hay filtro activo
   const filteredAccounts = useMemo(() => {

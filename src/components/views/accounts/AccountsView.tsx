@@ -2,13 +2,15 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Wallet, CreditCard, Banknote } from 'lucide-react';
+import { BALANCE_ADJUSTMENT_CATEGORY } from '../../../config/constants';
 import { showToast } from '../../../utils/toastHelpers';
-import { BalanceCalculator } from '../../../utils/balanceCalculator';
+import { CreditCardCalculator } from '../../../utils/balanceCalculator';
 import { useFinance } from '../../../contexts/FinanceContext';
 import type { Account } from '../../../types/finance';
 
 import { AccountFormModal } from './components/AccountFormModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
+import { MergeCreditCardsModal } from './components/MergeCreditCardsModal';
 import { AccountCard } from './components/AccountCard';
 import { CreditCardsConsolidatedSummary } from './components/CreditCardsConsolidatedSummary';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
@@ -40,13 +42,14 @@ export const AccountsView: React.FC = () => {
     getTransactionCountForAccount,
     formatCurrency,
     addTransaction,
+    updateTransaction,
   } = useFinance();
   // Mapa memoizado de cupo usado por tarjeta (evita recalcular en cada render)
   const creditUsedMap = useMemo(() => {
     const map = new Map<string, number>();
     accounts.forEach(a => {
       if (a.type === 'credit' && a.id) {
-        map.set(a.id, BalanceCalculator.calculateCreditCardUsed(a, transactions));
+        map.set(a.id, CreditCardCalculator.calculateUsedCredit(a, transactions));
       }
     });
     return map;
@@ -112,6 +115,12 @@ export const AccountsView: React.FC = () => {
     confirmTransactions: boolean;
   } | null>(null);
 
+  const [mergeSourceCard, setMergeSourceCard] = useState<Account | null>(null);
+  const [mergeTargetCardId, setMergeTargetCardId] = useState('');
+  const [mergeCreditLimitInput, setMergeCreditLimitInput] = useState('');
+  const [mergeDesiredDebtInput, setMergeDesiredDebtInput] = useState('');
+  const [isMergingCreditCards, setIsMergingCreditCards] = useState(false);
+
   // Inicializar order si no existe
   // AUDIT-FIX (MEDIO-01): deps correctas para evitar stale closures
   useEffect(() => {
@@ -125,6 +134,119 @@ export const AccountsView: React.FC = () => {
 
   // Filtrar cuentas de ahorro para asociación con TC
   const savingsAccounts = accounts.filter((acc) => acc.type === 'savings');
+
+  const creditCards = accounts.filter((acc) => acc.type === 'credit' && acc.id);
+  const mergeTargetCard = creditCards.find((card) => card.id === mergeTargetCardId) || null;
+  const mergeCombinedCreditLimit = (mergeSourceCard?.creditLimit || 0) + (mergeTargetCard?.creditLimit || 0);
+  const mergeCombinedUsedDebt = (mergeSourceCard?.id ? getCreditUsed(mergeSourceCard.id) : 0)
+    + (mergeTargetCard?.id ? getCreditUsed(mergeTargetCard.id) : 0);
+  const mergeCombinedAvailableCredit = mergeCombinedCreditLimit - mergeCombinedUsedDebt;
+
+  const parseCurrencyInput = (value: string): number => parseFloat(value.replace(',', '.'));
+
+  const openMergeCreditCardsModal = (sourceCard: Account) => {
+    const defaultTargetCard = creditCards.find((card) => card.id !== sourceCard.id);
+
+    if (!defaultTargetCard) {
+      showToast.error('Necesitas al menos dos tarjetas de crédito para unificar');
+      return;
+    }
+
+    const combinedLimit = (sourceCard.creditLimit || 0) + (defaultTargetCard.creditLimit || 0);
+    setMergeSourceCard(sourceCard);
+    setMergeTargetCardId(defaultTargetCard.id!);
+    setMergeCreditLimitInput(combinedLimit.toString());
+    setMergeDesiredDebtInput('');
+  };
+
+  const closeMergeCreditCardsModal = () => {
+    if (isMergingCreditCards) return;
+    setMergeSourceCard(null);
+    setMergeTargetCardId('');
+    setMergeCreditLimitInput('');
+    setMergeDesiredDebtInput('');
+  };
+
+  const handleMergeTargetChange = (targetCardId: string) => {
+    const nextTargetCard = creditCards.find((card) => card.id === targetCardId);
+    setMergeTargetCardId(targetCardId);
+    setMergeCreditLimitInput(((mergeSourceCard?.creditLimit || 0) + (nextTargetCard?.creditLimit || 0)).toString());
+    setMergeDesiredDebtInput('');
+  };
+
+  const mergeCreditCards = async () => {
+    if (!mergeSourceCard?.id || !mergeTargetCard?.id) return;
+
+    const newCreditLimit = parseCurrencyInput(mergeCreditLimitInput);
+    if (isNaN(newCreditLimit) || newCreditLimit <= 0) {
+      showToast.error('El nuevo cupo debe ser mayor que cero');
+      return;
+    }
+
+    const desiredDebt = mergeDesiredDebtInput.trim() === ''
+      ? mergeCombinedUsedDebt
+      : parseCurrencyInput(mergeDesiredDebtInput);
+
+    if (isNaN(desiredDebt) || desiredDebt < 0) {
+      showToast.error('Ingresa una deuda real deseada válida (debe ser un número positivo)');
+      return;
+    }
+
+    const warningDebt = Math.max(mergeCombinedUsedDebt, desiredDebt);
+
+    if (newCreditLimit < warningDebt) {
+      const shouldContinue = window.confirm(
+        `El nuevo cupo (${formatCurrency(newCreditLimit)}) queda por debajo de la deuda usada (${formatCurrency(warningDebt)}). ¿Deseas continuar?`
+      );
+      if (!shouldContinue) return;
+    }
+
+    const debtDifference = desiredDebt - mergeCombinedUsedDebt;
+    const transactionsToMove = transactions.filter(
+      (transaction) => transaction.accountId === mergeSourceCard.id || transaction.toAccountId === mergeSourceCard.id
+    );
+
+    try {
+      setIsMergingCreditCards(true);
+
+      await updateAccount(mergeTargetCard.id, { creditLimit: newCreditLimit });
+
+      for (const transaction of transactionsToMove) {
+        const updates: Partial<Transaction> = {};
+        if (transaction.accountId === mergeSourceCard.id) updates.accountId = mergeTargetCard.id;
+        if (transaction.toAccountId === mergeSourceCard.id) updates.toAccountId = mergeTargetCard.id;
+        await updateTransaction(transaction.id!, updates);
+      }
+
+      if (Math.abs(debtDifference) >= 0.01) {
+        await addTransaction({
+          type: debtDifference > 0 ? 'expense' : 'income',
+          amount: Math.abs(debtDifference),
+          category: BALANCE_ADJUSTMENT_CATEGORY,
+          description: `Ajuste por unificación TC: ${debtDifference > 0 ? '+' : '-'}${formatCurrency(Math.abs(debtDifference))}`,
+          date: new Date(),
+          paid: true,
+          accountId: mergeTargetCard.id,
+        });
+      }
+
+      if (mergeSourceCard.isDefault) {
+        await setDefaultAccount(mergeTargetCard.id);
+      }
+
+      await deleteAccount(mergeSourceCard.id, { preserveTransactions: true, allowDefaultDelete: mergeSourceCard.isDefault });
+
+      showToast.success(`Tarjetas unificadas en ${mergeTargetCard.name}`);
+      setMergeSourceCard(null);
+      setMergeTargetCardId('');
+      setMergeCreditLimitInput('');
+      setMergeDesiredDebtInput('');
+    } catch (error) {
+      showToast.error(`Error unificando tarjetas: ${(error as Error).message || 'Error desconocido'}`);
+    } finally {
+      setIsMergingCreditCards(false);
+    }
+  };
 
   const getNextCutoffDate = (account: Account): Date | null => {
     if (account.type !== 'credit' || !account.cutoffDay) return null;
@@ -278,6 +400,25 @@ export const AccountsView: React.FC = () => {
         formatCurrency={formatCurrency}
       />
 
+      <MergeCreditCardsModal
+        isOpen={!!mergeSourceCard}
+        sourceCard={mergeSourceCard}
+        targetCardId={mergeTargetCardId}
+        creditCards={creditCards}
+        combinedCreditLimit={mergeCombinedCreditLimit}
+        combinedUsedDebt={mergeCombinedUsedDebt}
+        combinedAvailableCredit={mergeCombinedAvailableCredit}
+        newCreditLimitInput={mergeCreditLimitInput}
+        desiredDebtInput={mergeDesiredDebtInput}
+        isSubmitting={isMergingCreditCards}
+        formatCurrency={formatCurrency}
+        onTargetCardChange={handleMergeTargetChange}
+        onNewCreditLimitChange={setMergeCreditLimitInput}
+        onDesiredDebtChange={setMergeDesiredDebtInput}
+        onConfirm={mergeCreditCards}
+        onClose={closeMergeCreditCardsModal}
+      />
+
       {/* Lista de cuentas */}
       <div className="space-y-4">
         {mainAccounts.map((account) => {
@@ -320,6 +461,7 @@ export const AccountsView: React.FC = () => {
                     confirmTransactions: false,
                   })
                 }
+                onMerge={account.type === 'credit' ? () => openMergeCreditCardsModal(account) : undefined}
                 onDragStart={(e) => dragDrop.handleDragStart(e, account.id!)}
                 onDragOver={(e) => dragDrop.handleDragOver(e, account.id!)}
                 onDragLeave={dragDrop.handleDragLeave}
@@ -366,6 +508,7 @@ export const AccountsView: React.FC = () => {
                           confirmTransactions: false,
                         })
                       }
+                      onMerge={() => openMergeCreditCardsModal(card)}
                       onDragStart={(e) => dragDrop.handleDragStart(e, card.id!)}
                       onDragOver={(e) => dragDrop.handleDragOver(e, card.id!)}
                       onDragLeave={dragDrop.handleDragLeave}

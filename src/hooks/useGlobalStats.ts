@@ -14,6 +14,7 @@
 
 import { useMemo } from 'react';
 import { CreditCardCalculator } from '../utils/balanceCalculator';
+import { findAccountForTransaction } from '../utils/accountTransactions';
 import type { Account, Transaction } from '../types/finance';
 
 export interface GlobalStats {
@@ -71,7 +72,7 @@ export function useGlobalStats(
         if (t.type !== 'expense' || t.paid) return false;
 
         // Debe pertenecer a una tarjeta de crédito
-        const account = accounts.find(acc => acc.id === t.accountId);
+        const account = findAccountForTransaction(accounts, t.accountId);
         return account?.type === 'credit';
       })
       .reduce((sum, t) => sum + t.amount, 0);

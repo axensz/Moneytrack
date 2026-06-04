@@ -8,6 +8,7 @@ import type { Transaction, Account, Categories } from '../types/finance';
 import { formatCurrency } from '../utils/formatters';
 import { BalanceCalculator } from '../utils/balanceCalculator';
 import { CreditCardCalculator } from '../utils/balanceCalculator';
+import { findAccountForTransaction } from '../utils/accountTransactions';
 import { logger } from '../utils/logger';
 import { SPECIAL_CATEGORIES } from '../config/constants';
 
@@ -91,7 +92,7 @@ export function isGeminiConfigured(): boolean {
 /**
  * Genera el contexto financiero del usuario para el prompt del sistema
  */
-function buildFinancialContext(
+export function buildFinancialContext(
   transactions: Transaction[],
   accounts: Account[],
   categories: Categories
@@ -211,7 +212,7 @@ function buildFinancialContext(
     .map(t => {
       const tipo = t.type === 'income' ? '📈 Ingreso' : t.type === 'expense' ? '📉 Gasto' : '🔄 Transferencia';
       const fecha = new Date(t.date).toLocaleDateString('es-CO');
-      const account = accounts.find(a => a.id === t.accountId);
+      const account = findAccountForTransaction(accounts, t.accountId);
       const estado = t.paid ? '' : ' [PENDIENTE]';
       return `  - [ID:${t.id}] ${fecha} | ${tipo} | ${formatCurrency(t.amount)} | ${t.category} | ${t.description} | ${account?.name || 'N/A'} [ACC:${t.accountId}]${estado}`;
     }).join('\n');

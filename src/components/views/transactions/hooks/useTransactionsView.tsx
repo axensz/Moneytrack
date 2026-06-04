@@ -181,7 +181,7 @@ export const useTransactionsView = ({
     setEditingTransaction(transaction.id!);
     setEditForm({
       description: transaction.description,
-      amount: formatNumberForInput(transaction.amount),
+      amount: transaction.amount.toString().replace('.', ','),
       date: new Date(transaction.date).toISOString().split('T')[0],
       category: transaction.category,
     });

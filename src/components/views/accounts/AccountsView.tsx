@@ -146,10 +146,12 @@ export const AccountsView: React.FC = () => {
   const parseCurrencyInput = (value: string): number => parseFloat(value.replace(',', '.'));
 
   const openMergeCreditCardsModal = (sourceCard: Account) => {
-    const defaultTargetCard = creditCards.find((card) => card.id !== sourceCard.id);
+    const defaultTargetCard = creditCards.find((card) =>
+      card.id !== sourceCard.id && card.bankAccountId === sourceCard.bankAccountId
+    );
 
     if (!defaultTargetCard) {
-      showToast.error('Necesitas al menos dos tarjetas de crédito para unificar');
+      showToast.error('Necesitas al menos dos tarjetas de crédito del mismo banco para unificar');
       return;
     }
 
@@ -401,7 +403,7 @@ export const AccountsView: React.FC = () => {
         isOpen={!!mergeSourceCard}
         sourceCard={mergeSourceCard}
         targetCardId={mergeTargetCardId}
-        creditCards={creditCards}
+        creditCards={creditCards.filter(card => card.bankAccountId === mergeSourceCard?.bankAccountId)}
         combinedCreditLimit={mergeCombinedCreditLimit}
         combinedUsedDebt={mergeCombinedUsedDebt}
         combinedAvailableCredit={mergeCombinedAvailableCredit}

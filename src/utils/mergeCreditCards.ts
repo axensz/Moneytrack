@@ -1,3 +1,10 @@
+/**
+ * Utilidad pura para merge de tarjetas de crédito.
+ *
+ * NOTA: La implementación con side-effects (Firestore/localStorage) está en
+ * `useAccounts.ts` → `mergeCreditCards`. Esta función sirve como lógica de
+ * dominio inmutable para testing y posibles usos futuros sin acoplamiento a I/O.
+ */
 import type { Account, Transaction } from '../types/finance';
 import { getAccountReferenceIds } from './accountTransactions';
 

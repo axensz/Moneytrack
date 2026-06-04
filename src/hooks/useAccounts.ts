@@ -47,7 +47,7 @@ export function useAccounts(
     return BalanceCalculator.calculateTotalBalance(accounts, transactions);
   }, [accounts, transactions]);
 
-  const addAccount = async (newAcc: Omit<Account, 'id' | 'createdAt'>) => {
+  const addAccount = async (newAcc: Omit<Account, 'id' | 'createdAt'>): Promise<string | undefined> => {
     const isFirst = accounts.length === 0;
     const accountData = {
       ...newAcc,
@@ -59,7 +59,7 @@ export function useAccounts(
         throw new Error('Sin conexión a internet');
       }
 
-      await safeFirestoreOperation(
+      return await safeFirestoreOperation(
         () => firestoreAddAccount(accountData),
         'addAccount',
         { maxRetries: 2 }
@@ -71,6 +71,7 @@ export function useAccounts(
         createdAt: new Date()
       };
       setLocalAccounts(prev => [...prev, newAccount]);
+      return newAccount.id;
     }
   };
 
@@ -92,20 +93,26 @@ export function useAccounts(
     }
   };
 
-  const deleteAccount = async (id: string) => {
+  const deleteAccount = async (id: string, options: { cascade?: boolean } = {}) => {
+    const shouldCascade = options.cascade !== false;
     const account = accounts.find(a => a.id === id);
-    if (account?.isDefault) {
-      throw new Error('No puedes eliminar la cuenta por defecto');
+    if (account?.isDefault && accounts.length <= 1) {
+      throw new Error('No puedes eliminar la única cuenta por defecto');
     }
 
     // Cascade: transactions, recurring payments, and debts linked to this account
-    const relatedTransactions = transactions.filter(
-      t => t.accountId === id || t.toAccountId === id
-    );
+    const relatedTransactions = shouldCascade
+      ? transactions.filter(t => t.accountId === id || t.toAccountId === id)
+      : [];
 
     if (userId) {
       if (!checkNetworkConnection()) {
         throw new Error('Sin conexión a internet');
+      }
+
+      if (!shouldCascade) {
+        await firestoreDeleteAccount(id);
+        return;
       }
 
       // Find recurring payments and debts linked to this account

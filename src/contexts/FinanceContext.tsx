@@ -76,9 +76,9 @@ export interface FinanceContextValue {
   updateTransaction: (id: string, updates: Partial<Transaction>) => Promise<void>;
 
   // ── Account CRUD ──
-  addAccount: (account: Omit<Account, 'id'>) => Promise<void>;
+  addAccount: (account: Omit<Account, 'id'>) => Promise<string | undefined>;
   updateAccount: (id: string, updates: Partial<Account>) => Promise<void>;
-  deleteAccount: (id: string) => Promise<void>;
+  deleteAccount: (id: string, options?: { cascade?: boolean }) => Promise<void>;
   setDefaultAccount: (id: string) => Promise<void>;
   getAccountBalance: (id: string) => number;
   getTransactionCountForAccount: (id: string) => number;

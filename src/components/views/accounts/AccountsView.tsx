@@ -5,11 +5,12 @@ import { Plus, Wallet, CreditCard, Banknote } from 'lucide-react';
 import { showToast } from '../../../utils/toastHelpers';
 import { BalanceCalculator } from '../../../utils/balanceCalculator';
 import { useFinance } from '../../../contexts/FinanceContext';
-import type { Account, Transaction, NewAccount } from '../../../types/finance';
+import type { Account } from '../../../types/finance';
 
 import { AccountFormModal } from './components/AccountFormModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { AccountCard } from './components/AccountCard';
+import { MergeCreditCardsModal, type MergeCreditCardsValues } from './components/MergeCreditCardsModal';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
 import { useAccountForm } from './hooks/useAccountForm';
 
@@ -39,6 +40,11 @@ export const AccountsView: React.FC = () => {
     getTransactionCountForAccount,
     formatCurrency,
     addTransaction,
+    updateTransaction,
+    recurringPayments,
+    updateRecurringPayment,
+    debts,
+    updateDebt,
   } = useFinance();
   // Mapa memoizado de cupo usado por tarjeta (evita recalcular en cada render)
   const creditUsedMap = useMemo(() => {
@@ -73,6 +79,7 @@ export const AccountsView: React.FC = () => {
     confirmName: string;
     confirmTransactions: boolean;
   } | null>(null);
+  const [mergeInitialAccountId, setMergeInitialAccountId] = useState<string | null>(null);
 
   // Inicializar order si no existe
   // AUDIT-FIX (MEDIO-01): deps correctas para evitar stale closures
@@ -157,6 +164,84 @@ export const AccountsView: React.FC = () => {
     }
   };
 
+  const handleMergeCreditCards = async (values: MergeCreditCardsValues) => {
+    const destinationUpdates: Partial<Account> = {
+      name: values.name,
+      type: 'credit',
+      initialBalance: 0,
+      creditLimit: values.creditLimit,
+      bankAccountId: values.bankAccountId,
+      cutoffDay: values.cutoffDay,
+      paymentDay: values.paymentDay,
+      interestRate: values.interestRate || 0,
+      isDefault: values.isDefault,
+      order: values.order,
+    };
+
+    try {
+      let destinationId = values.destinationId;
+
+      if (values.destinationMode === 'new') {
+        destinationId = await addAccount({
+          name: values.name,
+          type: 'credit',
+          isDefault: values.isDefault,
+          initialBalance: 0,
+          creditLimit: values.creditLimit,
+          bankAccountId: values.bankAccountId,
+          cutoffDay: values.cutoffDay || 1,
+          paymentDay: values.paymentDay || 10,
+          interestRate: values.interestRate || 0,
+          order: values.order,
+        });
+      } else if (destinationId) {
+        await updateAccount(destinationId, destinationUpdates);
+      }
+
+      if (!destinationId) {
+        throw new Error('No se pudo determinar la tarjeta destino');
+      }
+
+      const sourceIds = new Set(values.sourceIds);
+      const relatedTransactions = transactions.filter(
+        (transaction) =>
+          transaction.id &&
+          (sourceIds.has(transaction.accountId) ||
+            (transaction.toAccountId && sourceIds.has(transaction.toAccountId)))
+      );
+      const relatedRecurringPayments = recurringPayments.filter(
+        (payment) => payment.id && payment.accountId && sourceIds.has(payment.accountId)
+      );
+      const relatedDebts = debts.filter(
+        (debt) => debt.id && debt.accountId && sourceIds.has(debt.accountId)
+      );
+
+      await Promise.all([
+        ...relatedTransactions.map((transaction) =>
+          updateTransaction(transaction.id!, {
+            ...(sourceIds.has(transaction.accountId) ? { accountId: destinationId } : {}),
+            ...(transaction.toAccountId && sourceIds.has(transaction.toAccountId)
+              ? { toAccountId: destinationId }
+              : {}),
+          })
+        ),
+        ...relatedRecurringPayments.map((payment) =>
+          updateRecurringPayment(payment.id!, { accountId: destinationId })
+        ),
+        ...relatedDebts.map((debt) => updateDebt(debt.id!, { accountId: destinationId })),
+      ]);
+
+      await Promise.all(values.sourceIds.map((sourceId) => deleteAccount(sourceId, { cascade: false })));
+
+      showToast.success(
+        `Tarjetas unificadas. Se migraron ${relatedTransactions.length} transacción${relatedTransactions.length !== 1 ? 'es' : ''}, ${relatedRecurringPayments.length} pago${relatedRecurringPayments.length !== 1 ? 's' : ''} periódico${relatedRecurringPayments.length !== 1 ? 's' : ''} y ${relatedDebts.length} deuda${relatedDebts.length !== 1 ? 's' : ''}.`
+      );
+      setMergeInitialAccountId(null);
+    } catch (error) {
+      showToast.error(`Error al unificar tarjetas: ${(error as Error).message || 'Error desconocido'}`);
+    }
+  };
+
   // Cuentas principales (no asociadas)
   const mainAccounts = accounts
     .filter((account) => account.type !== 'credit' || !account.bankAccountId)
@@ -209,6 +294,16 @@ export const AccountsView: React.FC = () => {
         formatCurrency={formatCurrency}
         getAccountBalance={getAccountBalance}
         getCreditUsed={getCreditUsed}
+      />
+
+      <MergeCreditCardsModal
+        isOpen={!!mergeInitialAccountId}
+        creditAccounts={accounts.filter(a => a.type === 'credit')}
+        transactions={transactions}
+        initialAccountId={mergeInitialAccountId}
+        onClose={() => setMergeInitialAccountId(null)}
+        onConfirm={handleMergeCreditCards}
+        formatCurrency={formatCurrency}
       />
 
       <DeleteConfirmModal
@@ -265,6 +360,7 @@ export const AccountsView: React.FC = () => {
                 formatCurrency={formatCurrency}
                 onEdit={() => accountForm.openEditForm(account)}
                 onSetDefault={() => setDefaultAccount(account.id!)}
+                onMerge={account.type === 'credit' ? () => setMergeInitialAccountId(account.id!) : undefined}
                 onDelete={() =>
                   setDeleteConfirm({
                     accountId: account.id!,
@@ -311,6 +407,7 @@ export const AccountsView: React.FC = () => {
                       formatCurrency={formatCurrency}
                       onEdit={() => accountForm.openEditForm(card)}
                       onSetDefault={() => setDefaultAccount(card.id!)}
+                      onMerge={() => setMergeInitialAccountId(card.id!)}
                       onDelete={() =>
                         setDeleteConfirm({
                           accountId: card.id!,

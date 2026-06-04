@@ -210,6 +210,28 @@ export function useAccounts(
       throw new Error(`La cuenta destino ${existingDestination.name} no es una tarjeta de crédito`);
     }
 
+    // Validar que todas las tarjetas pertenezcan al mismo banco
+    const allCardsForBankCheck = [...sourceAccounts.filter(Boolean) as Account[]];
+    if (existingDestination) allCardsForBankCheck.push(existingDestination);
+
+    const bankIds = allCardsForBankCheck
+      .map(account => account.bankAccountId)
+      .filter((id): id is string => id != null);
+
+    if (bankIds.length === 0) {
+      throw new Error('Las tarjetas deben estar asociadas a una cuenta bancaria para poder unificarse');
+    }
+
+    const uniqueBanks = new Set(bankIds);
+    if (uniqueBanks.size > 1) {
+      throw new Error('Solo se pueden unificar tarjetas de crédito del mismo banco');
+    }
+
+    // Si alguna tiene banco y otra no, también es inconsistente
+    if (bankIds.length < allCardsForBankCheck.length) {
+      throw new Error('Solo se pueden unificar tarjetas de crédito del mismo banco (algunas tarjetas no tienen banco asignado)');
+    }
+
     const sourceHadDefault = sourceAccounts.some(account => account?.isDefault);
     const shouldMakeDestinationDefault = destination.isDefault ?? existingDestination?.isDefault ?? sourceHadDefault;
     const destinationId = destination.id ?? generateId();

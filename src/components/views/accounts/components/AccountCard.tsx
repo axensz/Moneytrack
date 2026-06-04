@@ -1,8 +1,8 @@
 'use client';
 
 import React, { memo } from 'react';
-import { Edit2, Trash2, GripVertical, Wallet, CreditCard, Banknote, GitMerge } from 'lucide-react';
-import type { Account } from '../../../../types/finance';
+import { Edit2, Trash2, GripVertical, Wallet, CreditCard, Banknote, Combine } from 'lucide-react';
+import type { Account, Transaction } from '../../../../types/finance';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 
 const ACCOUNT_TYPES = [
@@ -228,9 +228,9 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
           {isCredit && onMerge && (
             <button
               onClick={onMerge}
-              className="flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[36px] text-purple-700 bg-purple-100 hover:bg-purple-200 dark:text-purple-300 dark:bg-purple-900/40 dark:hover:bg-purple-900/60"
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[36px] text-purple-700 bg-purple-50 hover:bg-purple-100 dark:text-purple-300 dark:bg-purple-900/20 dark:hover:bg-purple-900/40"
             >
-              <GitMerge size={14} />
+              <Combine size={14} />
               Unificar
             </button>
           )}

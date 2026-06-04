@@ -17,7 +17,7 @@ const INITIAL_ACCOUNT: NewAccount = {
 };
 
 interface UseAccountFormProps {
-  addAccount: (account: Omit<Account, 'id'>) => Promise<string | undefined>;
+  addAccount: (account: Omit<Account, 'id'>) => Promise<void>;
   updateAccount: (id: string, updates: Partial<Account>) => Promise<void>;
   addTransaction: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
   getAccountBalance: (id: string) => number;

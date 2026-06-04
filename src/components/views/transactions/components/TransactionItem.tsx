@@ -1,9 +1,9 @@
 'use client';
 
 import React, { memo } from 'react';
+import CurrencyInput from 'react-currency-input-field';
 import { ArrowRightLeft, Check, Clock, CreditCard, Edit2, X } from 'lucide-react';
 import type { Transaction, Account, Categories } from '../../../../types/finance';
-import { formatNumberForInput, unformatNumber } from '../../../../utils/formatters';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 
 interface TransactionItemProps {
@@ -103,17 +103,19 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
               <label className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">
                 Monto
               </label>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={formatNumberForInput(editForm.amount)}
-                onChange={(e) =>
+              <CurrencyInput
+                intlConfig={{ locale: 'es-CO', currency: 'COP' }}
+                decimalsLimit={2}
+                allowNegativeValue={false}
+                value={editForm.amount}
+                onValueChange={(value) =>
                   onEditFormChange({
                     ...editForm,
-                    amount: unformatNumber(e.target.value),
+                    amount: value || '',
                   })
                 }
                 placeholder="0"
+                disableAbbreviations
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
               />
             </div>

@@ -120,12 +120,8 @@ export function useAddTransaction({
       }
 
       try {
-        // Convertir amount de formato colombiano (1.234,56) a número
-        const amountStr = newTransaction.amount
-          .toString()
-          .replace(/\./g, '')
-          .replace(',', '.');
-        const amount = parseFloat(amountStr);
+        // CurrencyInput gives us a plain numeric string (e.g. "88888" or "88888.5")
+        const amount = parseFloat(newTransaction.amount.toString());
 
         if (isNaN(amount)) {
           showToast.error('Monto inválido');

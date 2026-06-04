@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, memo, useState, useCallback } from 'react';
+import CurrencyInput from 'react-currency-input-field';
 import { X, Repeat, Zap, AlertTriangle } from 'lucide-react';
 import { UI_LABELS, TRANSFER_CATEGORY } from '@/config/constants';
-import { formatNumberForInput, unformatNumber, formatCurrency, formatDate } from '@/utils/formatters';
+import { formatCurrency, formatDate } from '@/utils/formatters';
 import { BalanceCalculator } from '@/utils/balanceCalculator';
 import { INSTALLMENT_OPTIONS } from '@/utils/interestCalculator';
 import { detectDuplicates, type DuplicateMatch } from '@/utils/duplicateDetector';
@@ -160,16 +161,17 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
 
             <div>
               <label className="label-base">Monto</label>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={formatNumberForInput(newTransaction.amount)}
-                onChange={(e) => {
-                  const unformatted = unformatNumber(e.target.value);
-                  setNewTransaction({ ...newTransaction, amount: unformatted });
+              <CurrencyInput
+                intlConfig={{ locale: 'es-CO', currency: 'COP' }}
+                decimalsLimit={2}
+                allowNegativeValue={false}
+                value={newTransaction.amount}
+                onValueChange={(value) => {
+                  setNewTransaction({ ...newTransaction, amount: value || '' });
                 }}
                 placeholder="0"
                 className="input-base"
+                disableAbbreviations
               />
               {isCreditCard && newTransaction.type === 'income' && creditUsed > 0 && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">

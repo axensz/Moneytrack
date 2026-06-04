@@ -8,7 +8,7 @@ import type {
   DateRangePreset,
   RecurringPayment,
 } from '../../../../types/finance';
-import { formatNumberForInput, parseDateFromInput } from '../../../../utils/formatters';
+import { parseDateFromInput } from '../../../../utils/formatters';
 import { getDateRangeFromPreset } from '../../../../utils/dateUtils';
 import { findAccountForTransaction, transactionUsesAccount } from '../../../../utils/accountTransactions';
 import { showToast } from '../../../../utils/toastHelpers';
@@ -181,7 +181,7 @@ export const useTransactionsView = ({
     setEditingTransaction(transaction.id!);
     setEditForm({
       description: transaction.description,
-      amount: transaction.amount.toString().replace('.', ','),
+      amount: transaction.amount.toString(),
       date: new Date(transaction.date).toISOString().split('T')[0],
       category: transaction.category,
     });
@@ -189,9 +189,8 @@ export const useTransactionsView = ({
 
   const handleSaveEdit = useCallback(
     async (id: string) => {
-      // Parse amount
-      const amountStr = editForm.amount.toString().replace(/\./g, '').replace(',', '.');
-      const amount = parseFloat(amountStr);
+      // Parse amount - CurrencyInput gives us a plain string like "88888" or "88888.5"
+      const amount = parseFloat(editForm.amount);
 
       // Client-side validation
       if (isNaN(amount) || amount <= 0) {

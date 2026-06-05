@@ -7,7 +7,7 @@ import { useCallback, useState } from 'react';
 import { collection, doc, increment, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { logger } from '../utils/logger';
-import { setBatchImporting } from '../utils/importBatchFlag';
+import { setBatchImporting, registerImportedIds } from '../utils/importBatchFlag';
 import type { Account, Transaction } from '../types/finance';
 
 export interface ImportRow {
@@ -75,6 +75,7 @@ export function useImportTransactions(userId: string | null, accounts: Account[]
       const errors: string[] = [];
       let imported = 0;
       let invalidSkipped = 0;
+      const importedDocIds: string[] = [];
 
       try {
         const txCollection = collection(db, `users/${userId}/transactions`);
@@ -94,6 +95,7 @@ export function useImportTransactions(userId: string | null, accounts: Account[]
             }
 
             const txRef = doc(txCollection);
+            importedDocIds.push(txRef.id);
             const txData: Omit<Transaction, 'id'> = {
               type: row.type,
               amount: row.amount,
@@ -145,8 +147,11 @@ export function useImportTransactions(userId: string | null, accounts: Account[]
         const r: ImportResult = { imported, skipped: rows.length - selected.length + invalidSkipped, errors };
         setResult(r);
         setStatus('done');
-        // Re-enable notifications after a short delay (let Firestore listeners settle)
-        setTimeout(() => setBatchImporting(false), 3000);
+        // Register imported IDs so notifications are suppressed even after flag clears
+        registerImportedIds(importedDocIds);
+        // Re-enable notifications after a longer delay proportional to import size
+        const delay = Math.max(10_000, Math.min(30_000, imported * 50));
+        setTimeout(() => setBatchImporting(false), delay);
         return r;
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'Error desconocido al importar';

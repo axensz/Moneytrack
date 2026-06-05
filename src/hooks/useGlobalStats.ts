@@ -15,7 +15,18 @@
 import { useMemo } from 'react';
 import { CreditCardCalculator } from '../utils/balanceCalculator';
 import { findAccountForTransaction } from '../utils/accountTransactions';
+import { SPECIAL_CATEGORIES } from '../config/constants';
 import type { Account, Transaction } from '../types/finance';
+
+/**
+ * Una transacción cuenta como ingreso/gasto "real" del usuario solo si NO es un
+ * movimiento interno (transferencia entre cuentas o pago/ajuste de tarjeta).
+ * Mantiene consistencia con useStatsData, useBudgets y buildFinancialContext.
+ */
+function isRealMovement(t: Transaction): boolean {
+  if (t.type === 'transfer') return false;
+  return !SPECIAL_CATEGORIES.adjustmentCategories.includes(t.category);
+}
 
 export interface GlobalStats {
   totalIncome: number;
@@ -49,8 +60,11 @@ export function useGlobalStats(
   accounts: Account[]
 ): GlobalStats {
   return useMemo(() => {
-    // ✅ 1. CALCULAR TOTAL DE INGRESOS (solo pagados)
-    const paidTransactions = transactions.filter(t => t.paid);
+    // Solo movimientos reales: excluye transferencias y pagos/ajustes de tarjeta.
+    // Antes estos pagos inflaban ingresos (ingreso a la TC) y gastos (gasto espejo
+    // del banco), produciendo cifras distintas a las de los charts y presupuestos.
+    const realTransactions = transactions.filter(isRealMovement);
+    const paidTransactions = realTransactions.filter(t => t.paid);
 
     const totalIncome = paidTransactions
       .filter(t => t.type === 'income')
@@ -66,7 +80,7 @@ export function useGlobalStats(
     // 2.2 Gastos NO pagados de tarjetas de crédito
     // Estos se consideran "efectuados" aunque no estén marcados como pagados
     // porque ya consumen el cupo de la tarjeta
-    const unpaidTCExpenses = transactions
+    const unpaidTCExpenses = realTransactions
       .filter(t => {
         // Debe ser un gasto no pagado
         if (t.type !== 'expense' || t.paid) return false;

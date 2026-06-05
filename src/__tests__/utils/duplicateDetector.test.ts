@@ -88,6 +88,22 @@ describe('detectDuplicates', () => {
     expect(result[0].reasons).toContain('Mismo monto');
   });
 
+  it('should handle plain decimal amounts from CurrencyInput (F10)', () => {
+    const tx: NewTransaction = { ...baseTx, amount: '88888.5' };
+    const existing = [makeTransaction({ amount: 88888.5 })];
+    const result = detectDuplicates(tx, existing);
+    expect(result.length).toBe(1);
+    expect(result[0].reasons).toContain('Mismo monto');
+  });
+
+  it('does not confuse a decimal amount with thousands (F10)', () => {
+    // "88888.5" no debe interpretarse como 888885
+    const tx: NewTransaction = { ...baseTx, amount: '88888.5' };
+    const existing = [makeTransaction({ amount: 888885 })];
+    const result = detectDuplicates(tx, existing);
+    expect(result.find(r => r.reasons.includes('Mismo monto'))).toBeUndefined();
+  });
+
   it('should return empty for empty description and category', () => {
     const tx: NewTransaction = { ...baseTx, description: '', category: '' };
     const existing = [makeTransaction()];

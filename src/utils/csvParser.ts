@@ -95,7 +95,7 @@ const CREDIT_KEYWORDS = ['credito', 'crédito', 'abono', 'ingreso', 'creditos',
   'créditos', 'abonos', 'credit', 'entrada', 'entradas'];
 const AMOUNT_KEYWORDS = ['valor', 'monto', 'importe', 'amount', 'vlr', 'vr'];
 const TYPE_KEYWORDS = ['d/c', 'tipo', 'type', 'db/cr', 'signo', 'clase'];
-const CATEGORY_KEYWORDS = ['categoria', 'categorÃ­a', 'category', 'rubro'];
+const CATEGORY_KEYWORDS = ['categoria', 'categoría', 'category', 'rubro', 'clasificacion'];
 
 function matchesKeyword(header: string, keywords: string[]): boolean {
   const h = header.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -128,16 +128,34 @@ export function detectColumns(headers: string[]): ColumnMapping {
 
 // ── Parser de montos (formato colombiano y estándar) ─────────────────────────
 
-export function parseAmount(raw: string): number {
-  if (!raw || raw.trim() === '' || raw.trim() === '-') return 0;
-  // Quitar símbolo de moneda, espacios, paréntesis de negativos
-  let clean = raw.replace(/[$COP\s]/g, '').replace(/[()]/g, '');
-  const isNegative = clean.startsWith('-');
-  clean = clean.replace(/-/g, '');
+// Códigos de moneda que pueden aparecer pegados al monto en un extracto.
+const CURRENCY_CODE_REGEX = /\b(COP|USD|EUR|MXN|CLP|ARS|PEN|BRL|GBP)\b/gi;
 
-  // Formato colombiano: 1.234.567,89 → 1234567.89
+export function parseAmount(raw: string): number {
+  if (raw == null) return 0;
+  const original = String(raw).trim();
+  if (original === '' || original === '-') return 0;
+
+  // Negativo por signo o por paréntesis contables: (1.000) = -1000
+  const isNegative = original.startsWith('-') || /^\(.*\)$/.test(original);
+
+  // Quitar códigos de moneda (USD, COP…), símbolos ($ € £), espacios (incl. NBSP),
+  // paréntesis y signos. Antes se usaba [$COP\s], que borraba las letras C/O/P
+  // sueltas y dejaba "USD…" intacto → los montos en USD se parseaban como 0.
+  let clean = original
+    .replace(CURRENCY_CODE_REGEX, '')
+    .replace(/[$€£\s ]/g, '')
+    .replace(/[()]/g, '')
+    .replace(/-/g, '');
+
+  if (clean === '') return 0;
+
   if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(clean)) {
+    // Formato colombiano con separador de miles: 1.234.567,89 → 1234567.89
     clean = clean.replace(/\./g, '').replace(',', '.');
+  } else if (/^\d+,\d{1,2}$/.test(clean)) {
+    // Decimal con coma sin miles: 99,99 → 99.99 (antes daba 9999)
+    clean = clean.replace(',', '.');
   } else {
     // Formato con coma como separador de miles: 1,234,567.89
     clean = clean.replace(/,/g, '');
@@ -150,42 +168,77 @@ export function parseAmount(raw: string): number {
 
 // ── Parser de fechas ─────────────────────────────────────────────────────────
 
+// Meses textuales en español e inglés (3 primeras letras, sin tilde).
+const TEXTUAL_MONTHS: Record<string, number> = {
+  ene: 0, jan: 0,
+  feb: 1,
+  mar: 2,
+  abr: 3, apr: 3,
+  may: 4,
+  jun: 5,
+  jul: 6,
+  ago: 7, aug: 7,
+  sep: 8, set: 8,
+  oct: 9,
+  nov: 10,
+  dic: 11, dec: 11,
+};
+
+// Construye una fecha validando que no haya overflow silencioso de JS Date
+// (ej: 32/13/2026 → Date la convierte en 2027-02-01). Devuelve null si la fecha
+// resultante no coincide exactamente con los componentes solicitados.
+function makeDate(year: number, month0: number, day: number): Date | null {
+  if (month0 < 0 || month0 > 11 || day < 1 || day > 31) return null;
+  const d = new Date(year, month0, day);
+  if (isNaN(d.getTime())) return null;
+  if (d.getFullYear() !== year || d.getMonth() !== month0 || d.getDate() !== day) return null;
+  return d;
+}
+
 const DATE_FORMATS: Array<(s: string) => Date | null> = [
   // DD/MM/YYYY o DD-MM-YYYY
   (s) => {
     const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
     if (!m) return null;
-    const d = new Date(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]));
-    return isNaN(d.getTime()) ? null : d;
+    return makeDate(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]));
   },
   // YYYY-MM-DD (ISO)
   (s) => {
     const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (!m) return null;
-    const d = new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]));
-    return isNaN(d.getTime()) ? null : d;
+    return makeDate(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]));
   },
   // DD/MM/YY
   (s) => {
     const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})$/);
     if (!m) return null;
     const year = parseInt(m[3]) + (parseInt(m[3]) > 50 ? 1900 : 2000);
-    const d = new Date(year, parseInt(m[2]) - 1, parseInt(m[1]));
-    return isNaN(d.getTime()) ? null : d;
+    return makeDate(year, parseInt(m[2]) - 1, parseInt(m[1]));
   },
   // YYYYMMDD
   (s) => {
     const m = s.match(/^(\d{4})(\d{2})(\d{2})$/);
     if (!m) return null;
-    const d = new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]));
-    return isNaN(d.getTime()) ? null : d;
+    return makeDate(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]));
+  },
+  // DD mon YYYY → "04 may 2026", "27 MAY 2026", "4-may-2026" (Bancolombia/Nu)
+  (s) => {
+    const m = s.match(/^(\d{1,2})[\s\-/]+([A-Za-zÁÉÍÓÚáéíóúñ]{3,})\.?[\s\-/]+(\d{4})$/);
+    if (!m) return null;
+    const monthKey = norm(m[2]).slice(0, 3);
+    const month = TEXTUAL_MONTHS[monthKey];
+    if (month === undefined) return null;
+    return makeDate(parseInt(m[3]), month, parseInt(m[1]));
   },
 ];
 
 export function parseDate(raw: string): Date | null {
-  const clean = raw.trim().split(' ')[0]; // tomar solo la parte de fecha (sin hora)
+  const trimmed = raw.trim();
+  // Quitar la hora si viene pegada (ISO "T" o " HH:MM[:SS]"), conservando fechas
+  // con mes textual como "27 MAY 2026" que NO deben cortarse en el primer espacio.
+  const dateOnly = trimmed.replace(/[T\s]+\d{1,2}:\d{2}(:\d{2})?.*$/, '').trim();
   for (const fmt of DATE_FORMATS) {
-    const d = fmt(clean);
+    const d = fmt(dateOnly);
     if (d) return d;
   }
   return null;
@@ -306,7 +359,7 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: string; type?: 'inco
   {
     keywords: [
       'nomina', 'nómina', 'sueldo', 'salario', 'pago empresa', 'pago empleador',
-      'pago nomina', 'abono nomina', 'pago de nomi', 'pago nomi',
+      'pago nomina', 'abono nomina', 'pago de nomi', 'pago nomi', 'pragma',
     ],
     category: 'Salario', type: 'income',
   },
@@ -314,6 +367,7 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: string; type?: 'inco
     keywords: [
       'freelance', 'honorarios', 'consulting', 'prestacion servicio',
       'cuenta cobro', 'factura cobro', 'pago honorarios',
+      'pago de prov', 'pago proveedor', 'pexto',
     ],
     category: 'Freelance', type: 'income',
   },
@@ -321,7 +375,7 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: string; type?: 'inco
     keywords: [
       'dividendo', 'rendimiento', 'inversion', 'inversión', 'cdt', 'fiducuenta',
       'fondo inversion', 'tyba', 'a2censo', 'bold', 'nu bank', 'nequi ahorros',
-      'abono interes', 'intereses ahorros', 'rendimiento cdt',
+      'abono interes', 'intereses ahorros', 'rendimiento cdt', 'ajuste interes',
     ],
     category: 'Inversiones', type: 'income',
   },
@@ -366,8 +420,9 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: string; type?: 'inco
     keywords: [
       // Supermercados
       'exito', 'éxito', 'carulla', 'jumbo', 'alkosto', 'makro', 'pricesmart', 'costco',
-      'd1', 'ara ', 'justo y bueno', 'justo bueno', 'surtimax', 'olimpica', 'olímpica',
+      'd1', 'ara ', 'tienda ara', 'justo y bueno', 'justo bueno', 'surtimax', 'olimpica', 'olímpica',
       'supermercado', 'surtifruver', 'fruver', 'plaza mercado', 'galeria', 'minimercado',
+      'mercacent', 'maxioferta', 'comida',
       // Comida rápida
       'mcdonalds', 'burger king', 'subway', 'kfc', 'frisby', 'el corral', 'crepes waffles',
       'crepes', 'wok', 'papa johns', 'dominos', 'pizza hut', 'presto', 'oma',
@@ -404,7 +459,7 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: string; type?: 'inco
       // Cines
       'cine', 'cinecolombia', 'cinemark', 'procinal', 'royal films', 'multiplex',
       // Salidas
-      'bar ', 'discoteca', 'concierto', 'teatro', 'museo', 'parque diversiones',
+      'bar ', 'discoteca', 'climax', 'concierto', 'teatro', 'museo', 'parque diversiones',
       'salitre magico', 'mundo aventura', 'maloka', 'acuapark', 'parque acuatico',
       // Deportes
       'gym', 'gimnasio', 'bodytech', 'spinning', 'crossfit', 'zumba',
@@ -427,8 +482,11 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: string; type?: 'inco
       'internet', 'telefonia', 'telefonía', 'fibra optica', 'plan datos',
       // TV
       'directv', 'dish ', 'une tv', 'claro tv', 'tigo une',
-      // AI tools
-      'claude', 'openai',
+      // AI tools / suscripciones digitales
+      'claude', 'openai', 'chatgpt', 'anthropic', 'amazon prime',
+      'suscripcion', 'suscripción', 'subscription',
+      // Servicios públicos
+      'empresas publicas', 'empresas públicas',
       // Wompi — intermediario de pago usado por Tigo, servicios públicos, etc.
       'wompi',
       // Comisiones bancarias
@@ -464,7 +522,7 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: string; type?: 'inco
       'clinica', 'clínica', 'hospital', 'medico', 'médico', 'consultorio', 'ips ',
       // Farmacias
       'farmacia', 'drogueria', 'droguería', 'locatel', 'farmatodo', 'cruz verde',
-      'la rebaja', 'colsubsidio farmacia',
+      'la rebaja', 'rebaja plus', 'colsubsidio farmacia', 'medipiel', 'pasteur',
       // Diagnóstico (ir antes que Alimentación para "laboratorio")
       'laboratorio medico', 'laboratorio clinico', 'rayos x', 'ecografia',
       'resonancia', 'diagnostico', 'examen medico',
@@ -490,7 +548,7 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: string; type?: 'inco
       'matricula', 'matrícula', 'pensión educativa', 'pension colegio', 'cuota educacion',
       // Cursos online
       'udemy', 'coursera', 'platzi', 'domestika', 'linkedin learning', 'skillshare',
-      'duolingo', 'babbel',
+      'duolingo', 'babbel', 'curso ', 'curso online',
       // Postgrados
       'diplomado', 'especializacion', 'especialización', 'maestria', 'maestría',
       // Librerías y útiles
@@ -533,11 +591,14 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: string; type?: 'inco
       // Tecnología
       'samsung', 'apple store', 'mac center', 'ishop', 'ktronix', 'alkomprar',
       'pc mac', 'tienda apple', 'fnac',
-      // E-commerce
-      'amazon', 'mercado libre', 'linio', 'shein', 'temu', 'aliexpress',
+      // E-commerce / pasarelas de pago
+      'amazon', 'mercado libre', 'mercado pago', 'mercadopago', 'pagseguro',
+      'linio', 'shein', 'temu', 'aliexpress',
+      // Ropa adicional
+      'rifle',
       // Variedad
       'dollarcity', 'dollar city', 'miniso', 'daiso', 'flying tiger',
-      'bazar', 'todo a', 'artesanias',
+      'bazar', 'todo a', 'todo en artes', 'artesanias',
     ],
     category: 'Compras Personales',
   },

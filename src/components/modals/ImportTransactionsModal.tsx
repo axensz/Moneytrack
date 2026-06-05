@@ -8,6 +8,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useImportTransactions } from '../../hooks/useImportTransactions';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { isInternalTransferDescription, parseCSV } from '../../utils/csvParser';
+import { transferImportKey } from '../../utils/importDuplicates';
 import { parseXLSX } from '../../utils/xlsxParser';
 import { parsePDF } from '../../utils/pdfParser';
 import { categorizeWithAI, isAIAvailable } from '../../utils/aiCategorizer';
@@ -293,7 +294,10 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
         if (tx.accountId === accountId) {
           existingAccountKeys.add(txKey(tx.type, d, tx.amount, tx.description));
         }
-        existingInternalTransferKeys.add(txKey('any', d, tx.amount, tx.description));
+        // Huella de transferencia/pago SIN descripción: el texto difiere entre
+        // bancos ("Pago PSE Nu" vs "Gracias por tu pago"), así que cruzamos por
+        // monto+día contra todas las cuentas (F7).
+        existingInternalTransferKeys.add(transferImportKey(d, tx.amount));
       });
 
       // 2. Detectar duplicados dentro del propio archivo (misma fila repetida)
@@ -301,7 +305,9 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
 
       const mapped = result.rows.map(r => {
         const isInternalTransfer = r.type === 'transfer' || isInternalTransferDescription(r.description);
-        const key = txKey(isInternalTransfer ? 'any' : r.type, r.date, r.amount, r.description);
+        const key = isInternalTransfer
+          ? transferImportKey(r.date, r.amount)
+          : txKey(r.type, r.date, r.amount, r.description);
 
         const duplicateInDB = isInternalTransfer
           ? existingInternalTransferKeys.has(key)

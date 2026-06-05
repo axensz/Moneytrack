@@ -45,6 +45,7 @@ export const BudgetsView: React.FC = () => {
     if (isNaN(income) || income <= 0) { showToast.error('Ingresa tu ingreso mensual'); return; }
     await saveConfig({ startMonth: setupForm.startMonth, declaredIncome: income });
     setShowSetup(false);
+    setShowCloseConfirm(false);
     showToast.success('Plan financiero iniciado');
   };
 

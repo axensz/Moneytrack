@@ -167,18 +167,17 @@ export function useFinancialPlan(
     const totalWants = Array.from(monthsMap.entries())
       .filter(([k]) => numCompleted > 0 ? k !== currentKey : true)
       .reduce((s, [, d]) => s + d.wants, 0);
-    const periodExpenses = numCompleted > 0
-      ? completedMonths.reduce((s, m) => s + m.expenses, 0)
-      : (currentMonth?.expenses || 0);
-    const periodIncome = numCompleted > 0
-      ? completedMonths.reduce((s, m) => s + m.income, 0)
-      : (currentMonth?.income || declaredIncome);
+
+    // Para porcentajes, usar siempre declaredIncome como referencia
+    const monthsForAvg = Math.max(1, numCompleted > 0 ? numCompleted : 1);
+    const avgNeeds = totalNeeds / monthsForAvg;
+    const avgWants = totalWants / monthsForAvg;
 
     const rule503020: Rule503020 = {
-      needs: totalNeeds / Math.max(1, analysisMonths.length),
-      needsPct: periodIncome > 0 ? Math.round((totalNeeds / periodIncome) * 100) : 0,
-      wants: totalWants / Math.max(1, analysisMonths.length),
-      wantsPct: periodIncome > 0 ? Math.round((totalWants / periodIncome) * 100) : 0,
+      needs: avgNeeds,
+      needsPct: declaredIncome > 0 ? Math.round((avgNeeds / declaredIncome) * 100) : 0,
+      wants: avgWants,
+      wantsPct: declaredIncome > 0 ? Math.round((avgWants / declaredIncome) * 100) : 0,
       savings: avgMonthlySavings,
       savingsPct: declaredIncome > 0 ? Math.round((avgMonthlySavings / declaredIncome) * 100) : 0,
     };

@@ -151,13 +151,18 @@ export function useFinancialPlan(
     const completedMonths = months.filter(m => m.key !== currentKey);
     const numCompleted = completedMonths.length;
 
+    // Si solo hay mes actual (incompleto), prorratear al mes completo
+    const dayOfMonth = now.getDate();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const prorationFactor = dayOfMonth > 1 ? daysInMonth / dayOfMonth : 1;
+
     const avgMonthlyExpenses = numCompleted > 0
       ? completedMonths.reduce((s, m) => s + m.expenses, 0) / numCompleted
-      : (currentMonth?.expenses || 0);
+      : (currentMonth?.expenses || 0) * prorationFactor;
 
     const avgMonthlySavings = numCompleted > 0
       ? completedMonths.reduce((s, m) => s + m.savings, 0) / numCompleted
-      : (currentMonth?.savings || 0);
+      : declaredIncome - (currentMonth?.expenses || 0) * prorationFactor;
 
     // Regla 50/30/20 (basado en meses completados o actual)
     const analysisMonths = numCompleted > 0 ? completedMonths : (currentMonth ? [currentMonth] : []);

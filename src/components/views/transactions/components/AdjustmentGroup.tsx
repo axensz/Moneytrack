@@ -40,6 +40,15 @@ export const AdjustmentGroup: React.FC<AdjustmentGroupProps> = ({
   const isEditingInside = transactions.some(t => editingTransaction === t.id);
   const isExpanded = expanded || isEditingInside;
 
+  // Group by account
+  const byAccount = transactions.reduce<Map<string, { account: Account | undefined; items: Transaction[] }>>((map, t) => {
+    const acc = getAccountForTransaction(t.accountId);
+    const key = t.accountId;
+    if (!map.has(key)) map.set(key, { account: acc, items: [] });
+    map.get(key)!.items.push(t);
+    return map;
+  }, new Map());
+
   return (
     <div className="border rounded-xl overflow-hidden border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm">
       <button
@@ -54,30 +63,39 @@ export const AdjustmentGroup: React.FC<AdjustmentGroupProps> = ({
             Ajustes de saldo
           </p>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            {transactions.length} ajuste{transactions.length > 1 ? 's' : ''}
+            {transactions.length} ajuste{transactions.length > 1 ? 's' : ''} · {byAccount.size} cuenta{byAccount.size > 1 ? 's' : ''}
           </p>
         </div>
         {isExpanded ? <ChevronDown size={18} className="text-gray-400" /> : <ChevronRight size={18} className="text-gray-400" />}
       </button>
       {isExpanded && (
-        <div className="border-t border-gray-100 dark:border-gray-700 p-2 space-y-2">
-          {transactions.map(transaction => (
-            <TransactionItem
-              key={transaction.id}
-              transaction={transaction}
-              account={getAccountForTransaction(transaction.accountId)}
-              destinationAccount={transaction.toAccountId ? getAccountForTransaction(transaction.toAccountId) : undefined}
-              isEditing={editingTransaction === transaction.id}
-              editForm={editForm}
-              categories={categories}
-              recurringPaymentName={getRecurringPaymentName(transaction.recurringPaymentId)}
-              formatCurrency={formatCurrency}
-              onEdit={() => startEditTransaction(transaction)}
-              onDelete={() => handleDeleteTransaction(transaction)}
-              onSave={() => handleSaveEdit(transaction.id!)}
-              onCancel={handleCancelEdit}
-              onEditFormChange={setEditForm}
-            />
+        <div className="border-t border-gray-100 dark:border-gray-700 p-2 space-y-3">
+          {Array.from(byAccount.entries()).map(([accountId, { account, items }]) => (
+            <div key={accountId}>
+              <p className="text-[11px] font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500 px-1 mb-1.5">
+                {account?.name || 'Cuenta desconocida'}
+              </p>
+              <div className="space-y-2">
+                {items.map(transaction => (
+                  <TransactionItem
+                    key={transaction.id}
+                    transaction={transaction}
+                    account={account}
+                    destinationAccount={transaction.toAccountId ? getAccountForTransaction(transaction.toAccountId) : undefined}
+                    isEditing={editingTransaction === transaction.id}
+                    editForm={editForm}
+                    categories={categories}
+                    recurringPaymentName={getRecurringPaymentName(transaction.recurringPaymentId)}
+                    formatCurrency={formatCurrency}
+                    onEdit={() => startEditTransaction(transaction)}
+                    onDelete={() => handleDeleteTransaction(transaction)}
+                    onSave={() => handleSaveEdit(transaction.id!)}
+                    onCancel={handleCancelEdit}
+                    onEditFormChange={setEditForm}
+                  />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       )}

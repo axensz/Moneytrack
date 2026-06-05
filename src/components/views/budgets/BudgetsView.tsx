@@ -1,21 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Plus, PieChart, CheckCircle2, XCircle, Trash2, ToggleLeft, ToggleRight, Sparkles, TrendingUp, TrendingDown, Minus, Target, X, Shield, Clock, Zap } from 'lucide-react';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
-import { useLocalStorage } from '../../../hooks/useLocalStorage';
+import { useAuth } from '../../../hooks/useAuth';
+import { usePlanConfig } from '../../../hooks/usePlanConfig';
 import { formatNumberForInput, unformatNumber } from '../../../utils/formatters';
 import { showToast } from '../../../utils/toastHelpers';
 import { useFinancialPlan, type PlanConfig } from '../../../hooks/useFinancialPlan';
 import { isGeminiConfigured } from '../../../lib/gemini';
 import { FinancialPlanAI } from './components/FinancialPlanAI';
-
-// Ofuscar ingreso en localStorage (no es crypto, solo evita plaintext obvio)
-function encodeIncome(n: number): string { return btoa(String(n)); }
-function decodeIncome(s: string): number { try { return parseFloat(atob(s)); } catch { return 0; } }
-
-interface StoredPlan { startMonth: string; ei: string; /* encoded income */ }
 
 export const BudgetsView: React.FC = () => {
   const {
@@ -24,10 +19,10 @@ export const BudgetsView: React.FC = () => {
     budgetStatuses, budgetStats, formatCurrency,
   } = useFinance();
   const { hideBalances } = useUIPreferences();
+  const { user } = useAuth();
 
-  // Persistir plan config
-  const [storedPlan, setStoredPlan] = useLocalStorage<StoredPlan | null>('financialPlanConfig', null);
-  const [planConfig, setPlanConfig] = useState<PlanConfig | null>(null);
+  // Plan config persistido en Firestore (o localStorage para guest)
+  const { config: planConfig, loading: planLoading, saveConfig, clearConfig } = usePlanConfig(user?.uid ?? null);
   const [showSetup, setShowSetup] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [setupForm, setSetupForm] = useState({ startMonth: new Date().toISOString().slice(0, 7), income: '' });
@@ -35,16 +30,6 @@ export const BudgetsView: React.FC = () => {
   // Presupuestos
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ category: '', monthlyLimit: '' });
-
-  // Hidratar planConfig desde localStorage
-  useEffect(() => {
-    if (storedPlan && !planConfig) {
-      const income = decodeIncome(storedPlan.ei);
-      if (income > 0) {
-        setPlanConfig({ startMonth: storedPlan.startMonth, declaredIncome: income });
-      }
-    }
-  }, [storedPlan]);
 
   const plan = useFinancialPlan(transactions, planConfig);
 
@@ -54,19 +39,16 @@ export const BudgetsView: React.FC = () => {
 
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
 
-  const handleSetupSubmit = () => {
+  const handleSetupSubmit = async () => {
     const income = parseFloat(unformatNumber(setupForm.income));
     if (isNaN(income) || income <= 0) { showToast.error('Ingresa tu ingreso mensual'); return; }
-    const config: PlanConfig = { startMonth: setupForm.startMonth, declaredIncome: income };
-    setPlanConfig(config);
-    setStoredPlan({ startMonth: setupForm.startMonth, ei: encodeIncome(income) });
+    await saveConfig({ startMonth: setupForm.startMonth, declaredIncome: income });
     setShowSetup(false);
     showToast.success('Plan financiero iniciado');
   };
 
-  const handleClosePlan = () => {
-    setPlanConfig(null);
-    setStoredPlan(null);
+  const handleClosePlan = async () => {
+    await clearConfig();
     setShowCloseConfirm(false);
     setShowSetup(false);
     showToast.success('Plan financiero cerrado');
@@ -130,7 +112,7 @@ export const BudgetsView: React.FC = () => {
               <div className="mt-5 max-w-sm mx-auto space-y-3 text-left p-5 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl border border-purple-200/50 dark:border-purple-800/30">
                 <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400 justify-center mb-1">
                   <Shield size={12} className="text-purple-500" />
-                  Tu ingreso se guarda ofuscado localmente — nunca se envía.
+                  Se guarda en tu cuenta para que persista entre sesiones.
                 </div>
                 <div>
                   <label className="label-base">Analizar desde</label>
@@ -227,19 +209,21 @@ export const BudgetsView: React.FC = () => {
 
           {/* ──── Distribución 50/30/20 ──── */}
           <div className="card">
-            <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-4">Distribución mensual</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">Distribución mensual</h3>
+              <span className="text-[10px] text-gray-400 font-medium">de {displayAmount(planConfig.declaredIncome)}</span>
+            </div>
             <div className="space-y-5">
               {[
-                { label: 'Necesidades', pct: plan.rule503020.needsPct, target: 50, amount: plan.rule503020.needs, emoji: '🏠', color: 'bg-blue-500', trackColor: 'bg-blue-100 dark:bg-blue-900/30', warn: plan.rule503020.needsPct > 55 },
-                { label: 'Gustos', pct: plan.rule503020.wantsPct, target: 30, amount: plan.rule503020.wants, emoji: '✨', color: 'bg-purple-500', trackColor: 'bg-purple-100 dark:bg-purple-900/30', warn: plan.rule503020.wantsPct > 35 },
-                { label: 'Ahorro', pct: Math.max(0, plan.rule503020.savingsPct), target: 20, amount: Math.max(0, plan.rule503020.savings), emoji: '💰', color: 'bg-emerald-500', trackColor: 'bg-emerald-100 dark:bg-emerald-900/30', warn: plan.rule503020.savingsPct < 10 },
+                { label: 'Necesidades', pct: plan.rule503020.needsPct, target: 50, amount: plan.rule503020.needs, targetAmount: planConfig.declaredIncome * 0.5, emoji: '🏠', color: 'bg-blue-500', trackColor: 'bg-blue-100 dark:bg-blue-900/30', warn: plan.rule503020.needsPct > 55 },
+                { label: 'Gustos', pct: plan.rule503020.wantsPct, target: 30, amount: plan.rule503020.wants, targetAmount: planConfig.declaredIncome * 0.3, emoji: '✨', color: 'bg-purple-500', trackColor: 'bg-purple-100 dark:bg-purple-900/30', warn: plan.rule503020.wantsPct > 35 },
+                { label: 'Ahorro', pct: Math.max(0, plan.rule503020.savingsPct), target: 20, amount: Math.max(0, plan.rule503020.savings), targetAmount: planConfig.declaredIncome * 0.2, emoji: '💰', color: 'bg-emerald-500', trackColor: 'bg-emerald-100 dark:bg-emerald-900/30', warn: plan.rule503020.savingsPct < 10 },
               ].map(item => {
-                // Normalize: target maps to 60% bar width visually
                 const normalizedWidth = Math.min(100, (item.pct / (item.target * 1.5)) * 100);
-                const targetPosition = (1 / 1.5) * 100; // ~66.7%
+                const targetPosition = (1 / 1.5) * 100;
                 return (
                   <div key={item.label}>
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2">
                         <span className="text-base">{item.emoji}</span>
                         <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{item.label}</span>
@@ -251,17 +235,24 @@ export const BudgetsView: React.FC = () => {
                         <span className="text-xs text-gray-400">/ {item.target}%</span>
                       </div>
                     </div>
+                    {/* Montos: real vs ideal */}
+                    <div className="flex items-center justify-between text-[11px] mb-2 px-0.5">
+                      <span className="text-gray-500 dark:text-gray-400">
+                        Usas <span className={`font-bold ${item.warn ? 'text-rose-600 dark:text-rose-400' : 'text-gray-700 dark:text-gray-300'}`}>{displayAmount(item.amount)}</span>
+                      </span>
+                      <span className="text-gray-400">
+                        ideal <span className="font-bold text-gray-600 dark:text-gray-300">{displayAmount(item.targetAmount)}</span>
+                      </span>
+                    </div>
                     <div className="relative">
                       <div className={`w-full h-3 ${item.trackColor} rounded-full overflow-hidden`}>
                         <div className={`h-full rounded-full ${item.warn && item.label !== 'Ahorro' ? 'bg-rose-500' : item.color} transition-all duration-700`}
                           style={{ width: `${normalizedWidth}%` }} />
                       </div>
-                      {/* Target indicator */}
                       <div className="absolute top-0 bottom-0 flex items-center" style={{ left: `${targetPosition}%` }}>
                         <div className="w-0.5 h-5 -mt-1 bg-gray-400 dark:bg-gray-500 rounded-full opacity-50" />
                       </div>
                     </div>
-                    <p className="text-[11px] text-gray-400 mt-1 text-right">{displayAmount(item.amount)} / mes</p>
                   </div>
                 );
               })}

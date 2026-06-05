@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
-import { Plus, PieChart, CheckCircle2, XCircle, Trash2, ToggleLeft, ToggleRight, Sparkles, TrendingUp, TrendingDown, Minus, Target, Settings2, ArrowRight } from 'lucide-react';
+import React, { useState } from 'react';
+import { Plus, PieChart, CheckCircle2, XCircle, Trash2, ToggleLeft, ToggleRight, Sparkles, TrendingUp, TrendingDown, Minus, Target, Settings2 } from 'lucide-react';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { formatNumberForInput, unformatNumber } from '../../../utils/formatters';
@@ -18,12 +18,9 @@ export const BudgetsView: React.FC = () => {
   } = useFinance();
   const { hideBalances } = useUIPreferences();
 
-  // Plan config en sesión (no se persiste)
   const [planConfig, setPlanConfig] = useState<PlanConfig | null>(null);
   const [showSetup, setShowSetup] = useState(false);
   const [setupForm, setSetupForm] = useState({ startMonth: new Date().toISOString().slice(0, 7), income: '' });
-
-  // Presupuestos
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ category: '', monthlyLimit: '' });
 
@@ -66,45 +63,42 @@ export const BudgetsView: React.FC = () => {
     }
   };
 
-  const trendIcon = plan?.trend === 'improving' ? <TrendingUp size={14} className="text-green-500" />
-    : plan?.trend === 'declining' ? <TrendingDown size={14} className="text-red-500" />
-    : <Minus size={14} className="text-gray-400" />;
-
   const scoreColor = (score: number) =>
-    score >= 80 ? 'text-green-600 dark:text-green-400' :
-    score >= 60 ? 'text-blue-600 dark:text-blue-400' :
-    score >= 40 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400';
+    score >= 80 ? 'text-emerald-500' : score >= 60 ? 'text-blue-500' : score >= 40 ? 'text-amber-500' : 'text-rose-500';
 
-  const scoreRingColor = (score: number) =>
-    score >= 80 ? 'stroke-green-500' : score >= 60 ? 'stroke-blue-500' : score >= 40 ? 'stroke-amber-500' : 'stroke-red-500';
+  const scoreGradient = (score: number) =>
+    score >= 80 ? 'from-emerald-500 to-emerald-400' : score >= 60 ? 'from-blue-500 to-blue-400' : score >= 40 ? 'from-amber-500 to-amber-400' : 'from-rose-500 to-rose-400';
+
+  const trendLabel = plan?.trend === 'improving' ? 'Mejorando' : plan?.trend === 'declining' ? 'Empeorando' : 'Estable';
+  const trendColor = plan?.trend === 'improving' ? 'text-emerald-500' : plan?.trend === 'declining' ? 'text-rose-500' : 'text-gray-400';
+  const TrendIcon = plan?.trend === 'improving' ? TrendingUp : plan?.trend === 'declining' ? TrendingDown : Minus;
 
   return (
     <div className="space-y-4">
       {/* ===== PLAN FINANCIERO ===== */}
       {!planConfig ? (
-        /* Setup card */
         <div className="card">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100 dark:bg-purple-900/30">
-              <Target size={20} className="text-purple-600 dark:text-purple-400" />
+          <div className="text-center py-4">
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500 to-indigo-600 shadow-lg shadow-purple-500/20">
+              <Target size={24} className="text-white" />
             </div>
-            <div>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Plan Financiero</h2>
-              <p className="text-xs text-gray-500">Configura tu plan para ver score, proyección y análisis</p>
-            </div>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Plan Financiero</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 max-w-xs mx-auto">
+              Score personalizado, proyección de ahorro y análisis con IA
+            </p>
           </div>
 
           {!showSetup ? (
-            <button onClick={() => setShowSetup(true)} className="btn-primary w-full justify-center">
-              <Sparkles size={16} /> Iniciar plan financiero
+            <button onClick={() => setShowSetup(true)} className="btn-primary w-full justify-center mt-2">
+              <Sparkles size={16} /> Iniciar plan
             </button>
           ) : (
-            <div className="space-y-3 p-4 bg-purple-50 dark:bg-purple-900/10 rounded-xl border border-purple-200 dark:border-purple-800">
-              <p className="text-xs text-gray-600 dark:text-gray-400">
-                Tu ingreso no se guarda — solo se usa en esta sesión para calcular el plan.
+            <div className="mt-4 space-y-3 p-4 bg-purple-50/50 dark:bg-purple-900/10 rounded-xl border border-purple-200/50 dark:border-purple-800/50">
+              <p className="text-[11px] text-center text-gray-500 dark:text-gray-400">
+                ⚡ Tu ingreso solo se usa en esta sesión — no se guarda.
               </p>
               <div>
-                <label className="label-base">¿Desde qué mes analizar?</label>
+                <label className="label-base">Analizar desde</label>
                 <input
                   type="month"
                   value={setupForm.startMonth}
@@ -113,7 +107,7 @@ export const BudgetsView: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="label-base">Ingreso mensual (aprox)</label>
+                <label className="label-base">Ingreso mensual</label>
                 <input
                   type="text" inputMode="numeric"
                   value={formatNumberForInput(setupForm.income)}
@@ -131,116 +125,153 @@ export const BudgetsView: React.FC = () => {
         </div>
       ) : plan ? (
         <>
-          {/* Score + Resumen */}
-          <div className="card">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Sparkles size={18} className={scoreColor(plan.score.total)} />
-                <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Plan Financiero</h2>
-                {trendIcon}
+          {/* Score principal */}
+          <div className="card overflow-hidden">
+            {/* Header con gradiente sutil */}
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-2.5">
+                <div className={`flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br ${scoreGradient(plan.score.total)} shadow-sm`}>
+                  <Sparkles size={14} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">Plan Financiero</h2>
+                  <div className={`flex items-center gap-1 text-[11px] font-medium ${trendColor}`}>
+                    <TrendIcon size={11} /> {trendLabel}
+                  </div>
+                </div>
               </div>
-              <button onClick={() => { setPlanConfig(null); setShowSetup(false); }} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+              <button onClick={() => { setPlanConfig(null); setShowSetup(false); }} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
                 <Settings2 size={16} />
               </button>
             </div>
 
-            {/* Score circular + métricas */}
-            <div className="flex items-center gap-6">
-              {/* Circular score */}
-              <div className="relative shrink-0">
-                <svg className="w-20 h-20 -rotate-90">
-                  <circle cx="40" cy="40" r="32" fill="none" strokeWidth="6" className="stroke-gray-200 dark:stroke-gray-700" />
-                  <circle cx="40" cy="40" r="32" fill="none" strokeWidth="6" strokeLinecap="round"
-                    className={scoreRingColor(plan.score.total)}
-                    strokeDasharray={`${(plan.score.total / 100) * 201} 201`} />
+            {/* Score + breakdown en un layout centrado */}
+            <div className="flex flex-col items-center gap-4">
+              {/* Score circular grande */}
+              <div className="relative">
+                <svg className="w-28 h-28 -rotate-90" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="40" fill="none" strokeWidth="8" className="stroke-gray-100 dark:stroke-gray-800" />
+                  <circle cx="50" cy="50" r="40" fill="none" strokeWidth="8" strokeLinecap="round"
+                    className={`${plan.score.total >= 80 ? 'stroke-emerald-500' : plan.score.total >= 60 ? 'stroke-blue-500' : plan.score.total >= 40 ? 'stroke-amber-500' : 'stroke-rose-500'}`}
+                    strokeDasharray={`${(plan.score.total / 100) * 251.3} 251.3`} />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className={`text-xl font-bold ${scoreColor(plan.score.total)}`}>{plan.score.total}</span>
-                  <span className="text-[9px] text-gray-400">/ 100</span>
+                  <span className={`text-3xl font-black ${scoreColor(plan.score.total)}`}>{plan.score.total}</span>
+                  <span className="text-[10px] font-medium text-gray-400 -mt-0.5">de 100</span>
                 </div>
               </div>
 
-              {/* Score breakdown */}
-              <div className="flex-1 grid grid-cols-2 gap-2 text-xs">
-                <div className="flex justify-between"><span className="text-gray-500">Ahorro</span><span className="font-medium">{plan.score.breakdown.savingsRate}/30</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">Consistencia</span><span className="font-medium">{plan.score.breakdown.consistency}/25</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">Necesidades</span><span className="font-medium">{plan.score.breakdown.needsRatio}/25</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">Control gastos</span><span className="font-medium">{plan.score.breakdown.debtControl}/20</span></div>
+              {/* Breakdown horizontal */}
+              <div className="w-full grid grid-cols-4 gap-1.5">
+                {[
+                  { label: 'Ahorro', value: plan.score.breakdown.savingsRate, max: 30, color: 'bg-emerald-500' },
+                  { label: 'Consistencia', value: plan.score.breakdown.consistency, max: 25, color: 'bg-blue-500' },
+                  { label: 'Necesidades', value: plan.score.breakdown.needsRatio, max: 25, color: 'bg-purple-500' },
+                  { label: 'Control', value: plan.score.breakdown.debtControl, max: 20, color: 'bg-amber-500' },
+                ].map(item => (
+                  <div key={item.label} className="text-center">
+                    <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full mb-1.5 overflow-hidden">
+                      <div className={`h-full rounded-full ${item.color}`} style={{ width: `${(item.value / item.max) * 100}%` }} />
+                    </div>
+                    <span className="text-[10px] font-semibold text-gray-700 dark:text-gray-300">{item.value}/{item.max}</span>
+                    <p className="text-[9px] text-gray-400 leading-tight">{item.label}</p>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
 
-          {/* 50/30/20 */}
-          <div className="card">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Distribución promedio</h3>
-            <div className="space-y-2.5">
-              {[
-                { label: 'Necesidades', pct: plan.rule503020.needsPct, target: 50, amount: plan.rule503020.needs, color: plan.rule503020.needsPct > 55 ? 'bg-red-500' : 'bg-blue-500' },
-                { label: 'Gustos', pct: plan.rule503020.wantsPct, target: 30, amount: plan.rule503020.wants, color: plan.rule503020.wantsPct > 35 ? 'bg-amber-500' : 'bg-purple-500' },
-                { label: 'Ahorro', pct: Math.max(0, plan.rule503020.savingsPct), target: 20, amount: Math.max(0, plan.rule503020.savings), color: plan.rule503020.savingsPct < 10 ? 'bg-red-500' : 'bg-green-500' },
-              ].map(item => (
-                <div key={item.label}>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-gray-600 dark:text-gray-400">{item.label} <span className="font-semibold">{item.pct}%</span> <span className="text-gray-400">/ {item.target}%</span></span>
-                    <span className="text-gray-500">{displayAmount(item.amount)}</span>
-                  </div>
-                  <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full ${item.color}`} style={{ width: `${Math.min(100, (item.pct / item.target) * 100)}%` }} />
-                  </div>
-                </div>
-              ))}
+          {/* 50/30/20 + Proyección lado a lado en desktop */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* 50/30/20 */}
+            <div className="card">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">Distribución</h3>
+              <div className="space-y-4">
+                {[
+                  { label: 'Necesidades', pct: plan.rule503020.needsPct, target: 50, amount: plan.rule503020.needs, emoji: '🏠', color: 'bg-blue-500', overColor: 'bg-rose-500' },
+                  { label: 'Gustos', pct: plan.rule503020.wantsPct, target: 30, amount: plan.rule503020.wants, emoji: '🎯', color: 'bg-purple-500', overColor: 'bg-amber-500' },
+                  { label: 'Ahorro', pct: Math.max(0, plan.rule503020.savingsPct), target: 20, amount: Math.max(0, plan.rule503020.savings), emoji: '💰', color: 'bg-emerald-500', overColor: 'bg-emerald-500' },
+                ].map(item => {
+                  const isOver = item.pct > item.target * 1.1;
+                  const barWidth = Math.min(100, (item.pct / (item.target * 2)) * 100); // Cap visual at 2x target
+                  return (
+                    <div key={item.label}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">{item.emoji}</span>
+                          <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{item.label}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className={`text-xs font-bold ${isOver && item.label !== 'Ahorro' ? 'text-rose-500' : 'text-gray-700 dark:text-gray-300'}`}>{item.pct}%</span>
+                          <span className="text-[10px] text-gray-400 ml-1">/ {item.target}%</span>
+                        </div>
+                      </div>
+                      <div className="relative w-full h-2.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                        {/* Target marker */}
+                        <div className="absolute top-0 bottom-0 w-px bg-gray-300 dark:bg-gray-600 z-10" style={{ left: '50%' }} />
+                        <div className={`h-full rounded-full transition-all duration-500 ${isOver && item.label !== 'Ahorro' ? item.overColor : item.color}`}
+                          style={{ width: `${barWidth}%` }} />
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-0.5 text-right">{displayAmount(item.amount)}/mes</p>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
 
-          {/* Proyección de ahorro */}
-          <div className="card">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Proyección de ahorro</h3>
-            <div className="grid grid-cols-3 gap-2 text-center mb-3">
-              <div className="p-2.5 rounded-xl bg-green-50 dark:bg-green-900/20">
-                <p className="text-sm font-bold text-green-700 dark:text-green-300">{displayAmount(plan.projection.in3Months)}</p>
-                <p className="text-[10px] text-green-600 dark:text-green-400">3 meses</p>
+            {/* Proyección de ahorro */}
+            <div className="card">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">Proyección de ahorro</h3>
+              <div className="space-y-3">
+                {[
+                  { label: '3 meses', amount: plan.projection.in3Months, color: 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/10' },
+                  { label: '6 meses', amount: plan.projection.in6Months, color: 'border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10' },
+                  { label: '12 meses', amount: plan.projection.in12Months, color: 'border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-900/10' },
+                ].map(item => (
+                  <div key={item.label} className={`flex items-center justify-between p-3 rounded-xl border ${item.color}`}>
+                    <span className="text-xs font-medium text-gray-600 dark:text-gray-400">{item.label}</span>
+                    <span className="text-sm font-bold text-gray-900 dark:text-gray-100">{displayAmount(item.amount)}</span>
+                  </div>
+                ))}
               </div>
-              <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/20">
-                <p className="text-sm font-bold text-blue-700 dark:text-blue-300">{displayAmount(plan.projection.in6Months)}</p>
-                <p className="text-[10px] text-blue-600 dark:text-blue-400">6 meses</p>
-              </div>
-              <div className="p-2.5 rounded-xl bg-purple-50 dark:bg-purple-900/20">
-                <p className="text-sm font-bold text-purple-700 dark:text-purple-300">{displayAmount(plan.projection.in12Months)}</p>
-                <p className="text-[10px] text-purple-600 dark:text-purple-400">12 meses</p>
-              </div>
+              {plan.projection.monthsToEmergencyFund !== null && (
+                <div className="mt-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50 text-center">
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                    🛡️ Fondo de emergencia en <span className="font-bold text-gray-700 dark:text-gray-300">{plan.projection.monthsToEmergencyFund} meses</span>
+                  </p>
+                </div>
+              )}
             </div>
-            {plan.projection.monthsToEmergencyFund !== null && (
-              <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                🛡️ Fondo de emergencia (3 meses de gastos): <span className="font-medium">{plan.projection.monthsToEmergencyFund} meses</span>
-              </p>
-            )}
           </div>
 
           {/* Histórico mensual */}
           {plan.months.length > 1 && (
             <div className="card">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Histórico</h3>
-              <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                {[...plan.months].reverse().map(m => (
-                  <div key={m.key} className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300 w-14">{m.label}</span>
-                    <div className="flex-1 mx-3">
-                      <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Histórico mensual</h3>
+                <div className="flex items-center gap-3 text-[10px] text-gray-400">
+                  <span>Prom. ahorro: <span className="font-semibold text-gray-600 dark:text-gray-300">{displayAmount(plan.avgMonthlySavings)}</span></span>
+                </div>
+              </div>
+              <div className="space-y-1 max-h-52 overflow-y-auto scrollbar-thin">
+                {[...plan.months].reverse().map(m => {
+                  const barWidth = Math.min(100, Math.max(0, (m.savingsRate + 20) * 1.25)); // -20% to +60% range
+                  const isPositive = m.savingsRate >= 0;
+                  return (
+                    <div key={m.key} className="flex items-center gap-3 py-2 px-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                      <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 w-12 shrink-0">{m.label}</span>
+                      <div className="flex-1 h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                         <div
-                          className={`h-full rounded-full ${m.savingsRate >= 20 ? 'bg-green-500' : m.savingsRate >= 0 ? 'bg-blue-500' : 'bg-red-500'}`}
-                          style={{ width: `${Math.min(100, Math.max(0, m.savingsRate + 10))}%` }}
+                          className={`h-full rounded-full transition-all ${isPositive ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                          style={{ width: `${barWidth}%` }}
                         />
                       </div>
+                      <span className={`text-[11px] font-bold w-10 text-right shrink-0 ${isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                        {m.savingsRate}%
+                      </span>
                     </div>
-                    <span className={`text-xs font-semibold w-10 text-right ${m.savingsRate >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {m.savingsRate}%
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <div className="flex justify-between text-[10px] text-gray-400 mt-2 px-2">
-                <span>Promedio: {displayAmount(plan.avgMonthlySavings)}/mes</span>
-                <span>Gasto promedio: {displayAmount(plan.avgMonthlyExpenses)}/mes</span>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -251,7 +282,7 @@ export const BudgetsView: React.FC = () => {
           )}
         </>
       ) : (
-        <div className="card text-center py-6">
+        <div className="card text-center py-8">
           <p className="text-sm text-gray-500">No hay suficientes datos para generar el plan.</p>
           <button onClick={() => setPlanConfig(null)} className="text-xs text-purple-600 mt-2 hover:underline">Reconfigurar</button>
         </div>
@@ -261,8 +292,8 @@ export const BudgetsView: React.FC = () => {
       <div className="card">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Presupuestos</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Límites de gasto por categoría</p>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Presupuestos</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Límites mensuales por categoría</p>
           </div>
           {availableCategories.length > 0 && (
             <button onClick={() => setShowForm(!showForm)} className="btn-primary text-sm">
@@ -271,19 +302,18 @@ export const BudgetsView: React.FC = () => {
           )}
         </div>
 
-        {/* Stats inline */}
         {budgetStats.active > 0 && (
-          <div className="grid grid-cols-4 gap-2 text-center mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
             <div className="p-2 rounded-xl bg-purple-50 dark:bg-purple-900/20">
               <p className="text-lg font-bold text-purple-700 dark:text-purple-300">{budgetStats.active}</p>
               <p className="text-[10px] text-purple-600 dark:text-purple-400">Activos</p>
             </div>
             <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-900/20">
-              <p className="text-sm font-bold text-blue-700 dark:text-blue-300">{displayAmount(budgetStats.totalBudgeted)}</p>
+              <p className="text-xs font-bold text-blue-700 dark:text-blue-300">{displayAmount(budgetStats.totalBudgeted)}</p>
               <p className="text-[10px] text-blue-600 dark:text-blue-400">Presupuestado</p>
             </div>
             <div className="p-2 rounded-xl bg-green-50 dark:bg-green-900/20">
-              <p className="text-sm font-bold text-green-700 dark:text-green-300">{displayAmount(budgetStats.totalSpent)}</p>
+              <p className="text-xs font-bold text-green-700 dark:text-green-300">{displayAmount(budgetStats.totalSpent)}</p>
               <p className="text-[10px] text-green-600 dark:text-green-400">Gastado</p>
             </div>
             <div className={`p-2 rounded-xl ${budgetStats.exceeded > 0 ? 'bg-red-50 dark:bg-red-900/20' : 'bg-gray-50 dark:bg-gray-800/50'}`}>

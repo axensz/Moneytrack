@@ -8,6 +8,10 @@ import { GoogleGenAI } from '@google/genai';
 import type { ParseResult, ParsedRow } from './csvParser';
 import { detectInstallments, inferImportType, suggestCategory } from './csvParser';
 import { detectImportProfileFromRows, IMPORT_PROFILES } from './importProfiles';
+import { withTimeout } from './withTimeout';
+
+// Tiempo máximo por intento de extracción del PDF con Gemini.
+const PDF_TIMEOUT_MS = 60_000;
 
 const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
 
@@ -69,27 +73,31 @@ export async function parsePDF(buffer: ArrayBuffer): Promise<ParseResult> {
 
   for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
     try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                inlineData: {
-                  mimeType: 'application/pdf',
-                  data: base64,
+      const response = await withTimeout(
+        ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: 'application/pdf',
+                    data: base64,
+                  },
                 },
-              },
-              { text: SYSTEM_PROMPT },
-            ],
+                { text: SYSTEM_PROMPT },
+              ],
+            },
+          ],
+          config: {
+            temperature: 0.05,
+            maxOutputTokens: 16384,
           },
-        ],
-        config: {
-          temperature: 0.05,
-          maxOutputTokens: 16384,
-        },
-      });
+        }),
+        PDF_TIMEOUT_MS,
+        'extracción PDF',
+      );
       rawText = (response.text || '').trim();
       break;
     } catch (error) {

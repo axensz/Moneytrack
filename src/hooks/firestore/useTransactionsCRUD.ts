@@ -3,7 +3,7 @@
  * Incluye lógica de transferencias atómicas
  */
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   collection,
   doc,
@@ -18,25 +18,45 @@ import { db } from '../../lib/firebase';
 import { TRANSFER_CATEGORY } from '../../config/constants';
 import type { Transaction, Account } from '../../types/finance';
 import { safeFirestoreOperation, checkNetworkConnection } from '../../utils/firestoreHelpers';
+import { findAccountForTransaction } from '../../utils/accountTransactions';
 import { logger } from '../../utils/logger';
+
+type CreditEffect = { type: string; amount: number; accountId: string; toAccountId?: string };
 
 /**
  * Calcula el delta de usedCredit que una transacción aporta a una cuenta TC.
  * Positivo = aumenta deuda, Negativo = reduce deuda.
+ *
+ * Modelo de negocio: una compra ocupa el cupo por su monto completo (también las
+ * compras a cuotas); el cupo se libera con cada pago, no por cuota vencida.
  */
-function getCreditDelta(tx: { type: string; amount: number; accountId: string; toAccountId?: string; installments?: number; monthlyInstallmentAmount?: number }, accountId: string): number {
-  if (tx.type === 'expense' && tx.accountId === accountId) {
-    // Para cuotas, el delta es el monto completo (se ajustará mensualmente via recálculo)
-    // Simplificación: almacenamos el monto total y el cálculo de cuotas vencidas se hace al leer
-    return tx.amount;
-  }
-  if (tx.type === 'income' && tx.accountId === accountId) {
-    return -tx.amount;
-  }
-  if (tx.type === 'transfer' && tx.toAccountId === accountId) {
-    return -tx.amount;
-  }
+function getCreditDelta(tx: CreditEffect, accountId: string): number {
+  if (tx.type === 'expense' && tx.accountId === accountId) return tx.amount;
+  if (tx.type === 'income' && tx.accountId === accountId) return -tx.amount;
+  if (tx.type === 'transfer' && tx.toAccountId === accountId) return -tx.amount;
   return 0;
+}
+
+/**
+ * Devuelve el efecto de una transacción sobre el usedCredit, agrupado por id de
+ * cuenta — SOLO para cuentas de tipo crédito. Esto evita escribir un campo
+ * `usedCredit` espurio en cuentas de ahorro/efectivo y cubre tanto la cuenta
+ * origen (gasto/ingreso) como la destino (transferencia hacia una TC).
+ */
+function creditDeltasByAccount(tx: CreditEffect, accounts: Account[]): Map<string, number> {
+  const deltas = new Map<string, number>();
+  const addEffect = (accountId: string | undefined, delta: number) => {
+    if (!accountId || delta === 0) return;
+    const account = findAccountForTransaction(accounts, accountId);
+    if (!account || account.type !== 'credit' || !account.id) return;
+    deltas.set(account.id, (deltas.get(account.id) ?? 0) + delta);
+  };
+
+  if (tx.type === 'expense') addEffect(tx.accountId, tx.amount);
+  else if (tx.type === 'income') addEffect(tx.accountId, -tx.amount);
+  else if (tx.type === 'transfer') addEffect(tx.toAccountId, -tx.amount);
+
+  return deltas;
 }
 
 /**
@@ -152,8 +172,16 @@ interface UseTransactionsCRUDReturn {
  * Hook para CRUD de transacciones
  */
 export function useTransactionsCRUD(
-  userId: string | null
+  userId: string | null,
+  accounts: Account[] = []
 ): UseTransactionsCRUDReturn {
+  // Ref para leer las cuentas dentro de los callbacks sin recrear sus identidades
+  // en cada cambio de la suscripción (evita re-renders/efectos en cascada).
+  const accountsRef = useRef(accounts);
+  useEffect(() => {
+    accountsRef.current = accounts;
+  }, [accounts]);
+
   /**
    * Transferencia atómica con Firebase Transaction
    */
@@ -287,21 +315,45 @@ export function useTransactionsCRUD(
         return;
       }
 
-      // Gasto/Ingreso: operación simple
+      // Gasto/Ingreso
       const cleanTransaction = Object.fromEntries(
         Object.entries(transaction).filter(([, value]) => value !== undefined)
       );
-      await addDoc(collection(db, `users/${userId}/transactions`), {
-        ...cleanTransaction,
-        createdAt: new Date(),
-      });
 
-      // Actualizar usedCredit atómicamente si afecta a una TC
-      const delta = getCreditDelta(transaction, transaction.accountId);
-      if (delta !== 0) {
-        const accountRef = doc(db, `users/${userId}/accounts`, transaction.accountId);
-        await updateDoc(accountRef, { usedCredit: increment(delta) });
+      const deltas = creditDeltasByAccount(transaction, accountsRef.current);
+
+      // Si no afecta ninguna TC, basta una escritura simple
+      if (deltas.size === 0) {
+        await addDoc(collection(db, `users/${userId}/transactions`), {
+          ...cleanTransaction,
+          createdAt: new Date(),
+        });
+        return;
       }
+
+      // Afecta una TC: crear la transacción y ajustar usedCredit ATÓMICAMENTE,
+      // para que nunca queden desincronizados si una de las dos escrituras falla.
+      await runTransaction(db, async (firestoreTransaction) => {
+        // Lecturas primero (requisito de Firestore): validar que las TC existan
+        const accountRefs = Array.from(deltas.keys()).map(accountId =>
+          doc(db, `users/${userId}/accounts`, accountId)
+        );
+        const snaps = await Promise.all(
+          accountRefs.map(ref => firestoreTransaction.get(ref))
+        );
+        snaps.forEach(snap => {
+          if (!snap.exists()) throw new Error('La cuenta de la transacción no existe');
+        });
+
+        const txRef = doc(collection(db, `users/${userId}/transactions`));
+        firestoreTransaction.set(txRef, { ...cleanTransaction, createdAt: new Date() });
+
+        for (const [accountId, delta] of deltas) {
+          firestoreTransaction.update(doc(db, `users/${userId}/accounts`, accountId), {
+            usedCredit: increment(delta),
+          });
+        }
+      });
     },
     [userId, addTransferAtomic]
   );
@@ -325,20 +377,13 @@ export function useTransactionsCRUD(
         { maxRetries: 2 }
       );
 
-      // Revertir usedCredit si afectaba a una TC
+      // Revertir usedCredit en las TC afectadas (origen y/o destino)
       if (txData) {
-        const delta = getCreditDelta(txData, txData.accountId);
-        if (delta !== 0) {
-          const accountRef = doc(db, `users/${userId}/accounts`, txData.accountId);
-          await updateDoc(accountRef, { usedCredit: increment(-delta) });
-        }
-        // También manejar transferencias hacia una TC
-        if (txData.type === 'transfer' && txData.toAccountId) {
-          const toDelta = getCreditDelta(txData, txData.toAccountId);
-          if (toDelta !== 0) {
-            const toAccountRef = doc(db, `users/${userId}/accounts`, txData.toAccountId);
-            await updateDoc(toAccountRef, { usedCredit: increment(-toDelta) });
-          }
+        const deltas = creditDeltasByAccount(txData, accountsRef.current);
+        for (const [accountId, delta] of deltas) {
+          await updateDoc(doc(db, `users/${userId}/accounts`, accountId), {
+            usedCredit: increment(-delta),
+          });
         }
       }
     },
@@ -379,15 +424,20 @@ export function useTransactionsCRUD(
           { maxRetries: 2 }
         );
 
-        // Adjust usedCredit if amount or type changed
-        if (oldData && ('amount' in updates || 'type' in updates)) {
-          const oldDelta = getCreditDelta(oldData, oldData.accountId);
-          const newData = { ...oldData, ...updates };
-          const newDelta = getCreditDelta(newData, newData.accountId);
-          const diff = newDelta - oldDelta;
-          if (diff !== 0) {
-            const accountRef = doc(db, `users/${userId}/accounts`, oldData.accountId);
-            await updateDoc(accountRef, { usedCredit: increment(diff) });
+        // Ajustar usedCredit comparando el efecto antes/después por cada TC.
+        // Cubre cambios de monto, tipo, cuenta origen y cuenta destino (transferencias).
+        if (oldData) {
+          const oldDeltas = creditDeltasByAccount(oldData, accountsRef.current);
+          const newData = { ...oldData, ...updates } as Transaction;
+          const newDeltas = creditDeltasByAccount(newData, accountsRef.current);
+          const affectedAccountIds = new Set([...oldDeltas.keys(), ...newDeltas.keys()]);
+          for (const accountId of affectedAccountIds) {
+            const diff = (newDeltas.get(accountId) ?? 0) - (oldDeltas.get(accountId) ?? 0);
+            if (diff !== 0) {
+              await updateDoc(doc(db, `users/${userId}/accounts`, accountId), {
+                usedCredit: increment(diff),
+              });
+            }
           }
         }
       } catch (error) {

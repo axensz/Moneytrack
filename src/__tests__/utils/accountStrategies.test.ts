@@ -178,6 +178,34 @@ describe('CreditCardStrategy', () => {
     expect(strategy.calculateBalance(acc, txs)).toBe(5_000_000);
   });
 
+  it('counts an installment purchase at its full amount (not prorated by due installments)', () => {
+    const acc = makeCredit();
+    const txs = [
+      makeTx({
+        accountId: acc.id!,
+        type: 'expense',
+        amount: 1_200_000,
+        installments: 12,
+        monthlyInstallmentAmount: 100_000,
+        date: new Date('2024-01-01'),
+      }),
+    ];
+    // Una compra a cuotas ocupa el cupo completo desde el inicio:
+    // Used = 1,200,000 → Available = 5,000,000 - 1,200,000 = 3,800,000
+    expect(strategy.getUsedCredit(acc, txs)).toBe(1_200_000);
+    expect(strategy.calculateBalance(acc, txs)).toBe(3_800_000);
+  });
+
+  it('prefers the persisted usedCredit when present', () => {
+    const acc = makeCredit({ usedCredit: 2_000_000 });
+    const txs = [
+      makeTx({ accountId: acc.id!, type: 'expense', amount: 999_999 }),
+    ];
+    // Ignora las transacciones en memoria y usa el valor persistido
+    expect(strategy.getUsedCredit(acc, txs)).toBe(2_000_000);
+    expect(strategy.calculateBalance(acc, txs)).toBe(3_000_000);
+  });
+
   it('validates expense within credit limit', () => {
     const acc = makeCredit();
     const result = strategy.validateTransaction(acc, 3_000_000, [], 'expense');

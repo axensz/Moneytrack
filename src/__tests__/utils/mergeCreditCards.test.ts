@@ -121,7 +121,10 @@ describe('mergeCreditCards consumers', () => {
       ]);
 
       const mergedCard = merged.destinationCard;
-      expect(CreditCardCalculator.calculateUsedCredit(mergedCard, merged.transactions)).toBe(350_000);
+      // Cupo utilizado = capital pendiente: la compra a cuotas (1.200.000) ocupa el
+      // cupo completo desde la compra, no solo la cuota vencida.
+      // 300.000 (gasto) + 1.200.000 (cuotas) - 120.000 (transfer) - 50.000 (ingreso) = 1.330.000
+      expect(CreditCardCalculator.calculateUsedCredit(mergedCard, merged.transactions)).toBe(1_330_000);
 
       const statement = renderHook(() => useCreditCardStatement(merged.accounts, merged.transactions)).result.current;
       expect(statement).toHaveLength(1);
@@ -133,7 +136,7 @@ describe('mergeCreditCards consumers', () => {
       );
 
       const globalStats = renderHook(() => useGlobalStats(merged.transactions, merged.accounts)).result.current;
-      expect(globalStats.pendingExpenses).toBe(350_000);
+      expect(globalStats.pendingExpenses).toBe(1_330_000);
 
       const filtered = renderHook(() => useFilteredData({
         transactions: merged.transactions,
@@ -144,7 +147,7 @@ describe('mergeCreditCards consumers', () => {
         getAccountBalance: () => CreditCardCalculator.calculateAvailableCredit(mergedCard, merged.transactions),
       })).result.current;
       expect(filtered.filteredTransactions).toHaveLength(4);
-      expect(filtered.dynamicStats.pendingExpenses).toBe(350_000);
+      expect(filtered.dynamicStats.pendingExpenses).toBe(1_330_000);
 
       const interests = renderHook(() => useCreditCardInterests(merged.accounts, merged.transactions)).result.current;
       expect(interests.creditCardInterests).toEqual([
@@ -153,12 +156,28 @@ describe('mergeCreditCards consumers', () => {
 
       const context = buildFinancialContext(merged.transactions, merged.accounts, categories);
       expect(context).toContain('[ID:card-dest] Visa Destino (Crédito): Usado');
-      expect(context).toContain('350.000');
+      expect(context).toContain('1.330.000');
       expect(context).toContain('Visa Destino [ACC:card-dest]');
       expect(context).not.toContain('Visa Origen Eliminada');
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('consolidates the persisted usedCredit of all merged cards into the destination', () => {
+    const dest: Account = { ...destinationCard, usedCredit: 800_000 };
+    const src1: Account = { ...sourceCard, id: 'card-src-1', usedCredit: 500_000 };
+    const src2: Account = { ...sourceCard, id: 'card-src-2', usedCredit: 300_000 };
+
+    const merged = mergeCreditCards({
+      accounts: [bank, dest, src1, src2],
+      transactions: [],
+      destinationCardId: dest.id!,
+      sourceCardIds: [src1.id!, src2.id!],
+    });
+
+    // 800.000 (destino) + 500.000 + 300.000 (orígenes) = 1.600.000
+    expect(merged.destinationCard.usedCredit).toBe(1_600_000);
   });
 
   it('resolves legacy source references through destination mergedAccountIds while source accounts are absent', () => {

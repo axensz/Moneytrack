@@ -21,7 +21,7 @@ export function useFirestore(userId: string | null) {
   } = useFirestoreSubscriptions(userId);
 
   const { addTransaction, addCreditPaymentAtomic, deleteTransaction, updateTransaction } =
-    useTransactionsCRUD(userId);
+    useTransactionsCRUD(userId, accounts);
 
   const { addAccount, deleteAccount, updateAccount } = useAccountsCRUD(userId);
 

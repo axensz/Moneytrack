@@ -7,6 +7,7 @@
  */
 import type { Account, Transaction } from '../types/finance';
 import { getAccountReferenceIds } from './accountTransactions';
+import { CreditCardCalculator } from './balanceCalculator';
 
 export interface MergeCreditCardsInput {
   accounts: Account[];
@@ -64,11 +65,24 @@ export function mergeCreditCards({
     ...sourceCards.flatMap(card => card?.mergedAccountIds ?? []),
   ];
 
+  // Consolidar la deuda: el destino asume el cupo utilizado de todas las tarjetas
+  // unificadas (destino + orígenes). Se calcula con las transacciones ORIGINALES
+  // por tarjeta para no doble-contar al reapuntarlas al destino.
+  const mergedUsedCredit = [destinationCard, ...(sourceCards.filter(Boolean) as Account[])].reduce(
+    (sum, card) =>
+      sum +
+      (card.usedCredit != null
+        ? Math.max(0, card.usedCredit)
+        : CreditCardCalculator.calculateUsedCredit(card, transactions)),
+    0
+  );
+
   const mergedDestination: Account = {
     ...destinationCard,
     bankAccountId: destinationCard.bankAccountId ?? sourceCards.find(card => card?.bankAccountId)?.bankAccountId,
     creditLimit: destinationCard.creditLimit ?? sourceCards.find(card => card?.creditLimit !== undefined)?.creditLimit,
     mergedAccountIds: Array.from(new Set(destinationReferenceIds.filter(id => id && id !== destinationCard.id))),
+    usedCredit: mergedUsedCredit,
   };
 
   let migratedTransactionCount = 0;

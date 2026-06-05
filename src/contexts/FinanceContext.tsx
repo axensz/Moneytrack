@@ -220,7 +220,10 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     modifyDebtBalance,
     getDebtTransactions,
     stats: debtStats,
-  } = useDebts(userId, transactions, userId ? firestoreData.debts : undefined);
+  } = useDebts(userId, transactions, userId ? firestoreData.debts : undefined, {
+    addTransaction,
+    deleteTransaction,
+  });
 
   // 6. Presupuestos — uses centralized data when authenticated
   const {

@@ -2,10 +2,16 @@
  * Hook para gestión de préstamos/deudas
  * Soporta Firebase (usuario autenticado) y localStorage (modo invitado)
  *
- * FLUJO:
- * - Prestar dinero → crea Debt tipo 'lent' + gasto en la cuenta
- * - Recibir pago → registra ingreso + reduce remainingAmount
- * - Pago completo → isSettled = true
+ * FLUJO (cuando la deuda tiene una cuenta asociada):
+ * - Prestar dinero (lent)    → crea Debt + GASTO en la cuenta (sale el dinero)
+ * - Pedir prestado (borrowed)→ crea Debt + INGRESO en la cuenta (entra el dinero)
+ * - Recibir pago de un lent  → INGRESO en la cuenta + reduce remainingAmount
+ * - Pagar un borrowed        → GASTO en la cuenta + reduce remainingAmount
+ * - Pago completo            → isSettled = true
+ * - Eliminar deuda           → elimina también sus transacciones vinculadas (debtId)
+ *
+ * Si la deuda NO tiene cuenta asociada, funciona como simple seguimiento sin
+ * afectar saldos (comportamiento histórico).
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -15,9 +21,21 @@ import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
 import { safeFirestoreOperation, checkNetworkConnection } from '../utils/firestoreHelpers';
 import { generateId } from '../utils/formatters';
+import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../config/constants';
 import type { Debt, Transaction } from '../types/finance';
 
-export function useDebts(userId: string | null, transactions: Transaction[], externalDebts?: Debt[]) {
+interface DebtTransactionOps {
+  addTransaction?: (tx: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
+  deleteTransaction?: (id: string) => Promise<void>;
+}
+
+export function useDebts(
+  userId: string | null,
+  transactions: Transaction[],
+  externalDebts?: Debt[],
+  txOps: DebtTransactionOps = {}
+) {
+  const { addTransaction, deleteTransaction } = txOps;
   // Firestore state
   const [firestoreDebts, setFirestoreDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,12 +89,13 @@ export function useDebts(userId: string | null, transactions: Transaction[], ext
       Object.entries(debt).filter(([, v]) => v !== undefined)
     );
 
+    let debtId: string;
     if (userId) {
       if (!checkNetworkConnection()) {
         throw new Error('Sin conexión a internet');
       }
 
-      await safeFirestoreOperation(
+      const ref = await safeFirestoreOperation(
         () => addDoc(collection(db, `users/${userId}/debts`), {
           ...cleanDebt,
           createdAt: new Date(),
@@ -84,11 +103,31 @@ export function useDebts(userId: string | null, transactions: Transaction[], ext
         'addDebt',
         { maxRetries: 2 }
       );
+      debtId = ref.id;
     } else {
-      const newDebt: Debt = { ...debt, id: generateId(), createdAt: new Date() };
+      debtId = generateId();
+      const newDebt: Debt = { ...debt, id: debtId, createdAt: new Date() };
       setLocalDebts(prev => [newDebt, ...prev]);
     }
-  }, [userId, setLocalDebts]);
+
+    // Mover el dinero si hay una cuenta asociada:
+    // prestar → gasto (sale el dinero); pedir prestado → ingreso (entra el dinero)
+    if (debt.accountId && addTransaction) {
+      const isLent = debt.type === 'lent';
+      await addTransaction({
+        type: isLent ? 'expense' : 'income',
+        amount: debt.originalAmount,
+        category: LOAN_CATEGORY,
+        description: isLent
+          ? `Préstamo a ${debt.personName}`
+          : `Préstamo de ${debt.personName}`,
+        date: new Date(),
+        paid: true,
+        accountId: debt.accountId,
+        debtId,
+      });
+    }
+  }, [userId, setLocalDebts, addTransaction]);
 
   const updateDebt = useCallback(async (id: string, updates: Partial<Debt>) => {
     if (userId) {
@@ -111,6 +150,14 @@ export function useDebts(userId: string | null, transactions: Transaction[], ext
   }, [userId, setLocalDebts]);
 
   const deleteDebt = useCallback(async (id: string) => {
+    // Eliminar primero las transacciones vinculadas para no dejar saldos desfasados
+    if (deleteTransaction) {
+      const linkedTxs = transactions.filter(t => t.debtId === id && t.id);
+      for (const tx of linkedTxs) {
+        await deleteTransaction(tx.id!);
+      }
+    }
+
     if (userId) {
       if (!checkNetworkConnection()) {
         throw new Error('Sin conexión a internet');
@@ -124,7 +171,7 @@ export function useDebts(userId: string | null, transactions: Transaction[], ext
     } else {
       setLocalDebts(prev => prev.filter(d => d.id !== id));
     }
-  }, [userId, setLocalDebts]);
+  }, [userId, setLocalDebts, deleteTransaction, transactions]);
 
   // Register a payment against a debt
   const registerDebtPayment = useCallback(async (debtId: string, amount: number) => {
@@ -134,12 +181,30 @@ export function useDebts(userId: string | null, transactions: Transaction[], ext
     const newRemaining = Math.max(0, debt.remainingAmount - amount);
     const isSettled = newRemaining === 0;
 
+    // Mover el dinero si hay cuenta asociada:
+    // cobrar un préstamo (lent) → ingreso; pagar una deuda (borrowed) → gasto
+    if (debt.accountId && addTransaction) {
+      const isLent = debt.type === 'lent';
+      await addTransaction({
+        type: isLent ? 'income' : 'expense',
+        amount,
+        category: LOAN_PAYMENT_CATEGORY,
+        description: isLent
+          ? `Cobro de ${debt.personName}`
+          : `Pago a ${debt.personName}`,
+        date: new Date(),
+        paid: true,
+        accountId: debt.accountId,
+        debtId,
+      });
+    }
+
     await updateDebt(debtId, {
       remainingAmount: newRemaining,
       isSettled,
       ...(isSettled ? { settledAt: new Date() } : {}),
     });
-  }, [debts, updateDebt]);
+  }, [debts, updateDebt, addTransaction]);
 
   // Modify debt balance (add or subtract from original amount)
   const modifyDebtBalance = useCallback(async (

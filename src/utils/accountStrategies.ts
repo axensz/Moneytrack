@@ -144,19 +144,26 @@ export class CashAccountStrategy implements AccountBalanceStrategy {
  *
  * LÓGICA:
  * - Balance mostrado = Cupo Disponible = Límite - Cupo Utilizado
- * - Cupo Utilizado = Gastos NO pagados - Transferencias recibidas (pagos)
+ * - Cupo Utilizado = Capital pendiente = Σ compras - Σ pagos (ingresos + transferencias)
  * - NO se incluye en balance total (es deuda, no activo)
+ *
+ * MODELO DE CUOTAS (decisión de negocio):
+ * Una compra a cuotas ocupa el CUPO COMPLETO desde el momento de la compra
+ * (igual que los bancos reservan el total contra el cupo disponible) y se libera
+ * a medida que se registran pagos hacia la TC. El monto por cuota mensual NO se
+ * usa aquí; eso pertenece al estado de cuenta del ciclo (useCreditCardStatement),
+ * que responde una pregunta distinta: "cuánto debo pagar este mes".
+ *
+ * Esta regla mantiene consistencia con el valor persistido (account.usedCredit),
+ * la migración (useCreditMigration) y la importación (useImportTransactions),
+ * que también acumulan el monto completo de cada compra.
  */
 export class CreditCardStrategy implements AccountBalanceStrategy {
   /**
-   * Calcula el cupo utilizado (deuda pendiente)
+   * Calcula el cupo utilizado (capital pendiente por pagar)
    *
    * REGLA DE NEGOCIO:
-   * Cupo Usado = Gastos efectivos - Pagos recibidos (ingresos + transferencias)
-   *
-   * Para compras en cuotas, solo se cuenta el monto de las cuotas vencidas
-   * hasta el mes actual (no el monto total de la compra).
-   * Para compras de contado, se cuenta el monto completo.
+   * Cupo Usado = Σ compras (monto completo) - Σ pagos (ingresos + transferencias)
    */
   private calculateUsedCredit(account: Account, transactions: Transaction[]): number {
     // Si hay campo persistido en la cuenta, usarlo (no depende de paginación)
@@ -165,30 +172,13 @@ export class CreditCardStrategy implements AccountBalanceStrategy {
     }
 
     // Fallback: calcular desde transacciones en memoria (puede ser incompleto si hay paginación)
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
-
-    // 1. Gastos en esta tarjeta — ajustados por cuotas
+    // 1. Gastos en esta tarjeta — monto completo, incluidas compras a cuotas
     const totalExpenses = transactions
       .filter(t =>
         transactionAccountIs(t, account) &&
         t.type === 'expense'
       )
-      .reduce((sum, t) => {
-        // Compra en cuotas: solo contar cuotas vencidas hasta hoy
-        // Primera cuota se cobra el mes siguiente a la compra
-        if (t.installments && t.installments > 1) {
-          const txDate = new Date(t.date);
-          const monthsSince = (currentYear - txDate.getFullYear()) * 12 + (currentMonth - txDate.getMonth());
-          // monthsSince=0 → mismo mes de compra → 0 cuotas cobradas
-          // monthsSince=1 → mes siguiente → 1 cuota cobrada
-          const installmentsDue = Math.min(Math.max(0, monthsSince), t.installments);
-          const perInstallment = t.monthlyInstallmentAmount ?? (t.amount / t.installments);
-          return sum + (installmentsDue * perInstallment);
-        }
-        return sum + t.amount;
-      }, 0);
+      .reduce((sum, t) => sum + t.amount, 0);
 
     // 2. Ingresos directos a esta TC (pagos mediante "Ingreso")
     const directPayments = transactions

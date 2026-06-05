@@ -259,11 +259,18 @@ export const DebtsView: React.FC = () => {
               onChange={e => setFormData(f => ({ ...f, accountId: e.target.value }))}
               className="input-base"
             >
-              <option value="">Sin cuenta asociada (opcional)</option>
+              <option value="">Sin cuenta asociada (solo seguimiento)</option>
               {accounts.filter(a => a.type !== 'credit').map(a => (
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
             </select>
+            <p className="text-xs text-gray-500 dark:text-gray-400 -mt-2">
+              {formData.accountId
+                ? (formData.type === 'lent'
+                    ? 'Se registrará un gasto en esa cuenta (sale el dinero). Los cobros entrarán como ingreso.'
+                    : 'Se registrará un ingreso en esa cuenta (entra el dinero). Los pagos saldrán como gasto.')
+                : 'Si eliges una cuenta, el préstamo y sus pagos moverán su saldo automáticamente.'}
+            </p>
 
             <div className="flex gap-3">
               <button onClick={handleSubmit} className="btn-submit flex-1 shadow-md hover:shadow-lg">

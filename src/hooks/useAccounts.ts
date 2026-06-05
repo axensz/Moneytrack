@@ -235,6 +235,24 @@ export function useAccounts(
     const sourceHadDefault = sourceAccounts.some(account => account?.isDefault);
     const shouldMakeDestinationDefault = destination.isDefault ?? existingDestination?.isDefault ?? sourceHadDefault;
     const destinationId = destination.id ?? generateId();
+
+    // Consolidar el cupo utilizado: la deuda del destino pasa a ser la suma de la
+    // deuda de TODAS las tarjetas unificadas (destino + orígenes), ya que sus
+    // transacciones se reapuntan al destino. Sin esto la deuda de las tarjetas
+    // origen se perdería al eliminarlas. Se prefiere el valor persistido; si una
+    // tarjeta aún no lo tiene, se calcula desde sus transacciones en memoria.
+    const cardsToConsolidate = [existingDestination, ...sourceAccounts].filter(
+      (account): account is Account => Boolean(account)
+    );
+    const mergedUsedCredit = cardsToConsolidate.reduce(
+      (sum, account) =>
+        sum +
+        (account.usedCredit != null
+          ? Math.max(0, account.usedCredit)
+          : CreditCardCalculator.calculateUsedCredit(account, transactions)),
+      0
+    );
+
     const destinationAccount: Account = {
       ...(existingDestination ?? {
         id: destinationId,
@@ -249,6 +267,7 @@ export function useAccounts(
       initialBalance: 0,
       isDefault: shouldMakeDestinationDefault,
       createdAt: existingDestination?.createdAt ?? new Date(),
+      usedCredit: mergedUsedCredit,
     };
 
     const migrateAccountReference = (accountId?: string): string | undefined => (

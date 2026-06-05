@@ -3,8 +3,11 @@
 import React, { useState } from 'react';
 import { FilterX, PlusCircle, Search, Tag, Upload, Wallet, X } from 'lucide-react';
 import type { Account, DateRangePreset, FilterValue } from '../../../../types/finance';
+import { CREDIT_PAYMENT_CATEGORY, TRANSFER_CATEGORY, BALANCE_ADJUSTMENT_CATEGORY } from '../../../../config/constants';
 import { DateFilterDropdown } from './DateFilterDropdown';
 import { FilterDropdown } from './FilterDropdown';
+
+const SPECIAL_FILTER_CATEGORIES = [TRANSFER_CATEGORY, CREDIT_PAYMENT_CATEGORY, BALANCE_ADJUSTMENT_CATEGORY];
 
 interface TransactionsFiltersProps {
   accounts: Account[];
@@ -149,7 +152,7 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
         <FilterDropdown
           label="Categoria"
           value={filterCategory}
-          options={[...new Set([...categories.expense, ...categories.income])].map((cat) => ({
+          options={[...new Set([...categories.expense, ...categories.income, ...SPECIAL_FILTER_CATEGORIES])].map((cat) => ({
             value: cat,
             label: cat,
           }))}

@@ -1,8 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ChevronDown, Loader2 } from 'lucide-react';
 import { TransactionItem } from './TransactionItem';
+import { AdjustmentGroup } from './AdjustmentGroup';
+import { SPECIAL_CATEGORIES } from '../../../../config/constants';
 import type { Transaction, Account, Categories } from '../../../../types/finance';
 
 const INITIAL_BATCH = 30;
@@ -79,19 +81,62 @@ export function TransactionsList({
     const visible = transactions.slice(0, visibleCount);
     const hasMore = visibleCount < transactions.length;
 
+    // Group adjustment transactions by day
+    type ListItem = { type: 'transaction'; transaction: Transaction } | { type: 'adjustmentGroup'; transactions: Transaction[]; dateKey: string };
+
+    const groupedItems = useMemo(() => {
+        const items: ListItem[] = [];
+        let i = 0;
+        while (i < visible.length) {
+            const t = visible[i];
+            const dateKey = new Date(t.date).toDateString();
+            if (SPECIAL_CATEGORIES.adjustmentCategories.includes(t.category)) {
+                // Collect all consecutive adjustments of the same day
+                const group: Transaction[] = [t];
+                let j = i + 1;
+                while (j < visible.length) {
+                    const next = visible[j];
+                    if (new Date(next.date).toDateString() === dateKey && SPECIAL_CATEGORIES.adjustmentCategories.includes(next.category)) {
+                        group.push(next);
+                        j++;
+                    } else {
+                        break;
+                    }
+                }
+                if (group.length > 1) {
+                    items.push({ type: 'adjustmentGroup', transactions: group, dateKey });
+                } else {
+                    items.push({ type: 'transaction', transaction: t });
+                }
+                i = j;
+            } else {
+                items.push({ type: 'transaction', transaction: t });
+                i++;
+            }
+        }
+        return items;
+    }, [visible]);
+
     return (
         <div className="space-y-2">
-            {visible.map((transaction, index) => {
-                const currentDate = new Date(transaction.date).toDateString();
-                const previousDate = index > 0 ? new Date(visible[index - 1].date).toDateString() : null;
+            {groupedItems.map((item, index) => {
+                const currentDate = item.type === 'transaction'
+                    ? new Date(item.transaction.date).toDateString()
+                    : item.dateKey;
+                const prevItem = index > 0 ? groupedItems[index - 1] : null;
+                const previousDate = prevItem
+                    ? (prevItem.type === 'transaction' ? new Date(prevItem.transaction.date).toDateString() : prevItem.dateKey)
+                    : null;
                 const showDateHeader = currentDate !== previousDate;
 
+                const key = item.type === 'transaction' ? item.transaction.id : `adj-${item.dateKey}`;
+
                 return (
-                    <React.Fragment key={transaction.id}>
+                    <React.Fragment key={key}>
                         {showDateHeader && (
                             <div className="pt-4 pb-1.5 first:pt-0">
                                 <span className="text-[11px] font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                                    {new Date(transaction.date).toLocaleDateString('es-CO', {
+                                    {new Date(currentDate).toLocaleDateString('es-CO', {
                                         weekday: 'short',
                                         year: 'numeric',
                                         month: 'short',
@@ -100,21 +145,38 @@ export function TransactionsList({
                                 </span>
                             </div>
                         )}
-                        <TransactionItem
-                            transaction={transaction}
-                            account={getAccountForTransaction(transaction.accountId)}
-                            destinationAccount={transaction.toAccountId ? getAccountForTransaction(transaction.toAccountId) : undefined}
-                            isEditing={editingTransaction === transaction.id}
-                            editForm={editForm}
-                            categories={categories}
-                            recurringPaymentName={getRecurringPaymentName(transaction.recurringPaymentId)}
-                            formatCurrency={formatCurrency}
-                            onEdit={() => startEditTransaction(transaction)}
-                            onDelete={() => handleDeleteTransaction(transaction)}
-                            onSave={() => handleSaveEdit(transaction.id!)}
-                            onCancel={handleCancelEdit}
-                            onEditFormChange={setEditForm}
-                        />
+                        {item.type === 'transaction' ? (
+                            <TransactionItem
+                                transaction={item.transaction}
+                                account={getAccountForTransaction(item.transaction.accountId)}
+                                destinationAccount={item.transaction.toAccountId ? getAccountForTransaction(item.transaction.toAccountId) : undefined}
+                                isEditing={editingTransaction === item.transaction.id}
+                                editForm={editForm}
+                                categories={categories}
+                                recurringPaymentName={getRecurringPaymentName(item.transaction.recurringPaymentId)}
+                                formatCurrency={formatCurrency}
+                                onEdit={() => startEditTransaction(item.transaction)}
+                                onDelete={() => handleDeleteTransaction(item.transaction)}
+                                onSave={() => handleSaveEdit(item.transaction.id!)}
+                                onCancel={handleCancelEdit}
+                                onEditFormChange={setEditForm}
+                            />
+                        ) : (
+                            <AdjustmentGroup
+                                transactions={item.transactions}
+                                formatCurrency={formatCurrency}
+                                categories={categories}
+                                getAccountForTransaction={getAccountForTransaction}
+                                getRecurringPaymentName={getRecurringPaymentName}
+                                editingTransaction={editingTransaction}
+                                editForm={editForm}
+                                startEditTransaction={startEditTransaction}
+                                handleDeleteTransaction={handleDeleteTransaction}
+                                handleSaveEdit={handleSaveEdit}
+                                handleCancelEdit={handleCancelEdit}
+                                setEditForm={setEditForm}
+                            />
+                        )}
                     </React.Fragment>
                 );
             })}

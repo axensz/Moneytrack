@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { Search, Calendar, Tag, Wallet, TrendingUp, TrendingDown, ArrowRightLeft } from 'lucide-react';
 import type { Transaction, Account } from '../../../../types/finance';
-import { TRANSFER_CATEGORY } from '../../../../config/constants';
+import { TRANSFER_CATEGORY, SPECIAL_CATEGORIES } from '../../../../config/constants';
 import { formatCurrency } from '../../../../utils/formatters';
 import { useUIPreferences } from '../../../../contexts/UIPreferencesContext';
 
@@ -42,6 +42,9 @@ export const PeriodSummaryCard: React.FC<PeriodSummaryCardProps> = ({
     if (!startDate && !endDate) return [];
 
     return transactions.filter(t => {
+      // Exclude adjustment categories
+      if (SPECIAL_CATEGORIES.adjustmentCategories.includes(t.category)) return false;
+
       // Date filter
       const txDate = t.date instanceof Date ? t.date : new Date(t.date);
       if (startDate) {

@@ -9,7 +9,7 @@
 import { useCallback, useMemo } from 'react';
 import { useLocalStorage } from './useLocalStorage';
 import { useFirestoreData } from '../contexts/FirestoreContext';
-import { DEFAULT_CATEGORIES, ERROR_MESSAGES } from '../config/constants';
+import { DEFAULT_CATEGORIES, ERROR_MESSAGES, SPECIAL_CATEGORIES, TRANSFER_CATEGORY } from '../config/constants';
 import type { Categories, Transaction, Category } from '../types/finance';
 
 export function useCategories(transactions: Transaction[], userId?: string | null) {
@@ -28,7 +28,23 @@ export function useCategories(transactions: Transaction[], userId?: string | nul
 
   // Convertir Firebase (Category[]) a formato UI (Categories)
   // Siempre incluye las categorías por defecto + las creadas por el usuario en Firestore
+  // + las que existen en transacciones pero no están registradas formalmente
   const categories = useMemo((): Categories => {
+    // Categorías especiales que no deben aparecer en el modal
+    const excludedCategories = new Set<string>([
+      TRANSFER_CATEGORY,
+      ...SPECIAL_CATEGORIES.adjustmentCategories,
+    ]);
+
+    // Extraer categorías de transacciones existentes
+    const transactionExpenseCategories = new Set<string>();
+    const transactionIncomeCategories = new Set<string>();
+    transactions.forEach(t => {
+      if (excludedCategories.has(t.category)) return;
+      if (t.type === 'expense') transactionExpenseCategories.add(t.category);
+      else if (t.type === 'income') transactionIncomeCategories.add(t.category);
+    });
+
     if (userId) {
       const firestoreExpense = firestoreCategories
         .filter(c => c.type === 'expense')
@@ -37,9 +53,12 @@ export function useCategories(transactions: Transaction[], userId?: string | nul
         .filter(c => c.type === 'income')
         .map(c => c.name);
 
-      // Merge: defaults + custom (sin duplicados)
+      // Merge: defaults + firestore + transacciones (sin duplicados)
       const expense: string[] = [...DEFAULT_CATEGORIES.expense];
       firestoreExpense.forEach(name => {
+        if (!expense.includes(name)) expense.push(name);
+      });
+      transactionExpenseCategories.forEach(name => {
         if (!expense.includes(name)) expense.push(name);
       });
 
@@ -47,12 +66,25 @@ export function useCategories(transactions: Transaction[], userId?: string | nul
       firestoreIncome.forEach(name => {
         if (!income.includes(name)) income.push(name);
       });
+      transactionIncomeCategories.forEach(name => {
+        if (!income.includes(name)) income.push(name);
+      });
 
       return { expense, income };
     }
 
-    return localCategories;
-  }, [userId, firestoreCategories, localCategories]);
+    // Modo local: también incluir categorías de transacciones
+    const expense = [...localCategories.expense];
+    transactionExpenseCategories.forEach(name => {
+      if (!expense.includes(name)) expense.push(name);
+    });
+    const income = [...localCategories.income];
+    transactionIncomeCategories.forEach(name => {
+      if (!income.includes(name)) income.push(name);
+    });
+
+    return { expense, income };
+  }, [userId, firestoreCategories, localCategories, transactions]);
 
   const addCategory = useCallback(async (type: 'expense' | 'income', name: string) => {
     const trimmedName = name.trim();

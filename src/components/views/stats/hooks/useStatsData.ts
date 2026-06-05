@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import type { Transaction } from '../../../../types/finance';
+import { SPECIAL_CATEGORIES } from '../../../../config/constants';
 
 interface MonthlyDataPoint {
   month: string;
@@ -34,9 +35,13 @@ interface StatsData {
  * - Distribución por categoría de gastos
  */
 export const useStatsData = (transactions: Transaction[]): StatsData => {
-  const monthlyData = useMemo(() => computeMonthlyData(transactions), [transactions]);
-  const yearlyData = useMemo(() => computeYearlyData(transactions), [transactions]);
-  const categoryData = useMemo(() => computeCategoryData(transactions), [transactions]);
+  const filtered = useMemo(
+    () => transactions.filter(t => !SPECIAL_CATEGORIES.adjustmentCategories.includes(t.category)),
+    [transactions]
+  );
+  const monthlyData = useMemo(() => computeMonthlyData(filtered), [filtered]);
+  const yearlyData = useMemo(() => computeYearlyData(filtered), [filtered]);
+  const categoryData = useMemo(() => computeCategoryData(filtered), [filtered]);
 
   return { monthlyData, yearlyData, categoryData };
 };

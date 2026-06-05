@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, PieChart, CheckCircle2, XCircle, Trash2, ToggleLeft, ToggleRight, Sparkles, TrendingUp, TrendingDown, Minus, Target, X, Shield, Clock, Zap } from 'lucide-react';
+import { Plus, PieChart, CheckCircle2, XCircle, Trash2, ToggleLeft, ToggleRight, Sparkles, TrendingUp, TrendingDown, Minus, Target, X, Shield, Clock, Zap, ChevronDown, ChevronUp } from 'lucide-react';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { useAuth } from '../../../hooks/useAuth';
@@ -25,6 +25,7 @@ export const BudgetsView: React.FC = () => {
   const { config: planConfig, loading: planLoading, saveConfig, clearConfig } = usePlanConfig(user?.uid ?? null);
   const [showSetup, setShowSetup] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [planMinimized, setPlanMinimized] = useState(false);
   const [setupForm, setSetupForm] = useState({ startMonth: new Date().toISOString().slice(0, 7), income: '' });
 
   // Presupuestos
@@ -148,13 +149,23 @@ export const BudgetsView: React.FC = () => {
             <div className={`absolute inset-0 bg-gradient-to-b ${scoreBg(plan.score.total)} pointer-events-none`} />
             <div className="relative">
               {/* Header */}
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h2 className="text-lg font-black text-gray-900 dark:text-gray-100">Plan Financiero</h2>
-                  <div className={`flex items-center gap-1.5 mt-0.5 text-xs font-medium ${trendColor}`}>
-                    <TrendIcon size={12} /> {trendLabel}
+              <div className="flex items-center justify-between">
+                <button onClick={() => setPlanMinimized(!planMinimized)} className="flex items-center gap-2.5 group">
+                  <div className={`flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br ${plan.score.total >= 80 ? 'from-emerald-500 to-emerald-400' : plan.score.total >= 60 ? 'from-blue-500 to-blue-400' : plan.score.total >= 40 ? 'from-amber-500 to-amber-400' : 'from-rose-500 to-rose-400'} shadow-sm`}>
+                    <Sparkles size={14} className="text-white" />
                   </div>
-                </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-lg font-black text-gray-900 dark:text-gray-100">Plan Financiero</h2>
+                      <span className={`text-2xl font-black ${scoreColor(plan.score.total)}`}>{plan.score.total}</span>
+                      <span className="text-xs text-gray-400">/100</span>
+                      {planMinimized ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronUp size={16} className="text-gray-400" />}
+                    </div>
+                    <div className={`flex items-center gap-1.5 text-[11px] font-medium ${trendColor}`}>
+                      <TrendIcon size={11} /> {trendLabel}
+                    </div>
+                  </div>
+                </button>
                 <button
                   onClick={() => setShowCloseConfirm(true)}
                   className="p-2 text-gray-400 hover:text-rose-500 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
@@ -164,6 +175,10 @@ export const BudgetsView: React.FC = () => {
                 </button>
               </div>
 
+              {/* Contenido expandido */}
+              {!planMinimized && (
+              <>
+              <div className="mt-6">
               {/* Score centrado */}
               <div className="flex flex-col items-center mb-6">
                 <div className="relative mb-2">
@@ -204,9 +219,14 @@ export const BudgetsView: React.FC = () => {
                   </div>
                 ))}
               </div>
+              </div>
+              </>
+              )}
             </div>
           </div>
 
+          {!planMinimized && (
+          <>
           {/* ──── Distribución 50/30/20 ──── */}
           <div className="card">
             <div className="flex items-center justify-between mb-4">
@@ -331,6 +351,8 @@ export const BudgetsView: React.FC = () => {
           {/* ──── Consejos IA ──── */}
           {isGeminiConfigured() && (
             <FinancialPlanAI plan={plan} config={planConfig} />
+          )}
+          </>
           )}
 
           {/* ──── Confirmación cerrar plan ──── */}

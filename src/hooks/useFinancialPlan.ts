@@ -151,18 +151,13 @@ export function useFinancialPlan(
     const completedMonths = months.filter(m => m.key !== currentKey);
     const numCompleted = completedMonths.length;
 
-    // Si solo hay mes actual (incompleto), prorratear al mes completo
-    const dayOfMonth = now.getDate();
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const prorationFactor = dayOfMonth > 1 ? daysInMonth / dayOfMonth : 1;
-
     const avgMonthlyExpenses = numCompleted > 0
       ? completedMonths.reduce((s, m) => s + m.expenses, 0) / numCompleted
-      : (currentMonth?.expenses || 0) * prorationFactor;
+      : declaredIncome * 0.8; // Sin datos completos, estimar 80% del ingreso
 
     const avgMonthlySavings = numCompleted > 0
       ? completedMonths.reduce((s, m) => s + m.savings, 0) / numCompleted
-      : declaredIncome - (currentMonth?.expenses || 0) * prorationFactor;
+      : declaredIncome * 0.2; // Sin datos completos, estimar 20% de ahorro
 
     // Regla 50/30/20 (basado en meses completados o actual)
     const analysisMonths = numCompleted > 0 ? completedMonths : (currentMonth ? [currentMonth] : []);
@@ -226,16 +221,20 @@ export function useFinancialPlan(
     };
 
     // Proyección de ahorro
-    const monthlyExpenses3m = avgMonthlyExpenses * 3; // fondo emergencia
-    const projectedMonthlySavings = declaredIncome - avgMonthlyExpenses;
+    // Usar solo meses completados para calcular. Si no hay, estimar 20% de ahorro como meta.
+    const reliableMonthlyExpenses = numCompleted > 0 ? avgMonthlyExpenses : declaredIncome * 0.8;
+    const reliableMonthlySavings = declaredIncome - reliableMonthlyExpenses;
+    const monthlySavingsForProjection = Math.max(0, reliableMonthlySavings);
+    const monthlyExpenses3m = reliableMonthlyExpenses * 3; // fondo emergencia
+
     const projection: SavingsProjection = {
-      currentMonthly: avgMonthlySavings,
-      projectedMonthly: projectedMonthlySavings,
-      in3Months: projectedMonthlySavings * 3,
-      in6Months: projectedMonthlySavings * 6,
-      in12Months: projectedMonthlySavings * 12,
-      monthsToEmergencyFund: projectedMonthlySavings > 0
-        ? Math.ceil(monthlyExpenses3m / projectedMonthlySavings)
+      currentMonthly: numCompleted > 0 ? avgMonthlySavings : monthlySavingsForProjection,
+      projectedMonthly: monthlySavingsForProjection,
+      in3Months: monthlySavingsForProjection * 3,
+      in6Months: monthlySavingsForProjection * 6,
+      in12Months: monthlySavingsForProjection * 12,
+      monthsToEmergencyFund: monthlySavingsForProjection > 0
+        ? Math.ceil(monthlyExpenses3m / monthlySavingsForProjection)
         : null,
     };
 

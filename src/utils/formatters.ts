@@ -250,7 +250,10 @@ class NumberFormatter {
  * Nota: Solo para uso local, no usar para IDs de base de datos
  */
 export const generateId = (): string => {
-  return Date.now().toString() + Math.random().toString(36).substring(2, 11);
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  return Date.now().toString() + hex;
 };
 
 // Exportar funciones directas para compatibilidad

@@ -24,7 +24,20 @@ interface TransactionToCateg {
 interface CategorizationResult {
     index: number;
     category: string;
-    confidence: 'high' | 'medium' | 'low';
+    confidence: number;
+    reason?: string;
+}
+
+function normalizeConfidence(confidence: unknown): number {
+    if (typeof confidence === 'number' && Number.isFinite(confidence)) {
+        return Math.max(0, Math.min(1, confidence));
+    }
+
+    const value = String(confidence ?? '').toLowerCase();
+    if (value === 'high') return 0.9;
+    if (value === 'medium') return 0.65;
+    if (value === 'low') return 0.35;
+    return 0;
 }
 
 /**
@@ -75,14 +88,15 @@ Responde SOLO el JSON array, sin markdown ni explicaciones.`;
         const text = response.text?.trim() || '';
         // Limpiar posible markdown wrapping
         const jsonStr = text.replace(/^```json?\s*/i, '').replace(/\s*```$/i, '');
-        const parsed: Array<{ i: number; c: string; conf: string }> = JSON.parse(jsonStr);
+        const parsed: Array<{ i: number; c: string; conf?: string; confidence?: number; reason?: string }> = JSON.parse(jsonStr);
 
         return parsed
             .filter(r => (ALL_CATEGORIES as string[]).includes(r.c))
             .map(r => ({
                 index: r.i,
                 category: r.c,
-                confidence: (r.conf as 'high' | 'medium' | 'low') || 'low',
+                confidence: normalizeConfidence(r.confidence ?? r.conf),
+                reason: r.reason,
             }));
     } catch (err) {
         logger.error('AI categorization failed', err);

@@ -6,7 +6,8 @@
 
 import { GoogleGenAI } from '@google/genai';
 import type { ParseResult, ParsedRow } from './csvParser';
-import { suggestCategory } from './csvParser';
+import { detectInstallments, inferImportType, suggestCategory } from './csvParser';
+import { detectImportProfileFromRows, IMPORT_PROFILES } from './importProfiles';
 
 const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
 
@@ -47,6 +48,7 @@ export async function parsePDF(buffer: ArrayBuffer): Promise<ParseResult> {
       ],
       totalRows: 0,
       skippedRows: 0,
+      profile: IMPORT_PROFILES.generic_pdf,
     };
   }
 
@@ -172,14 +174,18 @@ export async function parsePDF(buffer: ArrayBuffer): Promise<ParseResult> {
 
     const type: 'income' | 'expense' =
       item.type === 'income' ? 'income' : 'expense';
+    const detectedType = inferImportType(description, type);
+    const installmentsInfo = detectInstallments(description);
 
     rows.push({
       date: dateObj,
       description,
       amount,
-      type,
-      suggestedCategory: suggestCategory(description, type),
+      type: detectedType,
+      suggestedCategory: suggestCategory(description, detectedType),
+      categorySource: 'rules',
       rawLine: `${item.date}|${description}|${item.amount}`,
+      ...installmentsInfo,
     });
   }
 
@@ -193,5 +199,6 @@ export async function parsePDF(buffer: ArrayBuffer): Promise<ParseResult> {
     errors,
     totalRows: parsed.length,
     skippedRows,
+    profile: detectImportProfileFromRows(rows, 'pdf'),
   };
 }

@@ -4,15 +4,27 @@
  * Bancolombia, Davivienda, BBVA, Nequi, Scotiabank Colpatria, Banco de Bogotá
  */
 
-import { DEFAULT_CATEGORIES } from '../config/constants';
+import { CREDIT_PAYMENT_CATEGORY, DEFAULT_CATEGORIES } from '../config/constants';
+import type { ImportProfile } from './importProfiles';
+import { detectImportProfileFromText } from './importProfiles';
+
+export type ParsedTransactionType = 'income' | 'expense' | 'transfer';
+
+export type CategoryLookup = string[] | {
+  expense?: string[];
+  income?: string[];
+};
 
 export interface ParsedRow {
   date: Date;
   description: string;
   amount: number;
-  type: 'income' | 'expense';
+  type: ParsedTransactionType;
   suggestedCategory: string;
+  categorySource?: 'file' | 'rules';
   rawLine: string;
+  installments?: number;
+  currentInstallment?: number;
 }
 
 export interface ColumnMapping {
@@ -22,6 +34,7 @@ export interface ColumnMapping {
   credit: number | null;  // columna separada para créditos
   amount: number | null;  // columna unificada de monto
   typeIndicator: number | null; // columna D/C o Tipo
+  category: number | null;
 }
 
 export interface ParseResult {
@@ -29,6 +42,7 @@ export interface ParseResult {
   errors: string[];
   totalRows: number;
   skippedRows: number;
+  profile?: ImportProfile;
 }
 
 // ── Detección de delimitador ─────────────────────────────────────────────────
@@ -81,6 +95,7 @@ const CREDIT_KEYWORDS = ['credito', 'crédito', 'abono', 'ingreso', 'creditos',
   'créditos', 'abonos', 'credit', 'entrada', 'entradas'];
 const AMOUNT_KEYWORDS = ['valor', 'monto', 'importe', 'amount', 'vlr', 'vr'];
 const TYPE_KEYWORDS = ['d/c', 'tipo', 'type', 'db/cr', 'signo', 'clase'];
+const CATEGORY_KEYWORDS = ['categoria', 'categorÃ­a', 'category', 'rubro'];
 
 function matchesKeyword(header: string, keywords: string[]): boolean {
   const h = header.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -88,7 +103,7 @@ function matchesKeyword(header: string, keywords: string[]): boolean {
 }
 
 export function detectColumns(headers: string[]): ColumnMapping {
-  let date = -1, description = -1, debit = -1, credit = -1, amount = -1, typeIndicator = -1;
+  let date = -1, description = -1, debit = -1, credit = -1, amount = -1, typeIndicator = -1, category = -1;
 
   headers.forEach((h, i) => {
     if (date === -1 && matchesKeyword(h, DATE_KEYWORDS)) date = i;
@@ -97,6 +112,7 @@ export function detectColumns(headers: string[]): ColumnMapping {
     else if (credit === -1 && matchesKeyword(h, CREDIT_KEYWORDS)) credit = i;
     else if (amount === -1 && matchesKeyword(h, AMOUNT_KEYWORDS)) amount = i;
     else if (typeIndicator === -1 && matchesKeyword(h, TYPE_KEYWORDS)) typeIndicator = i;
+    else if (category === -1 && matchesKeyword(h, CATEGORY_KEYWORDS)) category = i;
   });
 
   return {
@@ -106,6 +122,7 @@ export function detectColumns(headers: string[]): ColumnMapping {
     credit: credit >= 0 ? credit : null,
     amount: amount >= 0 ? amount : null,
     typeIndicator: typeIndicator >= 0 ? typeIndicator : null,
+    category: category >= 0 ? category : null,
   };
 }
 
@@ -198,6 +215,92 @@ function extractMerchant(description: string): string {
 
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
+export const INTERNAL_TRANSFER_KEYWORDS = [
+  'ABONO SUCURSAL VIRTUAL',
+  'APLICACION SALDO A FAV',
+  'TRASLADO SALDO A FAVOR',
+  'Gracias por tu pago',
+  'PAGO PSE NU',
+  'PAGO TARJETA',
+  'PAGO A TARJETA',
+  'PAGO A TARJETA DE CREDITO',
+  'PAGO TC',
+  'PAGO CREDITO',
+  'PAGO SUC VIRT TC',
+  'TRANSFERENCIA PROPIA',
+  'TRANSFERENCIA DESDE NEQUI',
+  'TRANSFERENCIAS A NEQUI',
+  'NEQUI ENVIO',
+];
+
+function uniqueCategories(categories?: CategoryLookup): string[] {
+  const provided = Array.isArray(categories)
+    ? categories
+    : [
+        ...(categories?.expense ?? []),
+        ...(categories?.income ?? []),
+      ];
+
+  return [
+    ...new Set([
+      ...DEFAULT_CATEGORIES.expense,
+      ...DEFAULT_CATEGORIES.income,
+      CREDIT_PAYMENT_CATEGORY,
+      ...provided,
+    ]),
+  ];
+}
+
+export function matchKnownCategory(raw: string, categories?: CategoryLookup): string | null {
+  const value = raw.trim();
+  if (!value) return null;
+
+  const normalizedValue = norm(value);
+  return uniqueCategories(categories).find(category => norm(category) === normalizedValue) ?? null;
+}
+
+export function isInternalTransferDescription(description: string): boolean {
+  const value = norm(description);
+  return INTERNAL_TRANSFER_KEYWORDS.some(keyword => value.includes(norm(keyword)));
+}
+
+export function inferImportType(description: string, parsedType: 'income' | 'expense'): ParsedTransactionType {
+  return isInternalTransferDescription(description) ? 'transfer' : parsedType;
+}
+
+export function detectInstallments(description: string): { installments?: number; currentInstallment?: number } {
+  const value = norm(description);
+  const maxInstallments = 60;
+
+  const cuotaDe = value.match(/\bcuota\s+(\d{1,2})\s+de\s+(\d{1,2})\b/);
+  if (cuotaDe) {
+    const currentInstallment = parseInt(cuotaDe[1], 10);
+    const installments = parseInt(cuotaDe[2], 10);
+    if (installments > 1 && installments <= maxInstallments && currentInstallment >= 1 && currentInstallment <= installments) {
+      return { installments, currentInstallment };
+    }
+  }
+
+  const fraction = value.match(/\b(\d{1,2})\s*\/\s*(\d{1,2})\b/);
+  if (fraction) {
+    const currentInstallment = parseInt(fraction[1], 10);
+    const installments = parseInt(fraction[2], 10);
+    if (installments > 1 && installments <= maxInstallments && currentInstallment >= 1 && currentInstallment <= installments) {
+      return { installments, currentInstallment };
+    }
+  }
+
+  const totalOnly = value.match(/\b(\d{1,2})\s+cuotas?\b/);
+  if (totalOnly) {
+    const installments = parseInt(totalOnly[1], 10);
+    if (installments > 1 && installments <= maxInstallments) {
+      return { installments };
+    }
+  }
+
+  return {};
+}
+
 const CATEGORY_RULES: Array<{ keywords: string[]; category: string; type?: 'income' | 'expense' }> = [
   // ── INGRESOS ──────────────────────────────────────────────────────────────
   {
@@ -253,7 +356,7 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: string; type?: 'inco
       'lubricante', 'lavadero', 'autolavado', 'lavautos',
       // Vuelos / bus
       'avianca', 'latam', 'wingo', 'jetsmart', 'flota', 'expreso', 'copetran',
-      'bolivariano', 'terminal', 'aeropuerto', 'tiquete', 'tiquete aereo',
+      'bolivariano', 'terminal', 'aeropuerto', 'tiquete', 'tiquete aereo', 'tq',
     ],
     category: 'Transporte',
   },
@@ -269,6 +372,7 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: string; type?: 'inco
       'mcdonalds', 'burger king', 'subway', 'kfc', 'frisby', 'el corral', 'crepes waffles',
       'crepes', 'wok', 'papa johns', 'dominos', 'pizza hut', 'presto', 'oma',
       'kokoriko', 'pollo olímpico', 'pollo olimpico', 'ajiaco', 'la brasa',
+      'oxxo', 'sarku', 'dulce maria',
       // Cafeterías / café
       'juan valdez', 'starbucks', 'tostao', 'cafe', 'cafeteria', 'cafetería', 'cocorollo',
       'el laboratori', 'laboratorio cafe', 'pergamino', 'velvet', 'amor perfecto',
@@ -303,7 +407,7 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: string; type?: 'inco
       'bar ', 'discoteca', 'concierto', 'teatro', 'museo', 'parque diversiones',
       'salitre magico', 'mundo aventura', 'maloka', 'acuapark', 'parque acuatico',
       // Deportes
-      'gym', 'gimnasio', 'smartfit', 'bodytech', 'spinning', 'crossfit', 'zumba',
+      'gym', 'gimnasio', 'bodytech', 'spinning', 'crossfit', 'zumba',
     ],
     category: 'Entretenimiento',
   },
@@ -323,6 +427,8 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: string; type?: 'inco
       'internet', 'telefonia', 'telefonía', 'fibra optica', 'plan datos',
       // TV
       'directv', 'dish ', 'une tv', 'claro tv', 'tigo une',
+      // AI tools
+      'claude', 'openai',
       // Wompi — intermediario de pago usado por Tigo, servicios públicos, etc.
       'wompi',
       // Comisiones bancarias
@@ -367,6 +473,8 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: string; type?: 'inco
       'psicologia', 'psiquiatria', 'fisioterapia',
       // Medicina prepagada
       'medicina prepagada', 'colmedica', 'colmédica', 'medicina integral',
+      // Gimnasios / salud preventiva
+      'smart fit', 'smartfit', 'profamilia',
     ],
     category: 'Salud',
   },
@@ -389,7 +497,7 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: string; type?: 'inco
       'libreria', 'librería', 'papeleria', 'papelería', 'panamericana', 'lerner',
       'utiles escolares', 'utiles',
       // Niquiadici (librería local del extracto)
-      'niquiadici',
+      'niquiadici', 'buscalibre',
     ],
     category: 'Educación',
   },
@@ -448,7 +556,11 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: string; type?: 'inco
   { keywords: ['transferencia', 'envio nequi', 'envío nequi', 'daviplata', 'transfiya', 'nequi'], category: 'Otros' },
 ];
 
-export function suggestCategory(description: string, type: 'income' | 'expense'): string {
+export function suggestCategory(description: string, type: ParsedTransactionType): string {
+  if (isInternalTransferDescription(description)) {
+    return CREDIT_PAYMENT_CATEGORY;
+  }
+
   // Intentar primero con el comercio real (quitando prefijo de medio de pago)
   // Ej: "PAGO PSE TIGO" → probar con "TIGO" antes que con la descripción completa
   const merchant = extractMerchant(description);
@@ -471,16 +583,17 @@ export function suggestCategory(description: string, type: 'income' | 'expense')
 
 // ── Función principal: parseCSV ───────────────────────────────────────────────
 
-export function parseCSV(text: string): ParseResult {
+export function parseCSV(text: string, categories?: CategoryLookup): ParseResult {
   const errors: string[] = [];
   const rows: ParsedRow[] = [];
+  const profile = detectImportProfileFromText(text, 'csv');
 
   // Normalizar saltos de línea y quitar BOM
   const normalized = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const lines = normalized.split('\n').filter(l => l.trim() !== '');
 
   if (lines.length < 2) {
-    return { rows: [], errors: ['El archivo no contiene suficientes filas'], totalRows: 0, skippedRows: 0 };
+    return { rows: [], errors: ['El archivo no contiene suficientes filas'], totalRows: 0, skippedRows: 0, profile };
   }
 
   const delimiter = detectDelimiter(lines.slice(0, 5).join('\n'));
@@ -567,13 +680,21 @@ export function parseCSV(text: string): ParseResult {
       continue;
     }
 
+    const detectedType = inferImportType(description, type);
+    const fileCategory = mapping.category !== null
+      ? matchKnownCategory(cols[mapping.category] || '', categories)
+      : null;
+    const installmentsInfo = detectInstallments(description);
+
     rows.push({
       date,
       description,
       amount,
-      type,
-      suggestedCategory: suggestCategory(description, type),
+      type: detectedType,
+      suggestedCategory: fileCategory ?? suggestCategory(description, detectedType),
+      categorySource: fileCategory ? 'file' : 'rules',
       rawLine: line,
+      ...installmentsInfo,
     });
   }
 
@@ -582,5 +703,6 @@ export function parseCSV(text: string): ParseResult {
     errors,
     totalRows: lines.length - headerIndex - 1,
     skippedRows: skipped,
+    profile,
   };
 }

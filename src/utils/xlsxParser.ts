@@ -10,8 +10,16 @@
  */
 
 import * as XLSX from 'xlsx';
-import type { ParseResult, ParsedRow } from './csvParser';
-import { parseDate, suggestCategory } from './csvParser';
+import type { CategoryLookup, ParseResult, ParsedRow } from './csvParser';
+import type { ImportProfile } from './importProfiles';
+import {
+  detectInstallments,
+  inferImportType,
+  matchKnownCategory,
+  parseDate,
+  suggestCategory,
+} from './csvParser';
+import { detectImportProfileFromSheetData } from './importProfiles';
 
 // Fecha en formato D/MM o DD/MM (sin año)
 const DATE_REGEX = /^\d{1,2}\/\d{2}$/;
@@ -43,6 +51,7 @@ const AMOUNT_HEADER_KEYWORDS = [
   'colombianos', 'total',
 ];
 const TYPE_HEADER_KEYWORDS = ['d/c', 'tipo', 'naturaleza', 'signo', 'clase', 'db/cr'];
+const CATEGORY_HEADER_KEYWORDS = ['categoria', 'categoría', 'category', 'rubro'];
 const BALANCE_HEADER_KEYWORDS = ['saldo', 'balance', 'cupo'];
 const INSTALLMENT_HEADER_KEYWORDS = ['cuota', 'cuotas', 'plazo'];
 const CARD_STATEMENT_KEYWORDS = [
@@ -62,6 +71,7 @@ interface GenericColumnMapping {
   credit: number | null;
   amount: number | null;
   typeIndicator: number | null;
+  category: number | null;
 }
 
 function normalize(s: string): string {
@@ -187,6 +197,7 @@ function detectGenericColumns(headers: string[]): GenericColumnMapping {
   let credit: number | null = null;
   let amount: number | null = null;
   let typeIndicator: number | null = null;
+  let category: number | null = null;
 
   headers.forEach((header, index) => {
     if (!header) return;
@@ -196,6 +207,7 @@ function detectGenericColumns(headers: string[]): GenericColumnMapping {
     if (date === -1 && includesAny(header, DATE_HEADER_KEYWORDS)) date = index;
     if (description === -1 && includesAny(header, DESCRIPTION_HEADER_KEYWORDS)) description = index;
     if (typeIndicator === null && includesAny(header, TYPE_HEADER_KEYWORDS)) typeIndicator = index;
+    if (category === null && includesAny(header, CATEGORY_HEADER_KEYWORDS)) category = index;
 
     if (!isBalanceColumn && !isInstallmentColumn) {
       if (debit === null && includesAny(header, DEBIT_HEADER_KEYWORDS)) debit = index;
@@ -209,7 +221,7 @@ function detectGenericColumns(headers: string[]): GenericColumnMapping {
   if (amount !== null && amount === debit) debit = null;
   if (amount !== null && amount === credit) credit = null;
 
-  return { date, description, debit, credit, amount, typeIndicator };
+  return { date, description, debit, credit, amount, typeIndicator, category };
 }
 
 function parseDescription(row: unknown[], descriptionIndex: number): string {
@@ -240,7 +252,7 @@ function isPaymentLike(description: string): boolean {
   return includesAny(description, PAYMENT_DESCRIPTION_KEYWORDS);
 }
 
-function parseGenericXLSXRows(data: unknown[][]): ParseResult | null {
+function parseGenericXLSXRows(data: unknown[][], categories?: CategoryLookup, profile?: ImportProfile): ParseResult | null {
   const header = findGenericHeader(data);
   if (!header) return null;
 
@@ -297,13 +309,21 @@ function parseGenericXLSXRows(data: unknown[][]): ParseResult | null {
       continue;
     }
 
+    const detectedType = inferImportType(description, type);
+    const fileCategory = header.mapping.category !== null
+      ? matchKnownCategory(String(row[header.mapping.category] ?? ''), categories)
+      : null;
+    const installmentsInfo = detectInstallments(description);
+
     rows.push({
       date,
       description,
       amount: Math.abs(amount),
-      type,
-      suggestedCategory: suggestCategory(description, type),
+      type: detectedType,
+      suggestedCategory: fileCategory ?? suggestCategory(description, detectedType),
+      categorySource: fileCategory ? 'file' : 'rules',
       rawLine: row.map(cell => cell ?? '').join('|'),
+      ...installmentsInfo,
     });
   }
 
@@ -315,10 +335,10 @@ function parseGenericXLSXRows(data: unknown[][]): ParseResult | null {
     );
   }
 
-  return { rows, errors, totalRows, skippedRows };
+  return { rows, errors, totalRows, skippedRows, profile };
 }
 
-function parseBancolombiaAccountRows(data: unknown[][]): ParseResult {
+function parseBancolombiaAccountRows(data: unknown[][], profile?: ImportProfile): ParseResult {
   const rows: ParsedRow[] = [];
   const errors: string[] = [];
   let skippedRows = 0;
@@ -382,13 +402,18 @@ function parseBancolombiaAccountRows(data: unknown[][]): ParseResult {
     const type: 'income' | 'expense' = amount < 0 ? 'expense' : 'income';
     const absAmount = Math.abs(amount);
 
+    const detectedType = inferImportType(description, type);
+    const installmentsInfo = detectInstallments(description);
+
     rows.push({
       date,
       description,
       amount: absAmount,
-      type,
-      suggestedCategory: suggestCategory(description, type),
+      type: detectedType,
+      suggestedCategory: suggestCategory(description, detectedType),
+      categorySource: 'rules',
       rawLine: (row as unknown[]).map(c => c ?? '').join('|'),
+      ...installmentsInfo,
     });
   }
 
@@ -404,10 +429,10 @@ function parseBancolombiaAccountRows(data: unknown[][]): ParseResult {
     }
   }
 
-  return { rows, errors, totalRows, skippedRows };
+  return { rows, errors, totalRows, skippedRows, profile };
 }
 
-export function parseXLSX(buffer: ArrayBuffer): ParseResult {
+export function parseXLSX(buffer: ArrayBuffer, categories?: CategoryLookup): ParseResult {
   let wb: XLSX.WorkBook;
   try {
     wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
@@ -438,11 +463,13 @@ export function parseXLSX(buffer: ArrayBuffer): ParseResult {
       errors: ['El archivo no contiene suficientes filas.'],
       totalRows: 0,
       skippedRows: 0,
+      profile: detectImportProfileFromSheetData(data),
     };
   }
 
-  const accountResult = parseBancolombiaAccountRows(data);
+  const profile = detectImportProfileFromSheetData(data);
+  const accountResult = parseBancolombiaAccountRows(data, profile);
   if (accountResult.rows.length > 0) return accountResult;
 
-  return parseGenericXLSXRows(data) ?? accountResult;
+  return parseGenericXLSXRows(data, categories, profile) ?? accountResult;
 }

@@ -1,16 +1,23 @@
 'use client';
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { X, Upload, FileText, CheckCircle, AlertCircle, ChevronDown, Loader2, ToggleLeft, ToggleRight, ArrowLeft, Sparkles, Calendar } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
 import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useImportTransactions } from '../../hooks/useImportTransactions';
-import { parseCSV } from '../../utils/csvParser';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { isInternalTransferDescription, parseCSV } from '../../utils/csvParser';
 import { parseXLSX } from '../../utils/xlsxParser';
 import { parsePDF } from '../../utils/pdfParser';
 import { categorizeWithAI, isAIAvailable } from '../../utils/aiCategorizer';
-import { DEFAULT_CATEGORIES } from '../../config/constants';
+import {
+  findLearnedCategory,
+  groupImportRowsByPattern,
+  upsertImportLearningRule,
+  type ImportLearningRule,
+} from '../../utils/importLearning';
+import { CREDIT_PAYMENT_CATEGORY, DEFAULT_CATEGORIES, SPECIAL_CATEGORIES } from '../../config/constants';
 import { formatCurrency } from '../../utils/formatters';
 import type { ImportRow } from '../../hooks/useImportTransactions';
 
@@ -32,44 +39,61 @@ function AIDateAdjuster({ rows, setRows }: { rows: ImportRow[]; setRows: React.D
     const todayStr = today.toISOString().split('T')[0];
     const dayName = today.toLocaleDateString('es-CO', { weekday: 'long' });
 
-    // Get date range from current rows
-    const dates = rows.map(r => r.date.getTime());
-    const minDate = new Date(Math.min(...dates)).toISOString().split('T')[0];
-    const maxDate = new Date(Math.max(...dates)).toISOString().split('T')[0];
+    // Build transaction list with descriptions for individual date assignment
+    const transactionList = rows.map((r, i) => ({
+      index: i,
+      description: r.description,
+      currentDate: r.date.toISOString().split('T')[0],
+      amount: r.amount,
+      type: r.type,
+    }));
 
     try {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: `Hoy es ${dayName} ${todayStr}. Tengo ${rows.length} transacciones importadas con fechas entre ${minDate} y ${maxDate}. El usuario dice: "${prompt.trim()}". Necesito que me des el rango de fechas correcto. Responde SOLO un JSON: {"startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD"}. Sin explicaciones.`,
+        contents: `Hoy es ${dayName} ${todayStr}. Tengo ${rows.length} transacciones importadas de un extracto bancario. El usuario dice: "${prompt.trim()}".
+
+Necesito que asignes la fecha correcta a CADA transacción individualmente basándote en el contexto del usuario y las descripciones. Si una descripción menciona un día de la semana o una fecha relativa, úsala. Si no hay pista clara, distribuye lógicamente según el contexto.
+
+Transacciones:
+${transactionList.map(t => `[${t.index}] "${t.description}" (${t.type}, $${t.amount}, fecha actual: ${t.currentDate})`).join('\n')}
+
+Responde SOLO un JSON array con la fecha asignada a cada transacción por su índice:
+[{"index":0,"date":"YYYY-MM-DD"},{"index":1,"date":"YYYY-MM-DD"},...]
+
+Sin explicaciones, solo el JSON array.`,
         config: { temperature: 0 },
       });
 
       const text = response.text?.trim() || '';
-      const jsonMatch = text.match(/\{[^}]+\}/);
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (!jsonMatch) { setFeedback('No pude interpretar. Intenta ser más específico.'); setLoading(false); return; }
 
-      const { startDate, endDate } = JSON.parse(jsonMatch[0]);
-      if (!startDate || !endDate) { setFeedback('Respuesta incompleta de la IA.'); setLoading(false); return; }
+      const assignments: { index: number; date: string }[] = JSON.parse(jsonMatch[0]);
+      if (!Array.isArray(assignments) || assignments.length === 0) {
+        setFeedback('Respuesta incompleta de la IA.'); setLoading(false); return;
+      }
 
-      const start = new Date(startDate + 'T12:00:00');
-      const end = new Date(endDate + 'T12:00:00');
-      const totalDays = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
-
-      if (totalDays <= 0) { setFeedback('El rango de fechas no es válido (inicio >= fin).'); setLoading(false); return; }
-
-      // Redistribute dates proportionally within the new range
-      const oldMin = Math.min(...dates);
-      const oldMax = Math.max(...dates);
-      const oldRange = oldMax - oldMin || 1;
-
-      setRows(prev => prev.map(r => {
-        const ratio = (r.date.getTime() - oldMin) / oldRange;
-        const newTime = start.getTime() + ratio * (end.getTime() - start.getTime());
-        return { ...r, date: new Date(newTime) };
+      // Apply individual dates
+      const dateMap = new Map(assignments.map(a => [a.index, a.date]));
+      setRows(prev => prev.map((r, i) => {
+        const newDateStr = dateMap.get(i);
+        if (newDateStr) {
+          const newDate = new Date(newDateStr + 'T12:00:00');
+          if (!isNaN(newDate.getTime())) {
+            return { ...r, date: newDate };
+          }
+        }
+        return r;
       }));
 
-      setFeedback(`✓ Fechas ajustadas: ${start.toLocaleDateString('es-CO')} → ${end.toLocaleDateString('es-CO')}`);
+      // Show range of assigned dates
+      const assignedDates = assignments.map(a => new Date(a.date + 'T12:00:00')).filter(d => !isNaN(d.getTime()));
+      const minAssigned = new Date(Math.min(...assignedDates.map(d => d.getTime())));
+      const maxAssigned = new Date(Math.max(...assignedDates.map(d => d.getTime())));
+
+      setFeedback(`✓ ${assignments.length} fechas asignadas individualmente: ${minAssigned.toLocaleDateString('es-CO')} → ${maxAssigned.toLocaleDateString('es-CO')}`);
       setPrompt('');
     } catch {
       setFeedback('Error al consultar la IA.');
@@ -90,7 +114,7 @@ function AIDateAdjuster({ rows, setRows }: { rows: ImportRow[]; setRows: React.D
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAdjust()}
-          placeholder='Ej: "las fechas van del jueves pasado a hoy"'
+          placeholder='Ej: "la primera es de hoy, las demás del lunes y martes"'
           className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-purple-200 dark:border-purple-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
           disabled={loading}
         />
@@ -119,14 +143,36 @@ interface ImportTransactionsModalProps {
 
 type Step = 'upload' | 'review' | 'done';
 
-const ALL_CATEGORIES = [
-  ...new Set([...DEFAULT_CATEGORIES.expense, ...DEFAULT_CATEGORIES.income]),
+interface AISuggestion {
+  id: string;
+  pattern: string;
+  category: string;
+  confidence: number;
+  indexes: number[];
+  sampleDescription: string;
+  sampleAmount: number;
+}
+
+const FALLBACK_CATEGORIES = [
+  ...new Set([...DEFAULT_CATEGORIES.expense, ...DEFAULT_CATEGORIES.income, CREDIT_PAYMENT_CATEGORY]),
 ];
 
+const categoryCollator = new Intl.Collator('es-CO', { sensitivity: 'base' });
+
+const normalizeCategory = (category: string) =>
+  category.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+const isOtherCategory = (category: string) => normalizeCategory(category) === 'otros';
+
+const isSpecialCategory = (category: string) =>
+  SPECIAL_CATEGORIES.adjustmentCategories.some(item => normalizeCategory(item) === normalizeCategory(category));
+
 export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsModalProps) {
-  const { accounts, transactions: existingTransactions } = useFinance();
+  const { accounts, transactions: existingTransactions, categories } = useFinance();
   const { user } = useAuth();
-  const { importTransactions, status, progress, result, reset } = useImportTransactions(user?.uid || null);
+  const { importTransactions, status, progress, result, reset } = useImportTransactions(user?.uid || null, accounts);
+  const importRulesKey = `moneytrack_import_rules_${user?.uid ?? 'guest'}`;
+  const [learningRules, setLearningRules] = useLocalStorage<ImportLearningRule[]>(importRulesKey, []);
 
   const [step, setStep] = useState<Step>('upload');
   const [rows, setRows] = useState<ImportRow[]>([]);
@@ -136,11 +182,47 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
   const [parseStats, setParseStats] = useState<{ total: number; skipped: number; duplicates: number } | null>(null);
   const [aiCategorizing, setAiCategorizing] = useState(false);
   const [aiApplied, setAiApplied] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
   const [pdfParsing, setPdfParsing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const nonCreditAccounts = accounts.filter(a => a.type !== 'credit');
   const creditAccounts = accounts.filter(a => a.type === 'credit');
+  const categoryOptions = useMemo(
+    () => [...new Set([...categories.expense, ...categories.income, CREDIT_PAYMENT_CATEGORY])]
+      .sort(categoryCollator.compare),
+    [categories.expense, categories.income]
+  );
+  const availableCategoryOptions = useMemo(
+    () => categoryOptions.length > 0
+      ? categoryOptions
+      : [...FALLBACK_CATEGORIES].sort(categoryCollator.compare),
+    [categoryOptions]
+  );
+  const inferTransferRoute = useCallback((baseAccountId: string, isInternalTransfer: boolean): { accountId: string; toAccountId?: string } => {
+    if (!isInternalTransfer) return { accountId: baseAccountId };
+
+    const selectedAccount = accounts.find(account => account.id === baseAccountId);
+    if (selectedAccount?.type === 'credit' && selectedAccount.id) {
+      const linkedSourceId = selectedAccount.bankAccountId && accounts.some(account => account.id === selectedAccount.bankAccountId)
+        ? selectedAccount.bankAccountId
+        : undefined;
+
+      return linkedSourceId
+        ? { accountId: linkedSourceId, toAccountId: selectedAccount.id }
+        : { accountId: baseAccountId };
+    }
+
+    const linkedCreditAccounts = accounts.filter(account =>
+      account.type === 'credit' &&
+      account.bankAccountId === baseAccountId &&
+      account.id
+    );
+
+    return linkedCreditAccounts.length === 1
+      ? { accountId: baseAccountId, toAccountId: linkedCreditAccounts[0].id }
+      : { accountId: baseAccountId };
+  }, [accounts]);
 
   const handleClose = useCallback(() => {
     setStep('upload');
@@ -150,6 +232,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
     setFileName('');
     setParseStats(null);
     setAiApplied(false);
+    setAiSuggestions([]);
     setPdfParsing(false);
     reset();
     onClose();
@@ -161,6 +244,8 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
 
     setParseError('');
     setFileName(file.name);
+    setAiSuggestions([]);
+    setAiApplied(false);
 
     const name = file.name.toLowerCase();
     const isXLSX = name.endsWith('.xlsx') || name.endsWith('.xls');
@@ -177,42 +262,65 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
       }
 
       const accountId = selectedAccountId || nonCreditAccounts[0]?.id || accounts[0]?.id || '';
+      if (!selectedAccountId && accountId) {
+        setSelectedAccountId(accountId);
+      }
 
       // ── Detección de duplicados (todo en memoria, sin llamadas a Firestore) ──
 
       // Clave de identidad: tipo|día|monto
       const dayKey = (d: Date) =>
         `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-      const txKey = (type: string, date: Date, amount: number) =>
-        `${type}|${dayKey(date)}|${amount.toFixed(2)}`;
+      const descKey = (description: string) =>
+        description.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 20);
+      const txKey = (type: string, date: Date, amount: number, description: string) =>
+        `${type}|${dayKey(date)}|${amount.toFixed(2)}|${descKey(description)}`;
+      const txDate = (value: unknown) => {
+        if (value instanceof Date) return value;
+        if (value && typeof (value as { toDate?: () => Date }).toDate === 'function') {
+          return (value as { toDate: () => Date }).toDate();
+        }
+        return new Date(value as string | number);
+      };
 
       // 1. Índice de transacciones existentes ya en memoria (cero reads Firestore)
-      const existingKeys = new Set(
-        existingTransactions
-          .filter(tx => tx.accountId === accountId)
-          .map(tx => {
-            const d = tx.date instanceof Date ? tx.date : new Date(tx.date);
-            return txKey(tx.type, d, tx.amount);
-          })
-      );
+      const existingAccountKeys = new Set<string>();
+      const existingInternalTransferKeys = new Set<string>();
+      existingTransactions.forEach(tx => {
+        const d = txDate(tx.date);
+        if (isNaN(d.getTime())) return;
+
+        if (tx.accountId === accountId) {
+          existingAccountKeys.add(txKey(tx.type, d, tx.amount, tx.description));
+        }
+        existingInternalTransferKeys.add(txKey('any', d, tx.amount, tx.description));
+      });
 
       // 2. Detectar duplicados dentro del propio archivo (misma fila repetida)
       const seenInFile = new Set<string>();
 
       const mapped = result.rows.map(r => {
-        const key = txKey(r.type, r.date, r.amount);
+        const isInternalTransfer = r.type === 'transfer' || isInternalTransferDescription(r.description);
+        const key = txKey(isInternalTransfer ? 'any' : r.type, r.date, r.amount, r.description);
 
-        const duplicateInDB = existingKeys.has(key);
+        const duplicateInDB = isInternalTransfer
+          ? existingInternalTransferKeys.has(key)
+          : existingAccountKeys.has(key);
         const duplicateInFile = seenInFile.has(key);
 
         if (!duplicateInFile) seenInFile.add(key);
 
         const isDuplicate = duplicateInDB || duplicateInFile;
+        const transferRoute = inferTransferRoute(accountId, isInternalTransfer);
+        const learnedCategory = r.categorySource === 'file'
+          ? null
+          : findLearnedCategory(r.description, learningRules, availableCategoryOptions);
         return {
           ...r,
-          category: r.suggestedCategory,
-          accountId,
-          include: !isDuplicate,
+          category: learnedCategory ?? r.suggestedCategory,
+          accountId: transferRoute.accountId,
+          toAccountId: transferRoute.toAccountId,
+          include: !isDuplicate && !isInternalTransfer,
           isDuplicate,
         };
       });
@@ -236,18 +344,27 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
       const reader = new FileReader();
       reader.onload = (ev) => {
         const buffer = ev.target?.result as ArrayBuffer;
-        applyResult(parseXLSX(buffer));
+        applyResult(parseXLSX(buffer, categories));
       };
       reader.readAsArrayBuffer(file);
     } else {
       const reader = new FileReader();
       reader.onload = (ev) => {
         const text = ev.target?.result as string;
-        applyResult(parseCSV(text));
+        applyResult(parseCSV(text, categories));
       };
       reader.readAsText(file, 'UTF-8');
     }
-  }, [selectedAccountId, accounts, nonCreditAccounts]);
+  }, [
+    selectedAccountId,
+    accounts,
+    nonCreditAccounts,
+    existingTransactions,
+    categories,
+    inferTransferRoute,
+    learningRules,
+    availableCategoryOptions,
+  ]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -264,8 +381,12 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
 
   const handleAccountChange = useCallback((accountId: string) => {
     setSelectedAccountId(accountId);
-    setRows(prev => prev.map(r => ({ ...r, accountId })));
-  }, []);
+    setRows(prev => prev.map(r => {
+      const isInternalTransfer = r.type === 'transfer' || isInternalTransferDescription(r.description);
+      const transferRoute = inferTransferRoute(accountId, isInternalTransfer);
+      return { ...r, accountId: transferRoute.accountId, toAccountId: transferRoute.toAccountId };
+    }));
+  }, [inferTransferRoute]);
 
   const handleToggleRow = useCallback((index: number) => {
     setRows(prev => prev.map((r, i) => i === index ? { ...r, include: !r.include } : r));
@@ -276,12 +397,27 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
   }, []);
 
   const handleCategoryChange = useCallback((index: number, category: string) => {
+    const row = rows[index];
+    if (row && row.category !== category) {
+      setLearningRules(prev => upsertImportLearningRule(prev, row.description, category));
+      setAiSuggestions(prev => prev
+        .map(suggestion => ({
+          ...suggestion,
+          indexes: suggestion.indexes.filter(rowIndex => rowIndex !== index),
+        }))
+        .filter(suggestion => suggestion.indexes.length > 0)
+      );
+    }
     setRows(prev => prev.map((r, i) => i === index ? { ...r, category } : r));
-  }, []);
+  }, [rows, setLearningRules]);
 
-  const handleTypeChange = useCallback((index: number, type: 'income' | 'expense') => {
-    setRows(prev => prev.map((r, i) => i === index ? { ...r, type } : r));
-  }, []);
+  const handleTypeChange = useCallback((index: number, type: 'income' | 'expense' | 'transfer') => {
+    setRows(prev => prev.map((r, i) => {
+      if (i !== index) return r;
+      const transferRoute = inferTransferRoute(r.accountId, type === 'transfer');
+      return { ...r, type, accountId: transferRoute.accountId, toAccountId: transferRoute.toAccountId };
+    }));
+  }, [inferTransferRoute]);
 
   const handleImport = useCallback(async () => {
     await importTransactions(rows);
@@ -292,28 +428,46 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
     if (aiCategorizing || rows.length === 0) return;
     setAiCategorizing(true);
     try {
-      const toAnalyze = rows
-        .filter(r => r.include)
-        .map((r, i) => ({
-          index: rows.indexOf(r),
-          description: r.description,
-          amount: r.amount,
-          type: r.type,
-          currentCategory: r.category,
-        }));
+      const rowsForAI = rows
+        .map((row, index) => ({ row, index }))
+        .filter((item): item is { row: ImportRow & { type: 'income' | 'expense' }; index: number } =>
+          item.row.include &&
+          item.row.type !== 'transfer' &&
+          item.row.categorySource !== 'file' &&
+          isOtherCategory(item.row.category) &&
+          !isSpecialCategory(item.row.category)
+        );
+
+      const groups = groupImportRowsByPattern(rowsForAI);
+      const toAnalyze = groups.map((group, index) => ({
+        index,
+        description: `${group.pattern}: ${group.sample.description}`,
+        amount: group.sample.amount,
+        type: group.sample.type,
+        currentCategory: group.sample.category,
+      }));
+
       const results = await categorizeWithAI(toAnalyze);
-      if (results.length > 0) {
-        setRows(prev => {
-          const updated = [...prev];
-          results.forEach(r => {
-            if (updated[r.index]) {
-              updated[r.index] = { ...updated[r.index], category: r.category };
-            }
-          });
-          return updated;
-        });
-        setAiApplied(true);
-      }
+      const applicableResults = results.filter(r => r.confidence >= 0.75 && !isOtherCategory(r.category));
+      const suggestions = applicableResults
+        .map((result): AISuggestion | null => {
+          const group = groups[result.index];
+          if (!group) return null;
+
+          return {
+            id: `${group.pattern}-${result.category}`,
+            pattern: group.pattern,
+            category: result.category,
+            confidence: result.confidence,
+            indexes: group.indexes,
+            sampleDescription: group.sample.description,
+            sampleAmount: group.sample.amount,
+          };
+        })
+        .filter((suggestion): suggestion is AISuggestion => suggestion !== null)
+        .sort((a, b) => categoryCollator.compare(a.category, b.category) || categoryCollator.compare(a.pattern, b.pattern));
+
+      setAiSuggestions(suggestions);
     } catch {
       // silently fail — categories stay as keyword-based
     } finally {
@@ -321,7 +475,59 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
     }
   }, [aiCategorizing, rows]);
 
+  const handleSuggestionCategoryChange = useCallback((suggestionId: string, category: string) => {
+    setAiSuggestions(prev => prev.map(suggestion =>
+      suggestion.id === suggestionId ? { ...suggestion, category } : suggestion
+    ));
+  }, []);
+
+  const handleDiscardAISuggestions = useCallback(() => {
+    setAiSuggestions([]);
+  }, []);
+
+  const handleApplyAISuggestions = useCallback(() => {
+    if (aiSuggestions.length === 0) return;
+
+    setRows(prev => {
+      const updated = [...prev];
+      aiSuggestions.forEach(suggestion => {
+        suggestion.indexes.forEach(rowIndex => {
+          if (updated[rowIndex]) {
+            updated[rowIndex] = { ...updated[rowIndex], category: suggestion.category };
+          }
+        });
+      });
+      return updated;
+    });
+
+    setLearningRules(prev => aiSuggestions.reduce(
+      (acc, suggestion) => upsertImportLearningRule(acc, suggestion.sampleDescription, suggestion.category),
+      prev
+    ));
+    setAiSuggestions([]);
+    setAiApplied(true);
+  }, [aiSuggestions, setLearningRules]);
+
   const includedCount = rows.filter(r => r.include).length;
+  const aiSuggestionTransactionCount = useMemo(
+    () => new Set(aiSuggestions.flatMap(suggestion => suggestion.indexes)).size,
+    [aiSuggestions]
+  );
+  const aiSuggestionsByCategory = useMemo(() => {
+    const grouped = new Map<string, AISuggestion[]>();
+    aiSuggestions.forEach(suggestion => {
+      const current = grouped.get(suggestion.category) ?? [];
+      current.push(suggestion);
+      grouped.set(suggestion.category, current);
+    });
+
+    return [...grouped.entries()]
+      .sort(([a], [b]) => categoryCollator.compare(a, b))
+      .map(([category, suggestions]) => ({
+        category,
+        suggestions: suggestions.sort((a, b) => categoryCollator.compare(a.pattern, b.pattern)),
+      }));
+  }, [aiSuggestions]);
 
   if (!isOpen) return null;
 
@@ -514,7 +720,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
                       {aiCategorizing ? (
                         <><Loader2 size={12} className="animate-spin" /> Analizando...</>
                       ) : (
-                        <><Sparkles size={12} /> {aiApplied ? 'Re-categorizar con IA' : 'Categorizar con IA'}</>
+                        <><Sparkles size={12} /> {aiSuggestions.length > 0 ? 'Actualizar sugerencias' : aiApplied ? 'Re-categorizar con IA' : 'Categorizar con IA'}</>
                       )}
                     </button>
                   )}
@@ -558,6 +764,77 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
                 <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-xs text-blue-700 dark:text-blue-300">
                   <Sparkles size={12} />
                   Categorías actualizadas con IA. Revisa y ajusta si es necesario.
+                </div>
+              )}
+
+              {aiSuggestions.length > 0 && (
+                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800/60 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-2">
+                      <Sparkles size={14} className="text-blue-600 dark:text-blue-400 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-semibold text-blue-800 dark:text-blue-200">
+                          Sugerencias por comercio
+                        </p>
+                        <p className="text-[11px] text-blue-600 dark:text-blue-300">
+                          {aiSuggestions.length} grupos cubren {aiSuggestionTransactionCount} transacciones
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-1.5 shrink-0">
+                      <button
+                        onClick={handleDiscardAISuggestions}
+                        className="text-xs px-2.5 py-1 rounded-lg bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-blue-100 dark:border-blue-800 hover:bg-gray-50 dark:hover:bg-gray-700"
+                      >
+                        Descartar
+                      </button>
+                      <button
+                        onClick={handleApplyAISuggestions}
+                        className="text-xs px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium"
+                      >
+                        Aplicar
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {aiSuggestionsByCategory.map(group => (
+                      <div key={group.category} className="space-y-1.5">
+                        <div className="text-[11px] font-semibold text-blue-900 dark:text-blue-100">
+                          {group.category}
+                        </div>
+                        {group.suggestions.map(suggestion => (
+                          <div
+                            key={suggestion.id}
+                            className="grid grid-cols-[1fr_auto] gap-2 items-center p-2 rounded-lg bg-white/80 dark:bg-gray-900/50 border border-blue-100 dark:border-blue-900/60"
+                          >
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="text-xs font-semibold text-gray-800 dark:text-gray-100 truncate">
+                                  {suggestion.pattern.toUpperCase()}
+                                </span>
+                                <span className="text-[10px] text-gray-400 shrink-0">
+                                  {suggestion.indexes.length} mov.
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-gray-400 truncate" title={suggestion.sampleDescription}>
+                                {suggestion.sampleDescription} Â· {Math.round(suggestion.confidence * 100)}%
+                              </p>
+                            </div>
+                            <select
+                              value={suggestion.category}
+                              onChange={e => handleSuggestionCategoryChange(suggestion.id, e.target.value)}
+                              className="text-[11px] px-2 py-1 border border-blue-100 dark:border-blue-800 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-[150px]"
+                            >
+                              {availableCategoryOptions.map(category => (
+                                <option key={category} value={category}>{category}</option>
+                              ))}
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -625,7 +902,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
                                 className="text-xs pl-2 pr-6 py-1 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 appearance-none focus:outline-none focus:ring-1 focus:ring-purple-500 w-full"
                                 disabled={!row.include}
                               >
-                                {ALL_CATEGORIES.map(c => (
+                                {availableCategoryOptions.map(c => (
                                   <option key={c} value={c}>{c}</option>
                                 ))}
                               </select>
@@ -650,12 +927,19 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
                               >
                                 Ingreso
                               </button>
+                              <button
+                                onClick={() => handleTypeChange(i, 'transfer')}
+                                disabled={!row.include}
+                                className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${row.type === 'transfer' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                              >
+                                Transferencia
+                              </button>
                             </div>
                           </td>
 
                           {/* Monto */}
-                          <td className={`py-2 px-3 text-right font-semibold text-xs whitespace-nowrap ${row.type === 'income' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                            {row.type === 'income' ? '+' : '-'}
+                          <td className={`py-2 px-3 text-right font-semibold text-xs whitespace-nowrap ${row.type === 'income' ? 'text-green-600 dark:text-green-400' : row.type === 'transfer' ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'}`}>
+                            {row.type === 'income' ? '+' : row.type === 'transfer' ? '' : '-'}
                             {formatCurrency(row.amount)}
                           </td>
                         </tr>

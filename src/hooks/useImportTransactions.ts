@@ -4,21 +4,25 @@
  */
 
 import { useCallback, useState } from 'react';
-import { collection, doc, writeBatch } from 'firebase/firestore';
+import { collection, doc, increment, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { logger } from '../utils/logger';
 import { setBatchImporting } from '../utils/importBatchFlag';
-import type { Transaction } from '../types/finance';
+import type { Account, Transaction } from '../types/finance';
 
 export interface ImportRow {
   date: Date;
   description: string;
   amount: number;
-  type: 'income' | 'expense';
+  type: 'income' | 'expense' | 'transfer';
   category: string;
+  categorySource?: 'file' | 'rules';
   accountId: string;
+  toAccountId?: string;
   include: boolean;    // si el usuario la marcó para importar
   isDuplicate?: boolean; // posible duplicado detectado contra transacciones existentes
+  installments?: number;
+  currentInstallment?: number;
 }
 
 export interface ImportResult {
@@ -29,9 +33,19 @@ export interface ImportResult {
 
 export type ImportStatus = 'idle' | 'importing' | 'done' | 'error';
 
-const BATCH_SIZE = 499;
+const FIRESTORE_BATCH_LIMIT = 500;
 
-export function useImportTransactions(userId: string | null) {
+function getCreditDelta(
+  row: Pick<ImportRow, 'type' | 'amount' | 'accountId' | 'toAccountId'>,
+  accountId: string
+): number {
+  if (row.type === 'expense' && row.accountId === accountId) return row.amount;
+  if (row.type === 'income' && row.accountId === accountId) return -row.amount;
+  if (row.type === 'transfer' && row.toAccountId === accountId) return -row.amount;
+  return 0;
+}
+
+export function useImportTransactions(userId: string | null, accounts: Account[] = []) {
   const [status, setStatus] = useState<ImportStatus>('idle');
   const [progress, setProgress] = useState(0); // 0-100
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -60,16 +74,25 @@ export function useImportTransactions(userId: string | null) {
 
       const errors: string[] = [];
       let imported = 0;
+      let invalidSkipped = 0;
 
       try {
         const txCollection = collection(db, `users/${userId}/transactions`);
+        const creditAccountWriteReserve = accounts.filter(account => account.type === 'credit' && account.id).length;
+        const batchSize = Math.max(1, FIRESTORE_BATCH_LIMIT - creditAccountWriteReserve);
 
         // Dividir en chunks de BATCH_SIZE
-        for (let chunkStart = 0; chunkStart < selected.length; chunkStart += BATCH_SIZE) {
-          const chunk = selected.slice(chunkStart, chunkStart + BATCH_SIZE);
+        for (let chunkStart = 0; chunkStart < selected.length; chunkStart += batchSize) {
+          const chunk = selected.slice(chunkStart, chunkStart + batchSize);
           const batch = writeBatch(db);
 
           for (const row of chunk) {
+            if (row.type === 'transfer' && !row.toAccountId) {
+              invalidSkipped++;
+              errors.push(`Transferencia sin cuenta destino omitida: ${row.description}`);
+              continue;
+            }
+
             const txRef = doc(txCollection);
             const txData: Omit<Transaction, 'id'> = {
               type: row.type,
@@ -79,8 +102,13 @@ export function useImportTransactions(userId: string | null) {
               date: row.date,
               paid: true,
               accountId: row.accountId,
+              toAccountId: row.toAccountId,
               createdAt: new Date(),
             };
+            if (row.installments && row.installments > 1) {
+              txData.installments = row.installments;
+              txData.monthlyInstallmentAmount = Math.round((row.amount / row.installments) * 100) / 100;
+            }
             // Eliminar undefined antes de escribir
             const clean = Object.fromEntries(
               Object.entries(txData).filter(([, v]) => v !== undefined)
@@ -89,12 +117,32 @@ export function useImportTransactions(userId: string | null) {
             imported++;
           }
 
+          const creditDeltas = new Map<string, number>();
+          chunk.forEach(row => {
+            if (row.type === 'transfer' && !row.toAccountId) return;
+
+            accounts
+              .filter(account => account.type === 'credit' && account.id)
+              .forEach(account => {
+                const delta = getCreditDelta(row, account.id!);
+                if (delta !== 0) {
+                  creditDeltas.set(account.id!, (creditDeltas.get(account.id!) ?? 0) + delta);
+                }
+              });
+          });
+
+          creditDeltas.forEach((delta, accountId) => {
+            batch.update(doc(db, `users/${userId}/accounts`, accountId), {
+              usedCredit: increment(delta),
+            });
+          });
+
           await batch.commit();
           setProgress(Math.round(((chunkStart + chunk.length) / selected.length) * 100));
           logger.info(`Import batch committed: ${chunkStart + chunk.length}/${selected.length}`);
         }
 
-        const r: ImportResult = { imported, skipped: rows.length - selected.length, errors };
+        const r: ImportResult = { imported, skipped: rows.length - selected.length + invalidSkipped, errors };
         setResult(r);
         setStatus('done');
         // Re-enable notifications after a short delay (let Firestore listeners settle)
@@ -111,7 +159,7 @@ export function useImportTransactions(userId: string | null) {
         return r;
       }
     },
-    [userId]
+    [userId, accounts]
   );
 
   const reset = useCallback(() => {

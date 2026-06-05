@@ -23,6 +23,7 @@ describe('parseXLSX', () => {
     ]));
 
     expect(result.errors).toEqual([]);
+    expect(result.profile?.id).toBe('bancolombia_account');
     expect(result.rows).toHaveLength(2);
     expect(result.rows[0]).toMatchObject({ description: 'PAGO DE NOMI EMPRESA', amount: 271400, type: 'income' });
     expect(result.rows[1]).toMatchObject({ description: 'COMPRA EN TIENDA', amount: 10500, type: 'expense' });
@@ -40,6 +41,7 @@ describe('parseXLSX', () => {
     ]));
 
     expect(result.errors).toEqual([]);
+    expect(result.profile?.id).toBe('bancolombia_card');
     expect(result.rows).toHaveLength(2);
     expect(result.rows[0]).toMatchObject({
       description: 'RESTAURANTE PRUEBA MEDELLIN',
@@ -49,7 +51,7 @@ describe('parseXLSX', () => {
     expect(result.rows[1]).toMatchObject({
       description: 'PAGO A TARJETA DE CREDITO',
       amount: 200000,
-      type: 'income',
+      type: 'transfer',
     });
   });
 });

@@ -22,6 +22,14 @@ export interface Transaction {
 
   // 🆕 Asociación con préstamo/deuda
   debtId?: string; // ID de la deuda asociada
+
+  // 🆕 Soporte multimoneda (opcional, retrocompatible).
+  // `amount` SIEMPRE está en COP (fuente de verdad para balances/reportes).
+  // Estos campos solo se llenan cuando el movimiento original fue en otra moneda.
+  currency?: string;          // Moneda de `amount` (default 'COP' si ausente)
+  originalAmount?: number;    // Monto en la moneda original (ej. 99.99)
+  originalCurrency?: string;  // Código de la moneda original (ej. 'USD')
+  exchangeRate?: number;      // TRM aplicada: COP por unidad de la moneda original
 }
 
 // 🆕 PAGOS PERIÓDICOS (Suscripciones, Servicios, etc.)

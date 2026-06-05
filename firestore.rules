@@ -36,6 +36,14 @@ service cloud.firestore {
         && (!('interestRate' in data.keys()) || (data.interestRate is number && data.interestRate >= 0 && data.interestRate <= 200));
     }
 
+    // Helper: validate optional multi-currency fields on transactions
+    function hasValidCurrencyFields(data) {
+      return (!('currency' in data.keys()) || data.currency is string)
+        && (!('originalCurrency' in data.keys()) || data.originalCurrency is string)
+        && (!('originalAmount' in data.keys()) || (data.originalAmount is number && data.originalAmount > 0))
+        && (!('exchangeRate' in data.keys()) || (data.exchangeRate is number && data.exchangeRate > 0));
+    }
+
     // User data collections
     match /users/{userId} {
       // Only authenticated users can read/write their own data
@@ -57,7 +65,8 @@ service cloud.firestore {
           && request.resource.data.date is timestamp
           && request.resource.data.createdAt is timestamp
           && hasValidInstallments(request.resource.data)
-          && hasValidInterestFields(request.resource.data);
+          && hasValidInterestFields(request.resource.data)
+          && hasValidCurrencyFields(request.resource.data);
 
         // Allow update of editable fields (description, amount, date, category, paid)
         // accountId can change during credit card merge operations

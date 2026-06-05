@@ -180,7 +180,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [parseError, setParseError] = useState('');
   const [fileName, setFileName] = useState('');
-  const [parseStats, setParseStats] = useState<{ total: number; skipped: number; duplicates: number } | null>(null);
+  const [parseStats, setParseStats] = useState<{ total: number; skipped: number; duplicates: number; needsRate?: number } | null>(null);
   const [aiCategorizing, setAiCategorizing] = useState(false);
   const [aiApplied, setAiApplied] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
@@ -326,13 +326,16 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
           category: learnedCategory ?? r.suggestedCategory,
           accountId: transferRoute.accountId,
           toAccountId: transferRoute.toAccountId,
-          include: !isDuplicate && !isInternalTransfer,
+          // No incluir por defecto duplicados, transferencias ni montos en moneda
+          // extranjera sin TRM (no se pueden convertir a COP de forma segura).
+          include: !isDuplicate && !isInternalTransfer && !r.needsExchangeRate,
           isDuplicate,
         };
       });
 
       const duplicateCount = mapped.filter(r => r.isDuplicate).length;
-      setParseStats({ total: result.rows.length, skipped: result.skippedRows, duplicates: duplicateCount });
+      const needsRateCount = mapped.filter(r => r.needsExchangeRate).length;
+      setParseStats({ total: result.rows.length, skipped: result.skippedRows, duplicates: duplicateCount, needsRate: needsRateCount });
       setRows(mapped);
     };
 
@@ -691,6 +694,14 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
                       <AlertCircle size={16} className="flex-shrink-0" />
                       <span>
                         <strong>{parseStats.duplicates} posibles duplicados</strong> detectados y excluidos automáticamente. Puedes incluirlos manualmente si lo necesitas.
+                      </span>
+                    </div>
+                  )}
+                  {(parseStats.needsRate ?? 0) > 0 && (
+                    <div className="flex items-center gap-2 p-3 bg-orange-50 dark:bg-orange-900/20 rounded-xl text-sm text-orange-700 dark:text-orange-400">
+                      <AlertCircle size={16} className="flex-shrink-0" />
+                      <span>
+                        <strong>{parseStats.needsRate} movimientos en moneda extranjera sin TRM</strong> excluidos: no se pueden convertir a COP. Agrega la columna TRM al archivo o edítalos manualmente.
                       </span>
                     </div>
                   )}

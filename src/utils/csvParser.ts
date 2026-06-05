@@ -25,6 +25,12 @@ export interface ParsedRow {
   rawLine: string;
   installments?: number;
   currentInstallment?: number;
+  // Multimoneda (opcional)
+  currency?: string;
+  originalAmount?: number;
+  originalCurrency?: string;
+  exchangeRate?: number;
+  needsExchangeRate?: boolean; // moneda extranjera sin TRM → requiere acción del usuario
 }
 
 export interface ColumnMapping {
@@ -35,6 +41,8 @@ export interface ColumnMapping {
   amount: number | null;  // columna unificada de monto
   typeIndicator: number | null; // columna D/C o Tipo
   category: number | null;
+  currency: number | null; // columna de moneda/divisa
+  trm: number | null;      // columna de tasa de cambio (TRM)
 }
 
 export interface ParseResult {
@@ -96,6 +104,8 @@ const CREDIT_KEYWORDS = ['credito', 'crédito', 'abono', 'ingreso', 'creditos',
 const AMOUNT_KEYWORDS = ['valor', 'monto', 'importe', 'amount', 'vlr', 'vr'];
 const TYPE_KEYWORDS = ['d/c', 'tipo', 'type', 'db/cr', 'signo', 'clase'];
 const CATEGORY_KEYWORDS = ['categoria', 'categoría', 'category', 'rubro', 'clasificacion'];
+const CURRENCY_KEYWORDS = ['moneda', 'divisa', 'currency'];
+const TRM_KEYWORDS = ['trm', 'tasa cambio', 'tasa de cambio', 'tasa representativa', 'exchange rate'];
 
 function matchesKeyword(header: string, keywords: string[]): boolean {
   const h = header.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -104,8 +114,13 @@ function matchesKeyword(header: string, keywords: string[]): boolean {
 
 export function detectColumns(headers: string[]): ColumnMapping {
   let date = -1, description = -1, debit = -1, credit = -1, amount = -1, typeIndicator = -1, category = -1;
+  let currency = -1, trm = -1;
 
   headers.forEach((h, i) => {
+    // TRM y moneda se detectan aparte para no consumir el slot de otra columna.
+    if (trm === -1 && matchesKeyword(h, TRM_KEYWORDS)) { trm = i; return; }
+    if (currency === -1 && matchesKeyword(h, CURRENCY_KEYWORDS)) { currency = i; return; }
+
     if (date === -1 && matchesKeyword(h, DATE_KEYWORDS)) date = i;
     else if (description === -1 && matchesKeyword(h, DESC_KEYWORDS)) description = i;
     else if (debit === -1 && matchesKeyword(h, DEBIT_KEYWORDS)) debit = i;
@@ -123,6 +138,8 @@ export function detectColumns(headers: string[]): ColumnMapping {
     amount: amount >= 0 ? amount : null,
     typeIndicator: typeIndicator >= 0 ? typeIndicator : null,
     category: category >= 0 ? category : null,
+    currency: currency >= 0 ? currency : null,
+    trm: trm >= 0 ? trm : null,
   };
 }
 
@@ -164,6 +181,64 @@ export function parseAmount(raw: string): number {
   const value = parseFloat(clean);
   if (isNaN(value)) return 0;
   return isNegative ? -value : value;
+}
+
+// ── Resolución de moneda / TRM ───────────────────────────────────────────────
+
+// Códigos ISO de monedas extranjeras soportadas (COP se trata como local).
+const FOREIGN_CURRENCY_CODES = new Set(['USD', 'EUR', 'GBP', 'MXN', 'CLP', 'ARS', 'PEN', 'BRL', 'CAD']);
+
+/**
+ * Normaliza un texto de moneda a su código ISO. Devuelve:
+ * - 'COP' para pesos colombianos (o vacío/$).
+ * - El código ISO ('USD', 'EUR'…) para monedas extranjeras conocidas.
+ * - null si no se reconoce.
+ */
+export function normalizeCurrencyCode(raw: string): string | null {
+  const value = norm(raw).replace(/[$\s.]/g, '').toUpperCase();
+  if (!value || value === 'COP' || value === 'PESOS' || value === 'COL') return 'COP';
+  if (value.startsWith('US') || value === 'DOLAR' || value === 'DOLARES' || value === 'DOLLAR') return 'USD';
+  if (value.startsWith('EUR')) return 'EUR';
+  return FOREIGN_CURRENCY_CODES.has(value) ? value : null;
+}
+
+export interface CurrencyResolution {
+  amount: number;
+  currency?: string;
+  originalAmount?: number;
+  originalCurrency?: string;
+  exchangeRate?: number;
+  needsExchangeRate?: boolean;
+}
+
+/**
+ * Convierte un monto en moneda extranjera a COP usando la TRM.
+ * - COP (o sin moneda) → sin cambios.
+ * - Moneda extranjera + TRM válida → amount en COP + metadatos originales.
+ * - Moneda extranjera sin TRM → marca needsExchangeRate (no se puede convertir).
+ */
+export function resolveImportCurrency(amount: number, rawCurrency: string, rawTrm: string): CurrencyResolution {
+  const code = normalizeCurrencyCode(rawCurrency);
+  if (!code || code === 'COP') return { amount };
+
+  const trm = parseAmount(rawTrm);
+  if (trm > 0) {
+    return {
+      amount: Math.round(amount * trm),
+      currency: 'COP',
+      originalAmount: amount,
+      originalCurrency: code,
+      exchangeRate: trm,
+    };
+  }
+
+  // Moneda extranjera sin TRM: no se puede convertir de forma segura.
+  return {
+    amount,
+    originalAmount: amount,
+    originalCurrency: code,
+    needsExchangeRate: true,
+  };
 }
 
 // ── Parser de fechas ─────────────────────────────────────────────────────────
@@ -746,16 +821,21 @@ export function parseCSV(text: string, categories?: CategoryLookup): ParseResult
       ? matchKnownCategory(cols[mapping.category] || '', categories)
       : null;
     const installmentsInfo = detectInstallments(description);
+    const currencyInfo = resolveImportCurrency(
+      amount,
+      mapping.currency !== null ? (cols[mapping.currency] || '') : '',
+      mapping.trm !== null ? (cols[mapping.trm] || '') : ''
+    );
 
     rows.push({
       date,
       description,
-      amount,
       type: detectedType,
       suggestedCategory: fileCategory ?? suggestCategory(description, detectedType),
       categorySource: fileCategory ? 'file' : 'rules',
       rawLine: line,
       ...installmentsInfo,
+      ...currencyInfo, // incluye amount (convertido a COP si había TRM)
     });
   }
 

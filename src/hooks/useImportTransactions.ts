@@ -23,6 +23,12 @@ export interface ImportRow {
   isDuplicate?: boolean; // posible duplicado detectado contra transacciones existentes
   installments?: number;
   currentInstallment?: number;
+  // Multimoneda (opcional)
+  currency?: string;
+  originalAmount?: number;
+  originalCurrency?: string;
+  exchangeRate?: number;
+  needsExchangeRate?: boolean; // moneda extranjera sin TRM
 }
 
 export interface ImportResult {
@@ -94,6 +100,13 @@ export function useImportTransactions(userId: string | null, accounts: Account[]
               continue;
             }
 
+            // Moneda extranjera sin TRM: no se puede convertir a COP de forma segura.
+            if (row.needsExchangeRate) {
+              invalidSkipped++;
+              errors.push(`Movimiento en ${row.originalCurrency ?? 'moneda extranjera'} sin TRM omitido: ${row.description}`);
+              continue;
+            }
+
             const txRef = doc(txCollection);
             importedDocIds.push(txRef.id);
             const txData: Omit<Transaction, 'id'> = {
@@ -110,6 +123,13 @@ export function useImportTransactions(userId: string | null, accounts: Account[]
             if (row.installments && row.installments > 1) {
               txData.installments = row.installments;
               txData.monthlyInstallmentAmount = Math.round((row.amount / row.installments) * 100) / 100;
+            }
+            // Metadatos de moneda original (solo si hubo conversión)
+            if (row.originalCurrency && row.originalCurrency !== 'COP' && row.exchangeRate) {
+              txData.currency = 'COP';
+              txData.originalAmount = row.originalAmount;
+              txData.originalCurrency = row.originalCurrency;
+              txData.exchangeRate = row.exchangeRate;
             }
             // Eliminar undefined antes de escribir
             const clean = Object.fromEntries(

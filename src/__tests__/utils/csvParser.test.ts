@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CREDIT_PAYMENT_CATEGORY } from '../../config/constants';
-import { parseCSV, parseAmount, parseDate, suggestCategory } from '../../utils/csvParser';
+import { parseCSV, parseAmount, parseDate, suggestCategory, resolveImportCurrency, normalizeCurrencyCode } from '../../utils/csvParser';
 
 describe('parseAmount', () => {
   it('parses Colombian thousands format', () => {
@@ -60,6 +60,64 @@ describe('parseDate', () => {
   it('returns null for invalid dates', () => {
     expect(parseDate('not a date')).toBeNull();
     expect(parseDate('32/13/2026')).toBeNull();
+  });
+});
+
+describe('resolveImportCurrency (Fase 4: USD/TRM)', () => {
+  it('leaves COP amounts unchanged', () => {
+    expect(resolveImportCurrency(50000, 'COP', '')).toEqual({ amount: 50000 });
+    expect(resolveImportCurrency(50000, '', '')).toEqual({ amount: 50000 });
+  });
+
+  it('converts USD to COP using the TRM and keeps original metadata', () => {
+    const r = resolveImportCurrency(10, 'USD', '4000');
+    expect(r.amount).toBe(40000);
+    expect(r.currency).toBe('COP');
+    expect(r.originalAmount).toBe(10);
+    expect(r.originalCurrency).toBe('USD');
+    expect(r.exchangeRate).toBe(4000);
+  });
+
+  it('flags USD without TRM as needsExchangeRate (does not convert)', () => {
+    const r = resolveImportCurrency(99.99, 'USD', '');
+    expect(r.needsExchangeRate).toBe(true);
+    expect(r.originalCurrency).toBe('USD');
+    expect(r.currency).toBeUndefined();
+  });
+
+  it('normalizeCurrencyCode recognizes common forms', () => {
+    expect(normalizeCurrencyCode('USD')).toBe('USD');
+    expect(normalizeCurrencyCode('US$')).toBe('USD');
+    expect(normalizeCurrencyCode('dólares')).toBe('USD');
+    expect(normalizeCurrencyCode('COP')).toBe('COP');
+    expect(normalizeCurrencyCode('')).toBe('COP');
+    expect(normalizeCurrencyCode('XYZ')).toBeNull();
+  });
+});
+
+describe('parseCSV multi-currency (Fase 4)', () => {
+  it('converts a USD row with TRM to COP and stores original values', () => {
+    const result = parseCSV([
+      'Fecha;Descripcion;Monto;Moneda;TRM',
+      '2026-05-10;Compra Amazon;-99,99;USD;4000',
+    ].join('\n'));
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].amount).toBe(Math.round(99.99 * 4000));
+    expect(result.rows[0].originalAmount).toBeCloseTo(99.99, 2);
+    expect(result.rows[0].originalCurrency).toBe('USD');
+    expect(result.rows[0].exchangeRate).toBe(4000);
+  });
+
+  it('flags a USD row without TRM', () => {
+    const result = parseCSV([
+      'Fecha;Descripcion;Monto;Moneda',
+      '2026-05-10;Compra Amazon;-99,99;USD',
+    ].join('\n'));
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].needsExchangeRate).toBe(true);
+    expect(result.rows[0].originalCurrency).toBe('USD');
   });
 });
 

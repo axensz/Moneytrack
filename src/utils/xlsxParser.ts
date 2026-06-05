@@ -17,6 +17,7 @@ import {
   inferImportType,
   matchKnownCategory,
   parseDate,
+  resolveImportCurrency,
   suggestCategory,
 } from './csvParser';
 import { detectImportProfileFromSheetData } from './importProfiles';
@@ -52,6 +53,8 @@ const AMOUNT_HEADER_KEYWORDS = [
 ];
 const TYPE_HEADER_KEYWORDS = ['d/c', 'tipo', 'naturaleza', 'signo', 'clase', 'db/cr'];
 const CATEGORY_HEADER_KEYWORDS = ['categoria', 'categoría', 'category', 'rubro'];
+const CURRENCY_HEADER_KEYWORDS = ['moneda', 'divisa', 'currency'];
+const TRM_HEADER_KEYWORDS = ['trm', 'tasa cambio', 'tasa de cambio', 'tasa representativa', 'exchange rate'];
 const BALANCE_HEADER_KEYWORDS = ['saldo', 'balance', 'cupo'];
 const INSTALLMENT_HEADER_KEYWORDS = ['cuota', 'cuotas', 'plazo'];
 const CARD_STATEMENT_KEYWORDS = [
@@ -72,6 +75,8 @@ interface GenericColumnMapping {
   amount: number | null;
   typeIndicator: number | null;
   category: number | null;
+  currency: number | null;
+  trm: number | null;
 }
 
 function normalize(s: string): string {
@@ -198,11 +203,17 @@ function detectGenericColumns(headers: string[]): GenericColumnMapping {
   let amount: number | null = null;
   let typeIndicator: number | null = null;
   let category: number | null = null;
+  let currency: number | null = null;
+  let trm: number | null = null;
 
   headers.forEach((header, index) => {
     if (!header) return;
     const isBalanceColumn = includesAny(header, BALANCE_HEADER_KEYWORDS);
     const isInstallmentColumn = includesAny(header, INSTALLMENT_HEADER_KEYWORDS) && !includesAny(header, AMOUNT_HEADER_KEYWORDS);
+
+    // TRM y moneda primero, para que no consuman el slot de "valor".
+    if (trm === null && includesAny(header, TRM_HEADER_KEYWORDS)) { trm = index; return; }
+    if (currency === null && includesAny(header, CURRENCY_HEADER_KEYWORDS)) { currency = index; return; }
 
     if (date === -1 && includesAny(header, DATE_HEADER_KEYWORDS)) date = index;
     if (description === -1 && includesAny(header, DESCRIPTION_HEADER_KEYWORDS)) description = index;
@@ -221,7 +232,7 @@ function detectGenericColumns(headers: string[]): GenericColumnMapping {
   if (amount !== null && amount === debit) debit = null;
   if (amount !== null && amount === credit) credit = null;
 
-  return { date, description, debit, credit, amount, typeIndicator, category };
+  return { date, description, debit, credit, amount, typeIndicator, category, currency, trm };
 }
 
 function parseDescription(row: unknown[], descriptionIndex: number): string {
@@ -314,16 +325,21 @@ function parseGenericXLSXRows(data: unknown[][], categories?: CategoryLookup, pr
       ? matchKnownCategory(String(row[header.mapping.category] ?? ''), categories)
       : null;
     const installmentsInfo = detectInstallments(description);
+    const currencyInfo = resolveImportCurrency(
+      Math.abs(amount),
+      header.mapping.currency !== null ? String(row[header.mapping.currency] ?? '') : '',
+      header.mapping.trm !== null ? String(row[header.mapping.trm] ?? '') : ''
+    );
 
     rows.push({
       date,
       description,
-      amount: Math.abs(amount),
       type: detectedType,
       suggestedCategory: fileCategory ?? suggestCategory(description, detectedType),
       categorySource: fileCategory ? 'file' : 'rules',
       rawLine: row.map(cell => cell ?? '').join('|'),
       ...installmentsInfo,
+      ...currencyInfo, // incluye amount (convertido a COP si había TRM)
     });
   }
 

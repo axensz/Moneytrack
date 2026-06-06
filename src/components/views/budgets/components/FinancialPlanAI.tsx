@@ -4,6 +4,7 @@ import React, { useState, useCallback } from 'react';
 import { Sparkles, Loader2, RefreshCw } from 'lucide-react';
 import type { FinancialPlan, PlanConfig } from '../../../../hooks/useFinancialPlan';
 import { getFinancialAdvice } from '../../../../lib/geminiPlan';
+import { useGeminiKey } from '../../../../contexts/GeminiKeyContext';
 
 interface Props {
   plan: FinancialPlan;
@@ -11,8 +12,12 @@ interface Props {
 }
 
 export const FinancialPlanAI: React.FC<Props> = ({ plan, config }) => {
+  const { isConfigured, hasConsent } = useGeminiKey();
   const [advice, setAdvice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // S4: sin key configurada o sin consentimiento, no ofrecer la función de IA.
+  const aiEnabled = isConfigured && hasConsent;
 
   const fetchAdvice = useCallback(async () => {
     setLoading(true);
@@ -25,6 +30,8 @@ export const FinancialPlanAI: React.FC<Props> = ({ plan, config }) => {
       setLoading(false);
     }
   }, [plan, config]);
+
+  if (!aiEnabled) return null;
 
   if (!advice && !loading) {
     return (

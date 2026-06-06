@@ -5,7 +5,7 @@ import { Calendar, ChevronDown, Sparkles, Loader2 } from 'lucide-react';
 import type { DateRangePreset } from '../../../../types/finance';
 import { DATE_PRESETS } from '../../../../utils/dateUtils';
 import { isGeminiConfigured } from '../../../../lib/gemini';
-import { getGeminiClient, isGeminiKeyConfigured } from '../../../../lib/geminiClient';
+import { getGeminiClient, isAiEnabled } from '../../../../lib/geminiClient';
 
 interface DateFilterDropdownProps {
   dateRangePreset: DateRangePreset;
@@ -19,7 +19,7 @@ interface DateFilterDropdownProps {
 }
 
 async function parseDateWithAI(query: string): Promise<{ startDate: string; endDate: string } | null> {
-  if (!isGeminiKeyConfigured()) return null;
+  if (!isAiEnabled()) return null;
 
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];

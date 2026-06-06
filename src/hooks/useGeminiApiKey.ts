@@ -16,7 +16,8 @@ import { logger } from '../utils/logger';
  * cifra en reposo, y la key nunca se loguea. Se recomienda al usuario restringir
  * su key en Google AI Studio como defensa en profundidad.
  */
-const storageKeyFor = (userId: string | null) => `moneytrack_gemini_key_${userId ?? 'guest'}`;
+// Intencionalmente no persistimos la API key en localStorage para evitar
+// almacenamiento de información sensible en texto claro en el navegador.
 
 export interface UseGeminiApiKeyResult {
   apiKey: string;
@@ -28,30 +29,18 @@ export interface UseGeminiApiKeyResult {
 export function useGeminiApiKey(userId: string | null): UseGeminiApiKeyResult {
   const [apiKey, setApiKeyState] = useState('');
 
-  // Aplica una key a estado + módulo central + caché local.
+  // Aplica una key a estado + módulo central (solo memoria en cliente).
   const apply = useCallback((key: string) => {
     const trimmed = (key ?? '').trim();
     setApiKeyState(trimmed);
     setGeminiApiKey(trimmed);
-    try {
-      if (trimmed) localStorage.setItem(storageKeyFor(userId), trimmed);
-      else localStorage.removeItem(storageKeyFor(userId));
-    } catch {
-      // localStorage no disponible (modo privado): se mantiene solo en memoria
-    }
-  }, [userId]);
+  }, []);
 
-  // Cargar: primero el caché local (instantáneo) y, si hay sesión, suscribirse a
-  // Firestore para sincronizar entre dispositivos.
+  // Cargar en memoria y, si hay sesión, suscribirse a Firestore para sincronizar
+  // entre dispositivos.
   useEffect(() => {
-    let local = '';
-    try {
-      local = localStorage.getItem(storageKeyFor(userId)) ?? '';
-    } catch {
-      local = '';
-    }
-    setApiKeyState(local);
-    setGeminiApiKey(local);
+    setApiKeyState('');
+    setGeminiApiKey('');
 
     if (!userId || !isFirebaseConfigured) return;
 
@@ -61,12 +50,11 @@ export function useGeminiApiKey(userId: string | null): UseGeminiApiKeyResult {
       (snap) => {
         const remote = (snap.data()?.geminiApiKey as string | undefined)?.trim() ?? '';
         if (remote) {
-          // La nube manda: sincroniza estado + módulo + caché local.
+          // La nube manda: sincroniza estado + módulo en memoria.
           setApiKeyState(remote);
           setGeminiApiKey(remote);
-          try { localStorage.setItem(storageKeyFor(userId), remote); } catch { /* noop */ }
         }
-        // Si la nube está vacía, conservamos lo que haya en local (no lo pisamos).
+        // Si la nube está vacía, mantenemos el estado actual en memoria.
       },
       (err) => logger.error('No se pudieron leer los ajustes de IA', err),
     );

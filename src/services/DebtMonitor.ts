@@ -5,10 +5,10 @@
 
 import { logger } from '../utils/logger';
 import { formatCurrency } from '../utils/formatters';
-import type { Debt } from '../types/finance';
+import type { Debt, Notification } from '../types/finance';
 
 interface DebtMonitorDeps {
-    createNotification: (notification: any) => Promise<void>;
+    createNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => Promise<void>;
     debts: Debt[];
 }
 

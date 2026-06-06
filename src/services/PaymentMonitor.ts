@@ -5,10 +5,10 @@
 
 import { logger } from '../utils/logger';
 import { formatCurrency } from '../utils/formatters';
-import type { RecurringPayment, Transaction } from '../types/finance';
+import type { RecurringPayment, Transaction, Notification } from '../types/finance';
 
 interface PaymentMonitorDeps {
-    createNotification: (notification: any) => Promise<void>;
+    createNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => Promise<void>;
     recurringPayments: RecurringPayment[];
     transactions: Transaction[];
 }

@@ -37,9 +37,15 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md">
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="dcm-title"
+        aria-describedby="dcm-desc"
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md"
+      >
         <div className="p-6">
-          <h3 className="text-lg font-semibold text-rose-600 dark:text-rose-400 mb-4">
+          <h3 id="dcm-title" className="text-lg font-semibold text-rose-600 dark:text-rose-400 mb-4">
             ⚠️ Eliminar Cuenta
           </h3>
 
@@ -57,7 +63,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
             </div>
           )}
 
-          <p className="text-gray-600 dark:text-gray-300 mb-2">
+          <p id="dcm-desc" className="text-gray-600 dark:text-gray-300 mb-2">
             Para confirmar la eliminación, escribe el nombre de la cuenta:
           </p>
           <p className="font-semibold text-lg text-gray-900 dark:text-white mb-4">

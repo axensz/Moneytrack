@@ -510,6 +510,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
               formatCurrency={formatCurrency}
               balanceLabel={balanceLabel}
               periodLabel={statsPeriodLabel}
+              hasAccounts={accounts.length > 0}
             />
 
             {/* Error banner when Firestore fails */}

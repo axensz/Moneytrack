@@ -78,8 +78,8 @@ export function NotificationPreferences({ onSave }: NotificationPreferencesProps
                     onSave();
                 }, 500);
             }
-        } catch (error: any) {
-            toast.error(error.message || 'Error al guardar preferencias');
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : 'Error al guardar preferencias');
         } finally {
             setSaving(false);
         }

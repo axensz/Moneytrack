@@ -4,6 +4,7 @@
 
 // Auth & User
 export { useAuth } from './useAuth';
+export { useGuestMigration } from './useGuestMigration';
 
 // Data Management
 export { useTransactions } from './useTransactions';

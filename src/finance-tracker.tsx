@@ -13,6 +13,7 @@ import { WelcomeModal } from './components/modals/WelcomeModal';
 import { HelpModal } from './components/modals/HelpModal';
 import { CategoriesModal } from './components/modals/CategoriesModal';
 import { GeminiKeyModal } from './components/modals/GeminiKeyModal';
+import { GuestMigrationModal } from './components/modals/GuestMigrationModal';
 import { GeminiKeyProvider } from './contexts/GeminiKeyContext';
 import { clearGuestFinanceData } from './utils/localData';
 import { NotificationPreferencesModal } from './components/modals/NotificationPreferencesModal';
@@ -24,6 +25,7 @@ import { useAddTransaction } from './hooks/useAddTransaction';
 import { useFilteredData } from './hooks/useFilteredData';
 import { useWelcomeModal } from './hooks/useWelcomeModal';
 import { useNotificationMonitoring } from './hooks';
+import { useGuestMigration } from './hooks/useGuestMigration';
 import { NotificationProvider, useNotificationContext } from './contexts/NotificationContext';
 import { UIPreferencesProvider } from './contexts/UIPreferencesContext';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -241,6 +243,9 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     setNewTransaction, setShowForm, setShowWelcomeModal,
   });
 
+  // S1: ofrecer migrar datos del modo invitado a la cuenta tras iniciar sesión.
+  const guestMigration = useGuestMigration(user?.uid ?? null);
+
   const handleLogout = useCallback(async () => {
     try {
       setIsLoggingOut(true);
@@ -417,7 +422,18 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         />
       )}
 
-      {showWelcomeModal && (
+      {guestMigration.showPrompt && (
+        <GuestMigrationModal
+          isOpen={guestMigration.showPrompt}
+          counts={guestMigration.counts}
+          isMigrating={guestMigration.isMigrating}
+          hasError={guestMigration.hasError}
+          onImport={guestMigration.runMigration}
+          onDismiss={guestMigration.dismiss}
+        />
+      )}
+
+      {showWelcomeModal && !guestMigration.showPrompt && (
         <WelcomeModal
           isOpen={showWelcomeModal}
           onClose={handleDismissWelcomeModal}

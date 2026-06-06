@@ -18,6 +18,7 @@ export { useCreditCardStatement } from './useCreditCardStatement';
 export { useCSVExport } from './useCSVExport';
 
 // UI & Filtering
+export { useConfirmDiscard } from './useConfirmDiscard';
 export { useFilteredData } from './useFilteredData';
 export { useAddTransaction } from './useAddTransaction';
 export { useGlobalStats } from './useGlobalStats';

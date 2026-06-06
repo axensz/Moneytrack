@@ -860,12 +860,12 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
                   <table className="w-full text-sm min-w-[540px]">
                     <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800 z-10">
                       <tr className="border-b border-gray-200 dark:border-gray-700">
-                        <th className="w-8 py-2 px-3 text-center"></th>
-                        <th className="py-2 px-3 text-left font-semibold text-gray-600 dark:text-gray-400 whitespace-nowrap">Fecha</th>
-                        <th className="py-2 px-3 text-left font-semibold text-gray-600 dark:text-gray-400">Descripción</th>
-                        <th className="py-2 px-3 text-left font-semibold text-gray-600 dark:text-gray-400">Categoría</th>
-                        <th className="py-2 px-3 text-center font-semibold text-gray-600 dark:text-gray-400">Tipo</th>
-                        <th className="py-2 px-3 text-right font-semibold text-gray-600 dark:text-gray-400 whitespace-nowrap">Monto</th>
+                        <th scope="col" className="w-8 py-2 px-3 text-center"></th>
+                        <th scope="col" className="py-2 px-3 text-left font-semibold text-gray-600 dark:text-gray-400 whitespace-nowrap">Fecha</th>
+                        <th scope="col" className="py-2 px-3 text-left font-semibold text-gray-600 dark:text-gray-400">Descripción</th>
+                        <th scope="col" className="py-2 px-3 text-left font-semibold text-gray-600 dark:text-gray-400">Categoría</th>
+                        <th scope="col" className="py-2 px-3 text-center font-semibold text-gray-600 dark:text-gray-400">Tipo</th>
+                        <th scope="col" className="py-2 px-3 text-right font-semibold text-gray-600 dark:text-gray-400 whitespace-nowrap">Monto</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">

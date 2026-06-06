@@ -86,19 +86,22 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
             <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               {editingAccount ? 'Editar Cuenta' : 'Nueva Cuenta'}
             </h4>
+            {/* S14: aria-label + tap target mínimo 44px */}
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+              aria-label="Cerrar"
+              className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors p-2 rounded-xl min-w-[44px] min-h-[44px] flex items-center justify-center"
             >
-              <X size={24} />
+              <X size={20} />
             </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Nombre (siempre visible) */}
             <div>
-              <label className="label-base">Nombre</label>
+              <label htmlFor="af-name" className="label-base">Nombre</label>
               <input
+                id="af-name"
                 type="text"
                 value={newAccount.name}
                 onChange={(e) => setNewAccount({ ...newAccount, name: e.target.value })}
@@ -111,8 +114,9 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
             {editingAccount && editingAccount.type === 'credit' && (
               <>
                 <div>
-                  <label className="label-base">Límite de Crédito</label>
+                  <label htmlFor="af-credit-limit-edit" className="label-base">Límite de Crédito</label>
                   <input
+                    id="af-credit-limit-edit"
                     type="text"
                     inputMode="decimal"
                     value={formatNumberForInput(creditLimitInput)}
@@ -127,8 +131,9 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="label-base">Tasa de Interés E.A. (%)</label>
+                  <label htmlFor="af-interest-rate-edit" className="label-base">Tasa de Interés E.A. (%)</label>
                   <input
+                    id="af-interest-rate-edit"
                     type="text"
                     inputMode="numeric"
                     value={interestRateInput}
@@ -146,8 +151,9 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
             {/* Ajuste de saldo para cuentas que no son TC */}
             {editingAccount && editingAccount.type !== 'credit' && (
               <div>
-                <label className="label-base">Ajustar saldo (opcional)</label>
+                <label htmlFor="af-balance-adj" className="label-base">Ajustar saldo (opcional)</label>
                 <input
+                  id="af-balance-adj"
                   type="text"
                   inputMode="decimal"
                   value={formatNumberForInput(balanceAdjustment)}
@@ -167,8 +173,9 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
             {/* Ajuste de deuda para TC */}
             {editingAccount && editingAccount.type === 'credit' && (
               <div>
-                <label className="label-base">Ajustar deuda pendiente (opcional)</label>
+                <label htmlFor="af-debt-adj" className="label-base">Ajustar deuda pendiente (opcional)</label>
                 <input
+                  id="af-debt-adj"
                   type="text"
                   inputMode="decimal"
                   value={formatNumberForInput(balanceAdjustment)}
@@ -189,8 +196,9 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
             {!editingAccount && (
               <>
                 <div>
-                  <label className="label-base">Tipo</label>
+                  <label htmlFor="af-type" className="label-base">Tipo</label>
                   <select
+                    id="af-type"
                     value={newAccount.type}
                     onChange={(e) =>
                       setNewAccount({
@@ -210,8 +218,9 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
 
                 {newAccount.type !== 'credit' ? (
                   <div>
-                    <label className="label-base">Saldo inicial</label>
+                    <label htmlFor="af-initial-balance" className="label-base">Saldo inicial</label>
                     <input
+                      id="af-initial-balance"
                       type="text"
                       inputMode="decimal"
                       value={formatNumberForInput(initialBalanceInput)}
@@ -228,8 +237,9 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                 ) : (
                   <>
                     <div>
-                      <label className="label-base">Banco asociado (opcional)</label>
+                      <label htmlFor="af-bank-account" className="label-base">Banco asociado (opcional)</label>
                       <select
+                        id="af-bank-account"
                         value={newAccount.bankAccountId || ''}
                         onChange={(e) =>
                           setNewAccount({
@@ -249,8 +259,9 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                     </div>
 
                     <div>
-                      <label className="label-base">Cupo total</label>
+                      <label htmlFor="af-credit-limit" className="label-base">Cupo total</label>
                       <input
+                        id="af-credit-limit"
                         type="text"
                         inputMode="decimal"
                         value={formatNumberForInput(creditLimitInput)}
@@ -266,8 +277,9 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                     </div>
 
                     <div>
-                      <label className="label-base">Tasa de Interés E.A. (%)</label>
+                      <label htmlFor="af-interest-rate" className="label-base">Tasa de Interés E.A. (%)</label>
                       <input
+                        id="af-interest-rate"
                         type="text"
                         inputMode="numeric"
                         value={interestRateInput}
@@ -278,8 +290,9 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                     </div>
 
                     <div>
-                      <label className="label-base">Día de corte</label>
+                      <label htmlFor="af-cutoff-day" className="label-base">Día de corte</label>
                       <input
+                        id="af-cutoff-day"
                         type="number"
                         min="1"
                         max="31"
@@ -292,8 +305,9 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                     </div>
 
                     <div>
-                      <label className="label-base">Día de pago</label>
+                      <label htmlFor="af-payment-day" className="label-base">Día de pago</label>
                       <input
+                        id="af-payment-day"
                         type="number"
                         min="1"
                         max="31"

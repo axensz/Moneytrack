@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { X } from 'lucide-react';
+import { useConfirmDiscard } from '../../../../hooks/useConfirmDiscard';
 import { showToast } from '../../../../utils/toastHelpers';
 import { logger } from '../../../../utils/logger';
 import type { RecurringPayment, Account } from '../../../../types/finance';
@@ -67,26 +68,32 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // S13: snapshot del formulario al abrirse para detectar cambios pendientes.
+  const initialFormRef = useRef<FormData>(INITIAL_FORM);
+
   // Reset form when modal opens/closes or editing payment changes
   React.useEffect(() => {
     if (isOpen) {
-      if (editingPayment) {
-        setFormData({
-          name: editingPayment.name,
-          amount: editingPayment.amount.toString(),
-          category: editingPayment.category,
-          accountId: editingPayment.accountId || '',
-          dueDay: editingPayment.dueDay,
-          frequency: editingPayment.frequency,
-          notes: editingPayment.notes || '',
-        });
-        setAmountInput(editingPayment.amount.toString());
-      } else {
-        setFormData(INITIAL_FORM);
-        setAmountInput('');
-      }
+      const initial: FormData = editingPayment
+        ? {
+            name: editingPayment.name,
+            amount: editingPayment.amount.toString(),
+            category: editingPayment.category,
+            accountId: editingPayment.accountId || '',
+            dueDay: editingPayment.dueDay,
+            frequency: editingPayment.frequency,
+            notes: editingPayment.notes || '',
+          }
+        : INITIAL_FORM;
+      initialFormRef.current = initial;
+      setFormData(initial);
+      setAmountInput(editingPayment ? editingPayment.amount.toString() : '');
     }
   }, [isOpen, editingPayment]);
+
+  // S13: formulario "sucio" si el usuario modificó algún campo.
+  const isDirty = JSON.stringify(formData) !== JSON.stringify(initialFormRef.current);
+  const { guardedClose } = useConfirmDiscard(isDirty);
 
   const handleSubmit = async () => {
     if (isSubmitting) return;
@@ -142,19 +149,22 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               {editingPayment ? 'Editar Pago Periódico' : 'Nuevo Pago Periódico'}
             </h3>
+            {/* S14: aria-label + tap target mínimo 44px */}
             <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+              onClick={() => guardedClose(onClose)}
+              aria-label="Cerrar"
+              className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors p-2 rounded-xl min-w-[44px] min-h-[44px] flex items-center justify-center"
             >
-              <X size={24} />
+              <X size={20} />
             </button>
           </div>
 
           <div className="space-y-4">
             {/* Nombre */}
             <div>
-              <label className="label-base">Nombre *</label>
+              <label htmlFor="pf-name" className="label-base">Nombre *</label>
               <input
+                id="pf-name"
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -166,8 +176,9 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
             {/* Monto y Frecuencia */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="label-base">Monto *</label>
+                <label htmlFor="pf-amount" className="label-base">Monto *</label>
                 <input
+                  id="pf-amount"
                   type="text"
                   inputMode="decimal"
                   value={formatNumberForInput(amountInput)}
@@ -182,8 +193,9 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
               </div>
 
               <div>
-                <label className="label-base">Frecuencia</label>
+                <label htmlFor="pf-frequency" className="label-base">Frecuencia</label>
                 <select
+                  id="pf-frequency"
                   value={formData.frequency}
                   onChange={(e) =>
                     setFormData({
@@ -202,8 +214,9 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
             {/* Día y Categoría */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="label-base">Día de vencimiento</label>
+                <label htmlFor="pf-due-day" className="label-base">Día de vencimiento</label>
                 <select
+                  id="pf-due-day"
                   value={formData.dueDay}
                   onChange={(e) =>
                     setFormData({ ...formData, dueDay: parseInt(e.target.value) })
@@ -219,8 +232,9 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
               </div>
 
               <div>
-                <label className="label-base">Categoría *</label>
+                <label htmlFor="pf-category" className="label-base">Categoría *</label>
                 <select
+                  id="pf-category"
                   value={formData.category}
                   onChange={(e) =>
                     setFormData({ ...formData, category: e.target.value })
@@ -239,8 +253,9 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
 
             {/* Cuenta */}
             <div>
-              <label className="label-base">Cuenta preferida (opcional)</label>
+              <label htmlFor="pf-account" className="label-base">Cuenta preferida (opcional)</label>
               <select
+                id="pf-account"
                 value={formData.accountId}
                 onChange={(e) =>
                   setFormData({ ...formData, accountId: e.target.value })
@@ -261,8 +276,9 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
 
             {/* Notas */}
             <div>
-              <label className="label-base">Notas (opcional)</label>
+              <label htmlFor="pf-notes" className="label-base">Notas (opcional)</label>
               <textarea
+                id="pf-notes"
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 placeholder="Notas adicionales..."
@@ -287,7 +303,7 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
                   : 'Crear'}
             </button>
             <button
-              onClick={onClose}
+              onClick={() => guardedClose(onClose)}
               disabled={isSubmitting}
               className="btn-cancel"
             >

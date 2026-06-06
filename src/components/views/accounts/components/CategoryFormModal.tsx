@@ -48,18 +48,21 @@ export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
             <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               Nueva Categoría
             </h4>
+            {/* S14: aria-label + tap target mínimo 44px */}
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+              aria-label="Cerrar"
+              className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors p-2 rounded-xl min-w-[44px] min-h-[44px] flex items-center justify-center"
             >
-              <X size={24} />
+              <X size={20} />
             </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="label-base">Tipo</label>
+              <label htmlFor="cf-type" className="label-base">Tipo</label>
               <select
+                id="cf-type"
                 value={newCategory.type}
                 onChange={(e) =>
                   setNewCategory({
@@ -75,8 +78,9 @@ export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
             </div>
 
             <div>
-              <label className="label-base">Nombre</label>
+              <label htmlFor="cf-name" className="label-base">Nombre</label>
               <input
+                id="cf-name"
                 type="text"
                 value={newCategory.name}
                 onChange={(e) => setNewCategory({ ...newCategory, name: e.target.value })}

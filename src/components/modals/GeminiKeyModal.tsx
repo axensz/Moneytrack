@@ -93,9 +93,19 @@ export function GeminiKeyModal({ isOpen, onClose }: GeminiKeyModalProps) {
         <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl text-xs text-amber-700 dark:text-amber-300">
           <ShieldCheck size={16} className="flex-shrink-0 mt-0.5" aria-hidden="true" />
           <span>
-            Tu key se guarda <strong>solo en este navegador</strong> y nunca se envía a nuestros
-            servidores. Al usar la IA, las descripciones de tus movimientos se envían a Google con
-            tu key para procesarlas.
+            Si <strong>inicias sesión</strong>, tu key se guarda en tu cuenta para sincronizarse
+            entre tus dispositivos (cifrada en reposo; solo tú puedes leerla). Como invitado, se
+            guarda solo en este navegador. Al usar la IA, las descripciones de tus movimientos se
+            envían a Google con tu key. Recomendado:{' '}
+            <a
+              href="https://aistudio.google.com/apikey"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2"
+            >
+              restringe tu key
+            </a>{' '}
+            a la API de Gemini.
           </span>
         </div>
 

@@ -235,6 +235,15 @@ service cloud.firestore {
         allow read: if isOwner(userId);
         allow write: if isOwner(userId);
       }
+
+      // Ajustes del usuario (incluye la API key de Gemini en modo BYOK).
+      // Solo el dueño lee/escribe; geminiApiKey, si está, debe ser string.
+      match /settings/{settingId} {
+        allow read: if isOwner(userId);
+        allow write: if isOwner(userId)
+          && (!('geminiApiKey' in request.resource.data.keys())
+              || request.resource.data.geminiApiKey is string);
+      }
     }
 
     // Deny all other access

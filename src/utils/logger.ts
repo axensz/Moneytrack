@@ -15,6 +15,8 @@
  * - En producción, envía a servicio de monitoreo (futuro)
  */
 
+import { captureError } from '../lib/errorReporter';
+
 type LogLevel = 'error' | 'warn' | 'info' | 'debug';
 
 interface LogContext {
@@ -72,11 +74,9 @@ class Logger {
    */
   error(message: string, error?: Error | unknown, context?: LogContext): void {
     this.log('error', message, error, context);
-
-    // TODO: En producción, enviar a Sentry
-    // if (!this.isDevelopment && typeof window !== 'undefined') {
-    //   Sentry.captureException(error, { extra: { message, ...context } });
-    // }
+    // S8: delegar al reporter activo (Sentry u otro servicio configurado con
+    // configureErrorReporter). El reporter por defecto es un no-op.
+    captureError(error ?? new Error(message), context as Record<string, unknown> | undefined);
   }
 
   /**

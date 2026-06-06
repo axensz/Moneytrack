@@ -19,6 +19,7 @@ export { useCSVExport } from './useCSVExport';
 
 // UI & Filtering
 export { useConfirmDiscard } from './useConfirmDiscard';
+export { useViewRouting } from './useViewRouting';
 export { useFilteredData } from './useFilteredData';
 export { useAddTransaction } from './useAddTransaction';
 export { useGlobalStats } from './useGlobalStats';

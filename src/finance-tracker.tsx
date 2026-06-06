@@ -7,6 +7,7 @@ import { Header } from './components/layout/Header';
 import { TabNavigation } from './components/layout/TabNavigation';
 import { LoadingScreen } from './components/layout/LoadingScreen';
 import { FirestoreErrorBanner } from './components/layout/FirestoreErrorBanner';
+import { ErrorBoundary } from './components/layout/ErrorBoundary';
 import { StatsCards, TransactionForm } from './components/shared';
 import { AuthModal } from './components/modals/AuthModal';
 import { WelcomeModal } from './components/modals/WelcomeModal';
@@ -30,6 +31,8 @@ import { NotificationProvider, useNotificationContext } from './contexts/Notific
 import { UIPreferencesProvider } from './contexts/UIPreferencesContext';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
+import { useViewRouting } from './hooks/useViewRouting';
+import { installGlobalErrorHandlers } from './lib/errorReporter';
 import { TOAST_CONFIG, INITIAL_TRANSACTION } from './config/constants';
 import { DATE_PRESETS } from './utils/dateUtils';
 import { parseDateFromInput } from './utils/formatters';
@@ -78,7 +81,11 @@ const ViewFallback = () => (
 const FinanceTracker = () => {
   const [mounted, setMounted] = useState(false);
   const [dataReady, setDataReady] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+    // S8: captura errores JS globales no controlados y promesas sin .catch().
+    installGlobalErrorHandlers();
+  }, []);
 
   const { user, loading: authLoading } = useAuth();
   const isOnline = useNetworkStatus();
@@ -88,7 +95,9 @@ const FinanceTracker = () => {
   const showLoading = !mounted || authLoading || (user && !dataReady);
 
   return (
-    <>
+    // S8: ErrorBoundary envuelve todo el árbol — captura errores de render
+    // y los envía al errorReporter, mostrando una pantalla de error amigable.
+    <ErrorBoundary>
       {showLoading && <LoadingScreen />}
       {mounted && !authLoading && (
         <div style={{ display: showLoading ? 'none' : undefined }}>
@@ -109,7 +118,7 @@ const FinanceTracker = () => {
           </FirestoreProvider>
         </div>
       )}
-    </>
+    </ErrorBoundary>
   );
 };
 
@@ -167,7 +176,8 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
 
   const [showForm, setShowForm] = useState(false);
   const [batchCount, setBatchCount] = useState(0);
-  const [view, setView] = useState<ViewType>('transactions');
+  // S6: sincroniza la vista con ?view=<name> en la URL (back/forward funciona).
+  const { view, setView } = useViewRouting();
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [filterCategory, setFilterCategory] = useState<FilterValue>('all');
   const [filterAccount, setFilterAccount] = useState<FilterValue>('all');

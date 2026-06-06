@@ -35,7 +35,7 @@ import { DATE_PRESETS } from './utils/dateUtils';
 import { parseDateFromInput } from './utils/formatters';
 import { logger } from './utils/logger';
 import type { NewTransaction, ViewType, FilterValue, DateRange, DateRangePreset } from './types/finance';
-import { logoutFirebase } from './lib/firebase';
+import { logoutFirebase, clearFirestorePersistence } from './lib/firebase';
 import type { User } from 'firebase/auth';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
 import { InstallPrompt } from './components/pwa/InstallPrompt';
@@ -253,12 +253,15 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
       // Privacidad (S2): borrar datos locales para que en un dispositivo
       // compartido el siguiente usuario no vea los datos del anterior.
       clearGuestFinanceData();
-      await new Promise(resolve => setTimeout(resolve, 800));
       toast.success('Sesión cerrada correctamente');
+      await new Promise(resolve => setTimeout(resolve, 800));
+      // S2b: vaciar la caché IndexedDB de Firestore y reiniciar a estado limpio.
+      // (terminate inutiliza la instancia, por eso recargamos después.)
+      await clearFirestorePersistence();
+      window.location.reload();
     } catch (error) {
       logger.error('Error al cerrar sesión', error);
       toast.error('Error al cerrar sesión');
-    } finally {
       setIsLoggingOut(false);
     }
   }, []);

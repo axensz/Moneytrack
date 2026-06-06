@@ -12,6 +12,14 @@ interface RetryOptions {
 }
 
 /**
+ * Indica si el navegador está offline. A diferencia de checkNetworkConnection,
+ * NO muestra ningún toast: el caller decide cómo notificar (evita toasts dobles).
+ */
+export function isOffline(): boolean {
+    return typeof navigator !== 'undefined' && !navigator.onLine;
+}
+
+/**
  * Verifica si hay conexión a internet antes de ejecutar operación
  */
 export function checkNetworkConnection(): boolean {

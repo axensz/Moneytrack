@@ -17,11 +17,17 @@ import {
 import { db } from '../../lib/firebase';
 import { TRANSFER_CATEGORY } from '../../config/constants';
 import type { Transaction, Account } from '../../types/finance';
-import { safeFirestoreOperation, checkNetworkConnection } from '../../utils/firestoreHelpers';
+import { safeFirestoreOperation, isOffline } from '../../utils/firestoreHelpers';
 import { findAccountForTransaction } from '../../utils/accountTransactions';
 import { logger } from '../../utils/logger';
 
 type CreditEffect = { type: string; amount: number; accountId: string; toAccountId?: string };
+
+// Las escrituras de transacciones requieren conexión: las que ajustan usedCredit
+// usan runTransaction (no funciona offline) y queremos evitar estados optimistas
+// inconsistentes que descuadren balances. Offline → error claro (sin toast aquí;
+// lo muestra el caller). La lectura offline sigue disponible vía persistentLocalCache.
+const OFFLINE_WRITE_ERROR = 'Sin conexión a internet. Conéctate para guardar los cambios.';
 
 /**
  * Calcula el delta de usedCredit que una transacción aporta a una cuenta TC.
@@ -260,6 +266,7 @@ export function useTransactionsCRUD(
       sourceTx: Omit<Transaction, 'id' | 'createdAt'>
     ): Promise<void> => {
       if (!userId) return;
+      if (isOffline()) throw new Error(OFFLINE_WRITE_ERROR);
 
       validateTransactionSchema(creditTx);
       validateTransactionSchema(sourceTx);
@@ -305,6 +312,7 @@ export function useTransactionsCRUD(
   const addTransaction = useCallback(
     async (transaction: Omit<Transaction, 'id' | 'createdAt'>) => {
       if (!userId) return;
+      if (isOffline()) throw new Error(OFFLINE_WRITE_ERROR);
 
       // Validación de esquema como última línea de defensa
       validateTransactionSchema(transaction);
@@ -361,10 +369,7 @@ export function useTransactionsCRUD(
   const deleteTransaction = useCallback(
     async (id: string) => {
       if (!userId) return;
-
-      if (!checkNetworkConnection()) {
-        throw new Error('Sin conexión a internet');
-      }
+      if (isOffline()) throw new Error(OFFLINE_WRITE_ERROR);
 
       // Leer la transacción antes de eliminarla para revertir usedCredit
       const txRef = doc(db, `users/${userId}/transactions`, id);
@@ -393,11 +398,7 @@ export function useTransactionsCRUD(
   const updateTransaction = useCallback(
     async (id: string, updates: Partial<Transaction>) => {
       if (!userId) return;
-
-      // Check network connection
-      if (!checkNetworkConnection()) {
-        throw new Error('Sin conexión a internet');
-      }
+      if (isOffline()) throw new Error(OFFLINE_WRITE_ERROR);
 
       // Validate updates
       const validation = validateTransactionUpdate(updates);

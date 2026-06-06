@@ -12,6 +12,8 @@ import { AuthModal } from './components/modals/AuthModal';
 import { WelcomeModal } from './components/modals/WelcomeModal';
 import { HelpModal } from './components/modals/HelpModal';
 import { CategoriesModal } from './components/modals/CategoriesModal';
+import { GeminiKeyModal } from './components/modals/GeminiKeyModal';
+import { GeminiKeyProvider } from './contexts/GeminiKeyContext';
 import { NotificationPreferencesModal } from './components/modals/NotificationPreferencesModal';
 import { FirestoreProvider } from './contexts/FirestoreContext';
 import { FinanceProvider, useFinance } from './contexts/FinanceContext';
@@ -89,15 +91,17 @@ const FinanceTracker = () => {
         <div style={{ display: showLoading ? 'none' : undefined }}>
           <FirestoreProvider userId={user?.uid || null}>
             <UIPreferencesProvider>
-              <FinanceProvider userId={user?.uid || null}>
-                <NotificationProvider userId={user?.uid || null}>
-                  <FinanceTrackerContent
-                    user={user}
-                    isOnline={isOnline}
-                    onDataReady={setDataReady}
-                  />
-                </NotificationProvider>
-              </FinanceProvider>
+              <GeminiKeyProvider userId={user?.uid || null}>
+                <FinanceProvider userId={user?.uid || null}>
+                  <NotificationProvider userId={user?.uid || null}>
+                    <FinanceTrackerContent
+                      user={user}
+                      isOnline={isOnline}
+                      onDataReady={setDataReady}
+                    />
+                  </NotificationProvider>
+                </FinanceProvider>
+              </GeminiKeyProvider>
             </UIPreferencesProvider>
           </FirestoreProvider>
         </div>
@@ -153,6 +157,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showCategoriesModal, setShowCategoriesModal] = useState(false);
+  const [showAISettingsModal, setShowAISettingsModal] = useState(false);
   const [showNotificationPreferences, setShowNotificationPreferences] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -440,6 +445,13 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         />
       )}
 
+      {showAISettingsModal && (
+        <GeminiKeyModal
+          isOpen={showAISettingsModal}
+          onClose={() => setShowAISettingsModal(false)}
+        />
+      )}
+
       <Header
         user={user}
         setIsAuthModalOpen={setIsAuthModalOpen}
@@ -450,6 +462,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         onOpenHelp={handleOpenHelpModal}
         onOpenCategories={handleOpenCategories}
         onOpenNotificationPreferences={handleOpenNotificationPreferences}
+        onOpenAISettings={() => setShowAISettingsModal(true)}
         onLogout={handleLogout}
       />
 

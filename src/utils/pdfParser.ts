@@ -4,19 +4,17 @@
  * Funciona con cualquier banco colombiano o internacional.
  */
 
-import { GoogleGenAI } from '@google/genai';
 import type { ParseResult, ParsedRow } from './csvParser';
 import { detectInstallments, inferImportType, suggestCategory } from './csvParser';
 import { detectImportProfileFromRows, IMPORT_PROFILES } from './importProfiles';
 import { withTimeout } from './withTimeout';
+import { getGeminiClient, isGeminiKeyConfigured } from '../lib/geminiClient';
 
 // Tiempo máximo por intento de extracción del PDF con Gemini.
 const PDF_TIMEOUT_MS = 60_000;
 
-const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
-
 export function isPDFParsingAvailable(): boolean {
-  return !!API_KEY && API_KEY.length > 10;
+  return isGeminiKeyConfigured();
 }
 
 // ── Prompt del sistema ────────────────────────────────────────────────────────
@@ -68,7 +66,7 @@ export async function parsePDF(buffer: ArrayBuffer): Promise<ParseResult> {
 
   // ── Llamar a Gemini con el PDF inline (con retry) ────────────────────────
   let rawText = '';
-  const ai = new GoogleGenAI({ apiKey: API_KEY });
+  const ai = getGeminiClient();
   const RETRY_DELAYS = [5_000, 15_000, 30_000];
 
   for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {

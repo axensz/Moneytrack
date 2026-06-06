@@ -355,11 +355,11 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
       logger.error('[AIChatBot] Error sending message', err);
       const errorMsg = err instanceof Error ? err.message : String(err);
       if (errorMsg.includes('API_KEY') || errorMsg.includes('configurada')) {
-        setError('API key de Gemini no configurada. Agrega NEXT_PUBLIC_GEMINI_API_KEY en .env.local');
+        setError('No hay API key de Gemini. Agrégala en Ajustes → Asistente IA.');
       } else if (errorMsg.includes('429') || errorMsg.includes('RATE_LIMIT') || errorMsg.includes('quota')) {
         setError('Cuota agotada temporalmente. El asistente reintentará automáticamente. Si persiste, espera 2 minutos e intenta de nuevo.');
       } else if (errorMsg.includes('API_KEY_INVALID') || errorMsg.includes('400')) {
-        setError('API key inválida. Verifica tu NEXT_PUBLIC_GEMINI_API_KEY en .env.local');
+        setError('API key inválida. Revísala en Ajustes → Asistente IA.');
       } else if (errorMsg.includes('PERMISSION_DENIED') || errorMsg.includes('403')) {
         setError('API key sin permisos. Habilita la API de Gemini en Google Cloud Console.');
       } else {
@@ -685,7 +685,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
       <div className="border-t border-gray-200 dark:border-gray-700 p-3 shrink-0 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm">
         {!configured ? (
           <p className="text-xs text-center text-gray-500 dark:text-gray-400 py-2">
-            Configura <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-[10px]">NEXT_PUBLIC_GEMINI_API_KEY</code> en <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-[10px]">.env.local</code> para activar el asistente.
+            Agrega tu API key de Gemini en <strong>Ajustes → Asistente IA</strong> para activar el asistente.
             <br />
             <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 underline mt-1 inline-block transition-colors">
               Obtener API key gratis →

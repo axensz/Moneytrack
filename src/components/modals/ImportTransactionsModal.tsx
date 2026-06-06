@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { X, Upload, FileText, CheckCircle, AlertCircle, ChevronDown, Loader2, ToggleLeft, ToggleRight, ArrowLeft, Sparkles, Calendar } from 'lucide-react';
-import { GoogleGenAI } from '@google/genai';
+import { getGeminiClient } from '../../lib/geminiClient';
 import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useImportTransactions } from '../../hooks/useImportTransactions';
@@ -33,8 +33,7 @@ function AIDateAdjuster({ rows, setRows }: { rows: ImportRow[]; setRows: React.D
     setLoading(true);
     setFeedback('');
 
-    const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-    if (!apiKey) { setFeedback('API Key no configurada'); setLoading(false); return; }
+    if (!isAIAvailable()) { setFeedback('Configura tu API key de Gemini en Ajustes'); setLoading(false); return; }
 
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
@@ -50,7 +49,7 @@ function AIDateAdjuster({ rows, setRows }: { rows: ImportRow[]; setRows: React.D
     }));
 
     try {
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = getGeminiClient();
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: `Hoy es ${dayName} ${todayStr}. Tengo ${rows.length} transacciones importadas de un extracto bancario. El usuario dice: "${prompt.trim()}".

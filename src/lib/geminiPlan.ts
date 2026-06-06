@@ -3,18 +3,10 @@
  * Llama a Gemini con el resumen del plan para consejos personalizados.
  */
 
-import { GoogleGenAI } from '@google/genai';
 import type { FinancialPlan, PlanConfig } from '../hooks/useFinancialPlan';
 import { formatCurrency } from '../utils/formatters';
 import { logger } from '../utils/logger';
-
-const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
-
-let ai: GoogleGenAI | null = null;
-function getAI(): GoogleGenAI {
-  if (!ai) ai = new GoogleGenAI({ apiKey: API_KEY });
-  return ai;
-}
+import { getGeminiClient } from './geminiClient';
 
 function buildPlanPrompt(plan: FinancialPlan, config: PlanConfig): string {
   const months = plan.months.map(m => `  ${m.label}: gastos ${formatCurrency(m.expenses)}, ahorro ${m.savingsRate}%`).join('\n');
@@ -43,7 +35,7 @@ ${months}`;
 }
 
 export async function getFinancialAdvice(plan: FinancialPlan, config: PlanConfig): Promise<string> {
-  const client = getAI();
+  const client = getGeminiClient();
   const prompt = buildPlanPrompt(plan, config);
 
   try {

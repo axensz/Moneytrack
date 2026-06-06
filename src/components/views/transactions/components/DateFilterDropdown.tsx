@@ -5,7 +5,7 @@ import { Calendar, ChevronDown, Sparkles, Loader2 } from 'lucide-react';
 import type { DateRangePreset } from '../../../../types/finance';
 import { DATE_PRESETS } from '../../../../utils/dateUtils';
 import { isGeminiConfigured } from '../../../../lib/gemini';
-import { GoogleGenAI } from '@google/genai';
+import { getGeminiClient, isGeminiKeyConfigured } from '../../../../lib/geminiClient';
 
 interface DateFilterDropdownProps {
   dateRangePreset: DateRangePreset;
@@ -19,14 +19,13 @@ interface DateFilterDropdownProps {
 }
 
 async function parseDateWithAI(query: string): Promise<{ startDate: string; endDate: string } | null> {
-  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-  if (!apiKey) return null;
+  if (!isGeminiKeyConfigured()) return null;
 
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];
   const dayOfWeek = today.toLocaleDateString('es-CO', { weekday: 'long' });
 
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = getGeminiClient();
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
     contents: `Hoy es ${dayOfWeek} ${todayStr}. El usuario quiere filtrar por rango de fechas y dice: "${query}". Responde SOLO un JSON con formato {"startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD"}. Sin explicaciones.`,

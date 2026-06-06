@@ -3,12 +3,10 @@
  * Analiza descripciones crípticas de extractos bancarios y asigna categorías.
  */
 
-import { GoogleGenAI } from '@google/genai';
 import { DEFAULT_CATEGORIES } from '../config/constants';
 import { logger } from './logger';
 import { withTimeout } from './withTimeout';
-
-const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
+import { getGeminiClient, isGeminiKeyConfigured } from '../lib/geminiClient';
 
 // Confianza mínima para que una sugerencia de IA se considere aplicable.
 // Por debajo de esto se ignora (la transacción queda en su categoría actual / 'Otros').
@@ -97,9 +95,9 @@ export function parseAICategorizationResponse(
 export async function categorizeWithAI(
     transactions: TransactionToCateg[]
 ): Promise<CategorizationResult[]> {
-    if (!API_KEY || transactions.length === 0) return [];
+    if (!isGeminiKeyConfigured() || transactions.length === 0) return [];
 
-    const ai = new GoogleGenAI({ apiKey: API_KEY });
+    const ai = getGeminiClient();
 
     // Limitar a 50 transacciones por llamada para no exceder tokens
     const batch = transactions.slice(0, 50);
@@ -154,5 +152,5 @@ Responde SOLO el JSON array, sin markdown ni explicaciones.`;
  * Verifica si Gemini está disponible para categorización.
  */
 export function isAIAvailable(): boolean {
-    return !!API_KEY;
+    return isGeminiKeyConfigured();
 }

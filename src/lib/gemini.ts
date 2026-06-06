@@ -3,7 +3,7 @@
  * Usa @google/genai SDK (nueva generación) con gemini-2.5-flash
  */
 
-import { GoogleGenAI } from '@google/genai';
+import { getGeminiClient, isGeminiKeyConfigured } from './geminiClient';
 import type { Transaction, Account, Categories } from '../types/finance';
 import { formatCurrency } from '../utils/formatters';
 import { BalanceCalculator } from '../utils/balanceCalculator';
@@ -71,22 +71,8 @@ export interface ChatMessage {
   tokenUsage?: TokenUsage;
 }
 
-const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
-
-let ai: GoogleGenAI | null = null;
-
-function getAI(): GoogleGenAI {
-  if (!ai) {
-    if (!API_KEY) {
-      throw new Error('NEXT_PUBLIC_GEMINI_API_KEY no está configurada');
-    }
-    ai = new GoogleGenAI({ apiKey: API_KEY });
-  }
-  return ai;
-}
-
 export function isGeminiConfigured(): boolean {
-  return !!API_KEY && API_KEY.length > 10;
+  return isGeminiKeyConfigured();
 }
 
 /**
@@ -393,7 +379,7 @@ export async function sendChatMessage(
     categories: Categories;
   }
 ): Promise<{ text: string; tokenUsage?: TokenUsage }> {
-  const client = getAI();
+  const client = getGeminiClient();
 
   const financialContext = buildFinancialContext(
     financialData.transactions,

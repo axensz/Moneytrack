@@ -18,7 +18,7 @@
  *         └── Vistas (consumen vía useFinance())
  */
 
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useMemo } from 'react';
 import { useTransactions } from '../hooks/useTransactions';
 import { useAccounts } from '../hooks/useAccounts';
 import type { MergeCreditCardsParams } from '../hooks/useAccounts';
@@ -246,7 +246,13 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     stats: goalStats,
   } = useSavingsGoals(userId, userId ? firestoreData.savingsGoals : undefined);
 
-  const value: FinanceContextValue = {
+  // S16: useMemo evita que un nuevo objeto `value` (con nueva referencia)
+  // cause re-renders en todos los consumidores cuando el Provider se renderiza
+  // por razones externas (re-render del padre) sin que los datos hayan cambiado.
+  // Los datos derivados de los hooks (transactions, accounts, etc.) ya son
+  // estables por sí mismos vía useState/useMemo internos — aquí cerramos el
+  // último punto de fuga: el objeto contenedor.
+  const value: FinanceContextValue = useMemo(() => ({
     // Datos
     transactions,
     accounts,
@@ -326,7 +332,23 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
 
     // Utilidades
     formatCurrency,
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [
+    transactions, accounts, categories, recurringPayments, defaultAccount, totalBalance,
+    transactionsLoading, accountsLoading,
+    hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
+    firestoreError, retryLoad,
+    addTransaction, addCreditPaymentAtomic, deleteTransaction, updateTransaction,
+    addAccount, updateAccount, deleteAccount, mergeCreditCards, setDefaultAccount,
+    getAccountBalance, getTransactionCountForAccount,
+    addCategory, deleteCategory,
+    addRecurringPayment, updateRecurringPayment, deleteRecurringPayment,
+    isPaidForMonth, getNextDueDate, getDaysUntilDue, getPaymentHistory, recurringStats,
+    debts, addDebt, updateDebt, deleteDebt, registerDebtPayment, modifyDebtBalance,
+    getDebtTransactions, debtStats,
+    budgets, addBudget, updateBudget, deleteBudget, budgetStatuses, budgetStats,
+    savingsGoals, addGoal, updateGoal, deleteGoal, addSavings, goalStatuses, goalStats,
+  ]);
 
   return (
     <FinanceContext.Provider value={value}>

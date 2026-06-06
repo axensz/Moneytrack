@@ -4,7 +4,8 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { collection, onSnapshot, query, orderBy, limit as firestoreLimit, updateDoc, deleteDoc, doc, writeBatch, Timestamp, setDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit as firestoreLimit, updateDoc, deleteDoc, doc, writeBatch, setDoc } from 'firebase/firestore';
+import { ensureDate } from '../utils/dateUtils';
 import { db } from '../lib/firebase';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
@@ -77,7 +78,7 @@ export function useNotificationStore(userId: string | null, externalNotification
             if (userId) {
                 // Firestore: batch delete old notifications
                 const oldNotifications = notifications.filter(
-                    (n) => n.createdAt && n.createdAt < cutoffDate
+                    (n) => n.createdAt && ensureDate(n.createdAt) < cutoffDate
                 );
 
                 if (oldNotifications.length > 0) {
@@ -97,7 +98,7 @@ export function useNotificationStore(userId: string | null, externalNotification
             } else {
                 // localStorage: filter out old notifications
                 const freshNotifications = localNotifications.filter(
-                    (n) => n.createdAt && new Date(n.createdAt) >= cutoffDate
+                    (n) => n.createdAt && ensureDate(n.createdAt) >= cutoffDate
                 );
                 if (freshNotifications.length !== localNotifications.length) {
                     setLocalNotifications(freshNotifications);
@@ -154,7 +155,7 @@ export function useNotificationStore(userId: string | null, externalNotification
 
                     await setDoc(doc(db, `users/${userId}/notifications`, docId), {
                         ...notification,
-                        createdAt: Timestamp.now(),
+                        createdAt: new Date(),
                     });
                 } catch (error) {
                     logger.error('Failed to add notification', error);

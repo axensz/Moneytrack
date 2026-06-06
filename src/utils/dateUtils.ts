@@ -1,6 +1,33 @@
 import type { DateRangePreset } from '../types/finance';
 
 /**
+ * S12 — Normaliza cualquier representación de fecha a un objeto Date nativo.
+ *
+ * Acepta:
+ * - `Date`              → devuelve el mismo objeto sin copiar
+ * - `string` / `number` → `new Date(value)`
+ * - Firestore Timestamp (duck-type: `{ toDate(): Date }`) → `value.toDate()`
+ * - cualquier otro valor → `new Date()` (fallback: instante actual)
+ *
+ * Reemplaza el patrón disperso `x instanceof Date ? x : new Date(x)` y
+ * garantiza que el código funcione tanto con datos de Firestore (Timestamp),
+ * de localStorage (string ISO serializado por JSON) o ya convertidos (Date).
+ */
+export function ensureDate(value: unknown): Date {
+  if (value instanceof Date) return value;
+  if (typeof value === 'string' || typeof value === 'number') return new Date(value);
+  // Firestore Timestamp duck-type
+  if (
+    value !== null &&
+    typeof value === 'object' &&
+    typeof (value as Record<string, unknown>).toDate === 'function'
+  ) {
+    return (value as { toDate(): Date }).toDate();
+  }
+  return new Date();
+}
+
+/**
  * Calcula el rango de fechas basado en un preset
  */
 export const getDateRangeFromPreset = (

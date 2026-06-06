@@ -1,5 +1,6 @@
 import type { Transaction, NewTransaction } from '../types/finance';
 import { parseAmount } from './csvParser';
+import { ensureDate } from './dateUtils';
 
 export interface DuplicateMatch {
   transaction: Transaction;
@@ -44,7 +45,7 @@ export function detectDuplicates(
     if (tx.type !== newTx.type) continue;
 
     // Fecha es requisito: si está a más de 5 días, no puede ser duplicado
-    const txDate = tx.date instanceof Date ? tx.date : new Date(tx.date);
+    const txDate = ensureDate(tx.date);
     const timeDiff = Math.abs(newDate.getTime() - txDate.getTime());
     if (timeDiff > DAYS_5) continue;
 

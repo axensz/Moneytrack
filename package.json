@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest --config vitest.config.mjs --configLoader runner",
     "test:run": "vitest run --config vitest.config.mjs --configLoader runner"
   },

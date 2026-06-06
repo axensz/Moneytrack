@@ -14,6 +14,7 @@ import { HelpModal } from './components/modals/HelpModal';
 import { CategoriesModal } from './components/modals/CategoriesModal';
 import { GeminiKeyModal } from './components/modals/GeminiKeyModal';
 import { GeminiKeyProvider } from './contexts/GeminiKeyContext';
+import { clearGuestFinanceData } from './utils/localData';
 import { NotificationPreferencesModal } from './components/modals/NotificationPreferencesModal';
 import { FirestoreProvider } from './contexts/FirestoreContext';
 import { FinanceProvider, useFinance } from './contexts/FinanceContext';
@@ -244,6 +245,9 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     try {
       setIsLoggingOut(true);
       await logoutFirebase();
+      // Privacidad (S2): borrar datos locales para que en un dispositivo
+      // compartido el siguiente usuario no vea los datos del anterior.
+      clearGuestFinanceData();
       await new Promise(resolve => setTimeout(resolve, 800));
       toast.success('Sesión cerrada correctamente');
     } catch (error) {

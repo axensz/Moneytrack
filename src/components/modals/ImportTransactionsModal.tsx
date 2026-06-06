@@ -856,7 +856,8 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
 
               {/* Tabla de transacciones */}
               <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-                <div className="overflow-x-auto max-h-[40vh] sm:max-h-[400px] overflow-y-auto">
+                {/* S15: tabla visible solo en sm+ para evitar scroll horizontal en 320-375px */}
+                <div className="hidden sm:block overflow-x-auto max-h-[400px] overflow-y-auto">
                   <table className="w-full text-sm min-w-[540px]">
                     <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800 z-10">
                       <tr className="border-b border-gray-200 dark:border-gray-700">
@@ -962,6 +963,111 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
                       ))}
                     </tbody>
                   </table>
+                </div>
+
+                {/* S15: Layout en tarjetas para móvil (<sm) — sin scroll horizontal */}
+                <div className="sm:hidden divide-y divide-gray-100 dark:divide-gray-800 max-h-[50vh] overflow-y-auto">
+                  {rows.map((row, i) => {
+                    const amountColor =
+                      row.type === 'income'
+                        ? 'text-green-600 dark:text-green-400'
+                        : row.type === 'transfer'
+                          ? 'text-blue-600 dark:text-blue-400'
+                          : 'text-red-600 dark:text-red-400';
+                    const amountSign =
+                      row.type === 'income' ? '+' : row.type === 'transfer' ? '' : '-';
+                    return (
+                      <div
+                        key={i}
+                        className={`p-3 transition-colors ${!row.include ? 'opacity-40' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}
+                      >
+                        {/* Fila 1: toggle + descripción + monto */}
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <button
+                              onClick={() => handleToggleRow(i)}
+                              aria-label={row.include ? 'Excluir transacción' : 'Incluir transacción'}
+                              className="flex-shrink-0 text-gray-400 hover:text-purple-600 transition-colors"
+                            >
+                              {row.include
+                                ? <ToggleRight size={16} className="text-purple-600" />
+                                : <ToggleLeft size={16} />}
+                            </button>
+                            <div className="min-w-0">
+                              <span
+                                className="block text-xs font-medium text-gray-800 dark:text-gray-200 truncate"
+                                title={row.description}
+                              >
+                                {row.description}
+                              </span>
+                              {row.isDuplicate && (
+                                <span className="inline-block text-[10px] px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded font-medium">
+                                  duplicado
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <span className={`text-xs font-bold whitespace-nowrap flex-shrink-0 ${amountColor}`}>
+                            {amountSign}{formatCurrency(row.amount)}
+                          </span>
+                        </div>
+
+                        {/* Fila 2: fecha + categoría */}
+                        <div className="flex gap-2 mb-2">
+                          <input
+                            type="date"
+                            value={row.date.toISOString().split('T')[0]}
+                            onChange={(e) => {
+                              const newDate = new Date(e.target.value + 'T12:00:00');
+                              if (!isNaN(newDate.getTime())) {
+                                setRows(prev => prev.map((r, idx) => idx === i ? { ...r, date: newDate } : r));
+                              }
+                            }}
+                            disabled={!row.include}
+                            className="text-xs px-1.5 py-1 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-purple-500 w-[112px] flex-shrink-0"
+                          />
+                          <div className="flex-1 relative min-w-0">
+                            <select
+                              value={row.category}
+                              onChange={e => handleCategoryChange(i, e.target.value)}
+                              className="text-xs pl-2 pr-6 py-1 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 appearance-none focus:outline-none focus:ring-1 focus:ring-purple-500 w-full"
+                              disabled={!row.include}
+                            >
+                              {availableCategoryOptions.map(c => (
+                                <option key={c} value={c}>{c}</option>
+                              ))}
+                            </select>
+                            <ChevronDown size={10} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                          </div>
+                        </div>
+
+                        {/* Fila 3: tipo */}
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => handleTypeChange(i, 'expense')}
+                            disabled={!row.include}
+                            className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${row.type === 'expense' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                          >
+                            Gasto
+                          </button>
+                          <button
+                            onClick={() => handleTypeChange(i, 'income')}
+                            disabled={!row.include}
+                            className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${row.type === 'income' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                          >
+                            Ingreso
+                          </button>
+                          <button
+                            onClick={() => handleTypeChange(i, 'transfer')}
+                            disabled={!row.include}
+                            className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${row.type === 'transfer' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                          >
+                            Transferencia
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>

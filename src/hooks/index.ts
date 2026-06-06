@@ -20,15 +20,6 @@ export { useCSVExport } from './useCSVExport';
 // UI & Filtering
 export { useConfirmDiscard } from './useConfirmDiscard';
 export { useViewRouting } from './useViewRouting';
-export {
-  useTransactionDomain,
-  useAccountDomain,
-  useCategoryDomain,
-  useRecurringDomain,
-  useDebtsDomain,
-  useBudgetsDomain,
-  useGoalsDomain,
-} from './useFinanceSelectors';
 export { useFilteredData } from './useFilteredData';
 export { useAddTransaction } from './useAddTransaction';
 export { useGlobalStats } from './useGlobalStats';

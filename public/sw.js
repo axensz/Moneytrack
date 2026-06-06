@@ -1,23 +1,33 @@
 // Service Worker for MoneyTrack PWA
 // Bump CACHE_VERSION on each deploy to invalidate old caches
-const CACHE_VERSION = 'v2-20260409';
+const CACHE_VERSION = 'v3-c499d2f';
+const APP_BASE_PATH = (() => {
+    const scopePath = new URL(self.registration.scope).pathname.replace(/\/$/, '');
+    return scopePath === '' ? '' : scopePath;
+})();
 const CACHE_NAMES = {
-    static: `moneytrack-static-${CACHE_VERSION}`,
+    static: 'moneytrack-static',
     api: `moneytrack-api-${CACHE_VERSION}`,
     images: `moneytrack-images-${CACHE_VERSION}`
 };
 
-const CACHE_MAX_AGE = {
-    static: 30 * 24 * 60 * 60 * 1000,  // 30 days
-    api: 5 * 60 * 1000,                 // 5 minutes
-    images: 7 * 24 * 60 * 60 * 1000     // 7 days
-};
+function withBasePath(path) {
+    return `${APP_BASE_PATH}${path}`;
+}
+
+function getAppPath(pathname) {
+    if (APP_BASE_PATH && pathname.startsWith(APP_BASE_PATH)) {
+        return pathname.slice(APP_BASE_PATH.length) || '/';
+    }
+
+    return pathname;
+}
 
 // Critical assets to precache on install
 const PRECACHE_ASSETS = [
-    '/',
-    '/manifest.json',
-    '/offline.html'
+    withBasePath('/'),
+    withBasePath('/manifest.json'),
+    withBasePath('/offline.html')
 ];
 
 // Install event - precache critical assets
@@ -50,7 +60,11 @@ self.addEventListener('activate', (event) => {
                 return Promise.all(
                     cacheNames
                         .filter((cacheName) => {
-                            // Delete caches that start with 'moneytrack-' but aren't in current version
+                            // Keep static build assets across deploys so older open tabs can still load chunks.
+                            if (cacheName.startsWith('moneytrack-static')) {
+                                return false;
+                            }
+
                             return cacheName.startsWith('moneytrack-') &&
                                 !Object.values(CACHE_NAMES).includes(cacheName);
                         })
@@ -71,6 +85,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     const { request } = event;
     const url = new URL(request.url);
+    const appPath = getAppPath(url.pathname);
 
     // Skip non-GET requests
     if (request.method !== 'GET') {
@@ -83,24 +98,29 @@ self.addEventListener('fetch', (event) => {
     }
 
     // API requests - network first with cache fallback
-    if (url.pathname.includes('/api/') ||
+    if (appPath.includes('/api/') ||
         url.hostname.includes('firestore') ||
         url.hostname.includes('firebase')) {
         event.respondWith(networkFirst(request, CACHE_NAMES.api));
         return;
     }
 
+    // App pages - prefer fresh HTML so it points at the current Next.js chunks.
+    if (request.mode === 'navigate') {
+        event.respondWith(networkFirst(request, CACHE_NAMES.static));
+        return;
+    }
+
     // Images - stale while revalidate
     if (request.destination === 'image' ||
-        url.pathname.match(/\.(jpg|jpeg|png|gif|svg|webp|ico)$/)) {
+        appPath.match(/\.(jpg|jpeg|png|gif|svg|webp|ico)$/)) {
         event.respondWith(staleWhileRevalidate(request, CACHE_NAMES.images));
         return;
     }
 
     // Static assets - cache first
-    if (url.pathname.match(/\.(js|css|woff|woff2|ttf|eot)$/) ||
-        url.pathname === '/' ||
-        url.pathname.startsWith('/_next/')) {
+    if (appPath.match(/\.(js|css|woff|woff2|ttf|eot)$/) ||
+        appPath.startsWith('/_next/')) {
         event.respondWith(cacheFirst(request, CACHE_NAMES.static));
         return;
     }
@@ -134,7 +154,7 @@ async function cacheFirst(request, cacheName) {
 
         // Return offline page for navigation requests
         if (request.mode === 'navigate') {
-            const offlineResponse = await caches.match('/offline.html');
+            const offlineResponse = await caches.match(withBasePath('/offline.html'));
             if (offlineResponse) {
                 return offlineResponse;
             }
@@ -168,7 +188,7 @@ async function networkFirst(request, cacheName) {
 
         // Return offline page for navigation requests
         if (request.mode === 'navigate') {
-            const offlineResponse = await caches.match('/offline.html');
+            const offlineResponse = await caches.match(withBasePath('/offline.html'));
             if (offlineResponse) {
                 return offlineResponse;
             }

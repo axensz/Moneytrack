@@ -2,20 +2,22 @@
 
 import React, { useState } from 'react';
 import { Plus, PieChart, CheckCircle2, XCircle, Trash2, ToggleLeft, ToggleRight, Sparkles, TrendingUp, TrendingDown, Minus, Target, X, Shield, Clock, Zap, ChevronDown, ChevronUp } from 'lucide-react';
-import { useBudgetsDomain, useCategoryDomain, useTransactionDomain } from '../../../hooks/useFinanceSelectors';
+import { useFinance } from '../../../contexts/FinanceContext';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { useAuth } from '../../../hooks/useAuth';
 import { usePlanConfig } from '../../../hooks/usePlanConfig';
-import { formatCurrency, formatNumberForInput, unformatNumber } from '../../../utils/formatters';
+import { formatNumberForInput, unformatNumber } from '../../../utils/formatters';
 import { showToast } from '../../../utils/toastHelpers';
 import { useFinancialPlan, type PlanConfig } from '../../../hooks/useFinancialPlan';
 import { isGeminiConfigured } from '../../../lib/gemini';
 import { FinancialPlanAI } from './components/FinancialPlanAI';
 
 export const BudgetsView: React.FC = () => {
-  const { budgets, addBudget, updateBudget, deleteBudget, budgetStatuses, budgetStats } = useBudgetsDomain();
-  const { categories } = useCategoryDomain();
-  const { transactions } = useTransactionDomain();
+  const {
+    budgets, categories, transactions,
+    addBudget, updateBudget, deleteBudget,
+    budgetStatuses, budgetStats, formatCurrency,
+  } = useFinance();
   const { hideBalances } = useUIPreferences();
   const { user } = useAuth();
 

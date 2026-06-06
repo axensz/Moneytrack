@@ -9,6 +9,25 @@ export interface ServiceWorkerConfig {
     onError?: (error: Error) => void;
 }
 
+function getBasePath(): string {
+    const configuredBasePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+
+    if (configuredBasePath) {
+        return configuredBasePath;
+    }
+
+    if (typeof window === "undefined") {
+        return "";
+    }
+
+    if (window.location.hostname.endsWith("github.io")) {
+        const [firstSegment] = window.location.pathname.split("/").filter(Boolean);
+        return firstSegment ? `/${firstSegment}` : "";
+    }
+
+    return "";
+}
+
 /**
  * Register the service worker
  * @param config Optional callbacks for success, update, and error events
@@ -38,8 +57,9 @@ export async function registerServiceWorker(
 
         console.log('[SW] Registering service worker...');
 
-        const registration = await navigator.serviceWorker.register('/sw.js', {
-            scope: '/',
+        const basePath = getBasePath();
+        const registration = await navigator.serviceWorker.register(`${basePath}/sw.js`, {
+            scope: `${basePath}/`,
         });
 
         console.log('[SW] Service worker registered successfully');
@@ -93,7 +113,11 @@ export async function unregisterServiceWorker(): Promise<boolean> {
     }
 
     try {
-        const registration = await navigator.serviceWorker.ready;
+        const registration = await navigator.serviceWorker.getRegistration(`${getBasePath()}/`);
+        if (!registration) {
+            return false;
+        }
+
         const success = await registration.unregister();
 
         if (success) {
@@ -115,7 +139,11 @@ export function skipWaiting(): void {
         return;
     }
 
-    navigator.serviceWorker.ready.then((registration) => {
+    navigator.serviceWorker.getRegistration(`${getBasePath()}/`).then((registration) => {
+        if (!registration) {
+            return;
+        }
+
         if (registration.waiting) {
             registration.waiting.postMessage({ type: 'SKIP_WAITING' });
         }
@@ -161,7 +189,7 @@ export async function getServiceWorkerRegistration(): Promise<ServiceWorkerRegis
     }
 
     try {
-        const registration = await navigator.serviceWorker.getRegistration();
+        const registration = await navigator.serviceWorker.getRegistration(`${getBasePath()}/`);
         return registration || null;
     } catch (error) {
         console.error('[SW] Failed to get service worker registration:', error);

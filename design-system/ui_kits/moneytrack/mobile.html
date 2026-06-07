@@ -1,0 +1,51 @@
+<!-- @startingPoint section="MoneyTrack App" subtitle="Mobile dashboard (390px) — responsive" viewport="390x780" -->
+<!-- @dsCard group="MoneyTrack App" viewport="390x780" name="MoneyTrack — Mobile" subtitle="Responsive phone layout of the finance app" -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MoneyTrack · Mobile</title>
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  html, body { margin: 0; background: var(--muted); }
+  /* Force the kit into its phone layout regardless of the real frame width */
+  #root { width: 390px; margin: 0 auto; background: var(--background); min-height: 780px; box-shadow: var(--shadow-lg); }
+  @keyframes mtModalFade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes mtModalZoom { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+  *::-webkit-scrollbar { height: 6px; width: 6px; }
+  *::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.3); border-radius: 3px; }
+</style>
+</head>
+<body>
+  <!-- Tell the kit's useViewport() hook to render the mobile breakpoint -->
+  <script>window.__forceWidth = 390;</script>
+
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+  <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+  <script src="../../_ds_bundle.js"></script>
+
+  <script src="icons.js"></script>
+  <script src="data.js"></script>
+  <script type="text/babel" data-presets="react" src="chrome.jsx"></script>
+  <script type="text/babel" data-presets="react" src="finance.jsx"></script>
+  <script type="text/babel" data-presets="react" src="stats.jsx"></script>
+  <script type="text/babel" data-presets="react" src="views.jsx"></script>
+  <script type="text/babel" data-presets="react" src="app.jsx"></script>
+  <script type="text/babel" data-presets="react">
+    const App = window.MTApp;
+    const root = document.getElementById('root');
+    if (!window.MoneyTrackDesignSystem_daa395) {
+      root.innerHTML = '<div style="padding:48px 24px;font-family:Arial,system-ui,sans-serif;color:#6b6b6b;text-align:center">No se pudo cargar la librería de componentes (<code>_ds_bundle.js</code>).<br>Abre este kit dentro del proyecto del sistema de diseño.</div>';
+    } else {
+      ReactDOM.createRoot(root).render(<App />);
+    }
+  </script>
+</body>
+</html>

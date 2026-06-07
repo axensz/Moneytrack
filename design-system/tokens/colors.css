@@ -1,0 +1,126 @@
+/* ============================================================
+   MoneyTrack · Color tokens
+   Source of truth: app/styles/theme.css in axensz/Moneytrack
+   Light is the default; .dark scope overrides for dark mode.
+   ============================================================ */
+
+:root {
+  /* ── Base surfaces ─────────────────────────────────────── */
+  /* Warm off-white app canvas + near-black ink */
+  --background: #faf9f7;
+  --foreground: #1f1f1f;
+
+  /* Cards — clean white with the warm canvas behind */
+  --card: #ffffff;
+  --card-foreground: #1f1f1f;
+
+  /* Muted — warm grey fills + secondary text */
+  --muted: #f5f4f1;
+  --muted-foreground: #6b6b6b;
+
+  /* ── Brand primary ─────────────────────────────────────── */
+  /* Violet 600 — the single brand accent across the product */
+  --primary: #7c3aed;
+  --primary-foreground: #ffffff;
+  --primary-strong: #6d28d9;   /* hover / pressed */
+  --primary-soft: #8b5cf6;     /* gradient partner */
+  --primary-muted: #f3e8ff;    /* violet chip / icon surface */
+
+  /* ── Semantic status ───────────────────────────────────── */
+  --success: #059669;
+  --success-muted: #ecfdf5;
+  --destructive: #dc2626;
+  --destructive-muted: #fef2f2;
+  --warning: #d97706;
+  --warning-muted: #fef3c7;   /* amber-100 — deep enough for AA amber text */
+  --info: #2563eb;
+  --info-muted: #eff6ff;
+
+  /* ── Semantic TEXT colors (WCAG AA for small text) ───────
+     The base semantic colors above are vibrant fills/icons/borders.
+     These darker variants are for SMALL TEXT (badges, amounts,
+     labels) on light/muted surfaces. They flip lighter in dark. */
+  --success-text: #047857;
+  --destructive-text: #b91c1c;
+  --warning-text: #b45309;
+  --info-text: #1d4ed8;
+  --primary-text: #6d28d9;
+
+  /* ── Semantic surfaces (theme-aware chip / icon-chip fills) ─
+     Reference the *-muted tokens so they flip automatically in
+     dark mode. Use these for every tinted chip in components. */
+  --surface-income: var(--success-muted);
+  --surface-expense: var(--destructive-muted);
+  --surface-transfer: var(--primary-muted);
+  --surface-pending: var(--warning-muted);
+  --surface-info: var(--info-muted);
+  --surface-primary: var(--primary-muted);
+
+  /* ── Balance accent (the hero money number) ────────────── */
+  --balance-accent: #f3e8ff;
+  --balance-accent-foreground: #7c3aed;
+  --balance-foreground: #6b21a8;
+  --balance-value: #7c3aed;
+
+  /* ── Borders & inputs ──────────────────────────────────── */
+  --border: #e5e5e5;
+  --border-accent: #ddd6fe;   /* violet-tinted hover/focus border */
+  --input: #ffffff;
+
+  /* ── Focus ring ────────────────────────────────────────── */
+  --ring: #8b5cf6;
+  --ring-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+
+  /* ── Brand gradients ───────────────────────────────────── */
+  --gradient-primary: linear-gradient(135deg, #7c3aed 0%, #8250e8 100%); /* @kind color */ /* light stop AA-darkened (#8b5cf6→#8250e8) so white label ≥4.5:1 */
+  --gradient-primary-hover: linear-gradient(135deg, #6d28d9 0%, #7c3aed 100%); /* @kind color */
+  --gradient-balance: linear-gradient(135deg, #f3e8ff 0%, #ede9fe 50%, #e9d5ff 100%); /* @kind color */
+  --gradient-logo: linear-gradient(135deg, #2e1065 0%, #4c1d95 100%); /* @kind color */
+}
+
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+
+  --card: #1f2937;
+  --card-foreground: #ededed;
+
+  --muted: #262626;
+  --muted-foreground: #a3a3a3;
+
+  --primary: #8b5cf6;
+  --primary-foreground: #ffffff;
+  --primary-strong: #7c3aed;
+  --primary-soft: #a78bfa;
+  --primary-muted: #3b0764;    /* deep violet chip surface (dark) */
+
+  --success: #10b981;
+  --success-muted: #064e3b;
+  --destructive: #ef4444;
+  --destructive-muted: #7f1d1d;
+  --warning: #f59e0b;
+  --warning-muted: #78350f;
+  --info: #3b82f6;
+  --info-muted: #1e3a8a;
+
+  /* Semantic text — lighter on deep dark surfaces (AA) */
+  --success-text: #6ee7b7;
+  --destructive-text: #fca5a5;
+  --warning-text: #fcd34d;
+  --info-text: #93c5fd;
+  --primary-text: #c4b5fd;
+
+  --balance-accent: #581c87;
+  --balance-accent-foreground: #c4b5fd;
+  --balance-foreground: #d8b4fe;
+  --balance-value: #c4b5fd;
+
+  --border: #4c1d95;
+  --border-accent: #6d28d9;
+  --input: #1f2937;
+
+  --ring: #a78bfa;
+  --ring-shadow: 0 0 0 3px rgba(167, 139, 250, 0.15);
+
+  --gradient-balance: linear-gradient(135deg, #581c87 0%, #4c1d95 100%); /* @kind color */
+}

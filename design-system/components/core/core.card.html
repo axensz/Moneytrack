@@ -1,0 +1,109 @@
+<!-- @dsCard group="Components" viewport="700x560" name="Core — Buttons, Badges, Inputs, Segmented, Modal" subtitle="Action buttons, badges, fields, segmented control & dialog" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  body { margin: 0; padding: 24px; background: var(--background); }
+  .wrap { display: flex; flex-direction: column; gap: 22px; }
+  .group { display: flex; flex-direction: column; gap: 10px; }
+  .lab { font: var(--weight-medium) 11px var(--font-sans); letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted-foreground); }
+  .line { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-width: 460px; }
+</style>
+</head>
+<body>
+  <div id="root" class="wrap"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="../../_ds_bundle.js"></script>
+  <script type="text/babel" data-presets="react">
+    const { Button, Badge, Input, Select, SegmentedControl, Modal } = window.MoneyTrackDesignSystem_daa395;
+    // Tiny Lucide wrappers as React components
+    const ic = (name) => (props) => {
+      const ref = React.useRef(null);
+      React.useEffect(() => { if (ref.current) { ref.current.innerHTML = ''; const el = window.lucide.createElement(window.lucide.icons[name]); el.setAttribute('width', props.size||16); el.setAttribute('height', props.size||16); ref.current.appendChild(el); } });
+      return <span ref={ref} style={{display:'inline-flex'}} />;
+    };
+    const Plus = ic('Plus'), Clock = ic('Clock'), Trash = ic('Trash2');
+
+    function Demo() {
+      const [seg, setSeg] = React.useState('expense');
+      const [open, setOpen] = React.useState(false);
+      return (
+        <>
+          <div className="group">
+            <div className="lab">Button · variants</div>
+            <div className="line">
+              <Button variant="primary" icon={Plus}>Agregar</Button>
+              <Button variant="secondary">Guardar</Button>
+              <Button variant="cancel">Cancelar</Button>
+              <Button variant="danger" icon={Trash}>Eliminar</Button>
+              <Button variant="ghost">Ghost</Button>
+              <Button variant="edit">Editar</Button>
+            </div>
+          </div>
+          <div className="group">
+            <div className="lab">Button · sizes & states</div>
+            <div className="line">
+              <Button size="sm">Small</Button>
+              <Button size="md">Medium</Button>
+              <Button size="lg">Large</Button>
+              <Button loading>Guardando…</Button>
+              <Button disabled>Disabled</Button>
+            </div>
+          </div>
+          <div className="group">
+            <div className="lab">Badge · tones</div>
+            <div className="line">
+              <Badge tone="primary">3 cuotas</Badge>
+              <Badge tone="success">Ingreso</Badge>
+              <Badge tone="danger">Gasto</Badge>
+              <Badge tone="warning" icon={Clock}>Pendiente</Badge>
+              <Badge tone="info">Transferencia</Badge>
+              <Badge tone="neutral" square>Mercado</Badge>
+            </div>
+          </div>
+          <div className="group">
+            <div className="lab">Input · Select</div>
+            <div className="fields">
+              <Input label="Descripción" placeholder="(opcional)" />
+              <Select label="Cuenta" defaultValue="b"><option value="b">Bancolombia Ahorros</option><option>Efectivo</option></Select>
+              <Input label="Monto" defaultValue="89.900" hint="Sin decimales para pesos" />
+              <Input label="Correo" error="Correo no válido" defaultValue="hola@" />
+            </div>
+          </div>
+          <div className="group">
+            <div className="lab">SegmentedControl · per-option tones</div>
+            <div style={{maxWidth:420}}>
+              <SegmentedControl ariaLabel="Tipo" value={seg} onChange={setSeg} options={[
+                {value:'expense',label:'Gasto',tone:'danger'},
+                {value:'income',label:'Ingreso',tone:'success'},
+                {value:'transfer',label:'Transferencia',tone:'info'},
+              ]} />
+            </div>
+          </div>
+          <div className="group">
+            <div className="lab">Modal · dialog (contained preview)</div>
+            <div className="line">
+              <Button variant="danger" icon={Trash} onClick={()=>setOpen(true)}>Eliminar cuenta</Button>
+            </div>
+            <div style={{position:'relative',height:230,borderRadius:'var(--radius-lg)',border:'1px dashed var(--border)',overflow:'hidden',background:'var(--muted)'}}>
+              <Modal open={open} onClose={()=>setOpen(false)} contained title="¿Eliminar cuenta?" subtitle="Esta acción no se puede deshacer." icon={Trash} width={360}
+                footer={<><Button variant="cancel" onClick={()=>setOpen(false)}>Cancelar</Button><Button variant="danger" onClick={()=>setOpen(false)}>Eliminar</Button></>}>
+                <p style={{margin:0,fontSize:'var(--text-sm)',color:'var(--muted-foreground)'}}>Se eliminarán todos los movimientos asociados a esta cuenta.</p>
+              </Modal>
+              {!open && <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--muted-foreground)',fontSize:13}}>Pulsa “Eliminar cuenta” para abrir el diálogo</div>}
+            </div>
+          </div>
+        </>
+      );
+    }
+    ReactDOM.createRoot(document.getElementById('root')).render(<Demo/>);
+  </script>
+</body>
+</html>

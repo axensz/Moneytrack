@@ -1,0 +1,46 @@
+/* ============================================================
+   MoneyTrack · Typography tokens
+   The product ships on a system font stack (no webfont download)
+   for instant first paint and native feel across platforms.
+   Sans → system UI; Mono → Cascadia Mono and friends for figures.
+   ============================================================ */
+
+:root {
+  /* ── Families ──────────────────────────────────────────── */
+  --font-sans: Arial, Helvetica, "Helvetica Neue", system-ui,
+    -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Cascadia Mono", "Segoe UI Mono", ui-monospace, Consolas,
+    "Courier New", monospace;
+
+  /* ── Type scale (responsive caps documented in guidelines) ─ */
+  --text-xs: 0.75rem;     /* 12px — meta, chips, tags */
+  --text-sm: 0.875rem;    /* 14px — body on mobile, labels */
+  --text-base: 1rem;      /* 16px — body */
+  --text-lg: 1.125rem;    /* 18px — emphasis */
+  --text-xl: 1.25rem;     /* 20px — h3 / card titles */
+  --text-2xl: 1.5rem;     /* 24px — h2 / hero numbers */
+  --text-3xl: 1.875rem;   /* 30px — h2 desktop */
+  --text-4xl: 2.25rem;    /* 36px — h1 desktop */
+
+  /* ── Weights ───────────────────────────────────────────── */
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* ── Line heights ──────────────────────────────────────── */
+  --leading-tight: 1.3;
+  --leading-snug: 1.4;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.6;   /* default body — improves readability */
+
+  /* ── Letter spacing ────────────────────────────────────── */
+  --tracking-body: 0.01em;
+  --tracking-wide: 0.05em;  /* uppercase date headers */
+
+  /* ── Semantic roles ────────────────────────────────────── */
+  --text-body: var(--text-base);
+  --text-label: var(--text-sm);
+  --text-meta: var(--text-xs);
+  --text-money: var(--text-2xl);   /* the hero balance figure */
+}

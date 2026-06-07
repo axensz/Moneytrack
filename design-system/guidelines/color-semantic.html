@@ -1,0 +1,28 @@
+<!-- @dsCard group="Colors" viewport="700x230" name="Semantic Status" subtitle="Income, expense, warning, info — solid + muted pairs" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; padding: 24px; background: var(--background); }
+  .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .sw { border-radius: var(--radius-lg); overflow: hidden; border: 1px solid var(--border); background: var(--card); }
+  .pair { display: flex; height: 64px; }
+  .solid { flex: 2; }
+  .soft { flex: 1; }
+  .meta { padding: 8px 10px; }
+  .name { font: var(--weight-semibold) 13px var(--font-sans); }
+  .hex { font: 400 11px var(--font-mono); color: var(--muted-foreground); margin-top: 2px; }
+  .tag { font: var(--weight-medium) 11px var(--font-sans); color: var(--muted-foreground); margin-top: 1px; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="sw"><div class="pair"><div class="solid" style="background:#059669"></div><div class="soft" style="background:#ecfdf5"></div></div><div class="meta"><div class="name" style="color:#059669">Success</div><div class="hex">#059669 · #ECFDF5</div><div class="tag">Ingresos</div></div></div>
+    <div class="sw"><div class="pair"><div class="solid" style="background:#dc2626"></div><div class="soft" style="background:#fef2f2"></div></div><div class="meta"><div class="name" style="color:#dc2626">Destructive</div><div class="hex">#DC2626 · #FEF2F2</div><div class="tag">Gastos</div></div></div>
+    <div class="sw"><div class="pair"><div class="solid" style="background:#d97706"></div><div class="soft" style="background:#fffbeb"></div></div><div class="meta"><div class="name" style="color:#d97706">Warning</div><div class="hex">#D97706 · #FFFBEB</div><div class="tag">Pendiente</div></div></div>
+    <div class="sw"><div class="pair"><div class="solid" style="background:#2563eb"></div><div class="soft" style="background:#eff6ff"></div></div><div class="meta"><div class="name" style="color:#2563eb">Info</div><div class="hex">#2563EB · #EFF6FF</div><div class="tag">Transferencia</div></div></div>
+  </div>
+</body>
+</html>

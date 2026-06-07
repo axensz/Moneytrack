@@ -20,7 +20,11 @@ function getBasePath(): string {
         return "";
     }
 
-    if (window.location.hostname.endsWith("github.io")) {
+    // Nota seguridad (CodeQL js/incomplete-url-substring-sanitization #10):
+    // se exige el punto inicial ".github.io" para que un host malicioso como
+    // "evilgithub.io" NO matchee; solo "<usuario>.github.io" es válido.
+    const { hostname } = window.location;
+    if (hostname === "github.io" || hostname.endsWith(".github.io")) {
         const [firstSegment] = window.location.pathname.split("/").filter(Boolean);
         return firstSegment ? `/${firstSegment}` : "";
     }

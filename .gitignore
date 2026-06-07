@@ -146,6 +146,19 @@ firestore-debug.log
 ui-debug.log
 
 # ============================================================
+# Claude Code / asistentes de IA
+# ============================================================
+# Ajustes locales por máquina (permisos, etc.). Se mantiene .claude/settings.json
+# (compartido) y los comandos/agentes del proyecto.
+.claude/settings.local.json
+.claude/*.local.json
+
+# ============================================================
+# Scripts locales de un solo uso (migraciones de datos manuales)
+# ============================================================
+scripts/recategorize-*.mjs
+
+# ============================================================
 # Misc
 # ============================================================
 *.pem

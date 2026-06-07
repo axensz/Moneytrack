@@ -17,7 +17,28 @@ import { useMemo } from 'react';
 import { useFirestoreData } from '../contexts/FirestoreContext';
 import { useLocalStorage } from './useLocalStorage';
 import { generateId } from '../utils/formatters';
+import { ensureDate } from '../utils/dateUtils';
 import type { Transaction } from '../types/finance';
+
+/**
+ * Orden de la lista de transacciones: fecha descendente y, como DESEMPATE,
+ * createdAt descendente (lo recién creado primero).
+ *
+ * Por qué el desempate: las transacciones se registran con una fecha sin hora
+ * (parseDateFromInput → medianoche local), así que todas las del MISMO día
+ * comparten timestamp y Firestore las devuelve en orden de doc-id (aparente
+ * "desorden"). createdAt (instante real de creación) las ordena de forma
+ * estable sin necesidad de un índice compuesto en Firestore —que además
+ * excluiría documentos sin createdAt.
+ */
+export function byDateThenCreatedDesc(a: Transaction, b: Transaction): number {
+  const dateDiff = ensureDate(b.date).getTime() - ensureDate(a.date).getTime();
+  if (dateDiff !== 0) return dateDiff;
+  // Fallback estable: sin createdAt → al final del grupo del día.
+  const createdA = a.createdAt ? ensureDate(a.createdAt).getTime() : 0;
+  const createdB = b.createdAt ? ensureDate(b.createdAt).getTime() : 0;
+  return createdB - createdA;
+}
 
 export function useTransactions(userId: string | null) {
   const {
@@ -31,15 +52,12 @@ export function useTransactions(userId: string | null) {
 
   const [localTransactions, setLocalTransactions] = useLocalStorage<Transaction[]>('transactions', []);
 
-  // Usar Firebase si hay usuario, localStorage si no
-  // Firestore ya viene ordenado por fecha DESC, solo ordenamos localStorage
+  // Usar Firebase si hay usuario, localStorage si no.
+  // Firestore ya viene ordenado por fecha DESC; reordenamos con el desempate por
+  // createdAt para que las transacciones del mismo día no aparezcan en desorden.
   const transactions = useMemo(() => {
-    if (userId) return firestoreTransactions;
-    return [...localTransactions].sort((a, b) => {
-      const dateA = new Date(a.date).getTime();
-      const dateB = new Date(b.date).getTime();
-      return dateB - dateA;
-    });
+    const base = userId ? firestoreTransactions : localTransactions;
+    return [...base].sort(byDateThenCreatedDesc);
   }, [userId, firestoreTransactions, localTransactions]);
 
   const loading = userId ? firestoreLoading : false;

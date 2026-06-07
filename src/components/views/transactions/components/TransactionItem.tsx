@@ -148,7 +148,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
   }
 
   return (
-    <div className="border rounded-xl p-3.5 sm:p-4 transition-all bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md shadow-sm group">
+    <div className="border rounded-xl p-3.5 sm:p-4 transition-all bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md shadow-sm group">
       <div className="flex items-start gap-3">
         {/* Icon */}
         <div

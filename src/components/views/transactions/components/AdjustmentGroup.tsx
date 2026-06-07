@@ -53,7 +53,7 @@ export const AdjustmentGroup: React.FC<AdjustmentGroupProps> = ({
     <div className="border rounded-xl overflow-hidden border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm">
       <button
         onClick={() => setExpanded(!isExpanded)}
-        className="w-full flex items-center gap-3 p-3.5 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+        className="w-full flex items-center gap-3 p-3.5 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors"
       >
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">
           <Settings2 size={18} />

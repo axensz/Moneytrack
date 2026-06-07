@@ -90,13 +90,13 @@ export function TransactionsList({
         while (i < visible.length) {
             const t = visible[i];
             const dateKey = new Date(t.date).toDateString();
-            if (SPECIAL_CATEGORIES.adjustmentCategories.includes(t.category)) {
+            if (SPECIAL_CATEGORIES.groupedAdjustmentCategories.includes(t.category)) {
                 // Collect all consecutive adjustments of the same day
                 const group: Transaction[] = [t];
                 let j = i + 1;
                 while (j < visible.length) {
                     const next = visible[j];
-                    if (new Date(next.date).toDateString() === dateKey && SPECIAL_CATEGORIES.adjustmentCategories.includes(next.category)) {
+                    if (new Date(next.date).toDateString() === dateKey && SPECIAL_CATEGORIES.groupedAdjustmentCategories.includes(next.category)) {
                         group.push(next);
                         j++;
                     } else {

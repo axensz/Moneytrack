@@ -18,7 +18,8 @@
  *         └── Vistas (consumen vía useFinance())
  */
 
-import React, { createContext, useContext, useMemo } from 'react';
+import React, { createContext, useContext, useMemo, useCallback } from 'react';
+import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../config/constants';
 import { useTransactions } from '../hooks/useTransactions';
 import { useAccounts } from '../hooks/useAccounts';
 import type { MergeCreditCardsParams } from '../hooks/useAccounts';
@@ -225,6 +226,45 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     deleteTransaction,
   });
 
+  // Borrado de transacciones con sincronización de préstamos.
+  //
+  // BUG QUE RESUELVE: borrar desde la vista de Transacciones una transacción
+  // vinculada a una deuda (debtId) eliminaba solo la transacción y dejaba la
+  // deuda huérfana. El dinero quedaba contado dos veces: el saldo de la cuenta
+  // se recuperaba (el gasto del préstamo desaparece) y la deuda seguía viva en
+  // "Me deben"/"Debo". Aquí mantenemos ambos lados consistentes.
+  //
+  // IMPORTANTE: useAccounts y useDebts (arriba) reciben el deleteTransaction
+  // CRUDO. Este wrapper es el que se expone a las vistas. Así evitamos la
+  // recursión deleteDebt → deleteTransaction → deleteDebt.
+  const deleteTransactionWithDebtSync = useCallback(
+    async (id: string) => {
+      const tx = transactions.find(t => t.id === id);
+      const debt = tx?.debtId ? debts.find(d => d.id === tx.debtId) : undefined;
+
+      if (tx && debt) {
+        // Movimiento principal del préstamo → deshacer la deuda completa.
+        // deleteDebt ya elimina esta transacción (y las demás vinculadas) + la deuda.
+        if (tx.category === LOAN_CATEGORY) {
+          await deleteDebt(debt.id!);
+          return;
+        }
+        // Pago/cobro del préstamo → revertir el saldo pendiente y borrar la tx.
+        if (tx.category === LOAN_PAYMENT_CATEGORY) {
+          await deleteTransaction(id);
+          await updateDebt(debt.id!, {
+            remainingAmount: debt.remainingAmount + tx.amount,
+            isSettled: false,
+          });
+          return;
+        }
+      }
+
+      await deleteTransaction(id);
+    },
+    [transactions, debts, deleteTransaction, deleteDebt, updateDebt]
+  );
+
   // 6. Presupuestos — uses centralized data when authenticated
   const {
     budgets,
@@ -277,7 +317,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     // Transaction CRUD
     addTransaction,
     addCreditPaymentAtomic,
-    deleteTransaction,
+    deleteTransaction: deleteTransactionWithDebtSync,
     updateTransaction,
 
     // Account CRUD
@@ -338,7 +378,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     transactionsLoading, accountsLoading,
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
     firestoreError, retryLoad,
-    addTransaction, addCreditPaymentAtomic, deleteTransaction, updateTransaction,
+    addTransaction, addCreditPaymentAtomic, deleteTransactionWithDebtSync, updateTransaction,
     addAccount, updateAccount, deleteAccount, mergeCreditCards, setDefaultAccount,
     getAccountBalance, getTransactionCountForAccount,
     addCategory, deleteCategory,

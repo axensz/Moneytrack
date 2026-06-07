@@ -59,8 +59,13 @@ export const SPECIAL_CATEGORIES = {
   balanceAdjustment: BALANCE_ADJUSTMENT_CATEGORY,
   loan: LOAN_CATEGORY,
   loanPayment: LOAN_PAYMENT_CATEGORY,
-  // Categorías que representan ajustes internos (no gastos reales del usuario)
+  // Categorías que representan ajustes internos (no gastos reales del usuario).
+  // Se usan para EXCLUIR estos movimientos de estadísticas/presupuestos.
   adjustmentCategories: [BALANCE_ADJUSTMENT_CATEGORY, CREDIT_PAYMENT_CATEGORY, 'Pago TC', 'Ajuste'] as readonly string[],
+  // Categorías que se AGRUPAN visualmente bajo "Ajustes de saldo" en la lista de
+  // transacciones. Subconjunto de adjustmentCategories: solo ajustes de saldo —
+  // los pagos de crédito ('Pago Crédito'/'Pago TC') se muestran como movimientos normales.
+  groupedAdjustmentCategories: [BALANCE_ADJUSTMENT_CATEGORY, 'Ajuste'] as readonly string[],
 } as const;
 
 // Validaciones para cuentas

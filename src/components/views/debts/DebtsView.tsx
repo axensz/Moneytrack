@@ -121,6 +121,11 @@ export const DebtsView: React.FC = () => {
 
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
 
+  // Cuenta seleccionada en el formulario (puede ser una tarjeta de crédito:
+  // útil cuando prestas tu tarjeta — el cargo consume cupo y los cobros lo liberan).
+  const selectedAccount = accounts.find(a => a.id === formData.accountId);
+  const isCreditSelected = selectedAccount?.type === 'credit';
+
   return (
     <div className="space-y-6">
       {/* Header con descripción */}
@@ -259,16 +264,22 @@ export const DebtsView: React.FC = () => {
               className="input-base"
             >
               <option value="">Sin cuenta asociada (solo seguimiento)</option>
-              {accounts.filter(a => a.type !== 'credit').map(a => (
-                <option key={a.id} value={a.id}>{a.name}</option>
+              {accounts.map(a => (
+                <option key={a.id} value={a.id}>
+                  {a.name}{a.type === 'credit' ? ' (Tarjeta de crédito)' : ''}
+                </option>
               ))}
             </select>
             <p className="text-xs text-gray-500 dark:text-gray-400 -mt-2">
-              {formData.accountId
-                ? (formData.type === 'lent'
-                    ? 'Se registrará un gasto en esa cuenta (sale el dinero). Los cobros entrarán como ingreso.'
-                    : 'Se registrará un ingreso en esa cuenta (entra el dinero). Los pagos saldrán como gasto.')
-                : 'Si eliges una cuenta, el préstamo y sus pagos moverán su saldo automáticamente.'}
+              {!formData.accountId
+                ? 'Si eliges una cuenta, el préstamo y sus pagos moverán su saldo automáticamente.'
+                : isCreditSelected
+                  ? (formData.type === 'lent'
+                      ? 'Se cargará a tu tarjeta (consume cupo). Los cobros abonarán a la tarjeta y liberan cupo.'
+                      : 'Se abonará a tu tarjeta (reduce el saldo usado). Los pagos volverán a cargarla.')
+                  : (formData.type === 'lent'
+                      ? 'Se registrará un gasto en esa cuenta (sale el dinero). Los cobros entrarán como ingreso.'
+                      : 'Se registrará un ingreso en esa cuenta (entra el dinero). Los pagos saldrán como gasto.')}
             </p>
 
             <div className="flex gap-3">

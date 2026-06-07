@@ -20,13 +20,15 @@ describe('useGeminiApiKey (BYOK)', () => {
     expect(getGeminiApiKey()).toBe('');
   });
 
-  it('saves the key to localStorage and syncs the module', () => {
+  it('saves the key to memory + central module SIN persistir en localStorage', () => {
     const { result } = renderHook(() => useGeminiApiKey('user-1'));
     act(() => result.current.saveApiKey(`  ${LONG_KEY}  `));
     expect(result.current.apiKey).toBe(LONG_KEY);
     expect(result.current.isConfigured).toBe(true);
     expect(getGeminiApiKey()).toBe(LONG_KEY);
-    expect(localStorage.getItem('moneytrack_gemini_key_user-1')).toBe(LONG_KEY);
+    // Seguridad (alerta CodeQL #9): la API key NUNCA se escribe en localStorage.
+    // Vive solo en memoria + Firestore. Este assert es un guardia de regresión.
+    expect(localStorage.getItem('moneytrack_gemini_key_user-1')).toBeNull();
   });
 
   it('isolates keys per user', () => {

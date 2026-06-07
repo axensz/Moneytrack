@@ -8,16 +8,19 @@ import { logger } from '../utils/logger';
 /**
  * BYOK: gestiona la API key de Gemini del usuario activo.
  *
- * Persistencia en dos capas:
- * - localStorage (caché instantáneo, por usuario) → funciona offline y para invitados.
- * - Firestore `users/{uid}/settings/ai` (solo autenticado) → sincroniza entre
- *   dispositivos. Es la fuente de verdad cuando hay sesión.
+ * Persistencia:
+ * - La API key NO se persiste en localStorage para evitar almacenar información
+ *   sensible en texto claro en el navegador. Vive solo en memoria durante la
+ *   sesión y, si hay usuario autenticado, se sincroniza desde Firestore
+ *   (`users/{uid}/settings/ai`), que es la fuente de verdad entre dispositivos.
+ * - El consentimiento de IA (booleano, NO sensible) sí se cachea en localStorage
+ *   para no re-preguntar en cada carga.
  *
  * Seguridad: el doc solo lo lee/escribe su dueño (reglas Firestore), Firestore
  * cifra en reposo, y la key nunca se loguea. Se recomienda al usuario restringir
  * su key en Google AI Studio como defensa en profundidad.
  */
-const storageKeyFor = (userId: string | null) => `moneytrack_gemini_key_${userId ?? 'guest'}`;
+// Intencionalmente NO existe storage en cliente para la API key: solo memoria + Firestore.
 const consentKeyFor = (userId: string | null) => `moneytrack_ai_consent_${userId ?? 'guest'}`;
 
 export interface UseGeminiApiKeyResult {
@@ -34,18 +37,12 @@ export function useGeminiApiKey(userId: string | null): UseGeminiApiKeyResult {
   const [apiKey, setApiKeyState] = useState('');
   const [hasConsent, setHasConsentState] = useState(false);
 
-  // Aplica una key a estado + módulo central + caché local.
+  // Aplica una key a estado + módulo central (solo memoria en cliente).
   const apply = useCallback((key: string) => {
     const trimmed = (key ?? '').trim();
     setApiKeyState(trimmed);
     setGeminiApiKey(trimmed);
-    try {
-      if (trimmed) localStorage.setItem(storageKeyFor(userId), trimmed);
-      else localStorage.removeItem(storageKeyFor(userId));
-    } catch {
-      // localStorage no disponible (modo privado): se mantiene solo en memoria
-    }
-  }, [userId]);
+  }, []);
 
   // Aplica el consentimiento a estado + módulo central + caché local.
   const applyConsent = useCallback((value: boolean) => {
@@ -58,20 +55,17 @@ export function useGeminiApiKey(userId: string | null): UseGeminiApiKeyResult {
     }
   }, [userId]);
 
-  // Cargar: primero el caché local (instantáneo) y, si hay sesión, suscribirse a
-  // Firestore para sincronizar entre dispositivos.
+  // Cargar: la API key arranca vacía (solo memoria) y, si hay sesión, se
+  // sincroniza desde Firestore. El consentimiento sí se lee del caché local.
   useEffect(() => {
-    let local = '';
     let localConsent = false;
     try {
-      local = localStorage.getItem(storageKeyFor(userId)) ?? '';
       localConsent = localStorage.getItem(consentKeyFor(userId)) === 'true';
     } catch {
-      local = '';
       localConsent = false;
     }
-    setApiKeyState(local);
-    setGeminiApiKey(local);
+    setApiKeyState('');
+    setGeminiApiKey('');
     setHasConsentState(localConsent);
     setAiConsent(localConsent);
 
@@ -83,12 +77,11 @@ export function useGeminiApiKey(userId: string | null): UseGeminiApiKeyResult {
       (snap) => {
         const remote = (snap.data()?.geminiApiKey as string | undefined)?.trim() ?? '';
         if (remote) {
-          // La nube manda: sincroniza estado + módulo + caché local.
+          // La nube manda: sincroniza estado + módulo en memoria.
           setApiKeyState(remote);
           setGeminiApiKey(remote);
-          try { localStorage.setItem(storageKeyFor(userId), remote); } catch { /* noop */ }
         }
-        // Si la nube está vacía, conservamos lo que haya en local (no lo pisamos).
+        // Si la nube está vacía, mantenemos el estado actual en memoria.
 
         // Consentimiento: solo si el campo existe explícitamente (bool) la nube
         // manda; si está ausente (usuarios previos), conservamos el local.

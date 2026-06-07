@@ -19,6 +19,10 @@ interface HeaderProps {
   onOpenNotificationPreferences: () => void;
   onOpenAISettings: () => void;
   onLogout: () => Promise<void>;
+  /** Nº de acciones de configuración pendientes (p. ej. autorizar IA). */
+  pendingSettingsCount?: number;
+  /** Hay una API key configurada pero la IA aún no está autorizada. */
+  aiAuthPending?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -32,7 +36,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCategories,
   onOpenNotificationPreferences,
   onOpenAISettings,
-  onLogout
+  onLogout,
+  pendingSettingsCount = 0,
+  aiAuthPending = false,
 }) => {
   const settingsMenuRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
@@ -159,12 +165,24 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="relative" ref={settingsMenuRef}>
               <button
                 onClick={() => setShowSettingsMenu(!showSettingsMenu)}
-                className="p-2 sm:p-2.5 text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 active:bg-gray-100 dark:active:bg-gray-800 rounded-lg transition-colors"
-                aria-label="Abrir menú de configuración"
+                className="relative p-2 sm:p-2.5 text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 active:bg-gray-100 dark:active:bg-gray-800 rounded-lg transition-colors"
+                aria-label={
+                  pendingSettingsCount > 0
+                    ? `Abrir menú de configuración (${pendingSettingsCount} pendiente${pendingSettingsCount !== 1 ? 's' : ''})`
+                    : 'Abrir menú de configuración'
+                }
                 aria-expanded={showSettingsMenu}
                 aria-haspopup="menu"
               >
                 <Settings size={20} aria-hidden="true" />
+                {pendingSettingsCount > 0 && (
+                  <span
+                    className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-bold leading-none text-white bg-rose-500 rounded-full ring-2 ring-white dark:ring-gray-900"
+                    aria-hidden="true"
+                  >
+                    {pendingSettingsCount}
+                  </span>
+                )}
               </button>
 
               {/* Menú desplegable */}
@@ -208,6 +226,13 @@ export const Header: React.FC<HeaderProps> = ({
                   >
                     <Sparkles size={18} aria-hidden="true" />
                     <span>Asistente IA</span>
+                    {aiAuthPending && (
+                      <span
+                        className="ml-auto w-2 h-2 rounded-full bg-rose-500"
+                        title="Autorización de IA pendiente"
+                        aria-label="Autorización de IA pendiente"
+                      />
+                    )}
                   </button>
                   <button
                     onClick={() => {

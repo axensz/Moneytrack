@@ -15,7 +15,7 @@ import { HelpModal } from './components/modals/HelpModal';
 import { CategoriesModal } from './components/modals/CategoriesModal';
 import { GeminiKeyModal } from './components/modals/GeminiKeyModal';
 import { GuestMigrationModal } from './components/modals/GuestMigrationModal';
-import { GeminiKeyProvider } from './contexts/GeminiKeyContext';
+import { GeminiKeyProvider, useGeminiKey } from './contexts/GeminiKeyContext';
 import { clearGuestFinanceData } from './utils/localData';
 import { NotificationPreferencesModal } from './components/modals/NotificationPreferencesModal';
 import { FirestoreProvider } from './contexts/FirestoreContext';
@@ -147,6 +147,12 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     firestoreError,
     retryLoad,
   } = useFinance();
+
+  // Estado de IA (BYOK): si hay key pero falta autorizar el consentimiento,
+  // mostramos un badge de "pendiente" sobre el botón de configuración.
+  const { isConfigured: aiKeyConfigured, hasConsent: aiHasConsent } = useGeminiKey();
+  const aiAuthPending = aiKeyConfigured && !aiHasConsent;
+  const pendingSettingsCount = aiAuthPending ? 1 : 0;
 
   // Initialize notification system
   const { notificationManager } = useNotificationContext();
@@ -497,6 +503,8 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         onOpenNotificationPreferences={handleOpenNotificationPreferences}
         onOpenAISettings={() => setShowAISettingsModal(true)}
         onLogout={handleLogout}
+        pendingSettingsCount={pendingSettingsCount}
+        aiAuthPending={aiAuthPending}
       />
 
       <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-auto">

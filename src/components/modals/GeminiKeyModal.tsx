@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Sparkles, ExternalLink, Trash2, ShieldCheck } from 'lucide-react';
+import { Sparkles, ExternalLink, Trash2, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { BaseModal } from './BaseModal';
 import { useGeminiKey } from '../../contexts/GeminiKeyContext';
 import { showToast } from '../../utils/toastHelpers';
@@ -14,6 +14,7 @@ interface GeminiKeyModalProps {
 export function GeminiKeyModal({ isOpen, onClose }: GeminiKeyModalProps) {
   const { apiKey, isConfigured, saveApiKey, clearApiKey, hasConsent, setConsent } = useGeminiKey();
   const [draft, setDraft] = useState('');
+  const [showKey, setShowKey] = useState(false);
 
   const handleToggleConsent = (value: boolean) => {
     setConsent(value);
@@ -78,16 +79,27 @@ export function GeminiKeyModal({ isOpen, onClose }: GeminiKeyModalProps) {
           <label htmlFor="gemini-api-key" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
             API key de Gemini
           </label>
-          <input
-            id="gemini-api-key"
-            type="password"
-            autoComplete="off"
-            spellCheck={false}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="AIza..."
-            className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-          />
+          <div className="relative">
+            <input
+              id="gemini-api-key"
+              type={showKey ? 'text' : 'password'}
+              autoComplete="off"
+              spellCheck={false}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="AIza..."
+              className="w-full px-3 py-2.5 pr-11 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey((v) => !v)}
+              aria-label={showKey ? 'Ocultar API key' : 'Mostrar API key'}
+              aria-pressed={showKey}
+              className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            >
+              {showKey ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+            </button>
+          </div>
           {isConfigured && (
             <p className="mt-1.5 text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
               <ShieldCheck size={12} aria-hidden="true" /> Hay una API key configurada.

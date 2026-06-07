@@ -15,7 +15,8 @@ export { useDebts } from './useDebts';
 export { useBudgets } from './useBudgets';
 export { useSavingsGoals } from './useSavingsGoals';
 export { useCreditCardStatement } from './useCreditCardStatement';
-export { useCreditCardTransactions, mergeCreditTransactions } from './useCreditCardTransactions';
+export { useCreditCardTransactions, mergeCreditTransactions, mergeTransactionsById } from './useCreditCardTransactions';
+export { useAllTransactions } from './useAllTransactions';
 export { useCSVExport } from './useCSVExport';
 
 // UI & Filtering

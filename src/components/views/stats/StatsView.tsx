@@ -4,7 +4,7 @@ import React from 'react';
 import type { Transaction, Account } from '../../../types/finance';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { useAuth } from '../../../hooks/useAuth';
-import { useCreditCardTransactions } from '../../../hooks/useCreditCardTransactions';
+import { useAllTransactions } from '../../../hooks/useAllTransactions';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { CashFlowChart } from './components/CashFlowChart';
 import { MonthlyComparisonChart } from './components/MonthlyComparisonChart';
@@ -29,12 +29,12 @@ export const StatsView: React.FC = () => {
   const { transactions, accounts, formatCurrency } = useFinance();
   const { user } = useAuth();
   const { hideBalances } = useUIPreferences();
-  // Historial COMPLETO de TC (independiente de la paginación de 500) para que las
-  // cuotas/intereses de ciclos antiguos no se subreporten.
-  const creditTransactions = useCreditCardTransactions(user?.uid ?? null, accounts, transactions);
+  // Historial COMPLETO (todas las cuentas, independiente de la paginación de 500)
+  // para que gráficos, intereses y resumen por periodo no subreporten lo antiguo.
+  const allTransactions = useAllTransactions(user?.uid ?? null, transactions);
   // Custom hooks para procesamiento de datos
-  const { monthlyData, yearlyData, categoryData } = useStatsData(transactions);
-  const { creditCardInterests, totals } = useCreditCardInterests(accounts, creditTransactions);
+  const { monthlyData, yearlyData, categoryData } = useStatsData(allTransactions);
+  const { creditCardInterests, totals } = useCreditCardInterests(accounts, allTransactions);
 
   // Wrapper para formatCurrency que respeta hideBalances
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
@@ -74,7 +74,7 @@ export const StatsView: React.FC = () => {
 
       {/* Fila 5: Consulta por periodo personalizado */}
       <PeriodSummaryCard
-        transactions={transactions}
+        transactions={allTransactions}
         accounts={accounts}
       />
     </div>

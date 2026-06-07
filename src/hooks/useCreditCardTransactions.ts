@@ -30,25 +30,27 @@ import type { Account, Transaction } from '../types/finance';
 const IN_CHUNK = 30;
 
 /**
- * Fusiona las transacciones live (paginadas, recientes) con el historial completo
- * de TC, deduplicando por id. La versión LIVE gana ante coincidencias (refleja
- * ediciones recientes); el historial completo aporta la cola antigua que la
- * paginación dejó fuera.
+ * Fusiona dos listas de transacciones deduplicando por id. La lista PRIMARIA gana
+ * ante coincidencias (p. ej. el array live refleja ediciones recientes); la
+ * SECUNDARIA aporta la cola que falte (historial fuera de la paginación de 500).
  */
-export function mergeCreditTransactions(
-  live: Transaction[],
-  fullCredit: Transaction[],
+export function mergeTransactionsById(
+  primary: Transaction[],
+  secondary: Transaction[],
 ): Transaction[] {
-  if (fullCredit.length === 0) return live;
+  if (secondary.length === 0) return primary;
   const byId = new Map<string, Transaction>();
-  for (const t of live) {
+  for (const t of primary) {
     if (t.id) byId.set(t.id, t);
   }
-  for (const t of fullCredit) {
+  for (const t of secondary) {
     if (t.id && !byId.has(t.id)) byId.set(t.id, t);
   }
   return Array.from(byId.values());
 }
+
+/** @deprecated Alias por compatibilidad — usa mergeTransactionsById. */
+export const mergeCreditTransactions = mergeTransactionsById;
 
 /**
  * Devuelve el conjunto de transacciones a usar en cálculos de tarjeta de crédito:
@@ -123,7 +125,7 @@ export function useCreditCardTransactions(
   }, [userId, creditIdsKey, liveTransactions.length]);
 
   return useMemo(
-    () => mergeCreditTransactions(liveTransactions, fullCreditTxs),
+    () => mergeTransactionsById(liveTransactions, fullCreditTxs),
     [liveTransactions, fullCreditTxs],
   );
 }

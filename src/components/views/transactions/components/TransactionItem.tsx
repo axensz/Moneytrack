@@ -5,6 +5,7 @@ import CurrencyInput from 'react-currency-input-field';
 import { ArrowRightLeft, Check, Clock, CreditCard, Edit2, X } from 'lucide-react';
 import type { Transaction, Account, Categories } from '../../../../types/finance';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
+import { ensureDate } from '../../../../utils/dateUtils';
 
 interface TransactionItemProps {
   transaction: Transaction;
@@ -61,6 +62,14 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
   const visibleCategories = categoryOptions.includes(transaction.category)
     ? categoryOptions
     : [transaction.category, ...categoryOptions];
+
+  // Fecha + hora. La hora solo se muestra si la transacción la tiene (las
+  // antiguas quedaron a medianoche y se muestran solo con la fecha).
+  const txDate = ensureDate(transaction.date);
+  const txHasTime = txDate.getHours() !== 0 || txDate.getMinutes() !== 0 || txDate.getSeconds() !== 0;
+  const dateLabel =
+    txDate.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' }) +
+    (txHasTime ? ` · ${txDate.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}` : '');
 
   if (isEditing) {
     return (
@@ -189,7 +198,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
                 {transaction.category}
               </span>
               <span className="text-[11px] text-gray-400 dark:text-gray-500">
-                {new Date(transaction.date).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                {dateLabel}
               </span>
               {!transaction.paid && (
                 <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-medium rounded-md bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">

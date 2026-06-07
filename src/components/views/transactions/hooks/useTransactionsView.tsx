@@ -8,8 +8,8 @@ import type {
   DateRangePreset,
   RecurringPayment,
 } from '../../../../types/finance';
-import { parseDateFromInput } from '../../../../utils/formatters';
-import { getDateRangeFromPreset } from '../../../../utils/dateUtils';
+import { parseDateFromInput, parseDateWithTime } from '../../../../utils/formatters';
+import { getDateRangeFromPreset, ensureDate } from '../../../../utils/dateUtils';
 import { findAccountForTransaction, transactionUsesAccount } from '../../../../utils/accountTransactions';
 import { showToast } from '../../../../utils/toastHelpers';
 import { logger } from '../../../../utils/logger';
@@ -210,10 +210,14 @@ export const useTransactionsView = ({
       }
 
       try {
+        const original = transactions.find((t) => t.id === id);
         await updateTransaction(id, {
           description: editForm.description.trim(),
           amount,
-          date: parseDateFromInput(editForm.date),
+          // Mantiene la hora original de la transacción; el input solo cambia el día.
+          date: original
+            ? parseDateWithTime(editForm.date, ensureDate(original.date))
+            : parseDateWithTime(editForm.date),
           category: editForm.category,
         });
 

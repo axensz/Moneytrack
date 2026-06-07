@@ -112,7 +112,13 @@ class DateFormatter {
    * @returns String en formato YYYY-MM-DD
    */
   static formatDateForInput(date: Date = new Date()): string {
-    return date.toISOString().split('T')[0];
+    // Componentes LOCALES (no UTC): toISOString() convierte a UTC y, ahora que
+    // las transacciones llevan hora, podría desplazar el día (p. ej. una de las
+    // 10 p. m. saldría como el día siguiente). getFullYear/Month/Date son locales.
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 
   /**
@@ -124,6 +130,27 @@ class DateFormatter {
   static parseDateFromInput(dateString: string): Date {
     const [year, month, day] = dateString.split('-').map(Number);
     return new Date(year, month - 1, day);
+  }
+
+  /**
+   * Combina el DÍA de un string YYYY-MM-DD con la HORA de `timeSource`
+   * (por defecto, la hora actual). Permite que las transacciones guarden fecha
+   * y hora reales y se ordenen cronológicamente, en lugar de quedar todas a
+   * medianoche (lo que hacía que las del mismo día salieran en desorden).
+   * @param dateString - String en formato YYYY-MM-DD
+   * @param timeSource - Fecha de la que se toma la hora (default: ahora)
+   */
+  static parseDateWithTime(dateString: string, timeSource: Date = new Date()): Date {
+    const [year, month, day] = dateString.split('-').map(Number);
+    return new Date(
+      year,
+      month - 1,
+      day,
+      timeSource.getHours(),
+      timeSource.getMinutes(),
+      timeSource.getSeconds(),
+      timeSource.getMilliseconds(),
+    );
   }
 
   /**
@@ -265,6 +292,7 @@ export const formatDate = (date: Date | string): string => DateFormatter.formatD
 export const formatDateLong = (date: Date | string): string => DateFormatter.formatDateLong(date);
 export const formatDateForInput = (date?: Date): string => DateFormatter.formatDateForInput(date);
 export const parseDateFromInput = (dateString: string): Date => DateFormatter.parseDateFromInput(dateString);
+export const parseDateWithTime = (dateString: string, timeSource?: Date): Date => DateFormatter.parseDateWithTime(dateString, timeSource);
 export const formatMonthYear = (date: Date | string): string => DateFormatter.formatMonthYear(date);
 export const getMonthName = (monthNumber: number): string => DateFormatter.getMonthName(monthNumber);
 

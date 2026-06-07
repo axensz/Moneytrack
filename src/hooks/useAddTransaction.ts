@@ -16,7 +16,7 @@ import { showToast } from '../utils/toastHelpers';
 import { logger } from '../utils/logger';
 import { TransactionValidator } from '../utils/validators';
 import { calculateInterest } from '../utils/interestCalculator';
-import { parseDateFromInput } from '../utils/formatters';
+import { parseDateWithTime } from '../utils/formatters';
 import {
   SUCCESS_MESSAGES,
   ERROR_MESSAGES,
@@ -155,13 +155,17 @@ export function useAddTransaction({
           category = CREDIT_PAYMENT_CATEGORY;
         }
 
+        // Día elegido + hora actual → orden cronológico real (no medianoche).
+        // Se calcula una sola vez para que el par de un pago de TC comparta hora.
+        const txDate = newTransaction.date ? parseDateWithTime(newTransaction.date) : new Date();
+
         // Preparar datos de la transacción
         const transactionData: Omit<Transaction, 'id' | 'createdAt'> = {
           type: newTransaction.type,
           amount: amount,
           category,
           description: newTransaction.description.trim(),
-          date: newTransaction.date ? parseDateFromInput(newTransaction.date) : new Date(),
+          date: txDate,
           paid: newTransaction.paid,
           accountId: newTransaction.accountId || defaultAccount?.id || '',
           toAccountId: newTransaction.toAccountId || undefined,
@@ -206,7 +210,7 @@ export function useAddTransaction({
               amount: amount,
               category: CREDIT_PAYMENT_CATEGORY,
               description: `Pago a ${selectedAccount.name}${newTransaction.description.trim() ? ': ' + newTransaction.description.trim() : ''}`,
-              date: newTransaction.date ? parseDateFromInput(newTransaction.date) : new Date(),
+              date: txDate,
               paid: true,
               accountId: sourceAccount.id!,
             };

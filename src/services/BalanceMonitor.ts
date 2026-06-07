@@ -6,10 +6,10 @@
 import { logger } from '../utils/logger';
 import { BalanceCalculator } from '../utils/balanceCalculator';
 import { formatCurrency } from '../utils/formatters';
-import type { Account, Transaction, NotificationPreferences } from '../types/finance';
+import type { Account, Transaction, Notification, NotificationPreferences } from '../types/finance';
 
 interface BalanceMonitorDeps {
-    createNotification: (notification: any) => Promise<void>;
+    createNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => Promise<void>;
     preferences: NotificationPreferences;
     accounts: Account[];
     transactions: Transaction[];

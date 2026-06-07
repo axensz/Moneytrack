@@ -7,13 +7,16 @@ import { Header } from './components/layout/Header';
 import { TabNavigation } from './components/layout/TabNavigation';
 import { LoadingScreen } from './components/layout/LoadingScreen';
 import { FirestoreErrorBanner } from './components/layout/FirestoreErrorBanner';
+import { ErrorBoundary } from './components/layout/ErrorBoundary';
 import { StatsCards, TransactionForm } from './components/shared';
 import { AuthModal } from './components/modals/AuthModal';
 import { WelcomeModal } from './components/modals/WelcomeModal';
 import { HelpModal } from './components/modals/HelpModal';
 import { CategoriesModal } from './components/modals/CategoriesModal';
 import { GeminiKeyModal } from './components/modals/GeminiKeyModal';
+import { GuestMigrationModal } from './components/modals/GuestMigrationModal';
 import { GeminiKeyProvider } from './contexts/GeminiKeyContext';
+import { clearGuestFinanceData } from './utils/localData';
 import { NotificationPreferencesModal } from './components/modals/NotificationPreferencesModal';
 import { FirestoreProvider } from './contexts/FirestoreContext';
 import { FinanceProvider, useFinance } from './contexts/FinanceContext';
@@ -23,16 +26,19 @@ import { useAddTransaction } from './hooks/useAddTransaction';
 import { useFilteredData } from './hooks/useFilteredData';
 import { useWelcomeModal } from './hooks/useWelcomeModal';
 import { useNotificationMonitoring } from './hooks';
+import { useGuestMigration } from './hooks/useGuestMigration';
 import { NotificationProvider, useNotificationContext } from './contexts/NotificationContext';
 import { UIPreferencesProvider } from './contexts/UIPreferencesContext';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
+import { useViewRouting } from './hooks/useViewRouting';
+import { installGlobalErrorHandlers } from './lib/errorReporter';
 import { TOAST_CONFIG, INITIAL_TRANSACTION } from './config/constants';
 import { DATE_PRESETS } from './utils/dateUtils';
 import { parseDateFromInput } from './utils/formatters';
 import { logger } from './utils/logger';
 import type { NewTransaction, ViewType, FilterValue, DateRange, DateRangePreset } from './types/finance';
-import { logoutFirebase } from './lib/firebase';
+import { logoutFirebase, clearFirestorePersistence } from './lib/firebase';
 import type { User } from 'firebase/auth';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
 import { InstallPrompt } from './components/pwa/InstallPrompt';
@@ -75,7 +81,11 @@ const ViewFallback = () => (
 const FinanceTracker = () => {
   const [mounted, setMounted] = useState(false);
   const [dataReady, setDataReady] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+    // S8: captura errores JS globales no controlados y promesas sin .catch().
+    installGlobalErrorHandlers();
+  }, []);
 
   const { user, loading: authLoading } = useAuth();
   const isOnline = useNetworkStatus();
@@ -85,7 +95,9 @@ const FinanceTracker = () => {
   const showLoading = !mounted || authLoading || (user && !dataReady);
 
   return (
-    <>
+    // S8: ErrorBoundary envuelve todo el árbol — captura errores de render
+    // y los envía al errorReporter, mostrando una pantalla de error amigable.
+    <ErrorBoundary>
       {showLoading && <LoadingScreen />}
       {mounted && !authLoading && (
         <div style={{ display: showLoading ? 'none' : undefined }}>
@@ -106,7 +118,7 @@ const FinanceTracker = () => {
           </FirestoreProvider>
         </div>
       )}
-    </>
+    </ErrorBoundary>
   );
 };
 
@@ -164,7 +176,8 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
 
   const [showForm, setShowForm] = useState(false);
   const [batchCount, setBatchCount] = useState(0);
-  const [view, setView] = useState<ViewType>('transactions');
+  // S6: sincroniza la vista con ?view=<name> en la URL (back/forward funciona).
+  const { view, setView } = useViewRouting();
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [filterCategory, setFilterCategory] = useState<FilterValue>('all');
   const [filterAccount, setFilterAccount] = useState<FilterValue>('all');
@@ -240,16 +253,25 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     setNewTransaction, setShowForm, setShowWelcomeModal,
   });
 
+  // S1: ofrecer migrar datos del modo invitado a la cuenta tras iniciar sesión.
+  const guestMigration = useGuestMigration(user?.uid ?? null);
+
   const handleLogout = useCallback(async () => {
     try {
       setIsLoggingOut(true);
       await logoutFirebase();
-      await new Promise(resolve => setTimeout(resolve, 800));
+      // Privacidad (S2): borrar datos locales para que en un dispositivo
+      // compartido el siguiente usuario no vea los datos del anterior.
+      clearGuestFinanceData();
       toast.success('Sesión cerrada correctamente');
+      await new Promise(resolve => setTimeout(resolve, 800));
+      // S2b: vaciar la caché IndexedDB de Firestore y reiniciar a estado limpio.
+      // (terminate inutiliza la instancia, por eso recargamos después.)
+      await clearFirestorePersistence();
+      window.location.reload();
     } catch (error) {
       logger.error('Error al cerrar sesión', error);
       toast.error('Error al cerrar sesión');
-    } finally {
       setIsLoggingOut(false);
     }
   }, []);
@@ -413,7 +435,18 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         />
       )}
 
-      {showWelcomeModal && (
+      {guestMigration.showPrompt && (
+        <GuestMigrationModal
+          isOpen={guestMigration.showPrompt}
+          counts={guestMigration.counts}
+          isMigrating={guestMigration.isMigrating}
+          hasError={guestMigration.hasError}
+          onImport={guestMigration.runMigration}
+          onDismiss={guestMigration.dismiss}
+        />
+      )}
+
+      {showWelcomeModal && !guestMigration.showPrompt && (
         <WelcomeModal
           isOpen={showWelcomeModal}
           onClose={handleDismissWelcomeModal}
@@ -477,6 +510,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
               formatCurrency={formatCurrency}
               balanceLabel={balanceLabel}
               periodLabel={statsPeriodLabel}
+              hasAccounts={accounts.length > 0}
             />
 
             {/* Error banner when Firestore fails */}

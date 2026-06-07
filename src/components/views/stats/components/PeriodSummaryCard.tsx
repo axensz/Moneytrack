@@ -5,6 +5,7 @@ import { Search, Calendar, Tag, Wallet, TrendingUp, TrendingDown, ArrowRightLeft
 import type { Transaction, Account } from '../../../../types/finance';
 import { TRANSFER_CATEGORY, SPECIAL_CATEGORIES } from '../../../../config/constants';
 import { formatCurrency } from '../../../../utils/formatters';
+import { ensureDate } from '../../../../utils/dateUtils';
 import { useUIPreferences } from '../../../../contexts/UIPreferencesContext';
 
 interface PeriodSummaryCardProps {
@@ -46,7 +47,7 @@ export const PeriodSummaryCard: React.FC<PeriodSummaryCardProps> = ({
       if (SPECIAL_CATEGORIES.adjustmentCategories.includes(t.category)) return false;
 
       // Date filter
-      const txDate = t.date instanceof Date ? t.date : new Date(t.date);
+      const txDate = ensureDate(t.date);
       if (startDate) {
         const start = new Date(startDate + 'T00:00:00');
         if (txDate < start) return false;

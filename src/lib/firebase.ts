@@ -1,7 +1,7 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, type Auth } from "firebase/auth";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, type Firestore } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, terminate, clearIndexedDbPersistence, type Firestore } from "firebase/firestore";
 import { logger } from "../utils/logger";
 
 const firebaseConfig = {
@@ -72,6 +72,27 @@ export const loginWithGoogle = async () => {
 export const logoutFirebase = async () => {
   if (!_auth) return;
   return signOut(_auth);
+};
+
+/**
+ * Limpia la caché local de Firestore (IndexedDB) tras cerrar sesión (S2b).
+ *
+ * `signOut` NO borra los documentos cacheados por `persistentLocalCache`, así que
+ * en un dispositivo compartido quedarían recuperables. La única forma de vaciarlos
+ * es terminar el cliente y limpiar la persistencia; tras `terminate` la instancia
+ * queda inutilizable, por lo que el llamador debe recargar la página.
+ *
+ * Best-effort: puede rechazar si hay otras pestañas con la persistencia abierta
+ * (multi-tab). En ese caso se degrada con un warning y el llamador recarga igual.
+ */
+export const clearFirestorePersistence = async (): Promise<void> => {
+  if (!_db) return;
+  try {
+    await terminate(_db);
+    await clearIndexedDbPersistence(_db);
+  } catch {
+    logger.warn('No se pudo limpiar la caché de Firestore (¿otras pestañas abiertas?)');
+  }
 };
 
 export { app, analytics, auth, db };

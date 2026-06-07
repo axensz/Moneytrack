@@ -7,7 +7,17 @@ import type {
   DateRangePreset,
 } from '../../../types/finance';
 import { useFinance } from '../../../contexts/FinanceContext';
-import { ImportTransactionsModal } from '../../modals/ImportTransactionsModal';
+import dynamic from 'next/dynamic';
+
+/**
+ * S5: Carga perezosa del modal de importación.
+ * ImportTransactionsModal arrastra @google/genai (~400KB) y xlsx (~200KB).
+ * Con dynamic + ssr:false solo se descarga el chunk cuando el usuario abre el modal.
+ */
+const ImportTransactionsModal = dynamic(
+  () => import('../../modals/ImportTransactionsModal').then((m) => ({ default: m.ImportTransactionsModal })),
+  { ssr: false, loading: () => null },
+);
 import { DATE_PRESETS } from '../../../utils/dateUtils';
 
 // Componentes
@@ -104,6 +114,14 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   });
 
   const [showImport, setShowImport] = useState(false);
+  // importEverOpened: monta el modal solo después del primer clic en "Importar".
+  // Esto fuerza al browser a descargar el chunk solo cuando realmente se necesita.
+  const [importEverOpened, setImportEverOpened] = useState(false);
+
+  const handleOpenImport = () => {
+    setImportEverOpened(true);
+    setShowImport(true);
+  };
   const selectedAccount = useMemo(
     () => accounts.find((account) => account.id === filterAccount),
     [accounts, filterAccount]
@@ -129,7 +147,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
 
   return (
     <div className="card">
-      <ImportTransactionsModal isOpen={showImport} onClose={() => setShowImport(false)} />
+      {/* S5: El modal (y sus ~600KB de deps) solo se carga tras el primer click en Importar */}
+      {importEverOpened && <ImportTransactionsModal isOpen={showImport} onClose={() => setShowImport(false)} />}
       {/* Mensaje de ayuda cuando no hay cuentas */}
       {accounts.length === 0 && <NoAccountsMessage />}
 
@@ -145,7 +164,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
         onClearFilters={handleClearFilters}
         showForm={showForm}
         setShowForm={setShowForm}
-        onImport={() => setShowImport(true)}
+        onImport={handleOpenImport}
         dateRangePreset={dateRangePreset}
         setDateRangePreset={setDateRangePreset}
         customStartDate={customStartDate}

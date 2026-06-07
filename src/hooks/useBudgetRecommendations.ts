@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import type { Transaction, Budget } from '../types/finance';
+import { ensureDate } from '../utils/dateUtils';
 
 export interface BudgetRecommendation {
     category: string;
@@ -198,7 +199,7 @@ export function useBudgetRecommendations(
 
         // Transacciones del mes anterior (sin transferencias)
         const lastMonthTx = transactions.filter(t => {
-            const d = t.date instanceof Date ? t.date : new Date(t.date);
+            const d = ensureDate(t.date);
             return d >= lastMonth && d <= lastMonthEnd && t.type !== 'transfer';
         });
 

@@ -8,13 +8,13 @@ import type { ParseResult, ParsedRow } from './csvParser';
 import { detectInstallments, inferImportType, suggestCategory } from './csvParser';
 import { detectImportProfileFromRows, IMPORT_PROFILES } from './importProfiles';
 import { withTimeout } from './withTimeout';
-import { getGeminiClient, isGeminiKeyConfigured } from '../lib/geminiClient';
+import { getGeminiClient, isAiEnabled } from '../lib/geminiClient';
 
 // Tiempo máximo por intento de extracción del PDF con Gemini.
 const PDF_TIMEOUT_MS = 60_000;
 
 export function isPDFParsingAvailable(): boolean {
-  return isGeminiKeyConfigured();
+  return isAiEnabled();
 }
 
 // ── Prompt del sistema ────────────────────────────────────────────────────────
@@ -45,8 +45,9 @@ export async function parsePDF(buffer: ArrayBuffer): Promise<ParseResult> {
     return {
       rows: [],
       errors: [
-        'Para importar PDFs necesitas configurar la IA (Gemini API Key). ' +
-        'Descarga el extracto en formato Excel (.xlsx) para importar sin IA.',
+        'Para importar PDFs necesitas configurar la IA (Gemini API Key) y autorizar ' +
+        'el envío de datos a Google en Ajustes. Descarga el extracto en formato Excel ' +
+        '(.xlsx) para importar sin IA.',
       ],
       totalRows: 0,
       skippedRows: 0,

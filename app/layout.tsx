@@ -4,6 +4,8 @@ import { ThemeProvider } from "../src/components/theme/ThemeProvider";
 import { ServiceWorkerRegistration } from "../src/components/pwa/ServiceWorkerRegistration";
 import { PWAWelcomeModal } from "../src/components/pwa/PWAWelcomeModal";
 
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
@@ -15,7 +17,7 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "Control de Finanzas - MoneyTrack",
   description: "Gestiona tus ingresos, gastos y cuentas de forma simple",
-  manifest: "/manifest.json",
+  manifest: `${basePath}/manifest.json`,
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

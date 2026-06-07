@@ -6,7 +6,7 @@
 import { DEFAULT_CATEGORIES } from '../config/constants';
 import { logger } from './logger';
 import { withTimeout } from './withTimeout';
-import { getGeminiClient, isGeminiKeyConfigured } from '../lib/geminiClient';
+import { getGeminiClient, isAiEnabled } from '../lib/geminiClient';
 
 // Confianza mínima para que una sugerencia de IA se considere aplicable.
 // Por debajo de esto se ignora (la transacción queda en su categoría actual / 'Otros').
@@ -95,7 +95,7 @@ export function parseAICategorizationResponse(
 export async function categorizeWithAI(
     transactions: TransactionToCateg[]
 ): Promise<CategorizationResult[]> {
-    if (!isGeminiKeyConfigured() || transactions.length === 0) return [];
+    if (!isAiEnabled() || transactions.length === 0) return [];
 
     const ai = getGeminiClient();
 
@@ -152,5 +152,5 @@ Responde SOLO el JSON array, sin markdown ni explicaciones.`;
  * Verifica si Gemini está disponible para categorización.
  */
 export function isAIAvailable(): boolean {
-    return isGeminiKeyConfigured();
+    return isAiEnabled();
 }

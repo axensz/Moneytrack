@@ -25,6 +25,12 @@ export function useAccountsCRUD(userId: string | null): UseAccountsCRUDReturn {
       const accountData = { ...account };
       if (accountData.type === 'credit') {
         accountData.initialBalance = 0;
+        // Inicializar usedCredit persistido (deuda = 0) para que el cálculo de
+        // cupo NUNCA dependa del array paginado. A partir de aquí se mantiene con
+        // increment() atómico en cada movimiento (useTransactionsCRUD).
+        if (accountData.usedCredit == null) {
+          accountData.usedCredit = 0;
+        }
       }
 
       const cleanAccount = Object.fromEntries(

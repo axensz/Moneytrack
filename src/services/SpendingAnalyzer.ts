@@ -6,10 +6,10 @@
 import { logger } from '../utils/logger';
 import { SPECIAL_CATEGORIES } from '../config/constants';
 import { formatCurrency } from '../utils/formatters';
-import type { Transaction, NotificationPreferences } from '../types/finance';
+import type { Transaction, Notification, NotificationPreferences } from '../types/finance';
 
 interface SpendingAnalyzerDeps {
-    createNotification: (notification: any) => Promise<void>;
+    createNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => Promise<void>;
     preferences: NotificationPreferences;
     transactions: Transaction[];
 }

@@ -6,7 +6,7 @@
 import { logger } from '../utils/logger';
 import { SPECIAL_CATEGORIES } from '../config/constants';
 import { formatCurrency } from '../utils/formatters';
-import type { Transaction, Budget, NotificationPreferences } from '../types/finance';
+import type { Transaction, Budget, Notification, NotificationPreferences } from '../types/finance';
 
 export interface BudgetUtilization {
     budgetId: string;
@@ -17,7 +17,7 @@ export interface BudgetUtilization {
 }
 
 interface BudgetMonitorDeps {
-    createNotification: (notification: any) => Promise<void>;
+    createNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => Promise<void>;
     preferences: NotificationPreferences;
     budgets: Budget[];
     transactions: Transaction[];

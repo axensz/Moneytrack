@@ -12,8 +12,13 @@ interface GeminiKeyModalProps {
 }
 
 export function GeminiKeyModal({ isOpen, onClose }: GeminiKeyModalProps) {
-  const { apiKey, isConfigured, saveApiKey, clearApiKey } = useGeminiKey();
+  const { apiKey, isConfigured, saveApiKey, clearApiKey, hasConsent, setConsent } = useGeminiKey();
   const [draft, setDraft] = useState('');
+
+  const handleToggleConsent = (value: boolean) => {
+    setConsent(value);
+    showToast.success(value ? 'IA autorizada' : 'Autorización de IA revocada');
+  };
 
   // Sincronizar el input con la key guardada al abrir
   useEffect(() => {
@@ -95,8 +100,8 @@ export function GeminiKeyModal({ isOpen, onClose }: GeminiKeyModalProps) {
           <span>
             Si <strong>inicias sesión</strong>, tu key se guarda en tu cuenta para sincronizarse
             entre tus dispositivos (cifrada en reposo; solo tú puedes leerla). Como invitado, se
-            guarda solo en este navegador. Al usar la IA, las descripciones de tus movimientos se
-            envían a Google con tu key. Recomendado:{' '}
+            guarda solo en este navegador. Al usar la IA, las descripciones y montos de tus
+            movimientos (y los PDF que importes) se envían a Google con tu key. Recomendado:{' '}
             <a
               href="https://aistudio.google.com/apikey"
               target="_blank"
@@ -108,6 +113,32 @@ export function GeminiKeyModal({ isOpen, onClose }: GeminiKeyModalProps) {
             a la API de Gemini.
           </span>
         </div>
+
+        {/* Consentimiento explícito (S4): la IA queda desactivada hasta autorizarlo. */}
+        <label
+          htmlFor="ai-consent"
+          className="flex items-start gap-3 p-3 border border-gray-200 dark:border-gray-700 rounded-xl cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+        >
+          <input
+            id="ai-consent"
+            type="checkbox"
+            checked={hasConsent}
+            onChange={(e) => handleToggleConsent(e.target.checked)}
+            className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+          />
+          <span className="text-sm text-gray-700 dark:text-gray-300">
+            Autorizo el envío de las descripciones, montos y PDF de mis movimientos a Google Gemini
+            cuando use funciones de IA. Sin esta autorización, la IA permanece desactivada y ningún
+            dato sale de mi dispositivo.
+          </span>
+        </label>
+
+        {isConfigured && !hasConsent && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            Tienes una API key configurada, pero la IA está desactivada hasta que autorices el envío
+            de datos arriba.
+          </p>
+        )}
 
         <div className="flex justify-between gap-3 pt-1">
           {isConfigured ? (

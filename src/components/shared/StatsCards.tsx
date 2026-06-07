@@ -10,6 +10,8 @@ interface StatsCardsProps {
   formatCurrency: (amount: number) => string;
   balanceLabel?: string;
   periodLabel?: string;
+  /** Cuando no hay cuentas creadas, muestra un mensaje orientativo bajo las tarjetas */
+  hasAccounts?: boolean;
 }
 
 export const StatsCards: React.FC<StatsCardsProps> = memo(({
@@ -19,7 +21,8 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
   pendingExpenses,
   formatCurrency,
   balanceLabel = 'Balance',
-  periodLabel = 'este mes'
+  periodLabel = 'este mes',
+  hasAccounts = true,
 }) => {
   const { hideBalances, setHideBalances } = useUIPreferences();
 
@@ -92,6 +95,14 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
           </div>
         </div>
       </div>
+
+      {!hasAccounts && (
+        <p className="mt-3 text-center text-sm text-gray-400 dark:text-gray-500">
+          Crea tu primera cuenta en{' '}
+          <span className="font-medium text-purple-500 dark:text-purple-400">Cuentas</span>
+          {' '}para ver tu balance real
+        </p>
+      )}
     </div>
   );
 });

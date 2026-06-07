@@ -3,7 +3,7 @@
  * Usa @google/genai SDK (nueva generación) con gemini-2.5-flash
  */
 
-import { getGeminiClient, isGeminiKeyConfigured } from './geminiClient';
+import { getGeminiClient, isAiEnabled } from './geminiClient';
 import type { Transaction, Account, Categories } from '../types/finance';
 import { formatCurrency } from '../utils/formatters';
 import { BalanceCalculator } from '../utils/balanceCalculator';
@@ -72,7 +72,7 @@ export interface ChatMessage {
 }
 
 export function isGeminiConfigured(): boolean {
-  return isGeminiKeyConfigured();
+  return isAiEnabled();
 }
 
 /**

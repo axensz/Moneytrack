@@ -6,7 +6,9 @@
  * ✅ Ahora solo maneja operaciones CRUD de transacciones (responsabilidad única)
  * ✅ Las estadísticas se calculan en useGlobalStats (DRY)
  * ✅ Usa localStorage para usuarios no autenticados
- * ✅ Integrado soporte para cola offline (PWA)
+ * ✅ Offline gestionado nativamente por Firestore (persistentLocalCache): lectura
+ *    offline disponible; las escrituras requieren conexión y fallan con un error
+ *    claro (la cola custom anterior escribía a un path denegado y nunca sincronizaba).
  *
  * RESPONSABILIDAD: Gestión de transacciones (CRUD + operaciones)
  */
@@ -14,8 +16,6 @@
 import { useMemo } from 'react';
 import { useFirestoreData } from '../contexts/FirestoreContext';
 import { useLocalStorage } from './useLocalStorage';
-import { useOfflineQueue } from './useOfflineQueue';
-import { withOfflineSupport } from '../lib/offlineFirestore';
 import { generateId } from '../utils/formatters';
 import type { Transaction } from '../types/finance';
 
@@ -30,7 +30,6 @@ export function useTransactions(userId: string | null) {
   } = useFirestoreData();
 
   const [localTransactions, setLocalTransactions] = useLocalStorage<Transaction[]>('transactions', []);
-  const offlineQueue = useOfflineQueue();
 
   // Usar Firebase si hay usuario, localStorage si no
   // Firestore ya viene ordenado por fecha DESC, solo ordenamos localStorage
@@ -47,15 +46,7 @@ export function useTransactions(userId: string | null) {
 
   const addTransaction = async (transaction: Omit<Transaction, 'id' | 'createdAt'>) => {
     if (userId) {
-      await withOfflineSupport(
-        () => firestoreAddTransaction(transaction),
-        {
-          type: 'create',
-          collection: 'transactions',
-          data: transaction
-        },
-        offlineQueue
-      );
+      await firestoreAddTransaction(transaction);
     } else {
       const newTransaction: Transaction = {
         ...transaction,
@@ -68,15 +59,7 @@ export function useTransactions(userId: string | null) {
 
   const deleteTransaction = async (id: string) => {
     if (userId) {
-      await withOfflineSupport(
-        () => firestoreDeleteTransaction(id),
-        {
-          type: 'delete',
-          collection: 'transactions',
-          data: { id }
-        },
-        offlineQueue
-      );
+      await firestoreDeleteTransaction(id);
     } else {
       setLocalTransactions(prev => prev.filter(t => t.id !== id));
     }
@@ -86,15 +69,7 @@ export function useTransactions(userId: string | null) {
     const transaction = transactions.find(t => t.id === id);
     if (transaction) {
       if (userId) {
-        await withOfflineSupport(
-          () => firestoreUpdateTransaction(id, { paid: !transaction.paid }),
-          {
-            type: 'update',
-            collection: 'transactions',
-            data: { id, paid: !transaction.paid }
-          },
-          offlineQueue
-        );
+        await firestoreUpdateTransaction(id, { paid: !transaction.paid });
       } else {
         setLocalTransactions(prev =>
           prev.map(t => t.id === id ? { ...t, paid: !t.paid } : t)
@@ -105,15 +80,7 @@ export function useTransactions(userId: string | null) {
 
   const updateTransaction = async (id: string, updates: Partial<Transaction>) => {
     if (userId) {
-      await withOfflineSupport(
-        () => firestoreUpdateTransaction(id, updates),
-        {
-          type: 'update',
-          collection: 'transactions',
-          data: { id, ...updates }
-        },
-        offlineQueue
-      );
+      await firestoreUpdateTransaction(id, updates);
     } else {
       setLocalTransactions(prev =>
         prev.map(t => t.id === id ? { ...t, ...updates } : t)

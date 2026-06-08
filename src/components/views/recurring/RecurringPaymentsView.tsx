@@ -1,7 +1,7 @@
 'use client';
 
-import React from 'react';
-import { Plus, Repeat } from 'lucide-react';
+import React, { useState } from 'react';
+import { Plus, Repeat, List, CalendarDays } from 'lucide-react';
 
 import type { RecurringPayment, Account, Transaction } from '../../../types/finance';
 import { useFinance } from '../../../contexts/FinanceContext';
@@ -14,6 +14,7 @@ import { RecurringPaymentCard } from './components/RecurringPaymentCard';
 import { PaymentFormModal } from './components/PaymentFormModal';
 import { DeletePaymentModal } from './components/DeletePaymentModal';
 import { InactivePaymentsList } from './components/InactivePaymentsList';
+import { RecurringCalendar } from './components/RecurringCalendar';
 
 // Hook
 import { useRecurringPaymentsView } from './hooks/useRecurringPaymentsView';
@@ -34,6 +35,7 @@ export const RecurringPaymentsView: React.FC = () => {
     isPaidForMonth,
     getNextDueDate,
     getDaysUntilDue,
+    getDaysOverdue,
     getPaymentHistory,
     recurringStats: stats,
   } = useFinance();
@@ -58,6 +60,7 @@ export const RecurringPaymentsView: React.FC = () => {
     accounts,
     isPaidForMonth,
     getDaysUntilDue,
+    getDaysOverdue,
     getNextDueDate,
     getPaymentHistory,
     addRecurringPayment,
@@ -66,6 +69,7 @@ export const RecurringPaymentsView: React.FC = () => {
   });
 
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
 
   return (
     <div className="space-y-6">
@@ -95,43 +99,92 @@ export const RecurringPaymentsView: React.FC = () => {
         />
       </div>
 
-      {/* Alertas de pagos próximos */}
+      {/* Alerta de pagos vencidos (rojo) */}
       <UpcomingPaymentsAlert
-        upcomingPayments={stats.upcomingPayments}
-        getDaysUntilDue={getDaysUntilDue}
+        tone="red"
+        title="Pagos vencidos"
+        payments={stats.overduePayments}
+        getLabel={(p) => {
+          const d = getDaysOverdue(p);
+          return `venció hace ${d} ${d === 1 ? 'día' : 'días'}`;
+        }}
         formatCurrency={displayAmount}
       />
 
-      {/* Lista de pagos activos */}
-      <div className="card">
-        <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">
-          Pagos Activos
-        </h3>
+      {/* Alerta de pagos próximos a vencer (ámbar) */}
+      <UpcomingPaymentsAlert
+        tone="amber"
+        title="Pagos próximos a vencer"
+        payments={stats.upcomingPayments}
+        getLabel={(p) => `vence en ${getDaysUntilDue(p)} días`}
+        formatCurrency={displayAmount}
+      />
 
-        {sortedPayments.length === 0 ? (
-          <EmptyState onCreateClick={() => setShowForm(true)} />
-        ) : (
-          <div className="space-y-3">
-            {sortedPayments.map((payment) => {
-              const displayData = getPaymentDisplayData(payment);
-              return (
-                <RecurringPaymentCard
-                  key={payment.id}
-                  payment={payment}
-                  isPaid={displayData.isPaid}
-                  daysUntilDue={displayData.daysUntilDue}
-                  nextDueDate={displayData.nextDueDate}
-                  account={displayData.account}
-                  history={displayData.history}
-                  formatCurrency={displayAmount}
-                  onEdit={() => openEditForm(payment)}
-                  onDelete={() => confirmDelete(payment.id!)}
-                />
-              );
-            })}
-          </div>
-        )}
+      {/* Selector de vista */}
+      <div className="flex justify-end">
+        <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 p-0.5 bg-white dark:bg-gray-800">
+          <button
+            onClick={() => setViewMode('list')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${viewMode === 'list' ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}
+            aria-pressed={viewMode === 'list'}
+          >
+            <List size={16} /> Lista
+          </button>
+          <button
+            onClick={() => setViewMode('calendar')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${viewMode === 'calendar' ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}
+            aria-pressed={viewMode === 'calendar'}
+          >
+            <CalendarDays size={16} /> Calendario
+          </button>
+        </div>
       </div>
+
+      {viewMode === 'calendar' ? (
+        sortedPayments.length === 0 ? (
+          <div className="card"><EmptyState onCreateClick={() => setShowForm(true)} /></div>
+        ) : (
+          <RecurringCalendar
+            payments={sortedPayments}
+            formatCurrency={displayAmount}
+            isPaidForMonth={isPaidForMonth}
+            getDaysOverdue={getDaysOverdue}
+            getDaysUntilDue={getDaysUntilDue}
+          />
+        )
+      ) : (
+        /* Lista de pagos activos */
+        <div className="card">
+          <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">
+            Pagos Activos
+          </h3>
+
+          {sortedPayments.length === 0 ? (
+            <EmptyState onCreateClick={() => setShowForm(true)} />
+          ) : (
+            <div className="space-y-3">
+              {sortedPayments.map((payment) => {
+                const displayData = getPaymentDisplayData(payment);
+                return (
+                  <RecurringPaymentCard
+                    key={payment.id}
+                    payment={payment}
+                    isPaid={displayData.isPaid}
+                    daysUntilDue={displayData.daysUntilDue}
+                    daysOverdue={displayData.daysOverdue}
+                    nextDueDate={displayData.nextDueDate}
+                    account={displayData.account}
+                    history={displayData.history}
+                    formatCurrency={displayAmount}
+                    onEdit={() => openEditForm(payment)}
+                    onDelete={() => confirmDelete(payment.id!)}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Pagos inactivos */}
       <InactivePaymentsList

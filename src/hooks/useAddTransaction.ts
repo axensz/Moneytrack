@@ -22,7 +22,7 @@ import {
   ERROR_MESSAGES,
   TRANSFER_CATEGORY,
   CREDIT_PAYMENT_CATEGORY,
-  INITIAL_TRANSACTION,
+  createInitialTransaction,
   TRANSACTION_VALIDATION,
 } from '../config/constants';
 import type {
@@ -68,7 +68,7 @@ export function useAddTransaction({
    */
   const resetForm = useCallback(() => {
     setNewTransaction({
-      ...INITIAL_TRANSACTION,
+      ...createInitialTransaction(),
       accountId: defaultAccount?.id || '',
     });
     setShowForm(false);
@@ -79,7 +79,7 @@ export function useAddTransaction({
    */
   const resetFormKeepContext = useCallback((currentTransaction: NewTransaction) => {
     setNewTransaction({
-      ...INITIAL_TRANSACTION,
+      ...createInitialTransaction(),
       accountId: currentTransaction.accountId,
       date: currentTransaction.date,
     });
@@ -250,11 +250,12 @@ export function useAddTransaction({
    */
   const handleAddTransaction = useCallback(
     async (newTransaction: NewTransaction): Promise<void> => {
-      // Cerrar modal inmediatamente (UX optimizada)
-      resetForm();
-
+      // Procesar primero: si la validación falla (p. ej. falta categoría) o el
+      // guardado da error, mantenemos el formulario abierto con los datos para
+      // que el usuario pueda corregir, en vez de cerrarlo y perder lo escrito.
       const success = await processTransaction(newTransaction);
       if (success) {
+        resetForm();
         showToast.success(SUCCESS_MESSAGES.TRANSACTION_ADDED);
       }
     },

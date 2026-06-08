@@ -175,6 +175,40 @@ class DateFormatter {
     const date = new Date(2024, monthNumber - 1, 1);
     return date.toLocaleDateString(APP_CONFIG.locale, { month: 'long' });
   }
+
+  /**
+   * Tiempo relativo en español respecto a hoy: "hoy", "ayer",
+   * "hace N días", "hace N meses", "hace N años".
+   * @param date - Fecha de referencia (pasada)
+   * @returns String legible
+   */
+  static formatRelativeTime(date: Date | string): string {
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    const start = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const diffDays = Math.round((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) {
+      // Fecha futura
+      const future = Math.abs(diffDays);
+      if (future === 1) return 'mañana';
+      if (future < 30) return `en ${future} días`;
+      const months = Math.round(future / 30);
+      if (months < 12) return `en ${months} ${months === 1 ? 'mes' : 'meses'}`;
+      const years = Math.round(future / 365);
+      return `en ${years} ${years === 1 ? 'año' : 'años'}`;
+    }
+
+    if (diffDays === 0) return 'hoy';
+    if (diffDays === 1) return 'ayer';
+    if (diffDays < 30) return `hace ${diffDays} días`;
+    const months = Math.floor(diffDays / 30);
+    if (months < 12) return `hace ${months} ${months === 1 ? 'mes' : 'meses'}`;
+    const years = Math.floor(diffDays / 365);
+    return `hace ${years} ${years === 1 ? 'año' : 'años'}`;
+  }
 }
 
 /**
@@ -273,6 +307,18 @@ class NumberFormatter {
 }
 
 /**
+ * Redondea un valor monetario a centavos (2 decimales) para eliminar
+ * residuos IEEE-754 al sumar floats (ej: 0.1 * 3 - 0.3 → 0 en vez de
+ * 5.55e-17). NO cambia la semántica: solo limpia el resultado final.
+ * @param n - Valor a redondear
+ * @returns Valor redondeado a 2 decimales; 0 si n es NaN/no finito
+ */
+export const roundMoney = (n: number): number => {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return 0;
+  return Math.round(n * 100) / 100;
+};
+
+/**
  * Genera un ID único simple
  * Nota: Solo para uso local, no usar para IDs de base de datos
  */
@@ -294,6 +340,7 @@ export const formatDateForInput = (date?: Date): string => DateFormatter.formatD
 export const parseDateFromInput = (dateString: string): Date => DateFormatter.parseDateFromInput(dateString);
 export const parseDateWithTime = (dateString: string, timeSource?: Date): Date => DateFormatter.parseDateWithTime(dateString, timeSource);
 export const formatMonthYear = (date: Date | string): string => DateFormatter.formatMonthYear(date);
+export const formatRelativeTime = (date: Date | string): string => DateFormatter.formatRelativeTime(date);
 export const getMonthName = (monthNumber: number): string => DateFormatter.getMonthName(monthNumber);
 
 export const parseFloatSafe = (value: string | number, defaultValue?: number): number => NumberFormatter.parseFloat(value, defaultValue);

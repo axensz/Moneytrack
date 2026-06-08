@@ -43,6 +43,7 @@ interface RecurringPaymentCardProps {
   payment: RecurringPayment;
   isPaid: boolean;
   daysUntilDue: number;
+  daysOverdue: number;
   nextDueDate: Date;
   account?: Account;
   history: Transaction[];
@@ -59,6 +60,7 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = memo(({
   payment,
   isPaid,
   daysUntilDue,
+  daysOverdue,
   nextDueDate,
   account,
   history,
@@ -70,6 +72,7 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = memo(({
   const [isExpanded, setIsExpanded] = useState(false);
 
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
+  const isPaymentOverdue = !isPaid && daysOverdue > 0;
 
   // Obtener icono según categoría
   const CategoryIcon = CATEGORY_ICONS[payment.category] || CalendarDays;
@@ -79,6 +82,10 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = memo(({
 
     if (isPaid) {
       return `${base} border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/10`;
+    }
+
+    if (isPaymentOverdue) {
+      return `${base} border-rose-300 dark:border-rose-800 bg-rose-50/50 dark:bg-rose-900/10`;
     }
 
     if (daysUntilDue <= 3) {
@@ -94,6 +101,15 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = memo(({
         <CheckCircle2
           size={18}
           className="text-emerald-600 dark:text-emerald-400 flex-shrink-0"
+        />
+      );
+    }
+
+    if (isPaymentOverdue) {
+      return (
+        <AlertTriangle
+          size={18}
+          className="text-rose-600 dark:text-rose-400 flex-shrink-0"
         />
       );
     }
@@ -144,20 +160,26 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = memo(({
 
             {!isPaid && (
               <p className="text-sm mt-2">
-                <span
-                  className={
-                    daysUntilDue <= 3
-                      ? 'text-amber-600 dark:text-amber-400 font-medium'
-                      : 'text-gray-500'
-                  }
-                >
-                  Próximo:{' '}
-                  {nextDueDate.toLocaleDateString('es-CO', {
-                    day: 'numeric',
-                    month: 'short',
-                  })}{' '}
-                  {getDueText()}
-                </span>
+                {isPaymentOverdue ? (
+                  <span className="text-rose-600 dark:text-rose-400 font-semibold">
+                    Venció hace {daysOverdue} {daysOverdue === 1 ? 'día' : 'días'} · día {payment.dueDay}
+                  </span>
+                ) : (
+                  <span
+                    className={
+                      daysUntilDue <= 3
+                        ? 'text-amber-600 dark:text-amber-400 font-medium'
+                        : 'text-gray-500'
+                    }
+                  >
+                    Próximo:{' '}
+                    {nextDueDate.toLocaleDateString('es-CO', {
+                      day: 'numeric',
+                      month: 'short',
+                    })}{' '}
+                    {getDueText()}
+                  </span>
+                )}
               </p>
             )}
           </div>

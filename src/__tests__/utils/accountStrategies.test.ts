@@ -110,6 +110,18 @@ describe('SavingsAccountStrategy', () => {
   it('includes in total balance', () => {
     expect(strategy.includeInTotalBalance()).toBe(true);
   });
+
+  it('redondea el balance a centavos para eliminar residuos float (#21)', () => {
+    const acc = makeSavings({ initialBalance: 0 });
+    // 0.1 + 0.1 + 0.1 - 0.3 deja residuo IEEE-754 sin redondeo
+    const txs = [
+      makeTx({ id: 't1', accountId: acc.id!, type: 'income', amount: 0.1 }),
+      makeTx({ id: 't2', accountId: acc.id!, type: 'income', amount: 0.1 }),
+      makeTx({ id: 't3', accountId: acc.id!, type: 'income', amount: 0.1 }),
+      makeTx({ id: 't4', accountId: acc.id!, type: 'expense', amount: 0.3 }),
+    ];
+    expect(strategy.calculateBalance(acc, txs)).toBe(0);
+  });
 });
 
 // ─── CashAccountStrategy ──────────────────────────────────────────
@@ -243,6 +255,57 @@ describe('CreditCardStrategy', () => {
 
   it('does not include in total balance', () => {
     expect(strategy.includeInTotalBalance()).toBe(false);
+  });
+
+  // ── #10: la VALIDACIÓN ignora el usedCredit persistido desactualizado ──
+
+  it('validación de gasto recalcula el cupo desde las transacciones, no del campo persistido obsoleto', () => {
+    // El campo persistido aún dice 5,000,000 (cupo lleno) porque el listener
+    // de Firestore va por detrás, pero las transacciones frescas muestran que
+    // la deuda ya se pagó (gasto + pago que se cancelan → deuda 0).
+    const acc = makeCredit({ usedCredit: 5_000_000 });
+    const txs = [
+      makeTx({ accountId: acc.id!, type: 'expense', amount: 5_000_000 }),
+      makeTx({ id: 'tx-pay', accountId: acc.id!, type: 'income', amount: 5_000_000 }),
+    ];
+    // Con el persistido obsoleto daría "Cupo insuficiente"; con recompute hay
+    // cupo completo disponible y el gasto se acepta.
+    const result = strategy.validateTransaction(acc, 4_000_000, txs, 'expense');
+    expect(result.valid).toBe(true);
+  });
+
+  it('validación de pago recalcula la deuda desde las transacciones frescas', () => {
+    // Persistido dice 0 (sin deuda), pero hay un gasto reciente en memoria.
+    const acc = makeCredit({ usedCredit: 0 });
+    const txs = [
+      makeTx({ accountId: acc.id!, type: 'expense', amount: 800_000 }),
+    ];
+    // Pagar 800,000 debe aceptarse (la deuda real, recalculada, es 800,000).
+    const ok = strategy.validateTransaction(acc, 800_000, txs, 'income');
+    expect(ok.valid).toBe(true);
+    // Pagar más de lo recalculado se rechaza.
+    const tooMuch = strategy.validateTransaction(acc, 900_000, txs, 'income');
+    expect(tooMuch.valid).toBe(false);
+    expect(tooMuch.error).toContain('No puedes pagar más');
+  });
+
+  it('el display (getUsedCredit) sigue prefiriendo el campo persistido', () => {
+    // Confirma que la ruta de display NO cambió: usa el persistido.
+    const acc = makeCredit({ usedCredit: 2_000_000 });
+    const txs = [makeTx({ accountId: acc.id!, type: 'expense', amount: 999_999 })];
+    expect(strategy.getUsedCredit(acc, txs)).toBe(2_000_000);
+  });
+
+  // ── #21: las sumas de balance redondean residuos IEEE-754 ──
+
+  it('redondea el cupo usado recalculado a centavos (sin residuos float)', () => {
+    const acc = makeCredit({ creditLimit: 1 });
+    // 0.1 + 0.2 === 0.30000000000000004 sin redondeo
+    const txs = [
+      makeTx({ accountId: acc.id!, type: 'expense', amount: 0.1 }),
+      makeTx({ id: 'tx-2', accountId: acc.id!, type: 'expense', amount: 0.2 }),
+    ];
+    expect(strategy.getUsedCredit(acc, txs)).toBe(0.3);
   });
 
   it('getUsedCredit returns used amount', () => {

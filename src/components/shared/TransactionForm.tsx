@@ -1,15 +1,17 @@
 import React, { useEffect, useMemo, memo, useState, useCallback } from 'react';
 import CurrencyInput from 'react-currency-input-field';
-import { X, Repeat, Zap, AlertTriangle } from 'lucide-react';
+import { Repeat, Zap, AlertTriangle } from 'lucide-react';
+import { BaseModal } from '@/components/modals/BaseModal';
 import { UI_LABELS, TRANSFER_CATEGORY } from '@/config/constants';
 import { formatCurrency, formatDate } from '@/utils/formatters';
 import { BalanceCalculator } from '@/utils/balanceCalculator';
-import { INSTALLMENT_OPTIONS } from '@/utils/interestCalculator';
+import { INSTALLMENT_OPTIONS, calculateInterest } from '@/utils/interestCalculator';
 import { detectDuplicates, type DuplicateMatch } from '@/utils/duplicateDetector';
 import type { NewTransaction, Account, Categories, Transaction, RecurringPayment } from '@/types/finance';
 import { useFinance } from '@/contexts/FinanceContext';
 
 interface TransactionFormProps {
+  isOpen?: boolean;
   newTransaction: NewTransaction;
   setNewTransaction: React.Dispatch<React.SetStateAction<NewTransaction>>;
   onSubmit: () => void;
@@ -19,6 +21,7 @@ interface TransactionFormProps {
 }
 
 export const TransactionForm: React.FC<TransactionFormProps> = memo(({
+  isOpen = true,
   newTransaction,
   setNewTransaction,
   onSubmit,
@@ -44,6 +47,31 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
     }
     return 0;
   }, [isCreditCard, newTransaction.type, selectedAccount, transactions]);
+
+  // Previsualización del costo de las cuotas en el momento de decidir:
+  // muestra cuota mensual, interés total y total a pagar antes de guardar.
+  const installmentPreview = useMemo(() => {
+    if (!isCreditCard || newTransaction.type !== 'expense') return null;
+    const installments = Number(newTransaction.installments) || 1;
+    if (installments <= 1) return null;
+
+    const principal = parseFloat(String(newTransaction.amount));
+    if (!principal || principal <= 0) return null;
+
+    const annualRate = selectedAccount?.interestRate || 0;
+    const hasRate = annualRate > 0;
+    const wantsInterest = !!newTransaction.hasInterest;
+    // Si el usuario quiere intereses pero la cuenta no tiene tasa configurada,
+    // no podemos estimar; lo avisamos en el render.
+    const missingRate = wantsInterest && !hasRate;
+
+    try {
+      const result = calculateInterest(principal, annualRate, installments, wantsInterest && hasRate);
+      return { ...result, installments, wantsInterest: wantsInterest && hasRate, missingRate };
+    } catch {
+      return null;
+    }
+  }, [isCreditCard, newTransaction.type, newTransaction.installments, newTransaction.amount, newTransaction.hasInterest, selectedAccount?.interestRate]);
 
   // Efecto: Inicializar accountId con defaultAccount si está vacío
   useEffect(() => {
@@ -89,26 +117,21 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
   }, []);
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-4xl max-h-[90dvh] flex flex-col">
-        {/* Header fijo */}
-        <div className="flex justify-between items-center p-4 sm:px-6 sm:pt-6 sm:pb-4 border-b border-gray-100 dark:border-gray-700 shrink-0">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Nueva Transacción</h3>
-          <button
-            onClick={onCancel}
-            className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
-          >
-            <X size={24} />
-          </button>
-        </div>
-
-        {/* Contenido scrollable */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:px-6">
+    <BaseModal
+      isOpen={isOpen}
+      onClose={onCancel}
+      title="Nueva Transacción"
+      maxWidth="max-w-4xl"
+    >
+      <div>
+        {/* Contenido del formulario */}
+        <div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
-              <label className="label-base">Cuenta</label>
+              <label htmlFor="tx-form-account" className="label-base">Cuenta</label>
               <select
+                id="tx-form-account"
                 value={newTransaction.accountId}
                 onChange={(e) => setNewTransaction({ ...newTransaction, accountId: e.target.value })}
                 className="input-base"
@@ -122,8 +145,8 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
             </div>
 
             <div>
-              <label className="label-base">Tipo</label>
-              <div className="flex gap-2">
+              <span className="label-base" id="tx-form-type-label">Tipo</span>
+              <div className="flex gap-2" role="group" aria-labelledby="tx-form-type-label">
                 <button
                   type="button"
                   onClick={() => setNewTransaction({ ...newTransaction, type: 'expense', category: '', toAccountId: '' })}
@@ -160,8 +183,9 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
             </div>
 
             <div>
-              <label className="label-base">Monto</label>
+              <label htmlFor="tx-form-amount" className="label-base">Monto</label>
               <CurrencyInput
+                id="tx-form-amount"
                 intlConfig={{ locale: 'es-CO', currency: 'COP' }}
                 decimalsLimit={2}
                 allowNegativeValue={false}
@@ -181,13 +205,14 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
             </div>
 
             <div>
-              <label className="label-base">
+              <label htmlFor="tx-form-target" className="label-base">
                 {newTransaction.type === 'transfer' ? 'Cuenta Destino'
                   : (isCreditCard && newTransaction.type === 'income') ? 'Desde qué cuenta'
                     : 'Categoría'}
               </label>
               {newTransaction.type === 'transfer' ? (
                 <select
+                  id="tx-form-target"
                   value={newTransaction.toAccountId}
                   onChange={(e) => setNewTransaction({ ...newTransaction, toAccountId: e.target.value })}
                   className="input-base"
@@ -205,6 +230,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                 </select>
               ) : (isCreditCard && newTransaction.type === 'income') ? (
                 <select
+                  id="tx-form-target"
                   value={newTransaction.toAccountId}
                   onChange={(e) => setNewTransaction({ ...newTransaction, toAccountId: e.target.value })}
                   className="input-base"
@@ -219,6 +245,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                 </select>
               ) : (
                 <select
+                  id="tx-form-target"
                   value={newTransaction.category}
                   onChange={(e) => setNewTransaction({ ...newTransaction, category: e.target.value })}
                   className="input-base"
@@ -232,8 +259,9 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
             </div>
 
             <div>
-              <label className="label-base">Fecha</label>
+              <label htmlFor="tx-form-date" className="label-base">Fecha</label>
               <input
+                id="tx-form-date"
                 type="date"
                 value={newTransaction.date}
                 onChange={(e) => setNewTransaction({ ...newTransaction, date: e.target.value })}
@@ -243,8 +271,9 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
           </div>
 
           <div className="mt-4">
-            <label className="label-base">Descripción <span className="text-gray-400 font-normal">(opcional)</span></label>
+            <label htmlFor="tx-form-description" className="label-base">Descripción <span className="text-gray-400 font-normal">(opcional)</span></label>
             <input
+              id="tx-form-description"
               type="text"
               value={newTransaction.description}
               onChange={(e) => setNewTransaction({ ...newTransaction, description: e.target.value })}
@@ -262,8 +291,9 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="label-base">Número de cuotas</label>
+                  <label htmlFor="tx-form-installments" className="label-base">Número de cuotas</label>
                   <select
+                    id="tx-form-installments"
                     value={newTransaction.installments}
                     onChange={(e) => {
                       const installments = parseInt(e.target.value);
@@ -284,8 +314,8 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                 </div>
 
                 <div>
-                  <label className="label-base">Tipo de compra</label>
-                  <div className="flex items-center gap-4 min-h-[42px]">
+                  <span className="label-base" id="tx-form-purchase-type-label">Tipo de compra</span>
+                  <div className="flex items-center gap-4 min-h-[42px]" role="group" aria-labelledby="tx-form-purchase-type-label">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
@@ -302,10 +332,23 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                 </div>
               </div>
 
-              {newTransaction.hasInterest && newTransaction.installments > 1 && selectedAccount?.interestRate ? (
+              {installmentPreview?.missingRate ? (
                 <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                   <p className="text-xs text-amber-800 dark:text-amber-200">
-                    <strong>Nota:</strong> Esta compra se financiará a <strong>{newTransaction.installments} cuotas</strong> con una tasa E.A. del <strong>{selectedAccount.interestRate}%</strong>. Los intereses se calcularán automáticamente al guardar.
+                    <strong>Configura la tasa E.A. de la tarjeta</strong> para estimar los intereses de esta compra a cuotas.
+                  </p>
+                </div>
+              ) : installmentPreview ? (
+                <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                    {formatCurrency(installmentPreview.monthlyInstallmentAmount)}/mes durante {installmentPreview.installments} meses
+                  </p>
+                  <p className="text-xs text-blue-800 dark:text-blue-200 mt-1">
+                    {installmentPreview.wantsInterest ? (
+                      <>Interés total {formatCurrency(installmentPreview.totalInterestAmount)} · Total {formatCurrency(installmentPreview.totalAmount)} · E.A. {selectedAccount?.interestRate}%</>
+                    ) : (
+                      <>Sin intereses · Total {formatCurrency(installmentPreview.totalAmount)}</>
+                    )}
                   </p>
                 </div>
               ) : null}
@@ -318,13 +361,14 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
               ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-700'
               : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 border-dashed'
               }`}>
-              <label className="label-base flex items-center gap-2 mb-2">
+              <label htmlFor="tx-form-recurring" className="label-base flex items-center gap-2 mb-2">
                 <Repeat size={18} className={newTransaction.recurringPaymentId ? 'text-purple-600' : 'text-gray-400'} />
                 <span className={newTransaction.recurringPaymentId ? 'text-purple-700 dark:text-purple-300' : ''}>
                   ¿Es un pago periódico?
                 </span>
               </label>
               <select
+                id="tx-form-recurring"
                 value={newTransaction.recurringPaymentId || ''}
                 onChange={(e) => {
                   const paymentId = e.target.value || undefined;
@@ -405,10 +449,14 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
           )}
 
         </div>
-        {/* Fin contenido scrollable */}
+        {/* Fin contenido del formulario */}
 
-        {/* Footer fijo */}
-        <div className="flex flex-wrap gap-3 p-4 sm:px-6 sm:pb-6 sm:pt-4 border-t border-gray-100 dark:border-gray-700 items-center shrink-0">
+        {/* Footer — barra de acciones fija al fondo del modal.
+            Se pega al borde inferior del contenedor scrollable de BaseModal.
+            Los márgenes negativos compensan el padding (p-4 sm:p-6) del wrapper
+            de children para que el fondo sólido cubra todo el ancho y llegue
+            hasta el borde inferior sin dejar hueco. */}
+        <div className="sticky bottom-0 z-10 -mx-4 -mb-4 sm:-mx-6 sm:-mb-6 mt-4 px-4 sm:px-6 py-4 flex flex-wrap gap-3 border-t border-gray-100 dark:border-gray-700 items-center bg-white dark:bg-gray-800">
           <button onClick={() => checkDuplicatesAndSubmit('submit')} className="btn-submit">
             Agregar
           </button>
@@ -432,7 +480,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
           )}
         </div>
       </div>
-    </div>
+    </BaseModal>
   );
 });
 

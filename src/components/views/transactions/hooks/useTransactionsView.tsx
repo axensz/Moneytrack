@@ -63,6 +63,12 @@ export const useTransactionsView = ({
     category: '',
   });
 
+  // Estado de detalle (expandir fila en modo solo lectura)
+  const [expandedTransaction, setExpandedTransaction] = useState<string | null>(null);
+  const toggleExpand = useCallback((id: string) => {
+    setExpandedTransaction((prev) => (prev === id ? null : id));
+  }, []);
+
   // Estado de filtro de fecha
   const [showDatePicker, setShowDatePicker] = useState(false);
 
@@ -179,6 +185,7 @@ export const useTransactionsView = ({
 
   const startEditTransaction = useCallback((transaction: Transaction) => {
     setEditingTransaction(transaction.id!);
+    setExpandedTransaction(null); // al editar, cerrar el detalle de solo lectura
     setEditForm({
       description: transaction.description,
       amount: transaction.amount.toString(),
@@ -324,6 +331,10 @@ export const useTransactionsView = ({
     startEditTransaction,
     handleSaveEdit,
     handleCancelEdit,
+
+    // Detail (read-only expand) state
+    expandedTransaction,
+    toggleExpand,
 
     // Actions
     handleDeleteTransaction,

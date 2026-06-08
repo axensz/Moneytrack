@@ -228,7 +228,7 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
           {isCredit && onMerge && (
             <button
               onClick={onMerge}
-              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[36px] text-purple-700 bg-purple-50 hover:bg-purple-100 dark:text-purple-300 dark:bg-purple-900/20 dark:hover:bg-purple-900/40"
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-purple-700 bg-purple-50 hover:bg-purple-100 dark:text-purple-300 dark:bg-purple-900/20 dark:hover:bg-purple-900/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
             >
               <Combine size={14} />
               Unificar
@@ -239,7 +239,7 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
             <>
               <button
                 onClick={onSetDefault}
-                className={`flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[36px] text-white ${isCredit
+                className={`flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 ${isCredit
                   ? 'bg-purple-600 hover:bg-purple-700'
                   : 'bg-emerald-600 hover:bg-emerald-700'
                   }`}
@@ -248,7 +248,7 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
               </button>
               <button
                 onClick={onDelete}
-                className="flex items-center justify-center p-2 min-h-[36px] min-w-[36px] text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
+                className="flex items-center justify-center p-2 min-h-[44px] min-w-[44px] text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
               >
                 <Trash2 size={16} />
               </button>
@@ -283,8 +283,8 @@ const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
   isAssociated,
 }) => {
   const { hideBalances } = useUIPreferences();
-  const usagePercentage = Math.min((creditUsed / creditLimit) * 100, 100);
-  const isHighUsage = creditUsed > creditLimit * 0.8;
+  const usagePercentage = creditLimit > 0 ? Math.min((creditUsed / creditLimit) * 100, 100) : 0;
+  const isHighUsage = creditLimit > 0 && creditUsed > creditLimit * 0.8;
 
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
 

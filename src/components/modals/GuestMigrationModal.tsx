@@ -6,8 +6,8 @@
  * el usuario debe elegir "Importar" o "Ahora no".
  */
 
-import React from 'react';
-import { UploadCloud, AlertTriangle, Loader2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { UploadCloud, AlertTriangle, Loader2, Trash2 } from 'lucide-react';
 import { BaseModal } from './BaseModal';
 import type { GuestDataCounts } from '../../utils/guestMigration';
 
@@ -18,6 +18,7 @@ interface GuestMigrationModalProps {
   hasError: boolean;
   onImport: () => void;
   onDismiss: () => void;
+  onDiscard: () => void;
 }
 
 const COUNT_LABELS: { key: keyof GuestDataCounts; singular: string; plural: string }[] = [
@@ -36,7 +37,12 @@ export const GuestMigrationModal: React.FC<GuestMigrationModalProps> = ({
   hasError,
   onImport,
   onDismiss,
+  onDiscard,
 }) => {
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  const totalItems = counts
+    ? COUNT_LABELS.reduce((sum, { key }) => sum + (counts[key] as number), 0)
+    : 0;
   const items = counts
     ? COUNT_LABELS.filter(({ key }) => (counts[key] as number) > 0).map(({ key, singular, plural }) => {
         const value = counts[key] as number;
@@ -49,6 +55,7 @@ export const GuestMigrationModal: React.FC<GuestMigrationModalProps> = ({
       isOpen={isOpen}
       onClose={onDismiss}
       closeOnBackdrop={false}
+      closeOnEscape={false}
       showCloseButton={false}
     >
       <div className="p-6 sm:p-8">
@@ -119,10 +126,47 @@ export const GuestMigrationModal: React.FC<GuestMigrationModalProps> = ({
           </button>
         </div>
 
-        <p className="text-xs text-center text-gray-400 dark:text-gray-500 mt-4">
-          Si eliges «Ahora no», te lo preguntaremos de nuevo la próxima vez. Tus datos
-          locales se borran de este navegador al cerrar sesión.
-        </p>
+        {/* Descartar datos locales */}
+        <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+          {confirmingDiscard ? (
+            <div className="text-center">
+              <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
+                Esto borrará {totalItems > 0 ? <strong>{totalItems} elementos</strong> : 'tus datos'} de este
+                navegador de forma permanente. No se podrá deshacer.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                <button
+                  onClick={onDiscard}
+                  disabled={isMigrating}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-rose-600 text-white hover:bg-rose-700 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <Trash2 size={15} />
+                  Sí, borrar mis datos locales
+                </button>
+                <button
+                  onClick={() => setConfirmingDiscard(false)}
+                  disabled={isMigrating}
+                  className="px-4 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <p className="text-xs text-center text-gray-400 dark:text-gray-500">
+                Si eliges «Ahora no», te lo preguntaremos de nuevo la próxima vez.
+              </p>
+              <button
+                onClick={() => setConfirmingDiscard(true)}
+                disabled={isMigrating}
+                className="mt-2 w-full text-center text-xs text-rose-600 dark:text-rose-400 hover:underline cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                No quiero estos datos · borrarlos de este navegador
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </BaseModal>
   );

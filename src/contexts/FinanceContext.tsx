@@ -45,6 +45,7 @@ export interface RecurringStats {
   totalMonthlyAmount: number;
   totalYearlyAmount: number;
   upcomingPayments: RecurringPayment[];
+  overduePayments: RecurringPayment[];
 }
 
 export interface FinanceContextValue {
@@ -98,6 +99,8 @@ export interface FinanceContextValue {
   isPaidForMonth: (paymentId: string, month?: Date) => boolean;
   getNextDueDate: (payment: RecurringPayment) => Date;
   getDaysUntilDue: (payment: RecurringPayment) => number;
+  getDaysOverdue: (payment: RecurringPayment) => number;
+  isOverdue: (payment: RecurringPayment) => boolean;
   getPaymentHistory: (paymentId: string, limit?: number) => Transaction[];
   recurringStats: RecurringStats;
 
@@ -204,6 +207,8 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     isPaidForMonth,
     getNextDueDate,
     getDaysUntilDue,
+    getDaysOverdue,
+    isOverdue,
     getPaymentHistory,
     stats: recurringStats,
   } = useRecurringPayments(userId, transactions, userId ? firestoreData.recurringPayments : undefined);
@@ -340,6 +345,8 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     isPaidForMonth,
     getNextDueDate,
     getDaysUntilDue,
+    getDaysOverdue,
+    isOverdue,
     getPaymentHistory,
     recurringStats,
 
@@ -383,7 +390,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     getAccountBalance, getTransactionCountForAccount,
     addCategory, deleteCategory,
     addRecurringPayment, updateRecurringPayment, deleteRecurringPayment,
-    isPaidForMonth, getNextDueDate, getDaysUntilDue, getPaymentHistory, recurringStats,
+    isPaidForMonth, getNextDueDate, getDaysUntilDue, getDaysOverdue, isOverdue, getPaymentHistory, recurringStats,
     debts, addDebt, updateDebt, deleteDebt, registerDebtPayment, modifyDebtBalance,
     getDebtTransactions, debtStats,
     budgets, addBudget, updateBudget, deleteBudget, budgetStatuses, budgetStats,

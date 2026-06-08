@@ -1,5 +1,5 @@
 import { useMemo, useCallback } from 'react';
-import { doc, runTransaction, collection, writeBatch } from 'firebase/firestore';
+import { doc, runTransaction, collection, writeBatch, getDocs, getDoc, updateDoc, query, where, deleteField } from 'firebase/firestore';
 import type { DocumentReference } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useFirestoreData } from '../contexts/FirestoreContext';
@@ -7,7 +7,8 @@ import { useLocalStorage } from './useLocalStorage';
 import { BalanceCalculator, CreditCardCalculator } from '../utils/balanceCalculator';
 import { safeFirestoreOperation, checkNetworkConnection } from '../utils/firestoreHelpers';
 import { generateId } from '../utils/formatters';
-import { transactionUsesAccount } from '../utils/accountTransactions';
+import { transactionUsesAccount, getAccountReferenceIds } from '../utils/accountTransactions';
+import { creditDeltasByAccount, reconcileUsedCredit } from '../utils/creditDeltas';
 import type { Account, Transaction, RecurringPayment, Debt } from '../types/finance';
 
 export type MergeCreditCardsDestination = Pick<Account, 'name'> & Partial<Omit<Account, 'id' | 'name' | 'type' | 'createdAt'>> & {
@@ -126,11 +127,6 @@ export function useAccounts(
       throw new Error('No puedes eliminar la cuenta por defecto');
     }
 
-    // Cascade: transactions, recurring payments, and debts linked to this account
-    const relatedTransactions = options.preserveTransactions
-      ? []
-      : transactions.filter(t => t.accountId === id || t.toAccountId === id);
-
     if (userId) {
       if (!checkNetworkConnection()) {
         throw new Error('Sin conexión a internet');
@@ -140,31 +136,143 @@ export function useAccounts(
       const relatedRecurring = firestoreRecurringPayments.filter(p => p.accountId === id);
       const relatedDebts = firestoreDebts.filter(d => d.accountId === id);
 
+      // #23: TC asociadas a la cuenta que se borra (bankAccountId === id). NO se
+      // borran: solo se les limpia el bankAccountId colgante para que vuelvan a
+      // aparecer como TC de nivel superior en vez de quedar huérfanas referenciando
+      // una cuenta inexistente.
+      const orphanedCardIds = firestoreAccounts
+        .filter(a => a.type === 'credit' && a.bankAccountId === id && a.id && a.id !== id)
+        .map(a => a.id!);
+
       await safeFirestoreOperation(
         async () => {
           const BATCH_LIMIT = 490; // Leave room for account + recurring + debts
-          const txIds = relatedTransactions.map(t => t.id!);
           const recurringIds = relatedRecurring.map(p => p.id!);
           const debtIds = relatedDebts.map(d => d.id!);
+
+          // Consultar Firestore (no solo memoria) por TODAS las transacciones que
+          // referencian la cuenta, tanto como origen (accountId) como destino
+          // (toAccountId), y deduplicar por id. Esto garantiza que la reconciliación
+          // de usedCredit cubra transacciones que aún no estén en el estado en memoria.
+          const txCollection = collection(db, `users/${userId}/transactions`);
+          const txDeletes = new Map<string, Transaction>();
+          if (!options.preserveTransactions) {
+            const [bySource, byDestination] = await Promise.all([
+              getDocs(query(txCollection, where('accountId', '==', id))),
+              getDocs(query(txCollection, where('toAccountId', '==', id))),
+            ]);
+            [...bySource.docs, ...byDestination.docs].forEach(snap => {
+              txDeletes.set(snap.id, { id: snap.id, ...(snap.data() as Transaction) });
+            });
+          }
+
+          // Identificar el conjunto de TC AFECTADAS por el borrado: cuentas tipo
+          // credit, distintas de la que se borra, que estas transacciones tocaban
+          // (gasto/ingreso por accountId, o transferencia por toAccountId). NO se
+          // calcula aquí ningún delta de reversión: la deuda se reconcilia DESPUÉS
+          // recomputando usedCredit desde las transacciones sobrevivientes.
+          const affectedCardIds = new Set<string>();
+          for (const tx of txDeletes.values()) {
+            const deltas = creditDeltasByAccount(tx, firestoreAccounts);
+            for (const accId of deltas.keys()) {
+              if (accId === id) continue; // la TC que se borra desaparece con su usedCredit
+              affectedCardIds.add(accId);
+            }
+          }
+
           const allDeletes = [
-            ...txIds.map(txId => doc(db, `users/${userId}/transactions`, txId)),
+            ...Array.from(txDeletes.keys()).map(txId => doc(db, `users/${userId}/transactions`, txId)),
             ...recurringIds.map(rId => doc(db, `users/${userId}/recurringPayments`, rId)),
             ...debtIds.map(dId => doc(db, `users/${userId}/debts`, dId)),
           ];
 
-          for (let i = 0; i < allDeletes.length; i += BATCH_LIMIT) {
-            const batch = writeBatch(db);
-            const chunk = allDeletes.slice(i, i + BATCH_LIMIT);
-            chunk.forEach(ref => batch.delete(ref));
-            // Include the account in the last batch
-            if (i + BATCH_LIMIT >= allDeletes.length) {
-              batch.delete(doc(db, `users/${userId}/accounts`, id));
-            }
-            await batch.commit();
-          }
-          // If nothing to cascade, just delete the account
-          if (allDeletes.length === 0) {
+          // Operaciones totales del borrado: borrados + limpieza de TC huérfanas
+          // (#23) + el account.
+          const totalOps = allDeletes.length + orphanedCardIds.length + 1;
+
+          if (totalOps === 1) {
+            // Nada que cascada: solo borrar la cuenta.
             await firestoreDeleteAccount(id);
+            return;
+          }
+
+          // FASE 1 — Borrado. Acumular operaciones en writeBatch respetando
+          // BATCH_LIMIT. Solo borrados (tx + recurrentes + deudas + la cuenta);
+          // sin tocar usedCredit de otras TC aquí.
+          let batch = writeBatch(db);
+          let opCount = 0;
+          const flush = async () => {
+            if (opCount > 0) {
+              await batch.commit();
+              batch = writeBatch(db);
+              opCount = 0;
+            }
+          };
+          const enqueue = async (fn: (b: ReturnType<typeof writeBatch>) => void) => {
+            if (opCount >= BATCH_LIMIT) await flush();
+            fn(batch);
+            opCount++;
+          };
+
+          for (const ref of allDeletes) {
+            await enqueue(b => b.delete(ref));
+          }
+          // #23: limpiar el bankAccountId colgante de las TC asociadas en el mismo
+          // flujo de borrado (mismo esquema multi-batch). Se hace ANTES de borrar la
+          // cuenta; usar deleteField() las devuelve a TC de nivel superior.
+          for (const cardId of orphanedCardIds) {
+            await enqueue(b => b.update(
+              doc(db, `users/${userId}/accounts`, cardId),
+              { bankAccountId: deleteField() }
+            ));
+          }
+          // El borrado de la cuenta va al final.
+          await enqueue(b => b.delete(doc(db, `users/${userId}/accounts`, id)));
+          await flush();
+
+          // FASE 2 — Reconciliación de usedCredit de las TC afectadas.
+          //
+          // Por qué reconciliar con SET (valor recomputado) y no revertir con
+          // increment(-delta) dentro del batch: el borrado puede requerir varios
+          // batches (>490 ops) y un writeBatch multi-batch NO es atómico. Si un
+          // increment(-delta) se aplica y luego otro batch falla — o se reintenta
+          // la operación completa — el increment se aplicaría de nuevo y corrompería
+          // la deuda (doble resta). Recomputar usedCredit = max(0, suma de deltas de
+          // las transacciones SOBREVIVIENTES) es idempotente: reejecutar deleteAccount
+          // o reintentar tras un fallo parcial siempre converge al valor correcto,
+          // porque no depende del estado previo del campo.
+          for (const cardId of affectedCardIds) {
+            const cardRef = doc(db, `users/${userId}/accounts`, cardId);
+            const cardSnap = await getDoc(cardRef);
+            if (!cardSnap.exists()) continue; // la TC ya no existe: nada que reconciliar
+
+            // Si la TC es una tarjeta fusionada, las transacciones pueden
+            // referenciarla por cualquiera de sus mergedAccountIds además del id
+            // literal. Reconciliar contra TODAS las referencias para no subestimar
+            // usedCredit (mismas referencias que usa el recompute de display).
+            const cardAccount = { id: cardId, ...(cardSnap.data() as Omit<Account, 'id'>) } as Account;
+            const referenceIds = getAccountReferenceIds(cardAccount);
+
+            const queries = referenceIds.flatMap(refId => [
+              getDocs(query(txCollection, where('accountId', '==', refId))),
+              getDocs(query(txCollection, where('toAccountId', '==', refId))),
+            ]);
+            const snapshots = await Promise.all(queries);
+            const survivors = new Map<string, Transaction>();
+            snapshots.forEach(snapshot => {
+              snapshot.docs.forEach(snap => {
+                survivors.set(snap.id, { id: snap.id, ...(snap.data() as Transaction) });
+              });
+            });
+
+            // Reconciliación pura (idempotente): suma getCreditDelta sobre todas
+            // las referencias de la TC, clampea a >= 0 y redondea centavos.
+            const usedCredit = reconcileUsedCredit(
+              referenceIds,
+              Array.from(survivors.values())
+            );
+
+            await updateDoc(cardRef, { usedCredit });
           }
         },
         'deleteAccount',

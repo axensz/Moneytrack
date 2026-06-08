@@ -7,6 +7,7 @@ interface UseRecurringPaymentsParams {
   accounts: Account[];
   isPaidForMonth: (paymentId: string, month?: Date) => boolean;
   getDaysUntilDue: (payment: RecurringPayment) => number;
+  getDaysOverdue: (payment: RecurringPayment) => number;
   getNextDueDate: (payment: RecurringPayment) => Date;
   getPaymentHistory: (paymentId: string, limit?: number) => Transaction[];
   addRecurringPayment: (payment: Omit<RecurringPayment, 'id' | 'createdAt'>) => Promise<void>;
@@ -25,6 +26,7 @@ export const useRecurringPaymentsView = ({
   accounts,
   isPaidForMonth,
   getDaysUntilDue,
+  getDaysOverdue,
   getNextDueDate,
   getPaymentHistory,
   addRecurringPayment,
@@ -36,7 +38,7 @@ export const useRecurringPaymentsView = ({
   const [editingPayment, setEditingPayment] = useState<RecurringPayment | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
-  // Ordenar pagos: pendientes primero por proximidad, luego pagados
+  // Ordenar pagos: vencidos primero, luego pendientes por proximidad, luego pagados
   const sortedPayments = useMemo(() => {
     const now = new Date();
     return [...recurringPayments]
@@ -45,13 +47,19 @@ export const useRecurringPaymentsView = ({
         const aPaid = isPaidForMonth(a.id!, now);
         const bPaid = isPaidForMonth(b.id!, now);
 
-        // Pendientes primero
+        // Pagados al final
         if (aPaid !== bPaid) return aPaid ? 1 : -1;
+
+        // Entre no pagados: vencidos primero (más atrasados arriba)
+        const aOver = getDaysOverdue(a);
+        const bOver = getDaysOverdue(b);
+        if ((aOver > 0) !== (bOver > 0)) return aOver > 0 ? -1 : 1;
+        if (aOver > 0 && bOver > 0) return bOver - aOver;
 
         // Luego por días hasta vencer
         return getDaysUntilDue(a) - getDaysUntilDue(b);
       });
-  }, [recurringPayments, isPaidForMonth, getDaysUntilDue]);
+  }, [recurringPayments, isPaidForMonth, getDaysUntilDue, getDaysOverdue]);
 
   // Pagos inactivos
   const inactivePayments = useMemo(
@@ -64,11 +72,12 @@ export const useRecurringPaymentsView = ({
     (payment: RecurringPayment) => ({
       isPaid: isPaidForMonth(payment.id!),
       daysUntilDue: getDaysUntilDue(payment),
+      daysOverdue: getDaysOverdue(payment),
       nextDueDate: getNextDueDate(payment),
       account: accounts.find((a) => a.id === payment.accountId),
       history: getPaymentHistory(payment.id!, 6),
     }),
-    [isPaidForMonth, getDaysUntilDue, getNextDueDate, accounts, getPaymentHistory]
+    [isPaidForMonth, getDaysUntilDue, getDaysOverdue, getNextDueDate, accounts, getPaymentHistory]
   );
 
   // Handlers

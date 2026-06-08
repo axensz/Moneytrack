@@ -58,6 +58,8 @@ export interface Debt {
   description?: string; // Notas opcionales
   accountId?: string; // Cuenta desde la que se prestó
   isSettled: boolean; // Si la deuda está completamente saldada
+  lentDate?: Date; // Fecha en que se prestó/recibió el dinero (default: hoy)
+  dueDate?: Date; // Fecha de vencimiento opcional
   createdAt?: Date;
   settledAt?: Date; // Fecha en que se saldó
 }

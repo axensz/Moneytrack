@@ -1,16 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   formatCurrency,
   formatDate,
   formatDateForInput,
   parseDateFromInput,
   formatMonthYear,
+  formatRelativeTime,
   parseFloatSafe,
   parseIntSafe,
   clamp,
   formatNumberForInput,
   unformatNumber,
   generateId,
+  roundMoney,
 } from '../../utils/formatters';
 
 describe('formatCurrency', () => {
@@ -32,6 +34,66 @@ describe('formatCurrency', () => {
   it('formats decimals', () => {
     const result = formatCurrency(1234.56);
     expect(result).toContain('1.234');
+  });
+});
+
+describe('roundMoney', () => {
+  it('elimina residuos IEEE-754 de sumas de floats', () => {
+    // 0.1 * 3 - 0.3 === 5.551115123125783e-17 sin redondeo
+    expect(roundMoney(0.1 * 3 - 0.3)).toBe(0);
+  });
+
+  it('redondea a 2 decimales (centavos)', () => {
+    expect(roundMoney(1234.567)).toBe(1234.57);
+    expect(roundMoney(1234.564)).toBe(1234.56);
+  });
+
+  it('deja intactos los valores ya exactos', () => {
+    expect(roundMoney(1_000_000)).toBe(1_000_000);
+    expect(roundMoney(0)).toBe(0);
+    expect(roundMoney(-50.5)).toBe(-50.5);
+  });
+
+  it('devuelve 0 para NaN o valores no finitos', () => {
+    expect(roundMoney(NaN)).toBe(0);
+    expect(roundMoney(Infinity)).toBe(0);
+    expect(roundMoney(-Infinity)).toBe(0);
+    // @ts-expect-error probando entrada no numérica
+    expect(roundMoney(undefined)).toBe(0);
+  });
+});
+
+describe('formatRelativeTime', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 15, 12, 0, 0)); // 15 jun 2026
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('devuelve "hoy" para la fecha actual', () => {
+    expect(formatRelativeTime(new Date(2026, 5, 15, 8, 0, 0))).toBe('hoy');
+  });
+
+  it('devuelve "ayer" para el día anterior', () => {
+    expect(formatRelativeTime(new Date(2026, 5, 14))).toBe('ayer');
+  });
+
+  it('devuelve "hace N días" dentro del mes', () => {
+    expect(formatRelativeTime(new Date(2026, 5, 10))).toBe('hace 5 días');
+  });
+
+  it('devuelve "hace N meses" para fechas de meses anteriores', () => {
+    expect(formatRelativeTime(new Date(2026, 2, 15))).toBe('hace 3 meses');
+  });
+
+  it('devuelve "hace N años" para fechas de años anteriores', () => {
+    expect(formatRelativeTime(new Date(2024, 5, 15))).toBe('hace 2 años');
+  });
+
+  it('maneja fechas futuras', () => {
+    expect(formatRelativeTime(new Date(2026, 5, 16))).toBe('mañana');
   });
 });
 

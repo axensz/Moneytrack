@@ -139,8 +139,26 @@ export const AccountsView: React.FC = () => {
   const creditCards = accounts.filter((acc) => acc.type === 'credit' && acc.id);
   const mergeTargetCard = creditCards.find((card) => card.id === mergeTargetCardId) || null;
   const mergeCombinedCreditLimit = (mergeSourceCard?.creditLimit || 0) + (mergeTargetCard?.creditLimit || 0);
-  const mergeCombinedUsedDebt = (mergeSourceCard?.id ? getCreditUsed(mergeSourceCard.id) : 0)
-    + (mergeTargetCard?.id ? getCreditUsed(mergeTargetCard.id) : 0);
+
+  // #11 — Baseline de deuda para la unificación.
+  //
+  // DECISIÓN: el baseline se toma del campo persistido `usedCredit` de cada tarjeta
+  // (autoritativo), NO de getCreditUsed() — que recalcula desde `transactions`, un
+  // array PAGINADO en memoria. Con paginación, getCreditUsed() puede ver solo una
+  // fracción de las transacciones y devolver una deuda combinada artificialmente
+  // baja; si el usuario aceptara ese valor como "deuda deseada", el ajuste posterior
+  // (BALANCE_ADJUSTMENT_CATEGORY) borraría deuda real de la tarjeta.
+  //
+  // `usedCredit` es el mismo campo que useAccounts consolida en el merge
+  // (mergedUsedCredit) y que reconcilia en deleteAccount, así que el baseline
+  // mostrado coincide con la deuda que realmente quedará en el destino. Solo se cae
+  // a getCreditUsed() cuando una tarjeta todavía no tiene `usedCredit` persistido
+  // (datos legacy previos a la migración del campo).
+  const usedDebtForMerge = (card: Account | null | undefined): number => {
+    if (!card?.id) return 0;
+    return card.usedCredit != null ? Math.max(0, card.usedCredit) : getCreditUsed(card.id);
+  };
+  const mergeCombinedUsedDebt = usedDebtForMerge(mergeSourceCard) + usedDebtForMerge(mergeTargetCard);
   const mergeCombinedAvailableCredit = mergeCombinedCreditLimit - mergeCombinedUsedDebt;
 
   const parseCurrencyInput = (value: string): number => parseFloat(value.replace(',', '.'));

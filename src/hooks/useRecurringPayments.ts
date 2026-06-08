@@ -43,6 +43,8 @@ export function useRecurringPayments(
     getPaymentTransactionForMonth,
     getNextDueDate,
     getDaysUntilDue,
+    getDaysOverdue,
+    isOverdue,
     getPaymentHistory,
     stats,
   } = useRecurringUtils(recurringPayments, transactions);
@@ -61,6 +63,8 @@ export function useRecurringPayments(
     getPaymentTransactionForMonth,
     getNextDueDate,
     getDaysUntilDue,
+    getDaysOverdue,
+    isOverdue,
     getPaymentHistory,
     stats,
   };

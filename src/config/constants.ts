@@ -251,19 +251,39 @@ export const NUMBER_FORMAT_THRESHOLDS = {
   THOUSAND: 1_000,
 } as const;
 
-// Estado inicial para nueva transacción
-export const INITIAL_TRANSACTION = {
+// Fecha LOCAL de hoy en formato YYYY-MM-DD (mismo cálculo que
+// formatDateForInput de formatters.ts: getFullYear/Month/Date son locales).
+// Se duplica aquí en vez de importar formatters para no crear un ciclo de
+// módulos (formatters.ts ya importa de este archivo) que dejaría la función
+// undefined al evaluar la factory en la carga del módulo.
+function todayLocalDateString(): string {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// Estado inicial para nueva transacción.
+//
+// Es una FACTORY (no un const congelado al cargar el módulo) porque la fecha
+// debe ser la fecha LOCAL del momento en que se abre el formulario. Antes se
+// usaba toISOString().split('T')[0], que es UTC y en Colombia (UTC-5) podía
+// devolver el día siguiente (p. ej. una transacción de las 7 p. m. salía como
+// mañana). Además, al ser const a nivel de módulo, la fecha quedaba congelada
+// a la carga del módulo y no avanzaba al cambiar de día sin recargar.
+export const createInitialTransaction = () => ({
   type: 'expense' as const,
   amount: '',
   category: '',
   description: '',
-  date: new Date().toISOString().split('T')[0],
+  date: todayLocalDateString(),
   paid: true, // ✅ Por defecto las transacciones están pagadas (más intuitivo)
   accountId: '',
   toAccountId: '',
   hasInterest: false, // 🆕 Por defecto sin intereses
   installments: 1 // 🆕 Por defecto 1 cuota
-};
+});
 
 // Estado inicial para nueva cuenta
 export const INITIAL_ACCOUNT = {

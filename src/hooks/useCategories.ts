@@ -12,6 +12,19 @@ import { useFirestoreData } from '../contexts/FirestoreContext';
 import { DEFAULT_CATEGORIES, ERROR_MESSAGES, SPECIAL_CATEGORIES, TRANSFER_CATEGORY } from '../config/constants';
 import type { Categories, Transaction, Category } from '../types/finance';
 
+/**
+ * Normaliza un nombre de categoría para comparaciones de duplicados:
+ * minúsculas + sin acentos/diacríticos + trim.
+ * Solo se usa para COMPARAR; el texto original se preserva al guardar.
+ */
+function normalizeCategoryName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
+}
+
 export function useCategories(transactions: Transaction[], userId?: string | null) {
   // Firebase categories (array plano de Category)
   const { 
@@ -93,7 +106,11 @@ export function useCategories(transactions: Transaction[], userId?: string | nul
       throw new Error(ERROR_MESSAGES.EMPTY_CATEGORY_NAME);
     }
 
-    if (categories[type].includes(trimmedName)) {
+    // Comparación normalizada (minúsculas + sin acentos) para evitar
+    // duplicados como 'Transporte' / 'transporte' / 'transpórte'.
+    // El texto original se preserva al guardar; solo la comparación normaliza.
+    const normalizedNew = normalizeCategoryName(trimmedName);
+    if (categories[type].some(c => normalizeCategoryName(c) === normalizedNew)) {
       throw new Error(ERROR_MESSAGES.DUPLICATE_CATEGORY);
     }
 

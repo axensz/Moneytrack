@@ -307,6 +307,18 @@ class NumberFormatter {
 }
 
 /**
+ * Redondea un valor monetario a centavos (2 decimales) para eliminar
+ * residuos IEEE-754 al sumar floats (ej: 0.1 * 3 - 0.3 → 0 en vez de
+ * 5.55e-17). NO cambia la semántica: solo limpia el resultado final.
+ * @param n - Valor a redondear
+ * @returns Valor redondeado a 2 decimales; 0 si n es NaN/no finito
+ */
+export const roundMoney = (n: number): number => {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return 0;
+  return Math.round(n * 100) / 100;
+};
+
+/**
  * Genera un ID único simple
  * Nota: Solo para uso local, no usar para IDs de base de datos
  */

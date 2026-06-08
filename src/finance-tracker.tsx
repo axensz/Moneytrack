@@ -34,7 +34,7 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useViewRouting } from './hooks/useViewRouting';
 import { installGlobalErrorHandlers } from './lib/errorReporter';
-import { TOAST_CONFIG, INITIAL_TRANSACTION } from './config/constants';
+import { TOAST_CONFIG, createInitialTransaction } from './config/constants';
 import { DATE_PRESETS } from './utils/dateUtils';
 import { parseDateFromInput } from './utils/formatters';
 import { logger } from './utils/logger';
@@ -171,7 +171,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
 
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const newTransactionRef = useRef<NewTransaction>({ ...INITIAL_TRANSACTION });
+  const newTransactionRef = useRef<NewTransaction>({ ...createInitialTransaction() });
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -216,7 +216,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   });
 
   const [newTransaction, setNewTransaction] = useState<NewTransaction>({
-    ...INITIAL_TRANSACTION
+    ...createInitialTransaction()
   });
 
   // Keep ref in sync for stable callbacks

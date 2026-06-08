@@ -12,6 +12,7 @@ import {
   formatNumberForInput,
   unformatNumber,
   generateId,
+  roundMoney,
 } from '../../utils/formatters';
 
 describe('formatCurrency', () => {
@@ -33,6 +34,32 @@ describe('formatCurrency', () => {
   it('formats decimals', () => {
     const result = formatCurrency(1234.56);
     expect(result).toContain('1.234');
+  });
+});
+
+describe('roundMoney', () => {
+  it('elimina residuos IEEE-754 de sumas de floats', () => {
+    // 0.1 * 3 - 0.3 === 5.551115123125783e-17 sin redondeo
+    expect(roundMoney(0.1 * 3 - 0.3)).toBe(0);
+  });
+
+  it('redondea a 2 decimales (centavos)', () => {
+    expect(roundMoney(1234.567)).toBe(1234.57);
+    expect(roundMoney(1234.564)).toBe(1234.56);
+  });
+
+  it('deja intactos los valores ya exactos', () => {
+    expect(roundMoney(1_000_000)).toBe(1_000_000);
+    expect(roundMoney(0)).toBe(0);
+    expect(roundMoney(-50.5)).toBe(-50.5);
+  });
+
+  it('devuelve 0 para NaN o valores no finitos', () => {
+    expect(roundMoney(NaN)).toBe(0);
+    expect(roundMoney(Infinity)).toBe(0);
+    expect(roundMoney(-Infinity)).toBe(0);
+    // @ts-expect-error probando entrada no numérica
+    expect(roundMoney(undefined)).toBe(0);
   });
 });
 

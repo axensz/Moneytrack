@@ -84,6 +84,15 @@ export const DebtsView: React.FC = () => {
       return;
     }
 
+    // #24: No permitir registrar un pago mayor al saldo pendiente. El hook clampa
+    // el monto efectivo, pero avisamos en el form para que el usuario no crea que
+    // movió más dinero del que la deuda justifica.
+    const debt = debts.find(d => d.id === debtId);
+    if (debt && amount > debt.remainingAmount) {
+      showToast.error(`El pago no puede superar el saldo pendiente (${formatCurrency(debt.remainingAmount)})`);
+      return;
+    }
+
     await registerDebtPayment(debtId, amount);
     showToast.success('Pago registrado');
     setPaymentAmount('');

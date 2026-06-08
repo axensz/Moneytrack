@@ -55,6 +55,7 @@ export const GuestMigrationModal: React.FC<GuestMigrationModalProps> = ({
       isOpen={isOpen}
       onClose={onDismiss}
       closeOnBackdrop={false}
+      closeOnEscape={false}
       showCloseButton={false}
     >
       <div className="p-6 sm:p-8">

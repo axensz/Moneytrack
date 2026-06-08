@@ -40,16 +40,40 @@ describe('useGlobalStats', () => {
     expect(result.current.totalExpenses).toBe(200_000);
   });
 
-  it('counts unpaid credit card purchases as expenses but ignores card payments', () => {
+  it('counts an unpaid credit card purchase only in pendientes, not in gastos (#20)', () => {
+    // Tarjeta SIN usedCredit persistido → el cupo usado se calcula desde las
+    // transacciones en memoria (compras - pagos).
+    const cardLive: Account = {
+      id: 'tc', name: 'Visa', type: 'credit', isDefault: false, initialBalance: 0,
+      creditLimit: 5_000_000,
+    };
+
+    // Compra TC impaga: consume cupo (deuda) pero no es gasto efectivo todavía.
     const transactions: Transaction[] = [
       tx({ type: 'expense', amount: 400_000, category: 'Compras Personales', accountId: 'tc', paid: false }),
-      tx({ type: 'income', amount: 100_000, category: CREDIT_PAYMENT_CATEGORY, accountId: 'tc' }),
+    ];
+
+    const { result } = renderHook(() => useGlobalStats(transactions, [savings, cardLive]));
+
+    // 'Gastos' = gasto efectivo (solo lo pagado). La compra impaga NO cuenta aquí.
+    expect(result.current.totalExpenses).toBe(0);
+    // La compra impaga aparece únicamente en 'Pendientes' (deuda / cupo usado).
+    expect(result.current.pendingExpenses).toBe(400_000);
+    // Sigue expuesta en el desglose para compatibilidad, pero fuera de totalExpenses.
+    expect(result.current.unpaidTCExpenses).toBe(400_000);
+  });
+
+  it('totalExpenses only counts PAID expenses (TC purchase paid → gasto efectivo)', () => {
+    const transactions: Transaction[] = [
+      // Gasto pagado en banco → gasto efectivo
+      tx({ type: 'expense', amount: 150_000, category: 'Alimentación', accountId: 'bank', paid: true }),
+      // Compra TC pagada → gasto efectivo
+      tx({ type: 'expense', amount: 250_000, category: 'Compras Personales', accountId: 'tc', paid: true }),
     ];
 
     const { result } = renderHook(() => useGlobalStats(transactions, [savings, card]));
 
-    // La compra no pagada en TC cuenta como gasto; el pago de TC no
     expect(result.current.totalExpenses).toBe(400_000);
-    expect(result.current.totalIncome).toBe(0);
+    expect(result.current.unpaidTCExpenses).toBe(0);
   });
 });

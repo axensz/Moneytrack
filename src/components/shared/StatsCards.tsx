@@ -34,8 +34,10 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
       <div className="flex justify-end mb-2 sm:mb-3">
         <button
           onClick={() => setHideBalances(!hideBalances)}
-          className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
+          className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
           title={hideBalances ? 'Mostrar valores' : 'Ocultar valores'}
+          aria-pressed={hideBalances}
+          aria-label={hideBalances ? 'Mostrar valores' : 'Ocultar valores'}
         >
           {hideBalances ? <Eye size={16} /> : <EyeOff size={16} />}
           <span className="hidden sm:inline">{hideBalances ? 'Mostrar' : 'Ocultar'}</span>

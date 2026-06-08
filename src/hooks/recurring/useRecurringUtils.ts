@@ -7,6 +7,12 @@
 
 import { useMemo, useCallback } from 'react';
 import type { RecurringPayment, Transaction } from '../../types/finance';
+import {
+  effectiveDueDay,
+  getYearlyAnchorMonth,
+  getNextDueDate as computeNextDueDate,
+  getCycleWindow as computeCycleWindow,
+} from '../../utils/recurringDates';
 
 interface RecurringStats {
   total: number;
@@ -32,27 +38,6 @@ interface UseRecurringUtilsReturn {
   getPaymentHistory: (paymentId: string, limit?: number) => Transaction[];
   stats: RecurringStats;
 }
-
-/** Último día real del mes objetivo (m: 0-11). Maneja meses cortos y bisiestos. */
-const lastDayOfMonth = (y: number, m: number): number =>
-  new Date(y, m + 1, 0).getDate();
-
-/**
- * Día de vencimiento efectivo para un mes/año dados: el día configurado,
- * acotado al último día real de ese mes (ej. dueDay 31 en febrero → 28/29).
- */
-const effectiveDueDay = (dueDay: number, y: number, m: number): number =>
-  Math.min(dueDay, lastDayOfMonth(y, m));
-
-/**
- * Mes ancla de vencimiento para pagos anuales: el mes en que se configuró
- * (payment.createdAt). Si no hay createdAt, fallback al mes de referencia.
- */
-const getYearlyAnchorMonth = (
-  payment: RecurringPayment,
-  fallbackMonth: number
-): number =>
-  payment.createdAt ? new Date(payment.createdAt).getMonth() : fallbackMonth;
 
 export function useRecurringUtils(
   recurringPayments: RecurringPayment[],
@@ -113,67 +98,8 @@ export function useRecurringUtils(
    * El día se acota al último día real de cada mes (#7).
    */
   const getCycleWindow = useCallback(
-    (payment: RecurringPayment, reference: Date): { start: Date; end: Date } => {
-      const refYear = reference.getFullYear();
-      const refMonth = reference.getMonth();
-
-      if (payment.frequency === 'yearly') {
-        const anchorMonth = getYearlyAnchorMonth(payment, refMonth);
-        // Vencimiento de este año (en el mes ancla)
-        const dueThisYear = new Date(
-          refYear,
-          anchorMonth,
-          effectiveDueDay(payment.dueDay, refYear, anchorMonth)
-        );
-        if (reference >= dueThisYear) {
-          // El ciclo actual empezó en el vencimiento de este año
-          const nextYear = refYear + 1;
-          return {
-            start: dueThisYear,
-            end: new Date(
-              nextYear,
-              anchorMonth,
-              effectiveDueDay(payment.dueDay, nextYear, anchorMonth)
-            ),
-          };
-        }
-        // El ciclo actual empezó en el vencimiento del año anterior
-        const prevYear = refYear - 1;
-        return {
-          start: new Date(
-            prevYear,
-            anchorMonth,
-            effectiveDueDay(payment.dueDay, prevYear, anchorMonth)
-          ),
-          end: dueThisYear,
-        };
-      }
-
-      // monthly
-      const dueThisMonth = new Date(
-        refYear,
-        refMonth,
-        effectiveDueDay(payment.dueDay, refYear, refMonth)
-      );
-      if (reference >= dueThisMonth) {
-        return {
-          start: dueThisMonth,
-          end: new Date(
-            refYear,
-            refMonth + 1,
-            effectiveDueDay(payment.dueDay, refYear, refMonth + 1)
-          ),
-        };
-      }
-      return {
-        start: new Date(
-          refYear,
-          refMonth - 1,
-          effectiveDueDay(payment.dueDay, refYear, refMonth - 1)
-        ),
-        end: dueThisMonth,
-      };
-    },
+    (payment: RecurringPayment, reference: Date): { start: Date; end: Date } =>
+      computeCycleWindow(payment, reference),
     []
   );
 
@@ -242,42 +168,10 @@ export function useRecurringUtils(
   /**
    * Calcular próxima fecha de vencimiento
    */
-  const getNextDueDate = useCallback((payment: RecurringPayment): Date => {
-    const today = new Date();
-    const currentMonth = today.getMonth();
-    const currentYear = today.getFullYear();
-
-    if (payment.frequency === 'yearly') {
-      // #8: anclar el mes de vencimiento al mes en que se configuró el pago.
-      const anchorMonth = getYearlyAnchorMonth(payment, currentMonth);
-      // #7: acotar al último día real del mes objetivo.
-      const dueThisYear = new Date(
-        currentYear,
-        anchorMonth,
-        effectiveDueDay(payment.dueDay, currentYear, anchorMonth)
-      );
-      if (today <= dueThisYear) return dueThisYear;
-      const nextYear = currentYear + 1;
-      return new Date(
-        nextYear,
-        anchorMonth,
-        effectiveDueDay(payment.dueDay, nextYear, anchorMonth)
-      );
-    }
-
-    // monthly — #7: acotar al último día real del mes objetivo en cada rama.
-    const dueThisMonth = new Date(
-      currentYear,
-      currentMonth,
-      effectiveDueDay(payment.dueDay, currentYear, currentMonth)
-    );
-    if (today <= dueThisMonth) return dueThisMonth;
-    return new Date(
-      currentYear,
-      currentMonth + 1,
-      effectiveDueDay(payment.dueDay, currentYear, currentMonth + 1)
-    );
-  }, []);
+  const getNextDueDate = useCallback(
+    (payment: RecurringPayment): Date => computeNextDueDate(payment),
+    []
+  );
 
   /**
    * Calcular días hasta el vencimiento

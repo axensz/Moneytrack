@@ -15,7 +15,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, getDocs, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
@@ -152,11 +152,25 @@ export function useDebts(
   }, [userId, setLocalDebts]);
 
   const deleteDebt = useCallback(async (id: string) => {
-    // Eliminar primero las transacciones vinculadas para no dejar saldos desfasados
+    // Eliminar primero las transacciones vinculadas para no dejar saldos desfasados.
+    // #11: NO filtrar desde el array en memoria (`transactions`), que está paginado
+    // y puede no contener todas las transacciones del préstamo — eso dejaría
+    // transacciones de préstamo huérfanas (afectando saldos/usedCredit). Para el
+    // usuario autenticado consultamos Firestore por TODAS las transacciones con este
+    // debtId y las borramos por la ruta deleteTransaction (reversión-aware de
+    // usedCredit). En modo invitado seguimos con el array en memoria (es la fuente
+    // completa: localStorage no pagina).
     if (deleteTransaction) {
-      const linkedTxs = transactions.filter(t => t.debtId === id && t.id);
-      for (const tx of linkedTxs) {
-        await deleteTransaction(tx.id!);
+      let linkedTxIds: string[];
+      if (userId) {
+        const txCollection = collection(db, `users/${userId}/transactions`);
+        const snap = await getDocs(query(txCollection, where('debtId', '==', id)));
+        linkedTxIds = snap.docs.map(d => d.id);
+      } else {
+        linkedTxIds = transactions.filter(t => t.debtId === id && t.id).map(t => t.id!);
+      }
+      for (const txId of linkedTxIds) {
+        await deleteTransaction(txId);
       }
     }
 
@@ -180,16 +194,22 @@ export function useDebts(
     const debt = debts.find(d => d.id === debtId);
     if (!debt) return;
 
-    const newRemaining = Math.max(0, debt.remainingAmount - amount);
+    // #24: Clampar el monto efectivo a lo que la deuda justifica ANTES de mover
+    // dinero. Sobrepagar (amount > remainingAmount) antes solo clampaba la deuda a 0
+    // con Math.max, pero posteaba el `amount` crudo a la cuenta, moviendo más dinero
+    // del que la deuda respalda. Usamos el monto efectivo tanto para la transacción
+    // como para reducir el saldo, manteniendo ambos consistentes.
+    const effectiveAmount = Math.min(amount, debt.remainingAmount);
+    const newRemaining = Math.max(0, debt.remainingAmount - effectiveAmount);
     const isSettled = newRemaining === 0;
 
     // Mover el dinero si hay cuenta asociada:
     // cobrar un préstamo (lent) → ingreso; pagar una deuda (borrowed) → gasto
-    if (debt.accountId && addTransaction) {
+    if (debt.accountId && addTransaction && effectiveAmount > 0) {
       const isLent = debt.type === 'lent';
       await addTransaction({
         type: isLent ? 'income' : 'expense',
-        amount,
+        amount: effectiveAmount,
         category: LOAN_PAYMENT_CATEGORY,
         description: isLent
           ? `Cobro de ${debt.personName}`

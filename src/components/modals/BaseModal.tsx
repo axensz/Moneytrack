@@ -25,6 +25,7 @@ interface BaseModalProps {
   className?: string;
   showCloseButton?: boolean;
   closeOnBackdrop?: boolean;
+  closeOnEscape?: boolean;
 }
 
 export function BaseModal({
@@ -37,6 +38,7 @@ export function BaseModal({
   className = '',
   showCloseButton = true,
   closeOnBackdrop = true,
+  closeOnEscape = true,
 }: BaseModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -65,12 +67,12 @@ export function BaseModal({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        onClose();
+        if (closeOnEscape) onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, closeOnEscape]);
 
   // Focus trap
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

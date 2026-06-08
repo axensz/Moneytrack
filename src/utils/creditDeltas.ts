@@ -9,6 +9,7 @@
  */
 import type { Account } from '../types/finance';
 import { findAccountForTransaction } from './accountTransactions';
+import { roundMoney } from './formatters';
 
 export type CreditEffect = { type: string; amount: number; accountId: string; toAccountId?: string };
 
@@ -46,4 +47,41 @@ export function creditDeltasByAccount(tx: CreditEffect, accounts: Account[]): Ma
   else if (tx.type === 'transfer') addEffect(tx.toAccountId, -tx.amount);
 
   return deltas;
+}
+
+/**
+ * Recalcula (reconcilia) el usedCredit de una TC desde sus transacciones
+ * sobrevivientes, sumando getCreditDelta sobre TODAS las referencias de la
+ * tarjeta (su id + sus mergedAccountIds — ver getAccountReferenceIds). Probar
+ * cada referencia cubre las transacciones que apuntan a la TC por un id fusionado.
+ *
+ * Es idempotente: el resultado no depende del valor previo del campo, así que
+ * reejecutarla siempre converge al mismo valor. Por eso la cascada de borrado de
+ * cuentas (deleteAccount) la usa para revertir deuda de forma segura ante un
+ * writeBatch multi-batch NO atómico (un increment podría aplicarse dos veces tras
+ * un fallo parcial o reintento; un SET reconciliado no).
+ *
+ * @param referenceIds  id de la TC + sus mergedAccountIds
+ * @param survivors     transacciones que siguen existiendo tras el borrado
+ * @returns usedCredit recomputado, clampeado a >= 0 y redondeado a centavos
+ */
+export function reconcileUsedCredit(
+  referenceIds: string[],
+  survivors: ReadonlyArray<CreditEffect>
+): number {
+  const referenceIdSet = new Set(referenceIds);
+  let usedCredit = 0;
+  for (const tx of survivors) {
+    // getCreditDelta espera el id concreto referenciado por la transacción
+    // (origen para gasto/ingreso, destino para transferencia). Probamos ambas
+    // referencias para sumar el delta correcto aunque la tx use un id fusionado.
+    if (tx.accountId && referenceIdSet.has(tx.accountId)) {
+      usedCredit += getCreditDelta(tx, tx.accountId);
+    }
+    if (tx.toAccountId && referenceIdSet.has(tx.toAccountId)) {
+      usedCredit += getCreditDelta(tx, tx.toAccountId);
+    }
+  }
+  // La suma de deltas float puede dejar residuos IEEE-754.
+  return Math.max(0, roundMoney(usedCredit));
 }

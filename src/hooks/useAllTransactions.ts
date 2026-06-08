@@ -32,6 +32,22 @@ export function useAllTransactions(
 ): Transaction[] {
   const [fullTxs, setFullTxs] = useState<Transaction[]>([]);
 
+  // Firma que captura tanto altas/bajas como EDICIONES del array live. Antes el
+  // refetch dependía solo de length, así que editar una transacción (que no
+  // cambia el largo) dejaba el historial completo obsoleto en Stats (#18).
+  // Incluimos los campos que afectan los agregados de Stats: monto, fecha,
+  // categoría, tipo y estado de pago. Se ordena por id para que el resultado sea
+  // estable ante reordenamientos del array.
+  const liveSignature = useMemo(() => {
+    return liveTransactions
+      .map((t) => {
+        const dateMs = t.date instanceof Date ? t.date.getTime() : new Date(t.date).getTime();
+        return `${t.id}:${t.amount}:${dateMs}:${t.category}:${t.type}:${t.paid ? 1 : 0}`;
+      })
+      .sort()
+      .join('|');
+  }, [liveTransactions]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -64,9 +80,9 @@ export function useAllTransactions(
     return () => {
       cancelled = true;
     };
-    // liveTransactions.length: refetch al agregar/eliminar una transacción.
+    // liveSignature: refetch al agregar, eliminar O editar una transacción.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, liveTransactions.length]);
+  }, [userId, liveSignature]);
 
   return useMemo(
     () => mergeTransactionsById(liveTransactions, fullTxs),

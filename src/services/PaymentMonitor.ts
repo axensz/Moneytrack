@@ -5,6 +5,7 @@
 
 import { logger } from '../utils/logger';
 import { formatCurrency } from '../utils/formatters';
+import { getNextDueDate, getCycleWindow } from '../utils/recurringDates';
 import type { RecurringPayment, Transaction, Notification } from '../types/finance';
 
 interface PaymentMonitorDeps {
@@ -111,7 +112,8 @@ export class PaymentMonitor {
      */
     getDaysUntilDue(payment: RecurringPayment): number {
         const today = new Date();
-        const nextDueDate = this.getNextDueDate(payment);
+        // Util compartido con la vista: fin de mes (clamp) + anual anclado en createdAt.
+        const nextDueDate = getNextDueDate(payment);
 
         // Calculate difference in days
         const diffTime = nextDueDate.getTime() - today.getTime();
@@ -121,73 +123,25 @@ export class PaymentMonitor {
     }
 
     /**
-     * Get the next due date for a recurring payment
-     */
-    private getNextDueDate(payment: RecurringPayment): Date {
-        const today = new Date();
-        const currentYear = today.getFullYear();
-        const currentMonth = today.getMonth();
-        const currentDay = today.getDate();
-
-        if (payment.frequency === 'monthly') {
-            // Calculate next monthly due date
-            let dueMonth = currentMonth;
-            let dueYear = currentYear;
-
-            // If we've passed the due day this month, move to next month
-            if (currentDay > payment.dueDay) {
-                dueMonth++;
-                if (dueMonth > 11) {
-                    dueMonth = 0;
-                    dueYear++;
-                }
-            }
-
-            // Handle edge case: dueDay doesn't exist in target month (e.g., Feb 31)
-            const daysInMonth = new Date(dueYear, dueMonth + 1, 0).getDate();
-            const actualDueDay = Math.min(payment.dueDay, daysInMonth);
-
-            return new Date(dueYear, dueMonth, actualDueDay);
-        } else {
-            // Yearly frequency
-            let dueYear = currentYear;
-
-            // If we've passed the due day this year, move to next year
-            const thisYearDueDate = new Date(currentYear, 0, payment.dueDay);
-            if (today > thisYearDueDate) {
-                dueYear++;
-            }
-
-            return new Date(dueYear, 0, payment.dueDay);
-        }
-    }
-
-    /**
-     * Check if payment has already been paid for the current period
+     * Check if payment has already been paid for the current billing cycle.
+     *
+     * Usa la ventana de ciclo [inicio, fin) del util compartido (en paridad con
+     * la vista): cuenta como pagado si alguna transacción del pago, con paid===true,
+     * cae dentro de la ventana del ciclo actual. Así un pago anticipado o atrasado
+     * cuenta para el ciclo correcto (no por mes calendario).
      */
     isAlreadyPaid(payment: RecurringPayment): boolean {
         if (!payment.id) return false;
 
-        const now = new Date();
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
+        const { start, end } = getCycleWindow(payment);
+        const startMs = start.getTime();
+        const endMs = end.getTime();
 
-        // Find transactions linked to this recurring payment in the current period
-        const linkedTransactions = this.deps.transactions.filter((t) => {
-            const tDate = new Date(t.date);
-            const isCurrentPeriod =
-                payment.frequency === 'monthly'
-                    ? tDate.getMonth() === currentMonth && tDate.getFullYear() === currentYear
-                    : tDate.getFullYear() === currentYear;
-
-            return (
-                t.recurringPaymentId === payment.id &&
-                t.paid &&
-                isCurrentPeriod
-            );
+        return this.deps.transactions.some((t) => {
+            if (t.recurringPaymentId !== payment.id || !t.paid) return false;
+            const tMs = new Date(t.date).getTime();
+            return tMs >= startMs && tMs < endMs;
         });
-
-        return linkedTransactions.length > 0;
     }
 
     /**

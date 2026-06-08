@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ChevronDown, Loader2 } from 'lucide-react';
+import { ChevronDown, Loader2, AlertTriangle } from 'lucide-react';
 import { TransactionItem } from './TransactionItem';
 import { AdjustmentGroup } from './AdjustmentGroup';
 import { SPECIAL_CATEGORIES } from '../../../../config/constants';
@@ -29,6 +29,16 @@ interface TransactionsListProps {
     loadingMoreTransactions?: boolean;
     loadMoreTransactions?: () => Promise<void>;
     hasActiveFilters?: boolean;
+    /**
+     * Mensaje de error de carga. Si se provee (string no vacío), la lista
+     * renderiza un bloque accesible con opción de reintento en lugar de
+     * (o además de) las transacciones. Hoy ningún consumidor lo pasa, pero la
+     * prop queda preparada para cuando la capa de datos exponga errores de
+     * carga/paginación. Sin esta prop la lista se comporta igual que antes.
+     */
+    error?: string | null;
+    /** Callback de reintento asociado al estado de error. */
+    onRetry?: () => void;
 }
 
 /**
@@ -55,6 +65,8 @@ export function TransactionsList({
     loadingMoreTransactions = false,
     loadMoreTransactions,
     hasActiveFilters = false,
+    error = null,
+    onRetry,
 }: TransactionsListProps) {
     const [visibleCount, setVisibleCount] = useState(INITIAL_BATCH);
     const sentinelRef = useRef<HTMLDivElement>(null);
@@ -123,6 +135,27 @@ export function TransactionsList({
 
     return (
         <div className="space-y-2">
+            {error && (
+                <div
+                    role="alert"
+                    aria-live="assertive"
+                    className="flex flex-col items-center gap-3 rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 p-4 text-center"
+                >
+                    <AlertTriangle size={24} className="text-rose-600 dark:text-rose-400" aria-hidden="true" />
+                    <p className="text-sm font-medium text-rose-800 dark:text-rose-200">
+                        {error}
+                    </p>
+                    {onRetry && (
+                        <button
+                            type="button"
+                            onClick={onRetry}
+                            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-rose-700 dark:text-rose-300 bg-rose-100 dark:bg-rose-900/40 rounded-lg hover:bg-rose-200 dark:hover:bg-rose-900/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                        >
+                            Reintentar
+                        </button>
+                    )}
+                </div>
+            )}
             {groupedItems.map((item, index) => {
                 const currentDate = item.type === 'transaction'
                     ? new Date(item.transaction.date).toDateString()

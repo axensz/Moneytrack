@@ -45,11 +45,18 @@ function getEffectiveDateRange(dateRange?: DateRange | null): { startDate: Date 
   }
 
   if (dateRange.preset === 'custom') {
+    // startDate se normaliza a 00:00:00 para INCLUIR las transacciones del propio
+    // día de inicio (ahora que las transacciones tienen hora real). Sin esto, una
+    // transacción del día de inicio a las 09:00 quedaba excluida porque su hora era
+    // menor que la hora del startDate. Iguala lo que ya hace useTransactionsView (#19).
+    const startDate = dateRange.startDate ? new Date(dateRange.startDate) : null;
+    startDate?.setHours(0, 0, 0, 0);
+
     const endDate = dateRange.endDate ? new Date(dateRange.endDate) : null;
     endDate?.setHours(23, 59, 59, 999);
 
     return {
-      startDate: dateRange.startDate || null,
+      startDate,
       endDate
     };
   }

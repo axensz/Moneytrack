@@ -17,80 +17,13 @@ import type { Transaction, Account } from '../../types/finance';
 import { isOffline } from '../../utils/firestoreHelpers';
 import { getCreditDelta, creditDeltasByAccount } from '../../utils/creditDeltas';
 import { logger } from '../../utils/logger';
+import { validateTransactionUpdate } from '../../utils/transactionValidation';
 
 // Las escrituras de transacciones requieren conexión: las que ajustan usedCredit
 // usan runTransaction (no funciona offline) y queremos evitar estados optimistas
 // inconsistentes que descuadren balances. Offline → error claro (sin toast aquí;
 // lo muestra el caller). La lectura offline sigue disponible vía persistentLocalCache.
 const OFFLINE_WRITE_ERROR = 'Sin conexión a internet. Conéctate para guardar los cambios.';
-
-/**
- * Interfaces para validación de transacciones
- */
-interface ValidationError {
-  field: string;
-  message: string;
-}
-
-interface ValidationResult {
-  isValid: boolean;
-  errors: ValidationError[];
-}
-
-/**
- * Valida los campos de una actualización de transacción
- * Verifica que todos los campos presentes sean válidos
- */
-function validateTransactionUpdate(updates: Partial<Transaction>): ValidationResult {
-  const errors: ValidationError[] = [];
-
-  // Validate amount if present
-  if ('amount' in updates) {
-    if (updates.amount === undefined || updates.amount === null) {
-      errors.push({ field: 'amount', message: 'El monto es requerido' });
-    } else if (typeof updates.amount !== 'number' || isNaN(updates.amount)) {
-      errors.push({ field: 'amount', message: 'El monto debe ser un número válido' });
-    } else if (updates.amount <= 0) {
-      errors.push({ field: 'amount', message: 'El monto debe ser mayor a 0' });
-    }
-  }
-
-  // Validate description if present
-  if ('description' in updates) {
-    if (updates.description === undefined || updates.description === null) {
-      errors.push({ field: 'description', message: 'La descripción es requerida' });
-    } else if (typeof updates.description !== 'string') {
-      errors.push({ field: 'description', message: 'La descripción debe ser texto' });
-    }
-  }
-
-  // Validate date if present
-  if ('date' in updates) {
-    if (updates.date === undefined || updates.date === null) {
-      errors.push({ field: 'date', message: 'La fecha es requerida' });
-    } else if (!(updates.date instanceof Date)) {
-      errors.push({ field: 'date', message: 'La fecha debe ser un objeto Date válido' });
-    } else if (isNaN(updates.date.getTime())) {
-      errors.push({ field: 'date', message: 'La fecha no es válida' });
-    }
-  }
-
-  // Validate category if present
-  if ('category' in updates) {
-    if (updates.category === undefined || updates.category === null) {
-      errors.push({ field: 'category', message: 'La categoría es requerida' });
-    } else if (typeof updates.category !== 'string') {
-      errors.push({ field: 'category', message: 'La categoría debe ser texto' });
-    } else if (updates.category.trim() === '') {
-      errors.push({ field: 'category', message: 'La categoría no puede estar vacía' });
-    }
-  }
-
-  return {
-    isValid: errors.length === 0,
-    errors
-  };
-}
 
 /**
  * Valida el esquema básico de una transacción antes de guardar
@@ -182,6 +115,18 @@ export function useTransactionsCRUD(
           throw new Error('La cuenta destino no existe');
         }
 
+        // Bloquear transferencias DESDE una TC ANTES de escribir nada: una TC no es
+        // un activo del que se pueda extraer dinero; permitirlo crearía cupo/saldo
+        // de la nada. Validamos aquí (no solo en el formulario) porque toda creación
+        // programática de transferencias —import y undo/restore— pasa por
+        // addTransaction → addTransferAtomic, sin el guard de la UI; este es el
+        // único punto que las cubre a todas. Lanzar dentro de runTransaction aborta
+        // toda la operación, así que ninguna escritura se confirma.
+        const fromAccountData = fromAccountSnap.data() as Account;
+        if (fromAccountData.type === 'credit') {
+          throw new Error('No se puede transferir desde una tarjeta de crédito');
+        }
+
         // Crear documento de transacción
         const transactionRef = doc(
           collection(db, `users/${uid}/transactions`)
@@ -198,15 +143,11 @@ export function useTransactionsCRUD(
           createdAt: new Date(),
         });
 
-        // Actualizar usedCredit en cuentas TC afectadas
+        // Actualizar usedCredit en cuentas TC afectadas (destino: la transferencia
+        // hacia una TC es un pago que reduce la deuda).
         const toAccountData = toAccountSnap.data() as Account;
         if (toAccountData.type === 'credit') {
           firestoreTransaction.update(toAccountRef, { usedCredit: increment(-amount) });
-        }
-        const fromAccountData = fromAccountSnap.data() as Account;
-        if (fromAccountData.type === 'credit') {
-          // Transferir DESDE una TC (raro, pero posible) — no afecta usedCredit
-          // ya que usedCredit solo cuenta expenses/incomes/transfersIn
         }
       });
     },

@@ -68,9 +68,22 @@ service cloud.firestore {
           && hasValidInterestFields(request.resource.data)
           && hasValidCurrencyFields(request.resource.data);
 
-        // Allow update of editable fields (description, amount, date, category, paid)
-        // accountId can change during credit card merge operations
-        // Description is optional but if provided must be valid
+        // AUDIT-FIX (#30): update endurecido para espejar la validación de create.
+        // La app hace updates PARCIALES (togglear paid, editar amount/date/category/
+        // description, mover accountId en merge de TC, sincronizar cuotas/intereses).
+        // Como Firestore fusiona, request.resource.data SIEMPRE contiene el doc
+        // completo, así que validar los campos siempre presentes no rompe updates
+        // parciales: los campos no tocados conservan su valor previo (ya válido).
+        // Reglas:
+        //  - type es inmutable (no se puede cambiar income/expense/transfer).
+        //  - accountId string (puede cambiar en merge de TC).
+        //  - amount number > 0 y dentro de rango (isValidAmount).
+        //  - description string <= 500 (se permite vacía intencionalmente, fix #17).
+        //  - category string (igual que create: no exige no-vacío para no bloquear
+        //    docs heredados ni los updates parciales que no tocan category).
+        //  - date timestamp.
+        //  - paid bool.
+        //  - cuotas, intereses y multimoneda: si están presentes, dentro de rango.
         allow update: if isOwner(userId)
           && request.resource.data.type == resource.data.type
           && request.resource.data.accountId is string
@@ -78,7 +91,11 @@ service cloud.firestore {
           && request.resource.data.description is string
           && request.resource.data.description.size() <= 500
           && request.resource.data.category is string
-          && request.resource.data.date is timestamp;
+          && request.resource.data.date is timestamp
+          && request.resource.data.paid is bool
+          && hasValidInstallments(request.resource.data)
+          && hasValidInterestFields(request.resource.data)
+          && hasValidCurrencyFields(request.resource.data);
 
         allow delete: if isOwner(userId);
       }
@@ -115,7 +132,16 @@ service cloud.firestore {
           && request.resource.data.name.size() > 0
           && request.resource.data.name.size() <= 100;
 
-        allow update: if isOwner(userId);
+        // AUDIT-FIX (#30): update endurecido (espeja create). La app actual solo
+        // crea/borra categorías, pero validamos por si un restore/import escribe.
+        //  - type inmutable y dentro del enum.
+        //  - name string no vacío y <= 100.
+        allow update: if isOwner(userId)
+          && request.resource.data.type == resource.data.type
+          && request.resource.data.type in ['expense', 'income']
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 100;
         allow delete: if isOwner(userId);
       }
 
@@ -136,7 +162,36 @@ service cloud.firestore {
           && request.resource.data.isActive is bool
           && request.resource.data.createdAt is timestamp;
 
-        allow update: if isOwner(userId);
+        // AUDIT-FIX (#30): update endurecido (espeja create). La app hace updates
+        // PARCIALES: { isActive } (pausar/reactivar), { amount } (sincronizar con
+        // el pago real), edición completa por formulario, y al registrar un pago
+        // puede fijar lastPaidDate / lastPaidAmount. Firestore fusiona, así que
+        // request.resource.data tiene el doc completo: validar los campos siempre
+        // presentes no rompe los updates parciales.
+        //  - name string 1-200.
+        //  - amount number > 0 y en rango (isValidAmount).
+        //  - category string.
+        //  - dueDay int 1-31.
+        //  - frequency en ['monthly','yearly'].
+        //  - isActive bool.
+        //  - lastPaidDate (opcional): si está, timestamp.
+        //  - lastPaidAmount (opcional): si está, number >= 0.
+        allow update: if isOwner(userId)
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 200
+          && isValidAmount(request.resource.data.amount)
+          && request.resource.data.category is string
+          && request.resource.data.dueDay is int
+          && request.resource.data.dueDay >= 1
+          && request.resource.data.dueDay <= 31
+          && request.resource.data.frequency in ['monthly', 'yearly']
+          && request.resource.data.isActive is bool
+          && (!('lastPaidDate' in request.resource.data.keys())
+              || request.resource.data.lastPaidDate is timestamp)
+          && (!('lastPaidAmount' in request.resource.data.keys())
+              || (request.resource.data.lastPaidAmount is number
+                  && request.resource.data.lastPaidAmount >= 0));
         allow delete: if isOwner(userId);
       }
 
@@ -226,7 +281,26 @@ service cloud.firestore {
           && request.resource.data.isRead is bool
           && request.resource.data.createdAt is timestamp;
 
-        allow update: if isOwner(userId);
+        // AUDIT-FIX (#30): update endurecido (espeja create). En la práctica la app
+        // solo hace { isRead: true } (marcar leída / marcar todas como leídas).
+        // Firestore fusiona, así que request.resource.data tiene el doc completo;
+        // validamos los campos siempre presentes sin romper el update parcial.
+        //  - type inmutable y dentro del enum.
+        //  - title string 1-200.
+        //  - message string 1-500.
+        //  - severity en el enum permitido.
+        //  - isRead bool.
+        allow update: if isOwner(userId)
+          && request.resource.data.type == resource.data.type
+          && request.resource.data.type in ['budget', 'recurring', 'unusual_spending', 'low_balance', 'debt', 'info']
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 200
+          && request.resource.data.message is string
+          && request.resource.data.message.size() > 0
+          && request.resource.data.message.size() <= 500
+          && request.resource.data.severity in ['info', 'warning', 'error', 'success']
+          && request.resource.data.isRead is bool;
         allow delete: if isOwner(userId);
       }
 

@@ -195,8 +195,8 @@ export const IconButton = memo(
       const resolvedIconSize = iconSize ?? defaultIconSizes[size];
 
       const iconButtonSizes: Record<ButtonSize, string> = {
-        sm: 'p-1.5 min-h-[32px] min-w-[32px]',
-        md: 'p-2 min-h-[40px] min-w-[40px]',
+        sm: 'p-1.5 min-h-[44px] min-w-[44px]',
+        md: 'p-2 min-h-[44px] min-w-[44px]',
         lg: 'p-3 min-h-[48px] min-w-[48px]',
       };
 

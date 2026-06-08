@@ -17,7 +17,9 @@
  */
 
 import type { Account, Transaction } from '../types/finance';
-import { transactionAccountIs, transactionDestinationIs } from './accountTransactions';
+import { transactionAccountIs, transactionDestinationIs, getAccountReferenceIds } from './accountTransactions';
+import { getCreditDelta } from './creditDeltas';
+import { roundMoney } from './formatters';
 
 /**
  * Interfaz base para estrategias de cuenta
@@ -82,7 +84,9 @@ export class SavingsAccountStrategy implements AccountBalanceStrategy {
       }
     });
 
-    return balance;
+    // Redondear a centavos para eliminar residuos IEEE-754 acumulados al sumar
+    // floats (ej: 0.1 * 3 - 0.3). No cambia la semántica, solo limpia el total.
+    return roundMoney(balance);
   }
 
   validateTransaction(
@@ -166,40 +170,56 @@ export class CreditCardStrategy implements AccountBalanceStrategy {
    * Cupo Usado = Σ compras (monto completo) - Σ pagos (ingresos + transferencias)
    */
   private calculateUsedCredit(account: Account, transactions: Transaction[]): number {
-    // Si hay campo persistido en la cuenta, usarlo (no depende de paginación)
+    // RUTA DE DISPLAY/BALANCE: preferir el campo persistido (no depende de
+    // paginación). Es la fuente autoritativa para mostrar cupo disponible.
     if (account.usedCredit != null) {
       return Math.max(0, account.usedCredit);
     }
 
-    // Fallback: calcular desde transacciones en memoria (puede ser incompleto si hay paginación)
-    // 1. Gastos en esta tarjeta — monto completo, incluidas compras a cuotas
-    const totalExpenses = transactions
-      .filter(t =>
-        transactionAccountIs(t, account) &&
-        t.type === 'expense'
-      )
-      .reduce((sum, t) => sum + t.amount, 0);
+    // Fallback: recalcular desde las transacciones en memoria.
+    return this.recomputeUsedCreditFromTransactions(account, transactions);
+  }
 
-    // 2. Ingresos directos a esta TC (pagos mediante "Ingreso")
-    const directPayments = transactions
-      .filter(t =>
-        transactionAccountIs(t, account) &&
-        t.type === 'income'
-      )
-      .reduce((sum, t) => sum + t.amount, 0);
+  /**
+   * Recalcula el cupo utilizado SOLO desde el array de transacciones, ignorando
+   * el campo persistido account.usedCredit.
+   *
+   * POR QUÉ: el campo persistido va por detrás del listener de Firestore. Justo
+   * tras un add/delete reciente, account.usedCredit todavía refleja el estado
+   * anterior (la actualización atómica ya se escribió, pero el snapshot aún no
+   * llegó al cliente), causando falsos "Cupo insuficiente" o aceptaciones
+   * inválidas. Para VALIDAR conviene usar el array de transacciones más fresco,
+   * que se actualiza optimistamente en el mismo render.
+   *
+   * Suma getCreditDelta (la MISMA función que usan las escrituras atómicas para
+   * ajustar usedCredit), sobre todas las referencias de id de la tarjeta (cubre
+   * tarjetas fusionadas). Positivo = compra (sube deuda); negativo = pago.
+   *
+   * TRADE-OFF DE PAGINACIÓN: si las transacciones están paginadas y el array no
+   * contiene todo el historial de la tarjeta, esta suma subestima el cupo usado.
+   * Para la ruta de validación se prefiere igual, porque el escenario real que
+   * rompe la UX es el desfase momentáneo del campo persistido tras una escritura
+   * reciente (las transacciones recién creadas SÍ están en memoria). El display
+   * de balance sigue usando el campo persistido, que sí es completo.
+   */
+  private recomputeUsedCreditFromTransactions(account: Account, transactions: Transaction[]): number {
+    const accountIds = new Set(getAccountReferenceIds(account));
 
-    // 3. Transferencias HACIA esta TC (pagos desde otra cuenta)
-    const transferPayments = transactions
-      .filter(t =>
-        transactionDestinationIs(t, account) &&
-        t.type === 'transfer'
-      )
-      .reduce((sum, t) => sum + t.amount, 0);
+    const usedCredit = transactions.reduce((sum, t) => {
+      // getCreditDelta espera el id de cuenta concreto; probamos contra cada
+      // referencia (origen para gasto/ingreso, destino para transferencia).
+      let delta = 0;
+      if (t.accountId && accountIds.has(t.accountId)) {
+        delta += getCreditDelta(t, t.accountId);
+      }
+      if (t.toAccountId && accountIds.has(t.toAccountId)) {
+        delta += getCreditDelta(t, t.toAccountId);
+      }
+      return sum + delta;
+    }, 0);
 
-    // 4. Cupo utilizado = gastos efectivos - pagos totales
-    const usedCredit = totalExpenses - directPayments - transferPayments;
-
-    return Math.max(0, usedCredit);
+    // Redondear a centavos: la suma de deltas float puede dejar residuos IEEE-754.
+    return Math.max(0, roundMoney(usedCredit));
   }
 
   calculateBalance(account: Account, transactions: Transaction[]): number {
@@ -216,9 +236,16 @@ export class CreditCardStrategy implements AccountBalanceStrategy {
     transactions: Transaction[],
     transactionType?: 'income' | 'expense' | 'transfer'
   ): { valid: boolean; error?: string } {
+    // RUTA DE VALIDACIÓN: recalcular el cupo usado desde el array de transacciones
+    // más fresco (no del campo persistido, que va por detrás del listener tras un
+    // add/delete reciente y produce falsos rechazos/aceptaciones). Ver
+    // recomputeUsedCreditFromTransactions para el trade-off de paginación.
+    const usedCreditForValidation = this.recomputeUsedCreditFromTransactions(account, transactions);
+
     // REGLA 1: Validar GASTOS - verificar cupo disponible
     if (transactionType === 'expense') {
-      const availableCredit = this.calculateBalance(account, transactions);
+      const creditLimit = account.creditLimit || 0;
+      const availableCredit = Math.max(0, roundMoney(creditLimit - usedCreditForValidation));
 
       if (amount > availableCredit) {
         return {
@@ -230,7 +257,17 @@ export class CreditCardStrategy implements AccountBalanceStrategy {
 
     // REGLA 2: Validar INGRESOS (Pagos a TC) - no se puede pagar más de lo que se debe
     if (transactionType === 'income') {
-      const usedCredit = this.calculateUsedCredit(account, transactions);
+      // Para PAGOS preferimos el campo persistido (completo) cuando exista, en
+      // lugar del recompute paginado. El recompute opera sobre el array en memoria,
+      // que en una TC con historial largo paginado solo trae una fracción de las
+      // transacciones; subestimar usedCredit haría rechazar PAGOS LEGÍTIMOS con
+      // 'No hay deuda pendiente' / 'No puedes pagar más de lo que debes'. El campo
+      // persistido (account.usedCredit) sí refleja la deuda total. Si no existe,
+      // caemos al recompute. Tomamos el máximo para no subestimar la deuda en
+      // ningún caso (un add reciente aún no reflejado en el persistido se cubre con
+      // el recompute fresco; el subconteo por paginación se cubre con el persistido).
+      const persisted = account.usedCredit != null ? Math.max(0, account.usedCredit) : 0;
+      const usedCredit = Math.max(persisted, usedCreditForValidation);
 
       if (usedCredit === 0) {
         return {

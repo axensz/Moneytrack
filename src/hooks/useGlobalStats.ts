@@ -32,6 +32,12 @@ export interface GlobalStats {
   totalIncome: number;
   totalExpenses: number;
   pendingExpenses: number;
+  /**
+   * Gastos NO pagados de tarjetas de crédito. Ya NO se incluye en totalExpenses
+   * (ver #20: pertenece a 'Pendientes'). Se expone para compatibilidad con
+   * consumidores que aún dependan de este desglose.
+   */
+  unpaidTCExpenses: number;
 }
 
 /**
@@ -42,10 +48,11 @@ export interface GlobalStats {
  * 1. TOTAL INGRESOS:
  *    - Suma de todos los ingresos PAGADOS
  *
- * 2. TOTAL GASTOS:
+ * 2. TOTAL GASTOS (gasto EFECTIVO):
  *    - Gastos PAGADOS (todas las cuentas)
- *    - + Gastos NO PAGADOS de tarjetas de crédito
- *    (Los gastos en TC se consideran "hechos" aunque no estén pagados)
+ *    (Una compra en TC impaga NO cuenta aquí: es deuda, pertenece a 'Pendientes'.
+ *     Antes se sumaba unpaidTCExpenses y la misma compra aparecía a la vez en
+ *     'Gastos' y en 'Pendientes' → doble presentación. Ver #20.)
  *
  * 3. GASTOS PENDIENTES:
  *    - Cupo utilizado de todas las tarjetas de crédito
@@ -77,9 +84,11 @@ export function useGlobalStats(
       .filter(t => t.type === 'expense')
       .reduce((sum, t) => sum + t.amount, 0);
 
-    // 2.2 Gastos NO pagados de tarjetas de crédito
-    // Estos se consideran "efectuados" aunque no estén marcados como pagados
-    // porque ya consumen el cupo de la tarjeta
+    // 2.2 Gastos NO pagados de tarjetas de crédito.
+    // Se mantiene calculado para compatibilidad (se expone en GlobalStats), pero
+    // YA NO se suma a totalExpenses: una compra TC impaga es deuda y se refleja en
+    // 'Pendientes' (pendingExpenses, vía usedCredit). Sumarla a 'Gastos' duplicaba
+    // la presentación de la misma compra en ambas cards (#20).
     const unpaidTCExpenses = realTransactions
       .filter(t => {
         // Debe ser un gasto no pagado
@@ -91,7 +100,9 @@ export function useGlobalStats(
       })
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const totalExpenses = paidExpenses + unpaidTCExpenses;
+    // 'Gastos' = gasto EFECTIVO (solo lo pagado). La compra TC impaga vive en
+    // 'Pendientes', no aquí, para evitar la doble presentación (#20).
+    const totalExpenses = paidExpenses;
 
     // ✅ 3. CALCULAR GASTOS PENDIENTES (deuda de tarjetas de crédito)
     // Usa la nueva lógica corregida de CreditCardCalculator
@@ -105,7 +116,8 @@ export function useGlobalStats(
     return {
       totalIncome,
       totalExpenses,
-      pendingExpenses
+      pendingExpenses,
+      unpaidTCExpenses
     };
   }, [transactions, accounts]);
 }

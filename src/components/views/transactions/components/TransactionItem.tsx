@@ -49,7 +49,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
 }) => {
   const { hideBalances } = useUIPreferences();
 
-  const displayAmount = (amount: number) => hideBalances ? '******' : formatCurrency(amount);
+  const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
   const amountPrefix =
     transaction.type === 'income' ? '+' : transaction.type === 'expense' ? '-' : '->';
   const amountClass =
@@ -76,15 +76,22 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
     (txHasTime ? ` · ${txDate.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}` : '');
 
   if (isEditing) {
+    // ids únicos por transacción para asociar <label> con su input
+    const editId = `tx-edit-${transaction.id ?? 'new'}`;
+    const descId = `${editId}-description`;
+    const categoryId = `${editId}-category`;
+    const amountId = `${editId}-amount`;
+    const dateId = `${editId}-date`;
     return (
-      <div className="border rounded-lg p-3 sm:p-4 transition-all bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+      <div className="border rounded-xl p-3.5 sm:p-4 transition-all bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">
+              <label htmlFor={descId} className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">
                 Descripcion
               </label>
               <input
+                id={descId}
                 type="text"
                 value={editForm.description}
                 onChange={(e) =>
@@ -95,10 +102,11 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
               />
             </div>
             <div>
-              <label className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">
+              <label htmlFor={categoryId} className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">
                 Categoria
               </label>
               <select
+                id={categoryId}
                 value={editForm.category}
                 onChange={(e) =>
                   onEditFormChange({ ...editForm, category: e.target.value })
@@ -113,10 +121,11 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">
+              <label htmlFor={amountId} className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">
                 Monto
               </label>
               <CurrencyInput
+                id={amountId}
                 intlConfig={{ locale: 'es-CO', currency: 'COP' }}
                 decimalsLimit={2}
                 allowNegativeValue={false}
@@ -133,10 +142,11 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
               />
             </div>
             <div>
-              <label className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">
+              <label htmlFor={dateId} className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">
                 Fecha
               </label>
               <input
+                id={dateId}
                 type="date"
                 value={editForm.date}
                 onChange={(e) =>
@@ -245,7 +255,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
               <div className="flex gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                 <button
                   onClick={(e) => { e.stopPropagation(); onEdit(); }}
-                  className="flex items-center justify-center p-1.5 min-h-[32px] min-w-[32px] text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-lg transition-colors"
+                  className="flex items-center justify-center p-1.5 min-h-[44px] min-w-[44px] text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
                   title="Editar"
                   aria-label="Editar transaccion"
                 >
@@ -253,7 +263,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                  className="flex items-center justify-center p-1.5 min-h-[32px] min-w-[32px] text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors"
+                  className="flex items-center justify-center p-1.5 min-h-[44px] min-w-[44px] text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
                   title="Eliminar"
                   aria-label="Eliminar transaccion"
                 >

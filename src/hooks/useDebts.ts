@@ -67,6 +67,8 @@ export function useDebts(
           ...doc.data(),
           createdAt: doc.data().createdAt?.toDate() || new Date(),
           settledAt: doc.data().settledAt?.toDate() || null,
+          lentDate: doc.data().lentDate?.toDate() || undefined,
+          dueDate: doc.data().dueDate?.toDate() || undefined,
         })) as Debt[];
         setFirestoreDebts(data);
         setLoading(false);

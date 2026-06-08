@@ -10,6 +10,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { logger } from '../utils/logger';
+import { clearGuestFinanceData } from '../utils/localData';
 import {
   readGuestData,
   countGuestData,
@@ -27,6 +28,7 @@ export interface UseGuestMigrationResult {
   counts: GuestDataCounts | null;
   runMigration: () => Promise<void>;
   dismiss: () => void;
+  discard: () => void;
 }
 
 export function useGuestMigration(userId: string | null): UseGuestMigrationResult {
@@ -69,6 +71,14 @@ export function useGuestMigration(userId: string | null): UseGuestMigrationResul
     setStatus('idle');
   }, []);
 
+  const discard = useCallback(() => {
+    // "No quiero estos datos": borrar los datos locales de invitado de este
+    // navegador y no volver a preguntar (ya no hay nada que migrar).
+    clearGuestFinanceData();
+    toast.success('Datos locales borrados de este navegador');
+    setStatus('idle');
+  }, []);
+
   return {
     showPrompt: status === 'prompt' || status === 'error',
     isMigrating: status === 'migrating',
@@ -76,5 +86,6 @@ export function useGuestMigration(userId: string | null): UseGuestMigrationResul
     counts,
     runMigration,
     dismiss,
+    discard,
   };
 }

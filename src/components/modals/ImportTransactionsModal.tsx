@@ -4,6 +4,7 @@ import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { X, Upload, FileText, CheckCircle, AlertCircle, ChevronDown, Loader2, ToggleLeft, ToggleRight, ArrowLeft, Sparkles, Calendar } from 'lucide-react';
 import { getGeminiClient } from '../../lib/geminiClient';
 import { useFinance } from '../../contexts/FinanceContext';
+import { useGeminiKey } from '../../contexts/GeminiKeyContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useImportTransactions } from '../../hooks/useImportTransactions';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
@@ -139,6 +140,7 @@ Sin explicaciones, solo el JSON array.`,
 interface ImportTransactionsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenAISettings?: () => void;
 }
 
 type Step = 'upload' | 'review' | 'done';
@@ -167,8 +169,17 @@ const isOtherCategory = (category: string) => normalizeCategory(category) === 'o
 const isSpecialCategory = (category: string) =>
   SPECIAL_CATEGORIES.adjustmentCategories.some(item => normalizeCategory(item) === normalizeCategory(category));
 
-export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsModalProps) {
+export function ImportTransactionsModal({ isOpen, onClose, onOpenAISettings }: ImportTransactionsModalProps) {
   const { accounts, transactions: existingTransactions, categories } = useFinance();
+  const { isConfigured: aiKeyConfigured, hasConsent: aiHasConsent } = useGeminiKey();
+  // Motivo por el que la IA no está disponible (para mensajes precisos):
+  // 'no-key' = falta API key · 'no-consent' = hay key pero falta autorizar.
+  const aiReason: 'no-key' | 'no-consent' | null =
+    !aiKeyConfigured ? 'no-key' : !aiHasConsent ? 'no-consent' : null;
+  const aiUnavailableMessage =
+    aiReason === 'no-key'
+      ? 'Necesitas una API key gratuita de Gemini.'
+      : 'Tienes API key pero falta autorizar el envío de datos a Gemini.';
   const { user } = useAuth();
   const { importTransactions, status, progress, result, reset } = useImportTransactions(user?.uid || null, accounts);
   const importRulesKey = `moneytrack_import_rules_${user?.uid ?? 'guest'}`;
@@ -184,6 +195,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
   const [aiApplied, setAiApplied] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
   const [pdfParsing, setPdfParsing] = useState(false);
+  const [pdfNeedsAI, setPdfNeedsAI] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const nonCreditAccounts = accounts.filter(a => a.type !== 'credit');
@@ -234,6 +246,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
     setAiApplied(false);
     setAiSuggestions([]);
     setPdfParsing(false);
+    setPdfNeedsAI(false);
     reset();
     onClose();
   }, [onClose, reset]);
@@ -246,6 +259,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
     setFileName(file.name);
     setAiSuggestions([]);
     setAiApplied(false);
+    setPdfNeedsAI(false);
 
     const name = file.name.toLowerCase();
     const isXLSX = name.endsWith('.xlsx') || name.endsWith('.xls');
@@ -339,6 +353,13 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
     };
 
     if (isPDF) {
+      // El PDF se procesa con IA: si no está disponible, mostramos un bloque
+      // con CTA en vez de dejar al usuario sin salida con un error técnico.
+      if (aiReason) {
+        setPdfNeedsAI(true);
+        setFileName('');
+        return;
+      }
       const reader = new FileReader();
       reader.onload = async (ev) => {
         const buffer = ev.target?.result as ArrayBuffer;
@@ -372,6 +393,7 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
     inferTransferRoute,
     learningRules,
     availableCategoryOptions,
+    aiReason,
   ]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -678,6 +700,31 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
                 </div>
               )}
 
+              {/* PDF necesita el Asistente IA */}
+              {pdfNeedsAI && (
+                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-sm">
+                  <div className="flex items-start gap-2 text-blue-800 dark:text-blue-200">
+                    <Sparkles size={16} className="flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold">La importación de PDF usa el Asistente IA</p>
+                      <p className="text-blue-700 dark:text-blue-300 mt-0.5">{aiUnavailableMessage}</p>
+                    </div>
+                  </div>
+                  {onOpenAISettings && (
+                    <button
+                      onClick={() => { handleClose(); onOpenAISettings(); }}
+                      className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      <Sparkles size={12} />
+                      Configurar IA
+                    </button>
+                  )}
+                  <p className="text-xs text-blue-600 dark:text-blue-300/80 mt-2">
+                    También puedes importar tu extracto en formato CSV o Excel sin IA.
+                  </p>
+                </div>
+              )}
+
               {/* Stats del parse */}
               {parseStats && rows.length > 0 && (
                 <div className="space-y-2">
@@ -738,6 +785,15 @@ export function ImportTransactionsModal({ isOpen, onClose }: ImportTransactionsM
                       ) : (
                         <><Sparkles size={12} /> {aiSuggestions.length > 0 ? 'Actualizar sugerencias' : aiApplied ? 'Re-categorizar con IA' : 'Categorizar con IA'}</>
                       )}
+                    </button>
+                  )}
+                  {!isAIAvailable() && onOpenAISettings && (
+                    <button
+                      onClick={onOpenAISettings}
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                      title={aiUnavailableMessage}
+                    >
+                      <Sparkles size={12} /> Activar IA para categorizar
                     </button>
                   )}
                 </div>

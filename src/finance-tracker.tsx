@@ -17,6 +17,7 @@ import { GeminiKeyModal } from './components/modals/GeminiKeyModal';
 import { GuestMigrationModal } from './components/modals/GuestMigrationModal';
 import { GeminiKeyProvider, useGeminiKey } from './contexts/GeminiKeyContext';
 import { clearGuestFinanceData } from './utils/localData';
+import { hasGuestData, readGuestData } from './utils/guestMigration';
 import { NotificationPreferencesModal } from './components/modals/NotificationPreferencesModal';
 import { FirestoreProvider } from './contexts/FirestoreContext';
 import { FinanceProvider, useFinance } from './contexts/FinanceContext';
@@ -221,6 +222,16 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   // Keep ref in sync for stable callbacks
   useEffect(() => { newTransactionRef.current = newTransaction; }, [newTransaction]);
 
+  // Aviso honesto al reconectar: las escrituras se bloquean sin conexión
+  // (no se encolan), así que al volver la conexión el usuario ya puede guardar.
+  const wasOnlineRef = useRef(isOnline);
+  useEffect(() => {
+    if (!wasOnlineRef.current && isOnline) {
+      toast.success('Conexión restablecida — ya puedes guardar cambios');
+    }
+    wasOnlineRef.current = isOnline;
+  }, [isOnline]);
+
   const { showWelcomeModal, handleDismissWelcomeModal, setShowWelcomeModal } = useWelcomeModal({
     mounted: true,
     authLoading: false,
@@ -263,6 +274,17 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const guestMigration = useGuestMigration(user?.uid ?? null);
 
   const handleLogout = useCallback(async () => {
+    // Si hay datos de invitado sin migrar, advertir antes de borrarlos: al cerrar
+    // sesión se limpia el localStorage (privacidad S2) y esos datos se perderían.
+    if (hasGuestData(readGuestData())) {
+      const confirmed = window.confirm(
+        'Tienes datos locales que aún no se han guardado en tu cuenta. ' +
+          'Si cierras sesión se borrarán de este dispositivo y no podrás recuperarlos. ' +
+          '¿Quieres cerrar sesión de todos modos?'
+      );
+      if (!confirmed) return;
+    }
+
     try {
       setIsLoggingOut(true);
       await logoutFirebase();
@@ -449,6 +471,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
           hasError={guestMigration.hasError}
           onImport={guestMigration.runMigration}
           onDismiss={guestMigration.dismiss}
+          onDiscard={guestMigration.discard}
         />
       )}
 
@@ -537,16 +560,15 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
 
             {view === 'transactions' && (
               <div id="panel-transactions" role="tabpanel" aria-labelledby="tab-transactions">
-                {showForm && (
-                  <TransactionForm
-                    newTransaction={newTransaction}
-                    setNewTransaction={setNewTransaction}
-                    onSubmit={handleSubmit}
-                    onSubmitAndContinue={handleSubmitAndContinue}
-                    onCancel={handleCloseForm}
-                    batchCount={batchCount}
-                  />
-                )}
+                <TransactionForm
+                  isOpen={showForm}
+                  newTransaction={newTransaction}
+                  setNewTransaction={setNewTransaction}
+                  onSubmit={handleSubmit}
+                  onSubmitAndContinue={handleSubmitAndContinue}
+                  onCancel={handleCloseForm}
+                  batchCount={batchCount}
+                />
 
                 <TransactionsView
                   showForm={showForm}
@@ -563,6 +585,8 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
                   setCustomEndDate={setCustomEndDate}
                   loading={transactionsLoading || accountsLoading}
                   onRestore={handleRestoreTransaction}
+                  onGoToAccounts={() => setView('accounts')}
+                  onOpenAISettings={() => setShowAISettingsModal(true)}
                 />
               </div>
             )}

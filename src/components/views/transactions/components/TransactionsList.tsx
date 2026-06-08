@@ -14,6 +14,8 @@ interface TransactionsListProps {
     transactions: Transaction[];
     editingTransaction: string | null;
     editForm: { description: string; amount: string; date: string; category: string };
+    expandedTransaction?: string | null;
+    toggleExpand?: (id: string) => void;
     categories: Categories;
     formatCurrency: (amount: number) => string;
     getAccountForTransaction: (accountId: string) => Account | undefined;
@@ -38,6 +40,8 @@ export function TransactionsList({
     transactions,
     editingTransaction,
     editForm,
+    expandedTransaction = null,
+    toggleExpand,
     categories,
     formatCurrency,
     getAccountForTransaction,
@@ -155,6 +159,8 @@ export function TransactionsList({
                                 categories={categories}
                                 recurringPaymentName={getRecurringPaymentName(item.transaction.recurringPaymentId)}
                                 formatCurrency={formatCurrency}
+                                isExpanded={expandedTransaction === item.transaction.id}
+                                onToggleExpand={toggleExpand ? () => toggleExpand(item.transaction.id!) : undefined}
                                 onEdit={() => startEditTransaction(item.transaction)}
                                 onDelete={() => handleDeleteTransaction(item.transaction)}
                                 onSave={() => handleSaveEdit(item.transaction.id!)}
@@ -170,6 +176,8 @@ export function TransactionsList({
                                 getRecurringPaymentName={getRecurringPaymentName}
                                 editingTransaction={editingTransaction}
                                 editForm={editForm}
+                                expandedTransaction={expandedTransaction}
+                                toggleExpand={toggleExpand}
                                 startEditTransaction={startEditTransaction}
                                 handleDeleteTransaction={handleDeleteTransaction}
                                 handleSaveEdit={handleSaveEdit}

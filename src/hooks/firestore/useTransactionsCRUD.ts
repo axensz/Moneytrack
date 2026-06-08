@@ -8,62 +8,21 @@ import {
   collection,
   doc,
   addDoc,
-  deleteDoc,
-  updateDoc,
   runTransaction,
   increment,
-  getDoc,
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { TRANSFER_CATEGORY } from '../../config/constants';
 import type { Transaction, Account } from '../../types/finance';
-import { safeFirestoreOperation, isOffline } from '../../utils/firestoreHelpers';
-import { findAccountForTransaction } from '../../utils/accountTransactions';
+import { isOffline } from '../../utils/firestoreHelpers';
+import { getCreditDelta, creditDeltasByAccount } from '../../utils/creditDeltas';
 import { logger } from '../../utils/logger';
-
-type CreditEffect = { type: string; amount: number; accountId: string; toAccountId?: string };
 
 // Las escrituras de transacciones requieren conexión: las que ajustan usedCredit
 // usan runTransaction (no funciona offline) y queremos evitar estados optimistas
 // inconsistentes que descuadren balances. Offline → error claro (sin toast aquí;
 // lo muestra el caller). La lectura offline sigue disponible vía persistentLocalCache.
 const OFFLINE_WRITE_ERROR = 'Sin conexión a internet. Conéctate para guardar los cambios.';
-
-/**
- * Calcula el delta de usedCredit que una transacción aporta a una cuenta TC.
- * Positivo = aumenta deuda, Negativo = reduce deuda.
- *
- * Modelo de negocio: una compra ocupa el cupo por su monto completo (también las
- * compras a cuotas); el cupo se libera con cada pago, no por cuota vencida.
- */
-function getCreditDelta(tx: CreditEffect, accountId: string): number {
-  if (tx.type === 'expense' && tx.accountId === accountId) return tx.amount;
-  if (tx.type === 'income' && tx.accountId === accountId) return -tx.amount;
-  if (tx.type === 'transfer' && tx.toAccountId === accountId) return -tx.amount;
-  return 0;
-}
-
-/**
- * Devuelve el efecto de una transacción sobre el usedCredit, agrupado por id de
- * cuenta — SOLO para cuentas de tipo crédito. Esto evita escribir un campo
- * `usedCredit` espurio en cuentas de ahorro/efectivo y cubre tanto la cuenta
- * origen (gasto/ingreso) como la destino (transferencia hacia una TC).
- */
-function creditDeltasByAccount(tx: CreditEffect, accounts: Account[]): Map<string, number> {
-  const deltas = new Map<string, number>();
-  const addEffect = (accountId: string | undefined, delta: number) => {
-    if (!accountId || delta === 0) return;
-    const account = findAccountForTransaction(accounts, accountId);
-    if (!account || account.type !== 'credit' || !account.id) return;
-    deltas.set(account.id, (deltas.get(account.id) ?? 0) + delta);
-  };
-
-  if (tx.type === 'expense') addEffect(tx.accountId, tx.amount);
-  else if (tx.type === 'income') addEffect(tx.accountId, -tx.amount);
-  else if (tx.type === 'transfer') addEffect(tx.toAccountId, -tx.amount);
-
-  return deltas;
-}
 
 /**
  * Interfaces para validación de transacciones
@@ -102,8 +61,6 @@ function validateTransactionUpdate(updates: Partial<Transaction>): ValidationRes
       errors.push({ field: 'description', message: 'La descripción es requerida' });
     } else if (typeof updates.description !== 'string') {
       errors.push({ field: 'description', message: 'La descripción debe ser texto' });
-    } else if (updates.description.trim() === '') {
-      errors.push({ field: 'description', message: 'La descripción no puede estar vacía' });
     }
   }
 
@@ -371,26 +328,34 @@ export function useTransactionsCRUD(
       if (!userId) return;
       if (isOffline()) throw new Error(OFFLINE_WRITE_ERROR);
 
-      // Leer la transacción antes de eliminarla para revertir usedCredit
-      const txRef = doc(db, `users/${userId}/transactions`, id);
-      const txSnap = await getDoc(txRef);
-      const txData = txSnap.exists() ? txSnap.data() as Transaction : null;
+      // Borrar la transacción y revertir usedCredit en las TC afectadas
+      // ATÓMICAMENTE: si una de las escrituras falla, ninguna se aplica y
+      // usedCredit nunca queda desincronizado del set de transacciones.
+      await runTransaction(db, async (firestoreTransaction) => {
+        const txRef = doc(db, `users/${userId}/transactions`, id);
+        const txSnap = await firestoreTransaction.get(txRef);
+        if (!txSnap.exists()) return;
+        const txData = txSnap.data() as Transaction;
 
-      await safeFirestoreOperation(
-        () => deleteDoc(txRef),
-        'deleteTransaction',
-        { maxRetries: 2 }
-      );
-
-      // Revertir usedCredit en las TC afectadas (origen y/o destino)
-      if (txData) {
+        // Lecturas primero (requisito de Firestore): leer las TC afectadas.
         const deltas = creditDeltasByAccount(txData, accountsRef.current);
-        for (const [accountId, delta] of deltas) {
-          await updateDoc(doc(db, `users/${userId}/accounts`, accountId), {
-            usedCredit: increment(-delta),
-          });
-        }
-      }
+        const accountEntries = Array.from(deltas.entries()).map(([accountId, delta]) => ({
+          accountId,
+          delta,
+          ref: doc(db, `users/${userId}/accounts`, accountId),
+        }));
+        const snaps = await Promise.all(
+          accountEntries.map(entry => firestoreTransaction.get(entry.ref))
+        );
+
+        // Escrituras después.
+        firestoreTransaction.delete(txRef);
+        accountEntries.forEach((entry, index) => {
+          if (snaps[index].exists() && entry.delta !== 0) {
+            firestoreTransaction.update(entry.ref, { usedCredit: increment(-entry.delta) });
+          }
+        });
+      });
     },
     [userId]
   );
@@ -413,34 +378,40 @@ export function useTransactionsCRUD(
       );
 
       try {
-        // Read old transaction to compute delta change
-        const txRef = doc(db, `users/${userId}/transactions`, id);
-        const txSnap = await getDoc(txRef);
-        const oldData = txSnap.exists() ? txSnap.data() as Transaction : null;
+        // Actualizar la transacción y ajustar usedCredit ATÓMICAMENTE comparando
+        // el efecto antes/después por cada TC. Cubre cambios de monto, tipo,
+        // cuenta origen y cuenta destino (transferencias). Si algo falla, nada
+        // se aplica y usedCredit nunca queda desincronizado.
+        await runTransaction(db, async (firestoreTransaction) => {
+          const txRef = doc(db, `users/${userId}/transactions`, id);
+          const txSnap = await firestoreTransaction.get(txRef);
+          const oldData = txSnap.exists() ? (txSnap.data() as Transaction) : null;
 
-        // Update in Firestore with retry logic
-        await safeFirestoreOperation(
-          () => updateDoc(txRef, cleanUpdates),
-          'updateTransaction',
-          { maxRetries: 2 }
-        );
-
-        // Ajustar usedCredit comparando el efecto antes/después por cada TC.
-        // Cubre cambios de monto, tipo, cuenta origen y cuenta destino (transferencias).
-        if (oldData) {
-          const oldDeltas = creditDeltasByAccount(oldData, accountsRef.current);
-          const newData = { ...oldData, ...updates } as Transaction;
-          const newDeltas = creditDeltasByAccount(newData, accountsRef.current);
-          const affectedAccountIds = new Set([...oldDeltas.keys(), ...newDeltas.keys()]);
-          for (const accountId of affectedAccountIds) {
-            const diff = (newDeltas.get(accountId) ?? 0) - (oldDeltas.get(accountId) ?? 0);
-            if (diff !== 0) {
-              await updateDoc(doc(db, `users/${userId}/accounts`, accountId), {
-                usedCredit: increment(diff),
-              });
-            }
+          // Lecturas primero (requisito de Firestore): leer todas las TC afectadas.
+          let affectedAccounts: { accountId: string; diff: number; ref: ReturnType<typeof doc> }[] = [];
+          if (oldData) {
+            const oldDeltas = creditDeltasByAccount(oldData, accountsRef.current);
+            const newData = { ...oldData, ...updates } as Transaction;
+            const newDeltas = creditDeltasByAccount(newData, accountsRef.current);
+            const affectedAccountIds = new Set([...oldDeltas.keys(), ...newDeltas.keys()]);
+            affectedAccounts = Array.from(affectedAccountIds).map(accountId => ({
+              accountId,
+              diff: (newDeltas.get(accountId) ?? 0) - (oldDeltas.get(accountId) ?? 0),
+              ref: doc(db, `users/${userId}/accounts`, accountId),
+            }));
           }
-        }
+          const snaps = await Promise.all(
+            affectedAccounts.map(entry => firestoreTransaction.get(entry.ref))
+          );
+
+          // Escrituras después.
+          firestoreTransaction.update(txRef, cleanUpdates);
+          affectedAccounts.forEach((entry, index) => {
+            if (snaps[index].exists() && entry.diff !== 0) {
+              firestoreTransaction.update(entry.ref, { usedCredit: increment(entry.diff) });
+            }
+          });
+        });
       } catch (error) {
         logger.error('Firestore error updating transaction:', error);
         throw new Error('Error al actualizar la transacción. Por favor intenta de nuevo.');

@@ -10,6 +10,7 @@ import { formatCurrency, formatNumberForInput, unformatNumber } from '../../../u
 import { showToast } from '../../../utils/toastHelpers';
 import { useFinancialPlan, type PlanConfig } from '../../../hooks/useFinancialPlan';
 import { isGeminiConfigured } from '../../../lib/gemini';
+import { useBudgetRecommendations } from '../../../hooks/useBudgetRecommendations';
 import { FinancialPlanAI } from './components/FinancialPlanAI';
 
 export const BudgetsView: React.FC = () => {
@@ -35,6 +36,12 @@ export const BudgetsView: React.FC = () => {
   const availableCategories = categories.expense.filter(
     cat => !budgets.some(b => b.category === cat)
   );
+
+  // Recomendaciones de presupuesto basadas en el gasto del mes anterior
+  const budgetAnalysis = useBudgetRecommendations(transactions, budgets);
+  const selectedRecommendation = formData.category
+    ? budgetAnalysis?.recommendations.find(r => r.category === formData.category)
+    : undefined;
 
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
 
@@ -429,6 +436,24 @@ export const BudgetsView: React.FC = () => {
               <option value="">Seleccionar categoría...</option>
               {availableCategories.map(cat => (<option key={cat} value={cat}>{cat}</option>))}
             </select>
+
+            {selectedRecommendation && selectedRecommendation.suggestedLimit > 0 && (
+              <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800/50">
+                <p className="text-xs text-purple-800 dark:text-purple-200">
+                  <Sparkles size={12} className="inline mr-1" />
+                  Sugerencia: <strong>{formatCurrency(selectedRecommendation.suggestedLimit)}/mes</strong>
+                  <span className="block text-purple-500 dark:text-purple-300/80">{selectedRecommendation.reason}</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setFormData(f => ({ ...f, monthlyLimit: String(selectedRecommendation.suggestedLimit) }))}
+                  className="shrink-0 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                >
+                  Usar
+                </button>
+              </div>
+            )}
+
             <input
               type="text" inputMode="numeric"
               value={formatNumberForInput(formData.monthlyLimit)}

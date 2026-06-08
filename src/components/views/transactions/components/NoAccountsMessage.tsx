@@ -1,18 +1,22 @@
 'use client';
 
 import React from 'react';
-import { Activity } from 'lucide-react';
+import { Activity, Plus } from 'lucide-react';
+
+interface NoAccountsMessageProps {
+  onCreateAccount?: () => void;
+}
 
 /**
  * Mensaje cuando no hay cuentas creadas
  */
-export const NoAccountsMessage: React.FC = () => (
+export const NoAccountsMessage: React.FC<NoAccountsMessageProps> = ({ onCreateAccount }) => (
   <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
     <div className="flex items-start gap-3">
       <div className="p-2 bg-amber-200 dark:bg-amber-800 rounded-lg">
         <Activity size={20} className="text-amber-700 dark:text-amber-300" />
       </div>
-      <div>
+      <div className="flex-1">
         <h3 className="font-semibold text-amber-900 dark:text-amber-100 mb-1">
           No tienes cuentas creadas
         </h3>
@@ -20,6 +24,15 @@ export const NoAccountsMessage: React.FC = () => (
           Para crear transacciones, primero debes agregar una cuenta en la sección de{' '}
           <strong>Cuentas</strong>.
         </p>
+        {onCreateAccount && (
+          <button
+            onClick={onCreateAccount}
+            className="mt-3 inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
+          >
+            <Plus size={16} />
+            Crear primera cuenta
+          </button>
+        )}
       </div>
     </div>
   </div>

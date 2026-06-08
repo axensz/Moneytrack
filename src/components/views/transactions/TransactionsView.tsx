@@ -29,6 +29,7 @@ import { TransactionsList } from './components/TransactionsList';
 
 // Hook
 import { useTransactionsView } from './hooks/useTransactionsView';
+import { useCSVExport } from '../../../hooks/useCSVExport';
 
 interface TransactionsViewProps {
   showForm: boolean;
@@ -45,6 +46,8 @@ interface TransactionsViewProps {
   setCustomEndDate: (date: string) => void;
   loading?: boolean;
   onRestore?: (transaction: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
+  onGoToAccounts?: () => void;
+  onOpenAISettings?: () => void;
 }
 
 /**
@@ -66,6 +69,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   setCustomEndDate,
   loading = false,
   onRestore,
+  onGoToAccounts,
+  onOpenAISettings,
 }) => {
   const {
     transactions,
@@ -92,6 +97,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     startEditTransaction,
     handleSaveEdit,
     handleCancelEdit,
+    expandedTransaction,
+    toggleExpand,
     handleDeleteTransaction,
     clearFilters,
     getRecurringPaymentName,
@@ -112,6 +119,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     updateTransaction,
     onRestore,
   });
+
+  const { exportTransactionsCSV } = useCSVExport();
 
   const [showImport, setShowImport] = useState(false);
   // importEverOpened: monta el modal solo después del primer clic en "Importar".
@@ -148,9 +157,9 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   return (
     <div className="card">
       {/* S5: El modal (y sus ~600KB de deps) solo se carga tras el primer click en Importar */}
-      {importEverOpened && <ImportTransactionsModal isOpen={showImport} onClose={() => setShowImport(false)} />}
+      {importEverOpened && <ImportTransactionsModal isOpen={showImport} onClose={() => setShowImport(false)} onOpenAISettings={onOpenAISettings} />}
       {/* Mensaje de ayuda cuando no hay cuentas */}
-      {accounts.length === 0 && <NoAccountsMessage />}
+      {accounts.length === 0 && <NoAccountsMessage onCreateAccount={onGoToAccounts} />}
 
       {/* Header con filtros */}
       <TransactionsFilters
@@ -165,6 +174,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
         showForm={showForm}
         setShowForm={setShowForm}
         onImport={handleOpenImport}
+        onExport={() => exportTransactionsCSV(filteredTransactions, accounts)}
+        exportDisabled={filteredTransactions.length === 0}
         dateRangePreset={dateRangePreset}
         setDateRangePreset={setDateRangePreset}
         customStartDate={customStartDate}
@@ -202,12 +213,15 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           hasMoreTransactions={hasMoreTransactions}
           loadingMoreTransactions={loadingMoreTransactions}
           onLoadMore={loadMoreTransactions}
+          onAddTransaction={accounts.length > 0 ? () => setShowForm(true) : undefined}
         />
       ) : (
         <TransactionsList
           transactions={filteredTransactions}
           editingTransaction={editingTransaction}
           editForm={editForm}
+          expandedTransaction={expandedTransaction}
+          toggleExpand={toggleExpand}
           categories={categories}
           formatCurrency={formatCurrency}
           getAccountForTransaction={getAccountForTransaction}

@@ -1,10 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   formatCurrency,
   formatDate,
   formatDateForInput,
   parseDateFromInput,
   formatMonthYear,
+  formatRelativeTime,
   parseFloatSafe,
   parseIntSafe,
   clamp,
@@ -32,6 +33,40 @@ describe('formatCurrency', () => {
   it('formats decimals', () => {
     const result = formatCurrency(1234.56);
     expect(result).toContain('1.234');
+  });
+});
+
+describe('formatRelativeTime', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 15, 12, 0, 0)); // 15 jun 2026
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('devuelve "hoy" para la fecha actual', () => {
+    expect(formatRelativeTime(new Date(2026, 5, 15, 8, 0, 0))).toBe('hoy');
+  });
+
+  it('devuelve "ayer" para el día anterior', () => {
+    expect(formatRelativeTime(new Date(2026, 5, 14))).toBe('ayer');
+  });
+
+  it('devuelve "hace N días" dentro del mes', () => {
+    expect(formatRelativeTime(new Date(2026, 5, 10))).toBe('hace 5 días');
+  });
+
+  it('devuelve "hace N meses" para fechas de meses anteriores', () => {
+    expect(formatRelativeTime(new Date(2026, 2, 15))).toBe('hace 3 meses');
+  });
+
+  it('devuelve "hace N años" para fechas de años anteriores', () => {
+    expect(formatRelativeTime(new Date(2024, 5, 15))).toBe('hace 2 años');
+  });
+
+  it('maneja fechas futuras', () => {
+    expect(formatRelativeTime(new Date(2026, 5, 16))).toBe('mañana');
   });
 });
 

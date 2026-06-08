@@ -25,7 +25,7 @@ export const PeriodSummaryCard: React.FC<PeriodSummaryCardProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedAccount, setSelectedAccount] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<SummaryType>('all');
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
 
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
 
@@ -113,7 +113,7 @@ export const PeriodSummaryCard: React.FC<PeriodSummaryCardProps> = ({
           onClick={() => setIsExpanded(!isExpanded)}
           className="text-sm text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 font-medium"
         >
-          {isExpanded ? 'Cerrar' : 'Abrir'}
+          {isExpanded ? 'Ocultar' : 'Consultar por periodo'}
         </button>
       </div>
 

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Activity, ChevronDown, FilterX, Loader2, Search } from 'lucide-react';
+import { Activity, ChevronDown, FilterX, Loader2, PlusCircle, Search } from 'lucide-react';
 
 interface TransactionsEmptyStateProps {
   hasFilters: boolean;
@@ -9,6 +9,7 @@ interface TransactionsEmptyStateProps {
   hasMoreTransactions?: boolean;
   loadingMoreTransactions?: boolean;
   onLoadMore?: () => Promise<void>;
+  onAddTransaction?: () => void;
 }
 
 export const TransactionsEmptyState: React.FC<TransactionsEmptyStateProps> = ({
@@ -17,6 +18,7 @@ export const TransactionsEmptyState: React.FC<TransactionsEmptyStateProps> = ({
   hasMoreTransactions = false,
   loadingMoreTransactions = false,
   onLoadMore,
+  onAddTransaction,
 }) => {
   if (hasFilters) {
     return (
@@ -62,6 +64,12 @@ export const TransactionsEmptyState: React.FC<TransactionsEmptyStateProps> = ({
         <Activity size={48} className="mx-auto mb-3 opacity-30" />
         <p>No tienes transacciones registradas aun</p>
       </div>
+      {onAddTransaction && (
+        <button onClick={onAddTransaction} className="btn-primary mt-4 inline-flex">
+          <PlusCircle size={18} />
+          Registrar transacción
+        </button>
+      )}
     </div>
   );
 };

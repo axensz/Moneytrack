@@ -4,7 +4,8 @@ import React, { useState } from 'react';
 import { Plus, HandCoins, Users, CheckCircle2, ArrowDownLeft, ArrowUpRight, Trash2, X, DollarSign, Edit, AlertTriangle } from 'lucide-react';
 import { useDebtsDomain, useAccountDomain } from '../../../hooks/useFinanceSelectors';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
-import { formatCurrency, formatNumberForInput, unformatNumber } from '../../../utils/formatters';
+import { formatCurrency, formatNumberForInput, unformatNumber, formatDateForInput, parseDateFromInput, formatDate, formatRelativeTime } from '../../../utils/formatters';
+import { ensureDate } from '../../../utils/dateUtils';
 import { showToast } from '../../../utils/toastHelpers';
 import type { Debt } from '../../../types/finance';
 
@@ -44,6 +45,8 @@ export const DebtsView: React.FC = () => {
     originalAmount: '',
     description: '',
     accountId: '',
+    lentDate: formatDateForInput(new Date()),
+    dueDate: '',
   });
 
   const handleSubmit = async () => {
@@ -65,10 +68,12 @@ export const DebtsView: React.FC = () => {
       description: formData.description.trim() || undefined,
       accountId: formData.accountId || undefined, // Convert empty string to undefined
       isSettled: false,
+      lentDate: formData.lentDate ? parseDateFromInput(formData.lentDate) : undefined,
+      dueDate: formData.dueDate ? parseDateFromInput(formData.dueDate) : undefined,
     });
 
     showToast.success(formData.type === 'lent' ? 'Préstamo registrado' : 'Deuda registrada');
-    setFormData({ personName: '', type: 'lent', originalAmount: '', description: '', accountId: '' });
+    setFormData({ personName: '', type: 'lent', originalAmount: '', description: '', accountId: '', lentDate: formatDateForInput(new Date()), dueDate: '' });
     setShowForm(false);
   };
 
@@ -257,6 +262,31 @@ export const DebtsView: React.FC = () => {
               placeholder="Descripción (opcional)"
               className="input-base"
             />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  {formData.type === 'lent' ? 'Fecha del préstamo' : 'Fecha en que recibí'}
+                </label>
+                <input
+                  type="date"
+                  value={formData.lentDate}
+                  onChange={e => setFormData(f => ({ ...f, lentDate: e.target.value }))}
+                  className="input-base"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  Vencimiento <span className="text-gray-400 font-normal">(opcional)</span>
+                </label>
+                <input
+                  type="date"
+                  value={formData.dueDate}
+                  onChange={e => setFormData(f => ({ ...f, dueDate: e.target.value }))}
+                  className="input-base"
+                />
+              </div>
+            </div>
 
             <select
               value={formData.accountId}
@@ -479,8 +509,16 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
   const isLent = debt.type === 'lent';
   const colorClass = isLent ? 'blue' : 'orange';
 
+  // Antigüedad y vencimiento
+  const lentSource = debt.lentDate ?? debt.createdAt;
+  const lentLabel = lentSource ? formatRelativeTime(ensureDate(lentSource)) : null;
+  const dueDate = debt.dueDate ? ensureDate(debt.dueDate) : null;
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const isDebtOverdue = !!dueDate && !debt.isSettled && dueDate < todayStart;
+
   return (
-    <div className={`border rounded-xl p-3 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700`}>
+    <div className={`border rounded-xl p-3 bg-white dark:bg-gray-800 ${isDebtOverdue ? 'border-rose-300 dark:border-rose-800' : 'border-gray-200 dark:border-gray-700'}`}>
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -519,6 +557,27 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
               </div>
             </div>
           )}
+
+          {/* Antigüedad y vencimiento */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs">
+            {lentLabel && (
+              <span className="text-gray-400 dark:text-gray-500">
+                {isLent ? 'Prestado' : 'Recibido'} {lentLabel}
+              </span>
+            )}
+            {dueDate && (
+              isDebtOverdue ? (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md font-medium bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300">
+                  <AlertTriangle size={11} />
+                  Vencido {formatRelativeTime(dueDate)}
+                </span>
+              ) : (
+                <span className="text-gray-400 dark:text-gray-500">
+                  Vence el {formatDate(dueDate)}
+                </span>
+              )
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-1 ml-2">

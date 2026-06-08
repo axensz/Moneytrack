@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { FilterX, PlusCircle, Search, Tag, Upload, Wallet, X } from 'lucide-react';
+import { Download, FilterX, PlusCircle, Search, Tag, Upload, Wallet, X } from 'lucide-react';
 import type { Account, DateRangePreset, FilterValue } from '../../../../types/finance';
 import { CREDIT_PAYMENT_CATEGORY, TRANSFER_CATEGORY, BALANCE_ADJUSTMENT_CATEGORY } from '../../../../config/constants';
 import { DateFilterDropdown } from './DateFilterDropdown';
@@ -24,6 +24,8 @@ interface TransactionsFiltersProps {
   showForm: boolean;
   setShowForm: (show: boolean) => void;
   onImport?: () => void;
+  onExport?: () => void;
+  exportDisabled?: boolean;
   dateRangePreset: DateRangePreset;
   setDateRangePreset: (preset: DateRangePreset) => void;
   customStartDate: string;
@@ -58,6 +60,8 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
   searchQuery,
   setSearchQuery,
   onImport,
+  onExport,
+  exportDisabled = false,
 }) => {
   const [activeDropdown, setActiveDropdown] = useState<'none' | 'account' | 'category'>('none');
   const isDisabled = accounts.length === 0;
@@ -108,6 +112,19 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
             >
               <Upload size={16} aria-hidden="true" />
               <span className="hidden sm:inline">Importar</span>
+            </button>
+          )}
+
+          {onExport && (
+            <button
+              onClick={onExport}
+              disabled={exportDisabled}
+              className={`flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors min-h-[44px] ${exportDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              title={exportDisabled ? 'No hay transacciones para exportar' : 'Exportar a CSV las transacciones filtradas'}
+              aria-label="Exportar transacciones a CSV"
+            >
+              <Download size={16} aria-hidden="true" />
+              <span className="hidden sm:inline">Exportar</span>
             </button>
           )}
         </div>

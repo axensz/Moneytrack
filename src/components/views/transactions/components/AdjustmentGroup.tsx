@@ -13,6 +13,8 @@ interface AdjustmentGroupProps {
   getRecurringPaymentName: (id?: string) => string | null | undefined;
   editingTransaction: string | null;
   editForm: { description: string; amount: string; date: string; category: string };
+  expandedTransaction?: string | null;
+  toggleExpand?: (id: string) => void;
   startEditTransaction: (t: Transaction) => void;
   handleDeleteTransaction: (t: Transaction) => void;
   handleSaveEdit: (id: string) => void;
@@ -28,6 +30,8 @@ export const AdjustmentGroup: React.FC<AdjustmentGroupProps> = ({
   getRecurringPaymentName,
   editingTransaction,
   editForm,
+  expandedTransaction = null,
+  toggleExpand,
   startEditTransaction,
   handleDeleteTransaction,
   handleSaveEdit,
@@ -87,6 +91,8 @@ export const AdjustmentGroup: React.FC<AdjustmentGroupProps> = ({
                     categories={categories}
                     recurringPaymentName={getRecurringPaymentName(transaction.recurringPaymentId)}
                     formatCurrency={formatCurrency}
+                    isExpanded={expandedTransaction === transaction.id}
+                    onToggleExpand={toggleExpand ? () => toggleExpand(transaction.id!) : undefined}
                     onEdit={() => startEditTransaction(transaction)}
                     onDelete={() => handleDeleteTransaction(transaction)}
                     onSave={() => handleSaveEdit(transaction.id!)}

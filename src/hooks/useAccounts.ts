@@ -1,5 +1,5 @@
 import { useMemo, useCallback } from 'react';
-import { doc, runTransaction, collection, writeBatch } from 'firebase/firestore';
+import { doc, runTransaction, collection, writeBatch, getDocs, query, where, increment } from 'firebase/firestore';
 import type { DocumentReference } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useFirestoreData } from '../contexts/FirestoreContext';
@@ -8,6 +8,7 @@ import { BalanceCalculator, CreditCardCalculator } from '../utils/balanceCalcula
 import { safeFirestoreOperation, checkNetworkConnection } from '../utils/firestoreHelpers';
 import { generateId } from '../utils/formatters';
 import { transactionUsesAccount } from '../utils/accountTransactions';
+import { creditDeltasByAccount } from '../utils/creditDeltas';
 import type { Account, Transaction, RecurringPayment, Debt } from '../types/finance';
 
 export type MergeCreditCardsDestination = Pick<Account, 'name'> & Partial<Omit<Account, 'id' | 'name' | 'type' | 'createdAt'>> & {
@@ -126,11 +127,6 @@ export function useAccounts(
       throw new Error('No puedes eliminar la cuenta por defecto');
     }
 
-    // Cascade: transactions, recurring payments, and debts linked to this account
-    const relatedTransactions = options.preserveTransactions
-      ? []
-      : transactions.filter(t => t.accountId === id || t.toAccountId === id);
-
     if (userId) {
       if (!checkNetworkConnection()) {
         throw new Error('Sin conexión a internet');
@@ -142,30 +138,88 @@ export function useAccounts(
 
       await safeFirestoreOperation(
         async () => {
-          const BATCH_LIMIT = 490; // Leave room for account + recurring + debts
-          const txIds = relatedTransactions.map(t => t.id!);
+          const BATCH_LIMIT = 490; // Leave room for account + recurring + debts + credit reversals
           const recurringIds = relatedRecurring.map(p => p.id!);
           const debtIds = relatedDebts.map(d => d.id!);
+
+          // Consultar Firestore (no solo memoria) por TODAS las transacciones que
+          // referencian la cuenta, tanto como origen (accountId) como destino
+          // (toAccountId), y deduplicar por id. Esto garantiza que la reversión de
+          // usedCredit cubra transacciones que aún no estén en el estado en memoria.
+          const txCollection = collection(db, `users/${userId}/transactions`);
+          const txDeletes = new Map<string, Transaction>();
+          if (!options.preserveTransactions) {
+            const [bySource, byDestination] = await Promise.all([
+              getDocs(query(txCollection, where('accountId', '==', id))),
+              getDocs(query(txCollection, where('toAccountId', '==', id))),
+            ]);
+            [...bySource.docs, ...byDestination.docs].forEach(snap => {
+              txDeletes.set(snap.id, { id: snap.id, ...(snap.data() as Transaction) });
+            });
+          }
+
+          // Acumular las reversiones de usedCredit por cuenta TC afectada,
+          // EXCLUYENDO la cuenta que se está borrando (su usedCredit desaparece
+          // junto con la cuenta). Para una transferencia que pagaba ESTA TC no hay
+          // nada que revertir (la cuenta se borra); pero un gasto/transfer que
+          // tocaba OTRA TC sí debe revertirse.
+          const creditReversals = new Map<string, number>();
+          for (const tx of txDeletes.values()) {
+            const deltas = creditDeltasByAccount(tx, firestoreAccounts);
+            for (const [accId, delta] of deltas) {
+              if (accId === id) continue;
+              creditReversals.set(accId, (creditReversals.get(accId) ?? 0) + delta);
+            }
+          }
+
           const allDeletes = [
-            ...txIds.map(txId => doc(db, `users/${userId}/transactions`, txId)),
+            ...Array.from(txDeletes.keys()).map(txId => doc(db, `users/${userId}/transactions`, txId)),
             ...recurringIds.map(rId => doc(db, `users/${userId}/recurringPayments`, rId)),
             ...debtIds.map(dId => doc(db, `users/${userId}/debts`, dId)),
           ];
 
-          for (let i = 0; i < allDeletes.length; i += BATCH_LIMIT) {
-            const batch = writeBatch(db);
-            const chunk = allDeletes.slice(i, i + BATCH_LIMIT);
-            chunk.forEach(ref => batch.delete(ref));
-            // Include the account in the last batch
-            if (i + BATCH_LIMIT >= allDeletes.length) {
-              batch.delete(doc(db, `users/${userId}/accounts`, id));
-            }
-            await batch.commit();
-          }
-          // If nothing to cascade, just delete the account
-          if (allDeletes.length === 0) {
+          const creditUpdates = Array.from(creditReversals.entries())
+            .filter(([, totalDelta]) => totalDelta !== 0)
+            .map(([accId, totalDelta]) => ({ accId, totalDelta }));
+
+          // Operaciones totales: borrados + reversiones de crédito + el account.
+          const totalOps = allDeletes.length + creditUpdates.length + 1;
+
+          if (totalOps === 1) {
+            // Nada que cascada: solo borrar la cuenta.
             await firestoreDeleteAccount(id);
+            return;
           }
+
+          // Acumular operaciones en writeBatch respetando BATCH_LIMIT.
+          let batch = writeBatch(db);
+          let opCount = 0;
+          const flush = async () => {
+            if (opCount > 0) {
+              await batch.commit();
+              batch = writeBatch(db);
+              opCount = 0;
+            }
+          };
+          const enqueue = async (fn: (b: ReturnType<typeof writeBatch>) => void) => {
+            if (opCount >= BATCH_LIMIT) await flush();
+            fn(batch);
+            opCount++;
+          };
+
+          for (const ref of allDeletes) {
+            await enqueue(b => b.delete(ref));
+          }
+          for (const { accId, totalDelta } of creditUpdates) {
+            await enqueue(b =>
+              b.update(doc(db, `users/${userId}/accounts`, accId), {
+                usedCredit: increment(-totalDelta),
+              })
+            );
+          }
+          // El borrado de la cuenta va al final.
+          await enqueue(b => b.delete(doc(db, `users/${userId}/accounts`, id)));
+          await flush();
         },
         'deleteAccount',
         { maxRetries: 2 }

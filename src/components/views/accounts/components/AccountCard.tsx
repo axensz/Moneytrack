@@ -283,8 +283,8 @@ const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
   isAssociated,
 }) => {
   const { hideBalances } = useUIPreferences();
-  const usagePercentage = Math.min((creditUsed / creditLimit) * 100, 100);
-  const isHighUsage = creditUsed > creditLimit * 0.8;
+  const usagePercentage = creditLimit > 0 ? Math.min((creditUsed / creditLimit) * 100, 100) : 0;
+  const isHighUsage = creditLimit > 0 && creditUsed > creditLimit * 0.8;
 
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
 

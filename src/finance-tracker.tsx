@@ -131,6 +131,7 @@ const FinanceTracker = () => {
 const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | null; isOnline: boolean; onDataReady: (ready: boolean) => void }) => {
   const {
     transactions,
+    balanceTransactions,
     accounts,
     categories,
     recurringPayments,
@@ -164,6 +165,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   useNotificationMonitoring({
     userId: user?.uid || null,
     transactions,
+    balanceTransactions,
     budgets,
     recurringPayments,
     accounts,
@@ -265,8 +267,11 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
 
   useKeyboardShortcuts(shortcuts, { enabled: true, announceShortcuts: true });
 
+  // C-FIX (paginación + saldos): la validación de "Saldo insuficiente" de
+  // useAddTransaction deriva el saldo sumando transacciones; debe usar el
+  // historial completo (balanceTransactions), no la ventana paginada de 500.
   const { handleAddTransaction, handleAddAndContinue } = useAddTransaction({
-    accounts, transactions, recurringPayments,
+    accounts, transactions: balanceTransactions, recurringPayments,
     defaultAccount: defaultAccount || null,
     addTransaction, addCreditPaymentAtomic, updateRecurringPayment,
     setNewTransaction, setShowForm, setShowWelcomeModal,

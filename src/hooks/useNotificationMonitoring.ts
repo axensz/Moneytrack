@@ -15,6 +15,12 @@ import { DebtMonitor } from '../services/DebtMonitor';
 import { NotificationManager } from '../services/NotificationManager';
 import { logger } from '../utils/logger';
 import { shouldSuppressNotification } from '../utils/importBatchFlag';
+import { ensureDate } from '../utils/dateUtils';
+
+// Ventana de "recién creada": una transacción cuyo createdAt es más viejo que
+// esto NO dispara alertas individuales aunque su id acabe de entrar al array
+// (entró por paginación/"Cargar más", no porque el usuario la registrara).
+const FRESH_CREATION_MS = 2 * 60 * 1000;
 import type {
     Transaction,
     Budget,
@@ -26,6 +32,13 @@ import type {
 interface UseNotificationMonitoringProps {
     userId: string | null;
     transactions: Transaction[];
+    /**
+     * Historial COMPLETO para cálculos de saldo (C-FIX paginación + saldos).
+     * BalanceMonitor deriva saldos de ahorro/efectivo sumando transacciones;
+     * con la ventana paginada de 500 el saldo evaluado sería incorrecto.
+     * Si no se pasa, cae al array `transactions`.
+     */
+    balanceTransactions?: Transaction[];
     budgets: Budget[];
     recurringPayments: RecurringPayment[];
     accounts: Account[];
@@ -36,12 +49,14 @@ interface UseNotificationMonitoringProps {
 export function useNotificationMonitoring({
     userId,
     transactions,
+    balanceTransactions,
     budgets,
     recurringPayments,
     accounts,
     debts,
     notificationManager,
 }: UseNotificationMonitoringProps) {
+    const txsForBalance = balanceTransactions ?? transactions;
     const prevTransactionIdsRef = useRef<Set<string>>(new Set());
     const dailyCheckDoneRef = useRef<boolean>(false);
     const monitorsInitializedRef = useRef<boolean>(false);
@@ -91,7 +106,7 @@ export function useNotificationMonitoring({
             createNotification: (n) => notificationManager.createNotification(n),
             preferences,
             accounts,
-            transactions,
+            transactions: txsForBalance,
         });
 
         monitorsRef.current.debtMonitor = new DebtMonitor({
@@ -130,14 +145,14 @@ export function useNotificationMonitoring({
         m.balanceMonitor!.deps = {
             ...m.balanceMonitor!.deps,
             accounts,
-            transactions,
+            transactions: txsForBalance,
             preferences,
         };
         m.debtMonitor!.deps = {
             ...m.debtMonitor!.deps,
             debts,
         };
-    }, [transactions, budgets, recurringPayments, accounts, debts, notificationManager]);
+    }, [transactions, txsForBalance, budgets, recurringPayments, accounts, debts, notificationManager]);
 
     // Run daily checks on mount
     useEffect(() => {
@@ -180,7 +195,18 @@ export function useNotificationMonitoring({
                 return;
             }
 
-            const newTransactions = transactions.filter(t => t.id && newIds.includes(t.id));
+            // Solo alertar sobre transacciones recién CREADAS por el usuario
+            // (createdAt fresco). Un id "nuevo" en el array también aparece cuando
+            // la PAGINACIÓN carga transacciones antiguas ("Cargar más" añade cientos
+            // de ids de golpe) → sin este guard, cada tx histórica disparaba alertas
+            // de gasto inusual/presupuesto como si fuera nueva (flood reportado).
+            // Sin createdAt (docs legacy, solo llegan vía paginación) → suprimir.
+            const newTransactions = transactions.filter(t => {
+                if (!t.id || !newIds.includes(t.id)) return false;
+                if (!t.createdAt) return false;
+                const createdMs = ensureDate(t.createdAt).getTime();
+                return Date.now() - createdMs < FRESH_CREATION_MS;
+            });
 
             newTransactions.forEach(async (transaction) => {
                 // Double-check per transaction in case only some are from import

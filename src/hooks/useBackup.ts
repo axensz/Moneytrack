@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { collection, writeBatch, doc, getDocs } from 'firebase/firestore';
+import { collection, writeBatch, doc, getDocs, type DocumentReference } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { showToast } from '../utils/toastHelpers';
 import { logger } from '../utils/logger';
@@ -129,32 +129,35 @@ export const useBackup = ({ transactions, accounts, categories, userId, refreshD
   };
 
   /**
-   * Elimina todos los datos existentes del usuario
+   * Captura (SOLO LECTURA) las referencias de todos los documentos existentes del
+   * usuario, sin borrar nada. Se usa en la estrategia "replace" para borrarlos
+   * DESPUÉS de escribir los nuevos (write-then-delete), evitando pérdida de datos
+   * si la escritura falla a mitad. Audit C1.
    */
-  const clearUserData = async (uid: string): Promise<void> => {
-    logger.info('Clearing existing user data');
-    setImportProgress(10);
+  const snapshotExistingRefs = async (uid: string): Promise<DocumentReference[]> => {
+    const [transactionsSnapshot, accountsSnapshot, categoriesSnapshot] = await Promise.all([
+      getDocs(collection(db, `users/${uid}/transactions`)),
+      getDocs(collection(db, `users/${uid}/accounts`)),
+      getDocs(collection(db, `users/${uid}/categories`)),
+    ]);
 
-    // AUDIT-FIX (MEDIO-07): Usar writeBatch en vez de deleteDoc individuales
-    const transactionsSnapshot = await getDocs(collection(db, `users/${uid}/transactions`));
-    const accountsSnapshot = await getDocs(collection(db, `users/${uid}/accounts`));
-    const categoriesSnapshot = await getDocs(collection(db, `users/${uid}/categories`));
-
-    const allDocs = [
+    return [
       ...transactionsSnapshot.docs.map(d => doc(db, `users/${uid}/transactions`, d.id)),
       ...accountsSnapshot.docs.map(d => doc(db, `users/${uid}/accounts`, d.id)),
       ...categoriesSnapshot.docs.map(d => doc(db, `users/${uid}/categories`, d.id)),
     ];
+  };
 
-    // Firestore batch limit: 500 operaciones
-    for (let i = 0; i < allDocs.length; i += 499) {
+  /**
+   * Borra en batches (límite 500 de Firestore) un conjunto de referencias ya
+   * capturadas previamente con snapshotExistingRefs.
+   */
+  const deleteRefsInBatches = async (refs: DocumentReference[]): Promise<void> => {
+    for (let i = 0; i < refs.length; i += 499) {
       const batch = writeBatch(db);
-      allDocs.slice(i, i + 499).forEach(ref => batch.delete(ref));
+      refs.slice(i, i + 499).forEach(ref => batch.delete(ref));
       await batch.commit();
     }
-
-    setImportProgress(30);
-    logger.info('User data cleared successfully');
   };
 
   /**
@@ -167,9 +170,20 @@ export const useBackup = ({ transactions, accounts, categories, userId, refreshD
   ): Promise<void> => {
     logger.info('Starting data import', { strategy, itemsCount: backupData.transactions.length });
 
-    // Si la estrategia es "replace", eliminar datos existentes
+    // SWAP SEGURO (write-then-delete + rollback). Semántica "todo o nada" dentro de
+    // los límites de Firestore (no hay transacción atómica sobre miles de docs):
+    //  1) Capturamos las refs viejas (solo lectura, sin borrar).
+    //  2) Escribimos TODO lo nuevo con IDs nuevos (sin colisión), registrando cada ref.
+    //  3) Si la escritura falla a mitad → ROLLBACK: borramos los docs nuevos ya escritos
+    //     (borrar una ref no escrita es no-op), dejando los datos VIEJOS intactos y SIN
+    //     duplicados huérfanos. El usuario ve "no pasó nada".
+    //  4) Solo tras una escritura 100% exitosa borramos lo viejo (el swap real).
+    // Antes el residual era "duplicados recuperables si falla a mitad"; el rollback lo
+    // elimina. Audit C1.
+    let oldRefs: DocumentReference[] = [];
     if (strategy === 'replace') {
-      await clearUserData(uid);
+      logger.info('Replace: snapshotting existing data before import (no deletion yet)');
+      oldRefs = await snapshotExistingRefs(uid);
     }
 
     setImportProgress(40);
@@ -178,6 +192,9 @@ export const useBackup = ({ transactions, accounts, categories, userId, refreshD
     const BATCH_SIZE = 500;
     let batch = writeBatch(db);
     let operationCount = 0;
+    // Todas las refs NUEVAS creadas en esta importación, para poder revertir una
+    // escritura parcial si algo falla (ver rollback en el catch).
+    const writtenRefs: DocumentReference[] = [];
 
     // Función auxiliar para ejecutar batch cuando alcanza el límite
     const commitIfNeeded = async () => {
@@ -198,85 +215,114 @@ export const useBackup = ({ transactions, accounts, categories, userId, refreshD
       }
     };
 
-    // 1. Importar cuentas — mapear IDs viejos → nuevos para mantener referencias
-    const accountIdMap = new Map<string, string>();
-    for (const account of backupData.accounts) {
-      const accountRef = doc(collection(db, `users/${uid}/accounts`));
-      const { id: oldId, ...accountData } = account;
-      if (oldId) {
-        accountIdMap.set(oldId, accountRef.id);
+    try {
+      // 1. Importar cuentas — mapear IDs viejos → nuevos para mantener referencias
+      const accountIdMap = new Map<string, string>();
+      for (const account of backupData.accounts) {
+        const accountRef = doc(collection(db, `users/${uid}/accounts`));
+        writtenRefs.push(accountRef);
+        const { id: oldId, ...accountData } = account;
+        if (oldId) {
+          accountIdMap.set(oldId, accountRef.id);
+        }
+        batch.set(accountRef, {
+          ...accountData,
+          createdAt: accountData.createdAt ? new Date(accountData.createdAt) : new Date()
+        });
+        operationCount++;
+        await commitIfNeeded();
       }
-      batch.set(accountRef, {
-        ...accountData,
-        createdAt: accountData.createdAt ? new Date(accountData.createdAt) : new Date()
-      });
-      operationCount++;
-      await commitIfNeeded();
+
+      // Commit cuentas antes de procesar categorías (garantiza separación atómica)
+      await flushBatch();
+      setImportProgress(60);
+
+      // 2. Importar categorías personalizadas
+      //    - replace: importar TODAS las del backup (las viejas se borran al final, así
+      //      que filtrar contra ellas las perdería).
+      //    - merge: importar solo las que aún no existan.
+      const existingCategories = new Set([
+        ...categories.expense,
+        ...categories.income
+      ]);
+      const shouldImportCategory = (cat: string): boolean =>
+        strategy === 'replace' || !existingCategories.has(cat);
+
+      const newExpenseCategories = backupData.categories.expense.filter(shouldImportCategory);
+      const newIncomeCategories = backupData.categories.income.filter(shouldImportCategory);
+
+      for (const category of newExpenseCategories) {
+        const categoryRef = doc(collection(db, `users/${uid}/categories`));
+        writtenRefs.push(categoryRef);
+        batch.set(categoryRef, {
+          type: 'expense',
+          name: category
+        });
+        operationCount++;
+        await commitIfNeeded();
+      }
+
+      for (const category of newIncomeCategories) {
+        const categoryRef = doc(collection(db, `users/${uid}/categories`));
+        writtenRefs.push(categoryRef);
+        batch.set(categoryRef, {
+          type: 'income',
+          name: category
+        });
+        operationCount++;
+        await commitIfNeeded();
+      }
+
+      // Commit categorías antes de procesar transacciones
+      await flushBatch();
+      setImportProgress(80);
+
+      // 3. Importar transacciones — remap accountId/toAccountId con el mapa de IDs
+      for (const transaction of backupData.transactions) {
+        const transactionRef = doc(collection(db, `users/${uid}/transactions`));
+        writtenRefs.push(transactionRef);
+        const { id, ...transactionData } = transaction;
+        const mappedAccountId = accountIdMap.get(transactionData.accountId) || transactionData.accountId;
+        const mappedToAccountId = transactionData.toAccountId
+          ? (accountIdMap.get(transactionData.toAccountId) || transactionData.toAccountId)
+          : undefined;
+        batch.set(transactionRef, {
+          ...transactionData,
+          accountId: mappedAccountId,
+          ...(mappedToAccountId !== undefined && { toAccountId: mappedToAccountId }),
+          date: transactionData.date ? new Date(transactionData.date) : new Date(),
+          createdAt: transactionData.createdAt ? new Date(transactionData.createdAt) : new Date()
+        });
+        operationCount++;
+        await commitIfNeeded();
+      }
+
+      // Commit final
+      if (operationCount > 0) {
+        await batch.commit();
+      }
+    } catch (error) {
+      // ROLLBACK de la escritura parcial: borrar los docs nuevos ya escritos. Los datos
+      // VIEJOS nunca se tocaron (el borrado de lo viejo solo corre tras éxito total), así
+      // que el resultado es "no pasó nada", sin duplicados huérfanos. Audit C1.
+      logger.error('Import write phase failed — rolling back partial writes', error, { written: writtenRefs.length });
+      try {
+        await deleteRefsInBatches(writtenRefs);
+      } catch (rollbackError) {
+        // Caso degenerado (red caída también en el rollback): algunos docs nuevos pueden
+        // quedar. Se reporta; sigue siendo mejor que la pérdida total previa.
+        logger.error('Rollback of partial import also failed; some new docs may remain', rollbackError);
+      }
+      throw error;
     }
 
-    // Commit cuentas antes de procesar categorías (garantiza separación atómica)
-    await flushBatch();
-    setImportProgress(60);
-
-    // 2. Importar categorías personalizadas
-    const existingCategories = new Set([
-      ...categories.expense,
-      ...categories.income
-    ]);
-
-    const newExpenseCategories = backupData.categories.expense.filter(
-      cat => !existingCategories.has(cat)
-    );
-    const newIncomeCategories = backupData.categories.income.filter(
-      cat => !existingCategories.has(cat)
-    );
-
-    for (const category of newExpenseCategories) {
-      const categoryRef = doc(collection(db, `users/${uid}/categories`));
-      batch.set(categoryRef, {
-        type: 'expense',
-        name: category
-      });
-      operationCount++;
-      await commitIfNeeded();
-    }
-
-    for (const category of newIncomeCategories) {
-      const categoryRef = doc(collection(db, `users/${uid}/categories`));
-      batch.set(categoryRef, {
-        type: 'income',
-        name: category
-      });
-      operationCount++;
-      await commitIfNeeded();
-    }
-
-    // Commit categorías antes de procesar transacciones
-    await flushBatch();
-    setImportProgress(80);
-
-    // 3. Importar transacciones — remap accountId/toAccountId con el mapa de IDs
-    for (const transaction of backupData.transactions) {
-      const transactionRef = doc(collection(db, `users/${uid}/transactions`));
-      const { id, ...transactionData } = transaction;
-      const mappedAccountId = accountIdMap.get(transactionData.accountId) || transactionData.accountId;
-      const mappedToAccountId = transactionData.toAccountId
-        ? (accountIdMap.get(transactionData.toAccountId) || transactionData.toAccountId)
-        : undefined;
-      batch.set(transactionRef, {
-        ...transactionData,
-        accountId: mappedAccountId,
-        ...(mappedToAccountId !== undefined && { toAccountId: mappedToAccountId }),
-        date: transactionData.date ? new Date(transactionData.date) : new Date(),
-        createdAt: transactionData.createdAt ? new Date(transactionData.createdAt) : new Date()
-      });
-      operationCount++;
-      await commitIfNeeded();
-    }
-
-    // Commit final
-    if (operationCount > 0) {
-      await batch.commit();
+    // 4. REPLACE: ahora que TODO lo nuevo está escrito con éxito, borrar lo viejo (el swap).
+    // Si la escritura falló, ya hicimos rollback y lanzamos; este borrado nunca corre y
+    // los datos originales quedan intactos. Audit C1.
+    if (strategy === 'replace' && oldRefs.length > 0) {
+      logger.info('Replace: deleting previous data after successful import', { count: oldRefs.length });
+      setImportProgress(90);
+      await deleteRefsInBatches(oldRefs);
     }
 
     setImportProgress(100);

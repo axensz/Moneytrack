@@ -13,7 +13,7 @@
  */
 
 import { useMemo } from 'react';
-import { CreditCardCalculator } from '../utils/balanceCalculator';
+import { getCreditCardUsedCredit } from '../utils/accountStrategies';
 import { findAccountForTransaction } from '../utils/accountTransactions';
 import { SPECIAL_CATEGORIES } from '../config/constants';
 import type { Account, Transaction } from '../types/finance';
@@ -105,11 +105,11 @@ export function useGlobalStats(
     const totalExpenses = paidExpenses;
 
     // ✅ 3. CALCULAR GASTOS PENDIENTES (deuda de tarjetas de crédito)
-    // Usa la nueva lógica corregida de CreditCardCalculator
+    // Usa la API viva de cupo utilizado (estrategia de TC).
     const pendingExpenses = accounts
       .filter(acc => acc.type === 'credit')
       .reduce(
-        (sum, account) => sum + CreditCardCalculator.calculateUsedCredit(account, transactions),
+        (sum, account) => sum + getCreditCardUsedCredit(account, transactions),
         0
       );
 

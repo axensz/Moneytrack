@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import type { Transaction, Account, Categories } from '../../types/finance';
 
@@ -78,5 +78,110 @@ describe('TransactionItem a11y / máscara', () => {
       expect(btn.className).toContain('focus-visible:ring-2');
       expect(btn.className).toContain('focus-visible:ring-purple-500');
     }
+  });
+
+  it('expone la expansión como <button> con aria-expanded (no como div role=button anidando botones)', () => {
+    const { rerender } = render(
+      <TransactionItem
+        transaction={baseTx}
+        account={account}
+        isEditing={false}
+        editForm={{ description: '', amount: '', date: '', category: '' }}
+        categories={categories}
+        formatCurrency={(n) => `$${n.toLocaleString('es-CO')}`}
+        onEdit={noop}
+        onDelete={noop}
+        onSave={noop}
+        onCancel={noop}
+        onEditFormChange={noop}
+        isExpanded={false}
+        onToggleExpand={noop}
+      />
+    );
+
+    const toggle = screen.getByRole('button', { name: 'Expandir detalle' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle.tagName).toBe('BUTTON');
+    // El contenedor de la fila ya no debe anunciarse como button (ARIA inválido:
+    // button anidando button). No debe existir un role=button salvo los reales.
+    expect(screen.queryByRole('button', { name: '' })).toBeNull();
+
+    rerender(
+      <TransactionItem
+        transaction={baseTx}
+        account={account}
+        isEditing={false}
+        editForm={{ description: '', amount: '', date: '', category: '' }}
+        categories={categories}
+        formatCurrency={(n) => `$${n.toLocaleString('es-CO')}`}
+        onEdit={noop}
+        onDelete={noop}
+        onSave={noop}
+        onCancel={noop}
+        onEditFormChange={noop}
+        isExpanded
+        onToggleExpand={noop}
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Contraer detalle' })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('revela las acciones de fila también con focus-within (no solo hover) para teclado', () => {
+    const { container } = renderItem();
+    const wrapper = container.querySelector('.sm\\:group-hover\\:opacity-100');
+    expect(wrapper?.className).toContain('sm:group-focus-within:opacity-100');
+  });
+
+  // R-memo-inline: los callbacks reciben la transacción/id (refs estables del
+  // padre) en vez de closures de cero-args creadas por fila. Este contrato es
+  // lo que permite a React.memo evitar re-render. Bloquea la regresión.
+  it('los callbacks reciben la transacción/id (contrato para React.memo estable)', () => {
+    const onEdit = vi.fn();
+    const onDelete = vi.fn();
+    const onToggleExpand = vi.fn();
+    render(
+      <TransactionItem
+        transaction={baseTx}
+        account={account}
+        isEditing={false}
+        editForm={{ description: '', amount: '', date: '', category: '' }}
+        categories={categories}
+        formatCurrency={(n) => `$${n}`}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        onSave={noop}
+        onCancel={noop}
+        onEditFormChange={noop}
+        onToggleExpand={onToggleExpand}
+      />
+    );
+
+    fireEvent.click(screen.getByLabelText('Editar transaccion'));
+    expect(onEdit).toHaveBeenCalledWith(baseTx);
+    fireEvent.click(screen.getByLabelText('Eliminar transaccion'));
+    expect(onDelete).toHaveBeenCalledWith(baseTx);
+    fireEvent.click(screen.getByRole('button', { name: 'Expandir detalle' }));
+    expect(onToggleExpand).toHaveBeenCalledWith(baseTx.id);
+  });
+
+  it('onSave recibe el id de la transacción en modo edición', () => {
+    const onSave = vi.fn();
+    render(
+      <TransactionItem
+        transaction={baseTx}
+        account={account}
+        isEditing
+        editForm={{ description: 'x', amount: '1000', date: '2026-06-01', category: 'Comida' }}
+        categories={categories}
+        formatCurrency={(n) => `$${n}`}
+        onEdit={noop}
+        onDelete={noop}
+        onSave={onSave}
+        onCancel={noop}
+        onEditFormChange={noop}
+      />
+    );
+    fireEvent.click(screen.getByText('Guardar'));
+    expect(onSave).toHaveBeenCalledWith(baseTx.id);
   });
 });

@@ -5,6 +5,7 @@
 import { useCallback } from 'react';
 import { collection, doc, addDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { stripUndefined } from '../../utils/firestoreHelpers';
 import type { Account } from '../../types/finance';
 
 interface UseAccountsCRUDReturn {
@@ -33,9 +34,7 @@ export function useAccountsCRUD(userId: string | null): UseAccountsCRUDReturn {
         }
       }
 
-      const cleanAccount = Object.fromEntries(
-        Object.entries(accountData).filter(([, value]) => value !== undefined)
-      );
+      const cleanAccount = stripUndefined(accountData);
       await addDoc(collection(db, `users/${userId}/accounts`), {
         ...cleanAccount,
         createdAt: new Date(),
@@ -62,9 +61,7 @@ export function useAccountsCRUD(userId: string | null): UseAccountsCRUDReturn {
         updatesData.initialBalance = 0;
       }
 
-      const cleanUpdates = Object.fromEntries(
-        Object.entries(updatesData).filter(([, value]) => value !== undefined)
-      );
+      const cleanUpdates = stripUndefined(updatesData);
       await updateDoc(doc(db, `users/${userId}/accounts`, id), cleanUpdates);
     },
     [userId]

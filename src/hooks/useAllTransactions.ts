@@ -32,18 +32,22 @@ export function useAllTransactions(
 ): Transaction[] {
   const [fullTxs, setFullTxs] = useState<Transaction[]>([]);
 
-  // Firma que captura tanto altas/bajas como EDICIONES del array live. Antes el
-  // refetch dependía solo de length, así que editar una transacción (que no
-  // cambia el largo) dejaba el historial completo obsoleto en Stats (#18).
-  // Incluimos los campos que afectan los agregados de Stats: monto, fecha,
-  // categoría, tipo y estado de pago. Se ordena por id para que el resultado sea
-  // estable ante reordenamientos del array.
-  const liveSignature = useMemo(() => {
+  // Firma = SET de IDs del array live (no los campos). El refetch del historial
+  // completo solo debe ocurrir cuando cambia la MEMBRESÍA (alta/baja), no al
+  // EDITAR campos (R-allTx-refetch): antes la firma incluía monto/fecha/categoría/
+  // tipo/pago, así que cada edición re-leía la colección ENTERA (N lecturas de
+  // Firestore por cada edit con Stats abierto).
+  //
+  // Por qué es correcto omitir las ediciones: el retorno fusiona con precedencia
+  // del array LIVE (mergeTransactionsById(primary=live, secondary=full) — el live
+  // gana por id), y toda transacción editable está en el array live. Así una
+  // edición ya se refleja en el merge sin tocar `fullTxs`. La baja sí debe
+  // refetchear para purgar la copia stale de `fullTxs` (que de otro modo
+  // reaparecería vía el secondary); la baja cambia el set de IDs → dispara refetch.
+  const liveIdsSignature = useMemo(() => {
     return liveTransactions
-      .map((t) => {
-        const dateMs = t.date instanceof Date ? t.date.getTime() : new Date(t.date).getTime();
-        return `${t.id}:${t.amount}:${dateMs}:${t.category}:${t.type}:${t.paid ? 1 : 0}`;
-      })
+      .map((t) => t.id)
+      .filter(Boolean)
       .sort()
       .join('|');
   }, [liveTransactions]);
@@ -80,9 +84,9 @@ export function useAllTransactions(
     return () => {
       cancelled = true;
     };
-    // liveSignature: refetch al agregar, eliminar O editar una transacción.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, liveSignature]);
+    // liveIdsSignature: refetch solo al AGREGAR o ELIMINAR (cambia el set de IDs),
+    // NO al editar campos (el merge con precedencia live ya refleja la edición).
+  }, [userId, liveIdsSignature]);
 
   return useMemo(
     () => mergeTransactionsById(liveTransactions, fullTxs),

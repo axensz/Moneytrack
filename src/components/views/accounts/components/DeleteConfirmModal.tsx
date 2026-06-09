@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useModalA11y } from '../../../../hooks/useModalA11y';
 
 interface DeleteConfirmModalProps {
   isOpen: boolean;
@@ -29,6 +30,10 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
   onConfirm,
   onClose,
 }) => {
+  // A11y: Escape, focus trap y restauración de foco. autoFocusContainer=false
+  // porque el input de confirmación ya recibe el foco inicial (autoFocus).
+  const { modalRef, onKeyDown } = useModalA11y({ isOpen, onClose, autoFocusContainer: false });
+
   if (!isOpen) return null;
 
   const canDelete =
@@ -38,11 +43,14 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div
+        ref={modalRef}
+        onKeyDown={onKeyDown}
+        tabIndex={-1}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="dcm-title"
         aria-describedby="dcm-desc"
-        className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md"
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md outline-none"
       >
         <div className="p-6">
           <h3 id="dcm-title" className="text-lg font-semibold text-rose-600 dark:text-rose-400 mb-4">

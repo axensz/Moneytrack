@@ -92,10 +92,10 @@ export const AdjustmentGroup: React.FC<AdjustmentGroupProps> = ({
                     recurringPaymentName={getRecurringPaymentName(transaction.recurringPaymentId)}
                     formatCurrency={formatCurrency}
                     isExpanded={expandedTransaction === transaction.id}
-                    onToggleExpand={toggleExpand ? () => toggleExpand(transaction.id!) : undefined}
-                    onEdit={() => startEditTransaction(transaction)}
-                    onDelete={() => handleDeleteTransaction(transaction)}
-                    onSave={() => handleSaveEdit(transaction.id!)}
+                    onToggleExpand={toggleExpand}
+                    onEdit={startEditTransaction}
+                    onDelete={handleDeleteTransaction}
+                    onSave={handleSaveEdit}
                     onCancel={handleCancelEdit}
                     onEditFormChange={setEditForm}
                   />

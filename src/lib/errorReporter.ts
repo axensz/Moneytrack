@@ -16,6 +16,8 @@
  * unhandledrejection) y los envía al reporter activo.
  */
 
+import { sanitizeContext } from '../utils/sanitize';
+
 export interface ErrorReporter {
   captureError(error: unknown, context?: Record<string, unknown>): void;
   captureMessage(message: string, context?: Record<string, unknown>): void;
@@ -33,19 +35,27 @@ export function configureErrorReporter(reporter: ErrorReporter): void {
   _reporter = reporter;
 }
 
-/** Envía un error al reporter activo. */
+/**
+ * Envía un error al reporter activo.
+ *
+ * S-error-redact: el contexto se REDACTA aquí (sanitizeContext) antes de salir del
+ * dispositivo, para que ni el logger, ni el handler global de errores, ni un
+ * llamador directo filtren montos/descripciones/la API key a un servicio externo.
+ * El objeto Error se reenvía tal cual (su stack es necesario para depurar); evita
+ * embeber datos sensibles en mensajes de Error.
+ */
 export function captureError(error: unknown, context?: Record<string, unknown>): void {
   try {
-    _reporter.captureError(error, context);
+    _reporter.captureError(error, sanitizeContext(context));
   } catch {
     // El reporter nunca debe hacer caer la app
   }
 }
 
-/** Envía un mensaje al reporter activo. */
+/** Envía un mensaje al reporter activo (con el contexto redactado, ver captureError). */
 export function captureMessage(message: string, context?: Record<string, unknown>): void {
   try {
-    _reporter.captureMessage(message, context);
+    _reporter.captureMessage(message, sanitizeContext(context));
   } catch {
     // El reporter nunca debe hacer caer la app
   }

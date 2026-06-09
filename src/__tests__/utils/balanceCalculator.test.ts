@@ -1,8 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import {
-  BalanceCalculator,
-  CreditCardCalculator,
-} from '../../utils/balanceCalculator';
+import { BalanceCalculator } from '../../utils/balanceCalculator';
+import { getCreditCardUsedCredit } from '../../utils/accountStrategies';
 import type { Account, Transaction } from '../../types/finance';
 
 // ─── Fixtures ──────────────────────────────────────────────────────
@@ -105,14 +103,21 @@ describe('BalanceCalculator.validateTransaction', () => {
   });
 });
 
-// ─── BalanceCalculator.calculateTotalCreditCardPending ──────────────
+// ─── getCreditCardUsedCredit (API viva, reemplaza CreditCardCalculator) ──
+// (canMakeExpense/calculateAvailableCredit eran API muerta; su comportamiento ya
+//  está cubierto por accountStrategies.test: validateTransaction y calculateBalance.)
 
-describe('BalanceCalculator.calculateTotalCreditCardPending', () => {
-  it('returns 0 when no credit cards', () => {
-    expect(BalanceCalculator.calculateTotalCreditCardPending([savings], [])).toBe(0);
+describe('getCreditCardUsedCredit', () => {
+  it('returns 0 for non-credit accounts', () => {
+    expect(getCreditCardUsedCredit(savings, [])).toBe(0);
   });
 
-  it('sums used credit across multiple credit cards', () => {
+  it('returns the used credit (debt) for a credit card', () => {
+    const txs = [makeTx({ accountId: credit.id!, type: 'expense', amount: 800_000 })];
+    expect(getCreditCardUsedCredit(credit, txs)).toBe(800_000);
+  });
+
+  it('sums used credit across multiple credit cards (total pending)', () => {
     const credit2: Account = {
       ...credit,
       id: 'acc-credit-2',
@@ -125,52 +130,9 @@ describe('BalanceCalculator.calculateTotalCreditCardPending', () => {
       makeTx({ id: 'tx-2', accountId: credit2.id!, type: 'expense', amount: 500_000 }),
     ];
 
-    const total = BalanceCalculator.calculateTotalCreditCardPending(
-      [savings, credit, credit2],
-      txs
-    );
+    const total = [savings, credit, credit2]
+      .filter(a => a.type === 'credit')
+      .reduce((sum, a) => sum + getCreditCardUsedCredit(a, txs), 0);
     expect(total).toBe(1_500_000);
-  });
-});
-
-// ─── CreditCardCalculator (deprecated, for backward compatibility) ──
-
-describe('CreditCardCalculator', () => {
-  it('calculateUsedCredit returns 0 for non-credit accounts', () => {
-    expect(CreditCardCalculator.calculateUsedCredit(savings, [])).toBe(0);
-  });
-
-  it('calculateUsedCredit returns correct used credit', () => {
-    const txs = [makeTx({ accountId: credit.id!, type: 'expense', amount: 800_000 })];
-    expect(CreditCardCalculator.calculateUsedCredit(credit, txs)).toBe(800_000);
-  });
-
-  it('calculateAvailableCredit returns 0 for non-credit accounts', () => {
-    expect(CreditCardCalculator.calculateAvailableCredit(savings, [])).toBe(0);
-  });
-
-  it('calculateAvailableCredit returns correct available', () => {
-    const txs = [makeTx({ accountId: credit.id!, type: 'expense', amount: 2_000_000 })];
-    expect(CreditCardCalculator.calculateAvailableCredit(credit, txs)).toBe(3_000_000);
-  });
-
-  it('canMakeExpense validates within limit', () => {
-    const result = CreditCardCalculator.canMakeExpense(credit, [], 1_000_000);
-    expect(result.valid).toBe(true);
-    expect(result.available).toBe(5_000_000);
-  });
-
-  it('canMakeExpense returns available credit even when exceeding limit', () => {
-    // Note: canMakeExpense doesn't pass transactionType to validateTransaction,
-    // so the credit limit check is not triggered through this path.
-    // The validation should be done via BalanceCalculator.validateTransaction with 'expense' type.
-    const result = CreditCardCalculator.canMakeExpense(credit, [], 6_000_000);
-    expect(result.available).toBe(5_000_000);
-  });
-
-  it('canMakeExpense rejects non-credit accounts', () => {
-    const result = CreditCardCalculator.canMakeExpense(savings, [], 100);
-    expect(result.valid).toBe(false);
-    expect(result.error).toContain('no es una tarjeta de crédito');
   });
 });

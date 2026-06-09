@@ -4,7 +4,7 @@ import { Repeat, Zap, AlertTriangle } from 'lucide-react';
 import { BaseModal } from '@/components/modals/BaseModal';
 import { UI_LABELS, TRANSFER_CATEGORY } from '@/config/constants';
 import { formatCurrency, formatDate } from '@/utils/formatters';
-import { BalanceCalculator } from '@/utils/balanceCalculator';
+import { getCreditCardUsedCredit } from '@/utils/accountStrategies';
 import { INSTALLMENT_OPTIONS, calculateInterest } from '@/utils/interestCalculator';
 import { detectDuplicates, type DuplicateMatch } from '@/utils/duplicateDetector';
 import type { NewTransaction, Account, Categories, Transaction, RecurringPayment } from '@/types/finance';
@@ -43,7 +43,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
   // Calcular cupo usado si es TC y está pagando
   const creditUsed = useMemo(() => {
     if (isCreditCard && newTransaction.type === 'income' && selectedAccount) {
-      return BalanceCalculator.calculateCreditCardUsed(selectedAccount, transactions);
+      return getCreditCardUsedCredit(selectedAccount, transactions);
     }
     return 0;
   }, [isCreditCard, newTransaction.type, selectedAccount, transactions]);

@@ -35,8 +35,14 @@ interface StatsData {
  * - Distribución por categoría de gastos
  */
 export const useStatsData = (transactions: Transaction[]): StatsData => {
+  // Solo cuenta movimientos EFECTIVOS (pagados), igual que las tarjetas y los
+  // presupuestos (useGlobalStats / useBudgets filtran `t.paid`). Antes los gráficos
+  // sumaban compras impagas (p. ej. una compra de TC pendiente), mostrando una cifra
+  // distinta a la de la card "Gastos" en la misma pantalla. Audit F-stats-charts.
   const filtered = useMemo(
-    () => transactions.filter(t => !SPECIAL_CATEGORIES.adjustmentCategories.includes(t.category)),
+    () => transactions.filter(
+      t => t.paid && !SPECIAL_CATEGORIES.adjustmentCategories.includes(t.category)
+    ),
     [transactions]
   );
   const monthlyData = useMemo(() => computeMonthlyData(filtered), [filtered]);

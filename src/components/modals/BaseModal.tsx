@@ -12,8 +12,9 @@
  * ✅ Restauración de foco al cerrar
  */
 
-import React, { useEffect, useRef, useCallback } from 'react';
+import React from 'react';
 import { X } from 'lucide-react';
+import { useModalA11y } from '../../hooks/useModalA11y';
 
 interface BaseModalProps {
   isOpen: boolean;
@@ -40,63 +41,8 @@ export function BaseModal({
   closeOnBackdrop = true,
   closeOnEscape = true,
 }: BaseModalProps) {
-  const modalRef = useRef<HTMLDivElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-
-  // Scroll lock + focus management
-  useEffect(() => {
-    if (isOpen) {
-      previousFocusRef.current = document.activeElement as HTMLElement;
-      document.body.style.overflow = 'hidden';
-      // Defer focus to allow render
-      requestAnimationFrame(() => {
-        modalRef.current?.focus();
-      });
-    } else {
-      document.body.style.overflow = 'unset';
-      previousFocusRef.current?.focus();
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
-
-  // Escape key
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        if (closeOnEscape) onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose, closeOnEscape]);
-
-  // Focus trap
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key !== 'Tab' || !modalRef.current) return;
-
-    const focusableSelectors = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
-    const focusableElements = modalRef.current.querySelectorAll(focusableSelectors);
-    if (focusableElements.length === 0) return;
-
-    const firstElement = focusableElements[0] as HTMLElement;
-    const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
-
-    if (e.shiftKey) {
-      if (document.activeElement === firstElement) {
-        lastElement?.focus();
-        e.preventDefault();
-      }
-    } else {
-      if (document.activeElement === lastElement) {
-        firstElement?.focus();
-        e.preventDefault();
-      }
-    }
-  }, []);
+  // A11y (scroll lock, Escape, focus trap, restauración de foco) centralizada.
+  const { modalRef, onKeyDown } = useModalA11y({ isOpen, onClose, closeOnEscape });
 
   if (!isOpen) return null;
 
@@ -111,7 +57,7 @@ export function BaseModal({
       <div
         ref={modalRef}
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={handleKeyDown}
+        onKeyDown={onKeyDown}
         tabIndex={-1}
         className={`bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full ${maxWidth} my-auto outline-none animate-in fade-in zoom-in-95 duration-200 ${className}`}
         style={{

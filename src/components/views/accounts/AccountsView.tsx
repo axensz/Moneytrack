@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Wallet, CreditCard, Banknote } from 'lucide-react';
 import { BALANCE_ADJUSTMENT_CATEGORY } from '../../../config/constants';
 import { showToast } from '../../../utils/toastHelpers';
-import { CreditCardCalculator } from '../../../utils/balanceCalculator';
+import { getCreditCardUsedCredit } from '../../../utils/accountStrategies';
 import { useFinance } from '../../../contexts/FinanceContext';
 import type { Account } from '../../../types/finance';
 import type { MergeCreditCardsParams } from '../../../hooks/useAccounts';
@@ -50,7 +50,7 @@ export const AccountsView: React.FC = () => {
     const map = new Map<string, number>();
     accounts.forEach(a => {
       if (a.type === 'credit' && a.id) {
-        map.set(a.id, CreditCardCalculator.calculateUsedCredit(a, transactions));
+        map.set(a.id, getCreditCardUsedCredit(a, transactions));
       }
     });
     return map;

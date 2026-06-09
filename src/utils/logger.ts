@@ -16,54 +16,12 @@
  */
 
 import { captureError } from '../lib/errorReporter';
+import { sanitize, sanitizeContext } from './sanitize';
 
 type LogLevel = 'error' | 'warn' | 'info' | 'debug';
 
 interface LogContext {
   [key: string]: unknown;
-}
-
-/**
- * Campos sensibles que NO deben llegar a consola ni a un servicio de monitoreo
- * (S7). Se redactan recursivamente conservando ids/tipos/conteos para poder
- * depurar sin exponer montos ni descripciones financieras.
- */
-const SENSITIVE_KEYS = new Set<string>([
-  'amount', 'originalAmount', 'monthlyInstallmentAmount', 'totalInterestAmount',
-  'remainingAmount', 'declaredIncome', 'monthlyLimit', 'currentAmount', 'targetAmount',
-  'initialBalance', 'balance', 'usedCredit', 'creditLimit', 'lastPaidAmount',
-  'description', 'notes', 'personName', 'title', 'message', 'raw', 'geminiApiKey', 'apiKey',
-]);
-
-const MAX_DEPTH = 4;
-const MAX_ARRAY_ITEMS = 20;
-const REDACTED = '[redacted]';
-
-/** Redacta recursivamente los campos sensibles de un valor para logging seguro. */
-function sanitize(value: unknown, depth = 0): unknown {
-  if (value === null || typeof value !== 'object') return value;
-  if (depth >= MAX_DEPTH) return '[depth-limit]';
-
-  if (Array.isArray(value)) {
-    const items = value.slice(0, MAX_ARRAY_ITEMS).map((item) => sanitize(item, depth + 1));
-    if (value.length > MAX_ARRAY_ITEMS) items.push(`…(+${value.length - MAX_ARRAY_ITEMS} more)`);
-    return items;
-  }
-
-  const out: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-    if (SENSITIVE_KEYS.has(key)) {
-      out[key] = val == null ? val : REDACTED;
-    } else {
-      out[key] = sanitize(val, depth + 1);
-    }
-  }
-  return out;
-}
-
-function sanitizeContext(context?: LogContext): LogContext | undefined {
-  if (!context) return undefined;
-  return sanitize(context) as LogContext;
 }
 
 class Logger {

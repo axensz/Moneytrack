@@ -76,6 +76,17 @@ describe('calculateInterest', () => {
     expect(result.effectiveAnnualRate).toBe(23.99);
   });
 
+  it('redondea la cuota sin interés a centavos (F-cuotas-redondeo)', () => {
+    const result = calculateInterest(100_000, 0, 3, false);
+    // 100000/3 = 33333.333… → redondeado a centavos (antes era el float crudo).
+    expect(result.monthlyInstallmentAmount).toBe(33333.33);
+    // El total sigue siendo el principal exacto.
+    expect(result.totalAmount).toBe(100_000);
+    // Ya no es un float con cola infinita: tiene a lo sumo 2 decimales.
+    expect(Number.isInteger(Math.round(result.monthlyInstallmentAmount * 100))).toBe(true);
+    expect(result.monthlyInstallmentAmount * 100).toBe(3333333);
+  });
+
   it('forces no interest when installments = 1 regardless of hasInterest', () => {
     const result = calculateInterest(1_000_000, 23.99, 1, true);
 

@@ -12,6 +12,7 @@ import { useFinancialPlan, type PlanConfig } from '../../../hooks/useFinancialPl
 import { isGeminiConfigured } from '../../../lib/gemini';
 import { useBudgetRecommendations } from '../../../hooks/useBudgetRecommendations';
 import { FinancialPlanAI } from './components/FinancialPlanAI';
+import { ConfirmDialog } from '../../modals/ConfirmDialog';
 
 export const BudgetsView: React.FC = () => {
   const { budgets, addBudget, updateBudget, deleteBudget, budgetStatuses, budgetStats } = useBudgetsDomain();
@@ -30,6 +31,7 @@ export const BudgetsView: React.FC = () => {
   // Presupuestos
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ category: '', monthlyLimit: '' });
+  const [budgetToDelete, setBudgetToDelete] = useState<{ id: string; category: string } | null>(null);
 
   const plan = useFinancialPlan(transactions, planConfig);
 
@@ -71,9 +73,14 @@ export const BudgetsView: React.FC = () => {
     setShowForm(false);
   };
 
-  const handleDelete = async (id: string, category: string) => {
-    if (!confirm(`¿Eliminar presupuesto de "${category}"?`)) return;
-    await deleteBudget(id);
+  const handleDelete = (id: string, category: string) => {
+    setBudgetToDelete({ id, category });
+  };
+
+  const confirmDeleteBudget = async () => {
+    if (!budgetToDelete) return;
+    await deleteBudget(budgetToDelete.id);
+    setBudgetToDelete(null);
     showToast.success('Presupuesto eliminado');
   };
 
@@ -362,27 +369,14 @@ export const BudgetsView: React.FC = () => {
           )}
 
           {/* ──── Confirmación cerrar plan ──── */}
-          {showCloseConfirm && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowCloseConfirm(false)}>
-              <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-gray-200 dark:border-gray-700" onClick={e => e.stopPropagation()}>
-                <div className="text-center mb-4">
-                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-rose-100 dark:bg-rose-900/30">
-                    <X size={24} className="text-rose-600 dark:text-rose-400" />
-                  </div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">¿Cerrar plan financiero?</h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                    Se eliminará tu configuración guardada. Podrás iniciar uno nuevo en cualquier momento.
-                  </p>
-                </div>
-                <div className="flex gap-3">
-                  <button onClick={() => setShowCloseConfirm(false)} className="btn-cancel flex-1">Cancelar</button>
-                  <button onClick={handleClosePlan} className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-xl transition-colors">
-                    Cerrar plan
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+          <ConfirmDialog
+            isOpen={showCloseConfirm}
+            title="¿Cerrar plan financiero?"
+            message="Se eliminará tu configuración guardada. Podrás iniciar uno nuevo en cualquier momento."
+            confirmLabel="Cerrar plan"
+            onConfirm={handleClosePlan}
+            onClose={() => setShowCloseConfirm(false)}
+          />
         </>
       ) : (
         <div className="card text-center py-8">
@@ -513,6 +507,21 @@ export const BudgetsView: React.FC = () => {
           </div>
         )
       )}
+
+      {/* Confirmación eliminar presupuesto */}
+      <ConfirmDialog
+        isOpen={!!budgetToDelete}
+        title="Eliminar presupuesto"
+        message={budgetToDelete && (
+          <>
+            ¿Eliminar el presupuesto de{' '}
+            <span className="font-semibold text-gray-900 dark:text-white">{budgetToDelete.category}</span>?
+          </>
+        )}
+        confirmLabel="Eliminar"
+        onConfirm={confirmDeleteBudget}
+        onClose={() => setBudgetToDelete(null)}
+      />
     </div>
   );
 };

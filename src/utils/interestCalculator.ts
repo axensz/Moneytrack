@@ -146,7 +146,12 @@ export function calculateInterest(
   // Si no tiene intereses, retornar valores simples
   if (!actualHasInterest) {
     return {
-      monthlyInstallmentAmount: principal / installments,
+      // Redondear a centavos, igual que la rama con interés (#F-cuotas-redondeo).
+      // Antes devolvía el float crudo (p. ej. 100/3 = 33.3333…), inconsistente con
+      // la rama con interés y con el formato monetario. totalAmount sigue siendo el
+      // principal exacto (la cuota es referencial; el residuo de centavos al sumar
+      // cuotas iguales es inherente y lo absorbe la última, como en los bancos).
+      monthlyInstallmentAmount: Math.round((principal / installments) * 100) / 100,
       totalAmount: principal,
       totalInterestAmount: 0,
       monthlyInterestRate: 0,

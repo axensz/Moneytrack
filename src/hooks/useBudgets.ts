@@ -14,6 +14,7 @@ import { db } from '../lib/firebase';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
 import { generateId } from '../utils/formatters';
+import { stripUndefined } from '../utils/firestoreHelpers';
 import type { Budget, Transaction } from '../types/finance';
 import { SPECIAL_CATEGORIES } from '../config/constants';
 
@@ -83,9 +84,7 @@ export function useBudgets(userId: string | null, transactions: Transaction[], e
 
   const updateBudget = useCallback(async (id: string, updates: Partial<Budget>) => {
     if (userId) {
-      const cleanUpdates = Object.fromEntries(
-        Object.entries(updates).filter(([, v]) => v !== undefined)
-      );
+      const cleanUpdates = stripUndefined(updates);
       await updateDoc(doc(db, `users/${userId}/budgets`, id), cleanUpdates);
     } else {
       setLocalBudgets(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));

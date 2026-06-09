@@ -4,10 +4,11 @@ import type { DocumentReference } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useFirestoreData } from '../contexts/FirestoreContext';
 import { useLocalStorage } from './useLocalStorage';
-import { BalanceCalculator, CreditCardCalculator } from '../utils/balanceCalculator';
-import { safeFirestoreOperation, checkNetworkConnection } from '../utils/firestoreHelpers';
+import { BalanceCalculator } from '../utils/balanceCalculator';
+import { safeFirestoreOperation, checkNetworkConnection, stripUndefined } from '../utils/firestoreHelpers';
 import { generateId } from '../utils/formatters';
 import { transactionUsesAccount, getAccountReferenceIds } from '../utils/accountTransactions';
+import { getCreditCardUsedCredit } from '../utils/accountStrategies';
 import { creditDeltasByAccount, reconcileUsedCredit } from '../utils/creditDeltas';
 import type { Account, Transaction, RecurringPayment, Debt } from '../types/finance';
 
@@ -24,12 +25,6 @@ type BatchOperation = {
   type: 'set' | 'update' | 'delete';
   ref: DocumentReference;
   data?: Record<string, unknown>;
-};
-
-const cleanUndefinedFields = <T extends Record<string, unknown>>(data: T): Partial<T> => {
-  return Object.fromEntries(
-    Object.entries(data).filter(([, value]) => value !== undefined)
-  ) as Partial<T>;
 };
 
 export function useAccounts(
@@ -357,7 +352,7 @@ export function useAccounts(
         sum +
         (account.usedCredit != null
           ? Math.max(0, account.usedCredit)
-          : CreditCardCalculator.calculateUsedCredit(account, transactions)),
+          : getCreditCardUsedCredit(account, transactions)),
       0
     );
 
@@ -393,7 +388,7 @@ export function useAccounts(
           const accountCollection = collection(db, `users/${userId}/accounts`);
           const operations: BatchOperation[] = [];
 
-          const destinationData = cleanUndefinedFields({
+          const destinationData = stripUndefined({
             ...destinationAccount,
             id: undefined,
           } as Record<string, unknown>);
@@ -418,7 +413,7 @@ export function useAccounts(
           transactions.forEach(transactionItem => {
             if (!transactionItem.id) return;
 
-            const updates = cleanUndefinedFields({
+            const updates = stripUndefined({
               accountId: migrateAccountReference(transactionItem.accountId),
               toAccountId: migrateAccountReference(transactionItem.toAccountId),
             });

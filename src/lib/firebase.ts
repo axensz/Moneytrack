@@ -1,5 +1,4 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, type Auth } from "firebase/auth";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, terminate, clearIndexedDbPersistence, type Firestore } from "firebase/firestore";
 import { logger } from "../utils/logger";
@@ -54,7 +53,24 @@ if (isFirebaseConfigured) {
   );
 }
 
-const analytics = typeof window !== 'undefined' && _app ? getAnalytics(_app) : null;
+// Analytics diferido + import dinámico (R-analytics-eager). Antes `getAnalytics`
+// corría en el import de este módulo —que provee db/auth, siempre en el arranque—
+// y el SDK de analytics entraba al bundle principal. Ahora el SDK se code-splittea
+// y se inicializa en idle, solo si el entorno lo soporta y hay measurementId.
+if (typeof window !== 'undefined' && _app && firebaseConfig.measurementId) {
+  const startAnalytics = () => {
+    import('firebase/analytics')
+      .then(async ({ getAnalytics, isSupported }) => {
+        if (await isSupported()) getAnalytics(_app!);
+      })
+      .catch((err) => logger.warn('Analytics no disponible', err));
+  };
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(startAnalytics);
+  } else {
+    setTimeout(startAnalytics, 2000);
+  }
+}
 
 // Export with non-null types — safe because:
 // 1. useAuth guards with !auth → returns no user → userId is null
@@ -95,4 +111,4 @@ export const clearFirestorePersistence = async (): Promise<void> => {
   }
 };
 
-export { app, analytics, auth, db };
+export { app, auth, db };

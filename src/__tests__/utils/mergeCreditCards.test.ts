@@ -1,7 +1,8 @@
 import { renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { mergeCreditCards } from '../../utils/mergeCreditCards';
-import { CreditCardCalculator } from '../../utils/balanceCalculator';
+import { BalanceCalculator } from '../../utils/balanceCalculator';
+import { getCreditCardUsedCredit } from '../../utils/accountStrategies';
 import { useCreditCardStatement } from '../../hooks/useCreditCardStatement';
 import { useGlobalStats } from '../../hooks/useGlobalStats';
 import { useFilteredData } from '../../hooks/useFilteredData';
@@ -124,7 +125,7 @@ describe('mergeCreditCards consumers', () => {
       // Cupo utilizado = capital pendiente: la compra a cuotas (1.200.000) ocupa el
       // cupo completo desde la compra, no solo la cuota vencida.
       // 300.000 (gasto) + 1.200.000 (cuotas) - 120.000 (transfer) - 50.000 (ingreso) = 1.330.000
-      expect(CreditCardCalculator.calculateUsedCredit(mergedCard, merged.transactions)).toBe(1_330_000);
+      expect(getCreditCardUsedCredit(mergedCard, merged.transactions)).toBe(1_330_000);
 
       const statement = renderHook(() => useCreditCardStatement(merged.accounts, merged.transactions)).result.current;
       expect(statement).toHaveLength(1);
@@ -144,7 +145,7 @@ describe('mergeCreditCards consumers', () => {
         filterAccount: destinationCard.id!,
         filterCategory: 'all',
         totalBalance: 0,
-        getAccountBalance: () => CreditCardCalculator.calculateAvailableCredit(mergedCard, merged.transactions),
+        getAccountBalance: () => BalanceCalculator.calculateAccountBalance(mergedCard, merged.transactions),
       })).result.current;
       expect(filtered.filteredTransactions).toHaveLength(4);
       expect(filtered.dynamicStats.pendingExpenses).toBe(1_330_000);
@@ -194,7 +195,7 @@ describe('mergeCreditCards consumers', () => {
         tx({ id: 'legacy-payment', type: 'transfer', accountId: bank.id!, toAccountId: sourceCard.id!, amount: 100_000 }),
       ];
 
-      expect(CreditCardCalculator.calculateUsedCredit(migratedDestination, staleTransactions)).toBe(200_000);
+      expect(getCreditCardUsedCredit(migratedDestination, staleTransactions)).toBe(200_000);
 
       const statement = renderHook(() => useCreditCardStatement([bank, migratedDestination], staleTransactions)).result.current;
       expect(statement[0].totalCharges).toBe(300_000);

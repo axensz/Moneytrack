@@ -229,7 +229,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
   } = useDebts(userId, transactions, userId ? firestoreData.debts : undefined, {
     addTransaction,
     deleteTransaction,
-  });
+  }, accounts);
 
   // Borrado de transacciones con sincronización de préstamos.
   //

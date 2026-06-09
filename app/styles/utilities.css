@@ -269,11 +269,22 @@ span {
   }
 }
 
-/* Asegurar que los botones tengan un tamaño mínimo táctil en móviles */
+/* Asegurar que los botones tengan un tamaño mínimo táctil en móviles.
+   WCAG 2.5.5: incluye los .text-xs (chips/icon-buttons), que antes quedaban
+   excluidos y caían bajo 44px. Solo se exceptúa .btn-type (selector segmentado
+   de tipo, dimensionado a propósito). */
 @media (max-width: 640px) {
-  button:not(.btn-type):not(.text-xs) {
+  button:not(.btn-type) {
     min-height: 44px;
     min-width: 44px;
+  }
+}
+
+/* Piso táctil en desktop (WCAG 2.5.8 AA = 24px). No fuerza ancho para no
+   romper botones de texto inline; solo garantiza altura mínima accesible. */
+@media (min-width: 641px) and (pointer: fine) {
+  button:not(.btn-type) {
+    min-height: 24px;
   }
 }
 

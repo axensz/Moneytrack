@@ -94,13 +94,18 @@ export function TransactionsList({
         return () => observer.disconnect();
     }, [transactions.length]);
 
-    const visible = transactions.slice(0, visibleCount);
     const hasMore = visibleCount < transactions.length;
 
     // Group adjustment transactions by day
     type ListItem = { type: 'transaction'; transaction: Transaction } | { type: 'adjustmentGroup'; transactions: Transaction[]; dateKey: string };
+    // Item enriquecido con metadatos de cabecera de fecha YA calculados, para que
+    // el render (.map) no aloque `new Date()`/`toLocaleDateString` por fila en
+    // cada render (R-date-perrow). Depende de [transactions, visibleCount] en vez
+    // de `visible` (un slice de identidad nueva cada render → invalidaba el memo).
+    type RenderItem = ListItem & { key: string; showDateHeader: boolean; headerLabel: string };
 
-    const groupedItems = useMemo(() => {
+    const groupedItems = useMemo<RenderItem[]>(() => {
+        const visible = transactions.slice(0, visibleCount);
         const items: ListItem[] = [];
         let i = 0;
         while (i < visible.length) {
@@ -130,8 +135,27 @@ export function TransactionsList({
                 i++;
             }
         }
-        return items;
-    }, [visible]);
+
+        // Cabeceras de fecha + key, calculadas una sola vez por (transactions, count).
+        let prevDateKey: string | null = null;
+        return items.map((item) => {
+            const currentDate = item.type === 'transaction'
+                ? new Date(item.transaction.date).toDateString()
+                : item.dateKey;
+            const showDateHeader = currentDate !== prevDateKey;
+            prevDateKey = currentDate;
+            const headerLabel = showDateHeader
+                ? new Date(currentDate).toLocaleDateString('es-CO', {
+                    weekday: 'short',
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                })
+                : '';
+            const key = item.type === 'transaction' ? item.transaction.id! : `adj-${item.dateKey}`;
+            return { ...item, key, showDateHeader, headerLabel };
+        });
+    }, [transactions, visibleCount]);
 
     return (
         <div className="space-y-2">
@@ -156,29 +180,13 @@ export function TransactionsList({
                     )}
                 </div>
             )}
-            {groupedItems.map((item, index) => {
-                const currentDate = item.type === 'transaction'
-                    ? new Date(item.transaction.date).toDateString()
-                    : item.dateKey;
-                const prevItem = index > 0 ? groupedItems[index - 1] : null;
-                const previousDate = prevItem
-                    ? (prevItem.type === 'transaction' ? new Date(prevItem.transaction.date).toDateString() : prevItem.dateKey)
-                    : null;
-                const showDateHeader = currentDate !== previousDate;
-
-                const key = item.type === 'transaction' ? item.transaction.id : `adj-${item.dateKey}`;
-
+            {groupedItems.map((item) => {
                 return (
-                    <React.Fragment key={key}>
-                        {showDateHeader && (
+                    <React.Fragment key={item.key}>
+                        {item.showDateHeader && (
                             <div className="pt-4 pb-1.5 first:pt-0">
                                 <span className="text-[11px] font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                                    {new Date(currentDate).toLocaleDateString('es-CO', {
-                                        weekday: 'short',
-                                        year: 'numeric',
-                                        month: 'short',
-                                        day: 'numeric',
-                                    })}
+                                    {item.headerLabel}
                                 </span>
                             </div>
                         )}
@@ -193,10 +201,10 @@ export function TransactionsList({
                                 recurringPaymentName={getRecurringPaymentName(item.transaction.recurringPaymentId)}
                                 formatCurrency={formatCurrency}
                                 isExpanded={expandedTransaction === item.transaction.id}
-                                onToggleExpand={toggleExpand ? () => toggleExpand(item.transaction.id!) : undefined}
-                                onEdit={() => startEditTransaction(item.transaction)}
-                                onDelete={() => handleDeleteTransaction(item.transaction)}
-                                onSave={() => handleSaveEdit(item.transaction.id!)}
+                                onToggleExpand={toggleExpand}
+                                onEdit={startEditTransaction}
+                                onDelete={handleDeleteTransaction}
+                                onSave={handleSaveEdit}
                                 onCancel={handleCancelEdit}
                                 onEditFormChange={setEditForm}
                             />

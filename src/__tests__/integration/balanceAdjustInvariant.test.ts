@@ -171,6 +171,16 @@ describe('Invariante: saldo fijado en X → saldo calculado = X (matriz)', () =>
     expect(h.balance()).toBeCloseTo(75_000.50, 2);
   });
 
+  it('caso Nequi reportado: 10.694,38 → fija 694,38 → gasto de ajuste 10.000,00 exacto y saldo final 694,38', async () => {
+    const h = setup([tx({ type: 'expense', amount: 89_305.62 })]); // 100.000 inicial − 89.305,62 = 10.694,38
+    expect(h.balance()).toBeCloseTo(10_694.38, 2);
+    await adjustTo(h, '694,38');
+    const adj = h.store.txs[h.store.txs.length - 1];
+    expect(adj.type).toBe('expense');
+    expect(adj.amount).toBeCloseTo(10_000.00, 2);
+    expect(h.balance()).toBeCloseTo(694.38, 2);
+  });
+
   it('delta cero exacto: no se crea transacción', async () => {
     const h = setup([tx({ type: 'income', amount: 463_088.89 })]); // saldo 563.088,89
     await adjustTo(h, '563088,89');

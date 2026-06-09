@@ -143,6 +143,63 @@ describe('Corrupción de saldo por ventana paginada (repro exacta del reporte)',
     expect(fixedBalance).toBeCloseTo(563_088.89, 2);
   });
 
+  it('BORRAR una transacción con >500 txs: la ventana re-admite a la expulsada y el saldo salta; el historial completo no', () => {
+    // 501 txs: la más antigua (ingreso 100.000, fuera de la ventana) + 500 con neto 1.000.000.
+    const excluded = tx({ type: 'income', amount: 100_000, date: new Date(2024, 11, 31) });
+    const windowSet = buildHistory(tx({ type: 'income', amount: 50_000, date: new Date(2025, 0, 1) }), 1_000_000);
+    const fullHistory = [excluded, ...windowSet];
+
+    const windowBefore = paginatedWindow(fullHistory);
+    expect(BalanceCalculator.calculateAccountBalance(account, windowBefore)).toBeCloseTo(1_000_000, 2);
+    // Historial completo: 1.100.000 (la ventana ya omitía 100.000 — display previo al fix).
+    expect(BalanceCalculator.calculateAccountBalance(account, fullHistory)).toBeCloseTo(1_100_000, 2);
+
+    // El usuario borra un gasto de 1.000 que SÍ estaba en la ventana.
+    const deleted = windowSet.find(t => t.type === 'expense' && t.amount === 1000)!;
+    const afterDelete = fullHistory.filter(t => t.id !== deleted.id);
+
+    // Ventana: quedan 500 → re-admite el ingreso de 100.000 → salto de +101.000 (solo +1.000 es real).
+    const windowAfter = paginatedWindow(afterDelete);
+    expect(BalanceCalculator.calculateAccountBalance(account, windowAfter)).toBeCloseTo(1_101_000, 2);
+
+    // Historial completo: +1.000 exacto (el efecto real de borrar el gasto).
+    expect(BalanceCalculator.calculateAccountBalance(account, afterDelete)).toBeCloseTo(1_101_000, 2);
+    // Nota: ambos coinciden DESPUÉS del borrado porque con 500 txs la ventana vuelve a
+    // contener todo; la diferencia es el ESTADO ANTERIOR (1.000.000 vs 1.100.000) — el
+    // salto fantasma de +101.000 vs el real de +1.000.
+  });
+
+  it('TRANSFERENCIA nueva con 500 txs: la ventana corrompe la cuenta origen; el historial completo acredita/debita exacto', () => {
+    const oldest = tx({ type: 'expense', amount: 40_000, date: new Date(2025, 0, 1) });
+    const fullHistory = buildHistory(oldest, 1_000_000);
+    const other: Account = { id: 'oth', name: 'Bolsillo', type: 'savings', isDefault: false, initialBalance: 0 };
+
+    expect(BalanceCalculator.calculateAccountBalance(account, paginatedWindow(fullHistory))).toBeCloseTo(1_000_000, 2);
+
+    // Transferencia sav → oth por 10.000 (tx #501, expulsa el gasto de 40.000).
+    const transfer = tx({ type: 'transfer', amount: 10_000, toAccountId: 'oth', date: new Date(2026, 5, 9) });
+    const after = [...fullHistory, transfer];
+
+    const windowAfter = paginatedWindow(after);
+    // Ventana: origen pierde 10.000 pero "recupera" el gasto expulsado de 40.000 → +30.000 fantasma.
+    expect(BalanceCalculator.calculateAccountBalance(account, windowAfter)).toBeCloseTo(1_030_000, 2);
+
+    // Historial completo: origen 990.000 y destino 10.000, exactos.
+    expect(BalanceCalculator.calculateAccountBalance(account, after)).toBeCloseTo(990_000, 2);
+    expect(BalanceCalculator.calculateAccountBalance(other, after)).toBeCloseTo(10_000, 2);
+  });
+
+  it('EDITAR el monto de una transacción: el historial completo refleja el monto nuevo exacto', () => {
+    const oldest = tx({ type: 'income', amount: 50_000, date: new Date(2025, 0, 1) });
+    const fullHistory = buildHistory(oldest, 1_000_000);
+
+    // Editar un ingreso de 1.000 a 9.000 (id estable, sin cambio de membresía).
+    const target = fullHistory.find(t => t.type === 'income' && t.amount === 1000)!;
+    const afterEdit = fullHistory.map(t => (t.id === target.id ? { ...t, amount: 9000 } : t));
+
+    expect(BalanceCalculator.calculateAccountBalance(account, afterEdit)).toBeCloseTo(1_008_000, 2);
+  });
+
   it('cualquier transacción nueva (no solo ajustes) corrompe saldos al cruzar las 500', () => {
     const oldest = tx({ type: 'income', amount: 250_000, date: new Date(2025, 0, 1) });
     const fullHistory = buildHistory(oldest, 1_000_000);

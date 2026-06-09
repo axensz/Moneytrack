@@ -46,6 +46,7 @@ import { InstallPrompt } from './components/pwa/InstallPrompt';
 const AIChatBot = lazy(() =>
   import('./components/chat/AIChatBot').then(m => ({ default: m.AIChatBot }))
 );
+import { AITeaserButton } from './components/chat/AITeaserButton';
 
 // Lazy-loaded secondary views
 const StatsView = lazy(() =>
@@ -642,11 +643,20 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         </div>
       </div>
 
-      {/* AI ChatBot — lazy loaded */}
-      {user && (
+      {/* Asistente IA (A6) — descubrible siempre:
+          - listo (sesión + key + consentimiento) → chat completo (lazy).
+          - invitado o sin key/consentimiento → teaser ligero que invita a
+            activarlo (abre login o GeminiKeyModal). Evita cargar el chunk del
+            chat / el cliente Gemini hasta que la IA esté realmente lista. */}
+      {user && aiKeyConfigured && aiHasConsent ? (
         <Suspense fallback={null}>
           <AIChatBot />
         </Suspense>
+      ) : (
+        <AITeaserButton
+          isLoggedIn={!!user}
+          onActivate={() => (user ? setShowAISettingsModal(true) : setIsAuthModalOpen(true))}
+        />
       )}
     </div>
   );

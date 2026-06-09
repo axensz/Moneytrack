@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { CreditCard, Calendar, ChevronDown, ChevronUp } from 'lucide-react';
-import { useFinance } from '../../../contexts/FinanceContext';
+import { useTransactionDomain, useAccountDomain, useFormatCurrency } from '../../../hooks/useFinanceSelectors';
 import { useAuth } from '../../../hooks/useAuth';
 import { useCreditCardStatement } from '../../../hooks/useCreditCardStatement';
 import { useCreditCardTransactions } from '../../../hooks/useCreditCardTransactions';
@@ -11,7 +11,9 @@ import type { Transaction } from '../../../types/finance';
 import { transactionAccountIs, transactionDestinationIs } from '../../../utils/accountTransactions';
 
 export const CreditCardStatementView: React.FC = () => {
-  const { accounts, transactions, formatCurrency } = useFinance();
+  const { accounts } = useAccountDomain();
+  const { transactions } = useTransactionDomain();
+  const formatCurrency = useFormatCurrency();
   const { user } = useAuth();
   // Historial COMPLETO de TC (independiente de la paginación de 500) para que las
   // cuotas de ciclos antiguos no desaparezcan del estado de cuenta.

@@ -3,7 +3,7 @@
 import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { X, Upload, FileText, CheckCircle, AlertCircle, ChevronDown, Loader2, ToggleLeft, ToggleRight, ArrowLeft, Sparkles, Calendar } from 'lucide-react';
 import { getGeminiClient } from '../../lib/geminiClient';
-import { useFinance } from '../../contexts/FinanceContext';
+import { useAccountDomain, useTransactionDomain, useCategoryDomain } from '../../hooks/useFinanceSelectors';
 import { useGeminiKey } from '../../contexts/GeminiKeyContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useImportTransactions } from '../../hooks/useImportTransactions';
@@ -170,7 +170,9 @@ const isSpecialCategory = (category: string) =>
   SPECIAL_CATEGORIES.adjustmentCategories.some(item => normalizeCategory(item) === normalizeCategory(category));
 
 export function ImportTransactionsModal({ isOpen, onClose, onOpenAISettings }: ImportTransactionsModalProps) {
-  const { accounts, transactions: existingTransactions, categories } = useFinance();
+  const { accounts } = useAccountDomain();
+  const { transactions: existingTransactions } = useTransactionDomain();
+  const { categories } = useCategoryDomain();
   const { isConfigured: aiKeyConfigured, hasConsent: aiHasConsent } = useGeminiKey();
   // Motivo por el que la IA no está disponible (para mensajes precisos):
   // 'no-key' = falta API key · 'no-consent' = hay key pero falta autorizar.

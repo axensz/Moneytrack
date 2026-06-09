@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Plus, Repeat, List, CalendarDays } from 'lucide-react';
 
 import type { RecurringPayment, Account, Transaction } from '../../../types/finance';
-import { useFinance } from '../../../contexts/FinanceContext';
+import { useRecurringDomain, useAccountDomain, useCategoryDomain, useFormatCurrency } from '../../../hooks/useFinanceSelectors';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 
 // Componentes
@@ -26,9 +26,6 @@ import { useRecurringPaymentsView } from './hooks/useRecurringPaymentsView';
 export const RecurringPaymentsView: React.FC = () => {
   const {
     recurringPayments,
-    accounts,
-    categories,
-    formatCurrency,
     addRecurringPayment,
     updateRecurringPayment,
     deleteRecurringPayment,
@@ -38,7 +35,10 @@ export const RecurringPaymentsView: React.FC = () => {
     getDaysOverdue,
     getPaymentHistory,
     recurringStats: stats,
-  } = useFinance();
+  } = useRecurringDomain();
+  const { accounts } = useAccountDomain();
+  const { categories } = useCategoryDomain();
+  const formatCurrency = useFormatCurrency();
   const { hideBalances } = useUIPreferences();
   const {
     sortedPayments,

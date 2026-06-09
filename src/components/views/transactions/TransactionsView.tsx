@@ -6,7 +6,7 @@ import type {
   FilterValue,
   DateRangePreset,
 } from '../../../types/finance';
-import { useFinance } from '../../../contexts/FinanceContext';
+import { useTransactionDomain, useAccountDomain, useCategoryDomain, useRecurringDomain, useFormatCurrency } from '../../../hooks/useFinanceSelectors';
 import dynamic from 'next/dynamic';
 
 /**
@@ -74,16 +74,16 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
 }) => {
   const {
     transactions,
-    accounts,
-    recurringPayments,
-    categories,
     deleteTransaction,
     updateTransaction,
-    formatCurrency,
     hasMoreTransactions,
     loadingMoreTransactions,
     loadMoreTransactions,
-  } = useFinance();
+  } = useTransactionDomain();
+  const { accounts } = useAccountDomain();
+  const { recurringPayments } = useRecurringDomain();
+  const { categories } = useCategoryDomain();
+  const formatCurrency = useFormatCurrency();
   const {
     filteredTransactions,
     isMetadataFiltersActive,

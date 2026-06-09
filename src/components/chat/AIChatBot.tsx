@@ -6,7 +6,7 @@ import { sendChatMessage, isGeminiConfigured, parseActionFromResponse, type Chat
 import type { Transaction, Account, Categories } from '../../types/finance';
 import { formatCurrency } from '../../utils/formatters';
 import { logger } from '../../utils/logger';
-import { useFinance } from '../../contexts/FinanceContext';
+import { useTransactionDomain, useAccountDomain, useCategoryDomain } from '../../hooks/useFinanceSelectors';
 
 // Unique ID generator for chat messages
 let _msgIdCounter = 0;
@@ -290,12 +290,11 @@ const ActionCard: React.FC<{
 export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
   const {
     transactions,
-    accounts,
-    categories,
     addTransaction: onAddTransaction,
     updateTransaction: onUpdateTransaction,
-    addCategory: onAddCategory,
-  } = useFinance();
+  } = useTransactionDomain();
+  const { accounts } = useAccountDomain();
+  const { categories, addCategory: onAddCategory } = useCategoryDomain();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<UIChatMessage[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState('');

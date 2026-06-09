@@ -378,3 +378,13 @@ export function getCreditCardStrategy(): CreditCardStrategy {
   }
   return strategy;
 }
+
+/**
+ * API ÚNICA y viva para el cupo utilizado (deuda pendiente) de una TC.
+ * Reemplaza la capa @deprecated CreditCardCalculator. Conserva el guard de tipo:
+ * una cuenta que no es de crédito devuelve 0.
+ */
+export function getCreditCardUsedCredit(account: Account, transactions: Transaction[]): number {
+  if (account.type !== 'credit') return 0;
+  return getCreditCardStrategy().getUsedCredit(account, transactions);
+}

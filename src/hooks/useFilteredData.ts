@@ -13,7 +13,7 @@
 
 import { useMemo } from 'react';
 import { useGlobalStats } from './useGlobalStats';
-import { CreditCardCalculator } from '../utils/balanceCalculator';
+import { getCreditCardUsedCredit } from '../utils/accountStrategies';
 import { transactionUsesAccount } from '../utils/accountTransactions';
 import { getDateRangeFromPreset } from '../utils/dateUtils';
 import type { Transaction, Account, FilterValue, DateRange } from '../types/finance';
@@ -124,7 +124,7 @@ export function useFilteredData({
       : accounts.filter(acc => acc.type === 'credit');
 
     return accountsToCheck.reduce(
-      (sum, account) => sum + CreditCardCalculator.calculateUsedCredit(account, transactions),
+      (sum, account) => sum + getCreditCardUsedCredit(account, transactions),
       0
     );
   }, [accounts, transactions, filterAccount]);

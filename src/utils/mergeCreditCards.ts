@@ -7,7 +7,7 @@
  */
 import type { Account, Transaction } from '../types/finance';
 import { getAccountReferenceIds } from './accountTransactions';
-import { CreditCardCalculator } from './balanceCalculator';
+import { getCreditCardUsedCredit } from './accountStrategies';
 
 export interface MergeCreditCardsInput {
   accounts: Account[];
@@ -73,7 +73,7 @@ export function mergeCreditCards({
       sum +
       (card.usedCredit != null
         ? Math.max(0, card.usedCredit)
-        : CreditCardCalculator.calculateUsedCredit(card, transactions)),
+        : getCreditCardUsedCredit(card, transactions)),
     0
   );
 

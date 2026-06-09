@@ -7,7 +7,7 @@ import { getGeminiClient, isAiEnabled } from './geminiClient';
 import type { Transaction, Account, Categories } from '../types/finance';
 import { formatCurrency } from '../utils/formatters';
 import { BalanceCalculator } from '../utils/balanceCalculator';
-import { CreditCardCalculator } from '../utils/balanceCalculator';
+import { getCreditCardUsedCredit } from '../utils/accountStrategies';
 import { findAccountForTransaction } from '../utils/accountTransactions';
 import { logger } from '../utils/logger';
 import { SPECIAL_CATEGORIES } from '../config/constants';
@@ -173,7 +173,7 @@ export function buildFinancialContext(
     .map(a => {
       const balance = BalanceCalculator.calculateAccountBalance(a, transactions);
       if (a.type === 'credit') {
-        const used = CreditCardCalculator.calculateUsedCredit(a, transactions);
+        const used = getCreditCardUsedCredit(a, transactions);
         return `  - [ID:${a.id}] ${a.name} (Crédito): Usado ${formatCurrency(used)} de ${formatCurrency(a.creditLimit || 0)} (Disponible: ${formatCurrency(balance)})`;
       }
       const type = a.type === 'savings' ? 'Ahorro' : 'Efectivo';
@@ -189,7 +189,7 @@ export function buildFinancialContext(
   // Deuda total en TCs
   const totalCreditDebt = accounts
     .filter(a => a.type === 'credit')
-    .reduce((sum, a) => sum + CreditCardCalculator.calculateUsedCredit(a, transactions), 0);
+    .reduce((sum, a) => sum + getCreditCardUsedCredit(a, transactions), 0);
 
   // --- ÚLTIMAS 20 TRANSACCIONES (con IDs para acciones) ---
   const recentTx = realTransactions

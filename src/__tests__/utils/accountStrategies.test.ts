@@ -259,19 +259,25 @@ describe('CreditCardStrategy', () => {
 
   // ── #10: la VALIDACIÓN ignora el usedCredit persistido desactualizado ──
 
-  it('validación de gasto recalcula el cupo desde las transacciones, no del campo persistido obsoleto', () => {
-    // El campo persistido aún dice 5,000,000 (cupo lleno) porque el listener
-    // de Firestore va por detrás, pero las transacciones frescas muestran que
-    // la deuda ya se pagó (gasto + pago que se cancelan → deuda 0).
-    const acc = makeCredit({ usedCredit: 5_000_000 });
+  it('validación de gasto detecta deuda fresca del array aunque el persistido vaya por detrás (recompute > persistido)', () => {
+    // El campo persistido aún dice 0 (cupo lleno) porque el listener de Firestore
+    // va por detrás, pero las transacciones frescas muestran un gasto reciente que
+    // ya consumió casi todo el cupo. F4-tc-expense-max: usedCredit = max(persistido,
+    // recompute), así que el recompute fresco (mayor) gobierna y se evita aceptar
+    // de más. Con SOLO el persistido obsoleto daría cupo completo y aceptaría un
+    // gasto que en realidad excede el cupo.
+    const acc = makeCredit({ creditLimit: 5_000_000, usedCredit: 0 });
     const txs = [
-      makeTx({ accountId: acc.id!, type: 'expense', amount: 5_000_000 }),
-      makeTx({ id: 'tx-pay', accountId: acc.id!, type: 'income', amount: 5_000_000 }),
+      makeTx({ accountId: acc.id!, type: 'expense', amount: 4_800_000 }),
     ];
-    // Con el persistido obsoleto daría "Cupo insuficiente"; con recompute hay
-    // cupo completo disponible y el gasto se acepta.
-    const result = strategy.validateTransaction(acc, 4_000_000, txs, 'expense');
-    expect(result.valid).toBe(true);
+    // recompute = 4,800,000 > persistido = 0 → cupo disponible real = 200,000.
+    // Un gasto de 1,000,000 debe rechazarse.
+    const overLimit = strategy.validateTransaction(acc, 1_000_000, txs, 'expense');
+    expect(overLimit.valid).toBe(false);
+    expect(overLimit.error).toContain('Cupo insuficiente');
+    // Un gasto que cabe en el cupo real (200,000) sigue siendo válido.
+    const withinLimit = strategy.validateTransaction(acc, 150_000, txs, 'expense');
+    expect(withinLimit.valid).toBe(true);
   });
 
   it('validación de pago recalcula la deuda desde las transacciones frescas', () => {
@@ -312,6 +318,46 @@ describe('CreditCardStrategy', () => {
     const acc = makeCredit();
     const txs = [makeTx({ accountId: acc.id!, type: 'expense', amount: 750_000 })];
     expect(strategy.getUsedCredit(acc, txs)).toBe(750_000);
+  });
+
+  // ── F4-tc-expense-max: la VALIDACIÓN de gasto usa Math.max(persistido, recompute) ──
+  // Regresión: antes la rama de gasto usaba SOLO el recompute desde el array de
+  // transacciones. Con historial paginado el array no trae todas las compras, así
+  // que el recompute SUBESTIMA la deuda y el validador SOBREESTIMA el cupo disponible,
+  // aceptando gastos por encima del límite real. El fix toma el máximo entre el
+  // usedCredit persistido (deuda completa) y el recompute fresco.
+
+  it('rechaza un gasto sobre el cupo cuando el persistido es alto pero el array de transacciones está vacío (paginación)', () => {
+    // Deuda real (persistida) = 4,800,000 sobre un límite de 5,000,000 → cupo real = 200,000.
+    // El array llega vacío (paginación: ninguna de las compras viejas está en memoria),
+    // por lo que el recompute daría usedCredit=0 y "cupo disponible"=5,000,000.
+    const acc = makeCredit({ creditLimit: 5_000_000, usedCredit: 4_800_000 });
+    // Un gasto de 1,000,000 excede el cupo real (200,000).
+    // Código viejo (solo recompute=0): availableCredit=5,000,000 → ACEPTABA (bug).
+    // Código nuevo (max(4,800,000, 0)=4,800,000): availableCredit=200,000 → RECHAZA.
+    const result = strategy.validateTransaction(acc, 1_000_000, [], 'expense');
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('Cupo insuficiente');
+  });
+
+  it('rechaza un gasto sobre el cupo cuando el persistido es alto pero el array trae pocas transacciones (paginación parcial)', () => {
+    // Persistido = 4,500,000 (deuda completa). El array solo trae una compra de 100,000
+    // (el resto del historial está paginado fuera de memoria).
+    const acc = makeCredit({ creditLimit: 5_000_000, usedCredit: 4_500_000 });
+    const txs = [makeTx({ accountId: acc.id!, type: 'expense', amount: 100_000 })];
+    // recompute = 100,000 → viejo: available=4,900,000 → ACEPTABA un gasto de 800,000 (bug).
+    // nuevo: max(4,500,000, 100,000)=4,500,000 → available=500,000 → 800,000 RECHAZA.
+    const result = strategy.validateTransaction(acc, 800_000, txs, 'expense');
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('Cupo insuficiente');
+  });
+
+  it('acepta un gasto que SÍ cabe en el cupo real (dentro del límite tras descontar el persistido)', () => {
+    // Mismo escenario de paginación, pero el gasto cabe en el cupo real (200,000).
+    const acc = makeCredit({ creditLimit: 5_000_000, usedCredit: 4_800_000 });
+    // Gasto de 150,000 ≤ cupo disponible real (200,000) → debe seguir siendo válido.
+    const result = strategy.validateTransaction(acc, 150_000, [], 'expense');
+    expect(result.valid).toBe(true);
   });
 });
 

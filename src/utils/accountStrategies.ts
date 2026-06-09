@@ -245,7 +245,15 @@ export class CreditCardStrategy implements AccountBalanceStrategy {
     // REGLA 1: Validar GASTOS - verificar cupo disponible
     if (transactionType === 'expense') {
       const creditLimit = account.creditLimit || 0;
-      const availableCredit = Math.max(0, roundMoney(creditLimit - usedCreditForValidation));
+      // Tomar el máximo entre el persistido (completo) y el recompute (fresco), igual
+      // que la rama de PAGOS: en una TC con historial largo paginado el recompute solo
+      // ve una fracción de las transacciones y SUBESTIMA la deuda → sin esto, el
+      // validador sobreestimaba el cupo disponible y ACEPTABA un gasto sobre el límite.
+      // El persistido cubre el subconteo por paginación; el recompute cubre un add
+      // reciente aún no reflejado en el persistido. Audit F-tc-cupo.
+      const persisted = account.usedCredit != null ? Math.max(0, account.usedCredit) : 0;
+      const usedCredit = Math.max(persisted, usedCreditForValidation);
+      const availableCredit = Math.max(0, roundMoney(creditLimit - usedCredit));
 
       if (amount > availableCredit) {
         return {

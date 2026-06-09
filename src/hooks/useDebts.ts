@@ -194,6 +194,12 @@ export function useDebts(
     const debt = debts.find(d => d.id === debtId);
     if (!debt) return;
 
+    // Invariante de dominio: un pago debe ser un monto positivo finito. Sin este
+    // guard, un monto <= 0 (p. ej. desde una acción de IA o llamada programática; la
+    // UI ya lo bloquea) hacía effectiveAmount negativo → AUMENTABA la deuda sin una
+    // transacción compensatoria. Audit F-debt-neg.
+    if (!Number.isFinite(amount) || amount <= 0) return;
+
     // #24: Clampar el monto efectivo a lo que la deuda justifica ANTES de mover
     // dinero. Sobrepagar (amount > remainingAmount) antes solo clampaba la deuda a 0
     // con Math.max, pero posteaba el `amount` crudo a la cuenta, moviendo más dinero
@@ -241,6 +247,13 @@ export function useDebts(
 
     if (debt.isSettled) {
       throw new Error('No puedes modificar un préstamo ya saldado');
+    }
+
+    // Invariante de dominio: la magnitud a sumar/restar debe ser positiva finita. Sin
+    // este guard, un `add` con monto negativo reducía la deuda (y un `subtract` con
+    // negativo la aumentaba) sin transacción compensatoria. Audit F-debt-neg.
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error('El monto debe ser mayor a cero');
     }
 
     let newOriginalAmount: number;

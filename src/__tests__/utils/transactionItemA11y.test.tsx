@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import type { Transaction, Account, Categories } from '../../types/finance';
 
@@ -130,5 +130,58 @@ describe('TransactionItem a11y / máscara', () => {
     const { container } = renderItem();
     const wrapper = container.querySelector('.sm\\:group-hover\\:opacity-100');
     expect(wrapper?.className).toContain('sm:group-focus-within:opacity-100');
+  });
+
+  // R-memo-inline: los callbacks reciben la transacción/id (refs estables del
+  // padre) en vez de closures de cero-args creadas por fila. Este contrato es
+  // lo que permite a React.memo evitar re-render. Bloquea la regresión.
+  it('los callbacks reciben la transacción/id (contrato para React.memo estable)', () => {
+    const onEdit = vi.fn();
+    const onDelete = vi.fn();
+    const onToggleExpand = vi.fn();
+    render(
+      <TransactionItem
+        transaction={baseTx}
+        account={account}
+        isEditing={false}
+        editForm={{ description: '', amount: '', date: '', category: '' }}
+        categories={categories}
+        formatCurrency={(n) => `$${n}`}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        onSave={noop}
+        onCancel={noop}
+        onEditFormChange={noop}
+        onToggleExpand={onToggleExpand}
+      />
+    );
+
+    fireEvent.click(screen.getByLabelText('Editar transaccion'));
+    expect(onEdit).toHaveBeenCalledWith(baseTx);
+    fireEvent.click(screen.getByLabelText('Eliminar transaccion'));
+    expect(onDelete).toHaveBeenCalledWith(baseTx);
+    fireEvent.click(screen.getByRole('button', { name: 'Expandir detalle' }));
+    expect(onToggleExpand).toHaveBeenCalledWith(baseTx.id);
+  });
+
+  it('onSave recibe el id de la transacción en modo edición', () => {
+    const onSave = vi.fn();
+    render(
+      <TransactionItem
+        transaction={baseTx}
+        account={account}
+        isEditing
+        editForm={{ description: 'x', amount: '1000', date: '2026-06-01', category: 'Comida' }}
+        categories={categories}
+        formatCurrency={(n) => `$${n}`}
+        onEdit={noop}
+        onDelete={noop}
+        onSave={onSave}
+        onCancel={noop}
+        onEditFormChange={noop}
+      />
+    );
+    fireEvent.click(screen.getByText('Guardar'));
+    expect(onSave).toHaveBeenCalledWith(baseTx.id);
   });
 });

@@ -22,10 +22,13 @@ interface TransactionItemProps {
   recurringPaymentName?: string | null;
   formatCurrency: (amount: number) => string;
   isExpanded?: boolean;
-  onToggleExpand?: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-  onSave: () => void;
+  // Callbacks reciben la transacción/id y deben ser referencias estables
+  // (useCallback). Antes eran closures de cero-args creadas por fila en cada
+  // render del padre, lo que anulaba React.memo (R-memo-inline).
+  onToggleExpand?: (id: string) => void;
+  onEdit: (transaction: Transaction) => void;
+  onDelete: (transaction: Transaction) => void;
+  onSave: (id: string) => void;
   onCancel: () => void;
   onEditFormChange: (form: { description: string; amount: string; date: string; category: string }) => void;
 }
@@ -157,7 +160,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
             </div>
           </div>
           <div className="flex gap-2 justify-end">
-            <button onClick={onSave} className="btn-submit">
+            <button onClick={() => onSave(transaction.id!)} className="btn-submit">
               <Check size={16} />
               Guardar
             </button>
@@ -179,7 +182,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
   return (
     <div
       className={`border rounded-xl p-3.5 sm:p-4 transition-all bg-white dark:bg-gray-800 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md shadow-sm group ${isExpanded ? 'border-purple-300 dark:border-purple-600' : 'border-gray-200 dark:border-gray-700'} ${onToggleExpand ? 'cursor-pointer' : ''}`}
-      onClick={onToggleExpand}
+      onClick={onToggleExpand ? () => onToggleExpand(transaction.id!) : undefined}
     >
       <div className="flex items-start gap-3">
         {/* Icon */}
@@ -250,7 +253,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
             <div className="flex items-center gap-0.5 shrink-0">
               <div className="flex gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
                 <button
-                  onClick={(e) => { e.stopPropagation(); onEdit(); }}
+                  onClick={(e) => { e.stopPropagation(); onEdit(transaction); }}
                   className="flex items-center justify-center p-1.5 min-h-[44px] min-w-[44px] text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
                   title="Editar"
                   aria-label="Editar transaccion"
@@ -258,7 +261,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
                   <Edit2 size={15} />
                 </button>
                 <button
-                  onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                  onClick={(e) => { e.stopPropagation(); onDelete(transaction); }}
                   className="flex items-center justify-center p-1.5 min-h-[44px] min-w-[44px] text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
                   title="Eliminar"
                   aria-label="Eliminar transaccion"
@@ -269,7 +272,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
               {onToggleExpand && (
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); onToggleExpand(); }}
+                  onClick={(e) => { e.stopPropagation(); onToggleExpand(transaction.id!); }}
                   aria-expanded={isExpanded}
                   aria-label={isExpanded ? 'Contraer detalle' : 'Expandir detalle'}
                   className="flex items-center justify-center p-1.5 min-h-[44px] min-w-[44px] text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
@@ -366,7 +369,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
 
           <div className="flex justify-end">
             <button
-              onClick={(e) => { e.stopPropagation(); onEdit(); }}
+              onClick={(e) => { e.stopPropagation(); onEdit(transaction); }}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors"
             >
               <Edit2 size={14} />
@@ -377,6 +380,35 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
       )}
     </div>
   );
-});
+}, areEqual);
+
+/**
+ * Comparador de memo (R-memo-inline). Las filas NO editándose no usan `editForm`
+ * ni `onSave`, así que esas props no deben provocar re-render (el usuario teclea
+ * en una fila → `editForm` cambia en cada pulsación, lo que antes re-renderizaba
+ * las ~30 filas visibles). Solo la fila en edición observa `editForm`/`onSave`.
+ * El resto de callbacks deben ser referencias estables (useCallback) en el padre.
+ */
+function areEqual(prev: TransactionItemProps, next: TransactionItemProps): boolean {
+  if (prev.isEditing !== next.isEditing) return false;
+  if (next.isEditing) {
+    if (prev.editForm !== next.editForm) return false;
+    if (prev.onSave !== next.onSave) return false;
+  }
+  return (
+    prev.transaction === next.transaction &&
+    prev.account === next.account &&
+    prev.destinationAccount === next.destinationAccount &&
+    prev.categories === next.categories &&
+    prev.recurringPaymentName === next.recurringPaymentName &&
+    prev.formatCurrency === next.formatCurrency &&
+    prev.isExpanded === next.isExpanded &&
+    prev.onToggleExpand === next.onToggleExpand &&
+    prev.onEdit === next.onEdit &&
+    prev.onDelete === next.onDelete &&
+    prev.onCancel === next.onCancel &&
+    prev.onEditFormChange === next.onEditFormChange
+  );
+}
 
 TransactionItem.displayName = 'TransactionItem';

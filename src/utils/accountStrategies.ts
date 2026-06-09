@@ -236,11 +236,25 @@ export class CreditCardStrategy implements AccountBalanceStrategy {
     transactions: Transaction[],
     transactionType?: 'income' | 'expense' | 'transfer'
   ): { valid: boolean; error?: string } {
-    // RUTA DE VALIDACIÓN: recalcular el cupo usado desde el array de transacciones
+    // RUTA DE VALIDACIÓN: el cupo usado se recalcula desde el array de transacciones
     // más fresco (no del campo persistido, que va por detrás del listener tras un
     // add/delete reciente y produce falsos rechazos/aceptaciones). Ver
     // recomputeUsedCreditFromTransactions para el trade-off de paginación.
-    const usedCreditForValidation = this.recomputeUsedCreditFromTransactions(account, transactions);
+    //
+    // PERF (R-recompute-submit): el recompute es O(N) sobre TODAS las transacciones.
+    // Se difiere detrás de un getter memoizado y solo se invoca cuando el campo
+    // persistido por sí solo NO basta para decidir el resultado. La semántica
+    // Math.max(persisted, recompute) de F-tc-cupo se preserva INTACTA en todo camino
+    // donde el recompute puede cambiar la decisión; los short-circuits de abajo solo
+    // omiten el recompute en casos donde es DEMOSTRABLE que no altera el outcome.
+    const persisted = account.usedCredit != null ? Math.max(0, account.usedCredit) : 0;
+    let cachedRecompute: number | undefined;
+    const recompute = (): number => {
+      if (cachedRecompute === undefined) {
+        cachedRecompute = this.recomputeUsedCreditFromTransactions(account, transactions);
+      }
+      return cachedRecompute;
+    };
 
     // REGLA 1: Validar GASTOS - verificar cupo disponible
     if (transactionType === 'expense') {
@@ -251,8 +265,21 @@ export class CreditCardStrategy implements AccountBalanceStrategy {
       // validador sobreestimaba el cupo disponible y ACEPTABA un gasto sobre el límite.
       // El persistido cubre el subconteo por paginación; el recompute cubre un add
       // reciente aún no reflejado en el persistido. Audit F-tc-cupo.
-      const persisted = account.usedCredit != null ? Math.max(0, account.usedCredit) : 0;
-      const usedCredit = Math.max(persisted, usedCreditForValidation);
+      //
+      // SHORT-CIRCUIT seguro: como recompute >= 0 y persisted >= 0, siempre
+      // max(persisted, recompute) >= persisted, luego el disponible con el max NUNCA
+      // es mayor que el disponible con solo el persistido. Si con SOLO el persistido
+      // ya se rechaza, el recompute solo puede bajar más el disponible → el rechazo
+      // se mantiene SIEMPRE. Rechazamos sin recomputar (outcome idéntico). Solo si el
+      // persistido aceptaría hace falta el recompute fresco (caso #10: add reciente).
+      const availableFromPersisted = Math.max(0, roundMoney(creditLimit - persisted));
+      if (amount > availableFromPersisted) {
+        return {
+          valid: false,
+          error: `Cupo insuficiente. Disponible: $${availableFromPersisted.toLocaleString('es-CO')}`
+        };
+      }
+      const usedCredit = Math.max(persisted, recompute());
       const availableCredit = Math.max(0, roundMoney(creditLimit - usedCredit));
 
       if (amount > availableCredit) {
@@ -274,8 +301,16 @@ export class CreditCardStrategy implements AccountBalanceStrategy {
       // caemos al recompute. Tomamos el máximo para no subestimar la deuda en
       // ningún caso (un add reciente aún no reflejado en el persistido se cubre con
       // el recompute fresco; el subconteo por paginación se cubre con el persistido).
-      const persisted = account.usedCredit != null ? Math.max(0, account.usedCredit) : 0;
-      const usedCredit = Math.max(persisted, usedCreditForValidation);
+      // SHORT-CIRCUIT seguro: usedCredit = max(persisted, recompute) >= persisted.
+      // Si persisted > 0 y persisted >= amount, entonces usedCredit >= persisted >=
+      // amount > 0 → el pago se ACEPTA sin importar el recompute. Aceptamos sin
+      // recomputar (outcome idéntico). En cualquier otro caso (persisted 0/bajo o
+      // persisted < amount) sí hace falta el recompute fresco: cubre la deuda recién
+      // creada en memoria que el persistido stale aún no refleja.
+      if (persisted > 0 && persisted >= amount) {
+        return { valid: true };
+      }
+      const usedCredit = Math.max(persisted, recompute());
 
       if (usedCredit === 0) {
         return {

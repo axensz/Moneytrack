@@ -302,6 +302,37 @@ describe('CreditCardStrategy', () => {
     expect(strategy.getUsedCredit(acc, txs)).toBe(2_000_000);
   });
 
+  // ── R-recompute-submit: el recompute O(N) se difiere; los short-circuits no
+  //    deben cambiar ningún outcome ni debilitar F-tc-cupo. ──
+
+  it('R-recompute-submit: gasto rechazado por persistido alto da el mismo resultado', () => {
+    // persisted=4,800,000, limit=5,000,000 → disponible persisted-only=200,000.
+    // El array trae una compra extra (recompute<persisted). El short-circuit de
+    // rechazo aplica y el outcome es el mismo que con max(persisted,recompute).
+    const acc = makeCredit({ creditLimit: 5_000_000, usedCredit: 4_800_000 });
+    const txs = [makeTx({ accountId: acc.id!, type: 'expense', amount: 100_000 })];
+    const result = strategy.validateTransaction(acc, 1_000_000, txs, 'expense');
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('Cupo insuficiente');
+  });
+
+  it('R-recompute-submit: pago aceptado por persistido suficiente (sin recompute)', () => {
+    // persisted=2,000,000 deuda; pagar 1,500,000 (<=persisted) se acepta aunque el
+    // array esté vacío (paginación). max(persisted,recompute) >= persisted >= amount.
+    const acc = makeCredit({ usedCredit: 2_000_000 });
+    const result = strategy.validateTransaction(acc, 1_500_000, [], 'income');
+    expect(result.valid).toBe(true);
+  });
+
+  it('R-recompute-submit: pago con persisted>0 pero menor al monto recurre al recompute', () => {
+    // persisted=300,000 < amount=500,000 → no aplica short-circuit; el array trae
+    // deuda fresca de 600,000 → max=600,000 ≥ 500,000 → acepta.
+    const acc = makeCredit({ usedCredit: 300_000 });
+    const txs = [makeTx({ accountId: acc.id!, type: 'expense', amount: 600_000 })];
+    const result = strategy.validateTransaction(acc, 500_000, txs, 'income');
+    expect(result.valid).toBe(true);
+  });
+
   // ── #21: las sumas de balance redondean residuos IEEE-754 ──
 
   it('redondea el cupo usado recalculado a centavos (sin residuos float)', () => {

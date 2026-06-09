@@ -202,12 +202,14 @@ export function validateInterestConfig(
     errors.push('La tasa de interés debe estar entre 0% y 200%');
   }
 
-  if (installments < 1 || installments > 60) {
-    errors.push('El número de cuotas debe estar entre 1 y 60');
+  if (installments < 1 || installments > 36) {
+    errors.push('El número de cuotas debe estar entre 1 y 36');
   }
 
-  // Validar cuotas comunes
-  const validInstallments = [1, 2, 3, 6, 9, 12, 18, 24, 36, 48, 60];
+  // Validar cuotas comunes. El máximo (36) lo imponen firestore.rules
+  // (hasValidInstallments) y la UI (INSTALLMENT_OPTIONS); mantener la lista
+  // alineada evita validación semi-muerta para 48/60 que el sistema rechaza.
+  const validInstallments = [1, 2, 3, 6, 9, 12, 18, 24, 36];
   if (!validInstallments.includes(installments)) {
     errors.push(
       `Número de cuotas no estándar. Valores comunes: ${validInstallments.join(', ')}`

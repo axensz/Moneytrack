@@ -61,20 +61,6 @@ export function useCreditCardInterests(
         // Si no tiene intereses registrados, no incluir
         if (cardTransactions.length === 0) return null;
 
-        // Filtrar por período
-        const filterByPeriod = (txs: Transaction[], filterFn: (date: Date) => boolean) =>
-          txs.filter(t => filterFn(new Date(t.date)));
-
-        const monthlyTransactions = filterByPeriod(
-          cardTransactions,
-          date => date.getMonth() === currentMonth && date.getFullYear() === currentYear
-        );
-
-        const yearlyTransactions = filterByPeriod(
-          cardTransactions,
-          date => date.getFullYear() === currentYear
-        );
-
         // Calcular métricas
         const sumInterests = (txs: Transaction[]) =>
           txs.reduce((sum, t) => sum + (t.totalInterestAmount || 0), 0);

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { LogIn, LogOut, User as UserIcon, Settings, HelpCircle, Tag, Bell, Sparkles } from 'lucide-react';
 import { ThemeToggle } from '../theme/ThemeToggle';
 import { NotificationBell, NotificationCenter } from '../notifications/NotificationCenter';
@@ -41,7 +41,48 @@ export const Header: React.FC<HeaderProps> = ({
   aiAuthPending = false,
 }) => {
   const settingsMenuRef = useRef<HTMLDivElement>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
+
+  // UI-header-menu: navegación por teclado del menú (role=menu sin teclado antes).
+  // Al abrir, enfocar el primer ítem; flechas mueven el foco; Escape cierra y
+  // devuelve el foco al botón disparador.
+  useEffect(() => {
+    if (!showSettingsMenu) return;
+    const first = settingsMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]');
+    first?.focus();
+  }, [showSettingsMenu]);
+
+  const handleMenuKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(
+      settingsMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []
+    );
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        items[(current + 1 + items.length) % items.length]?.focus();
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        items[(current - 1 + items.length) % items.length]?.focus();
+        break;
+      case 'Home':
+        e.preventDefault();
+        items[0]?.focus();
+        break;
+      case 'End':
+        e.preventDefault();
+        items[items.length - 1]?.focus();
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setShowSettingsMenu(false);
+        settingsButtonRef.current?.focus();
+        break;
+    }
+  }, [setShowSettingsMenu]);
 
   // Cerrar menú de configuración al hacer clic fuera
   useEffect(() => {
@@ -164,6 +205,7 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Menú de Configuración */}
             <div className="relative" ref={settingsMenuRef}>
               <button
+                ref={settingsButtonRef}
                 onClick={() => setShowSettingsMenu(!showSettingsMenu)}
                 className="relative p-2 sm:p-2.5 text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 active:bg-gray-100 dark:active:bg-gray-800 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
                 aria-label={
@@ -191,6 +233,7 @@ export const Header: React.FC<HeaderProps> = ({
                   className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50 animate-in fade-in zoom-in duration-200"
                   role="menu"
                   aria-label="Opciones de configuración"
+                  onKeyDown={handleMenuKeyDown}
                 >
                   <button
                     onClick={() => {

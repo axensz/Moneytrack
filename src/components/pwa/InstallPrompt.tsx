@@ -89,7 +89,7 @@ export function InstallPrompt({
 
     if (variant === 'banner') {
         return (
-            <div className="fixed bottom-0 left-0 right-0 z-50 bg-gradient-to-r from-purple-600 to-purple-700 text-white p-4 shadow-lg md:hidden">
+            <div className="fixed bottom-0 left-0 right-0 z-50 bg-gradient-to-r from-purple-600 to-purple-700 dark:from-purple-700 dark:to-purple-800 text-white p-4 shadow-lg md:hidden">
                 <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3 flex-1">
                         <Download className="w-6 h-6 flex-shrink-0" />
@@ -103,13 +103,13 @@ export function InstallPrompt({
                     <div className="flex items-center gap-2">
                         <button
                             onClick={handleInstallClick}
-                            className="px-4 py-2 bg-white text-purple-600 rounded-lg text-sm font-medium hover:bg-purple-50 transition-colors"
+                            className="px-4 py-2 bg-white text-purple-600 dark:bg-gray-100 dark:text-purple-700 rounded-lg text-sm font-medium hover:bg-purple-50 dark:hover:bg-white transition-colors"
                         >
                             Instalar
                         </button>
                         <button
                             onClick={handleDismiss}
-                            className="p-2 hover:bg-purple-600 rounded-lg transition-colors"
+                            className="p-2 hover:bg-purple-600 dark:hover:bg-purple-900/50 rounded-lg transition-colors"
                             aria-label="Cerrar"
                         >
                             <X className="w-5 h-5" />
@@ -124,7 +124,7 @@ export function InstallPrompt({
     return (
         <button
             onClick={handleInstallClick}
-            className="hidden md:flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
+            className="hidden md:flex items-center gap-2 px-4 py-2 bg-purple-600 dark:bg-purple-700 text-white rounded-lg text-sm font-medium hover:bg-purple-700 dark:hover:bg-purple-600 transition-colors"
         >
             <Download className="w-4 h-4" />
             Instalar App

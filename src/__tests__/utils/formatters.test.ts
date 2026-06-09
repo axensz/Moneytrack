@@ -95,6 +95,23 @@ describe('formatRelativeTime', () => {
   it('maneja fechas futuras', () => {
     expect(formatRelativeTime(new Date(2026, 5, 16))).toBe('mañana');
   });
+
+  // F-fecha-relativa: meses/años por calendario real, no /30 ni /365.
+  it('usa meses de calendario, no días/30 (1 mes exacto = "hace 1 mes")', () => {
+    // 15 may 2026 → 15 jun 2026: 31 días. Con /30 daba "hace 1 mes" por suerte,
+    // pero 14 may (32 días) con /30 seguía "1 mes"; aquí validamos el límite real.
+    expect(formatRelativeTime(new Date(2026, 4, 15))).toBe('hace 1 mes');
+  });
+
+  it('no salta a meses antes de cumplir el mes calendario', () => {
+    // 20 may 2026 → 15 jun 2026: 26 días, < 1 mes calendario (día 15 < 20) → días.
+    expect(formatRelativeTime(new Date(2026, 4, 20))).toBe('hace 26 días');
+  });
+
+  it('cuenta años por calendario (11 meses no es 1 año)', () => {
+    // 20 jul 2025 → 15 jun 2026: 10 meses calendario (día 15<20 → 10), no 1 año.
+    expect(formatRelativeTime(new Date(2025, 6, 20))).toBe('hace 10 meses');
+  });
 });
 
 describe('formatDate', () => {

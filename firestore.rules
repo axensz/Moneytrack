@@ -310,16 +310,32 @@ service cloud.firestore {
         allow write: if isOwner(userId);
       }
 
-      // Ajustes del usuario (incluye la API key de Gemini en modo BYOK y el
-      // consentimiento de IA). Solo el dueño lee/escribe; geminiApiKey, si está,
-      // debe ser string; aiConsent, si está, debe ser bool.
+      // Ajustes del usuario. Validados ESTRICTAMENTE por documento; cualquier otro
+      // settingId o campo desconocido se rechaza (default-deny). Audit S-settings-rule.
+      // (Antes /settings/{settingId} aceptaba campos arbitrarios sin validar, p. ej.
+      // un planConfig.declaredIncome NaN/negativo/enorme.)
       match /settings/{settingId} {
         allow read: if isOwner(userId);
-        allow write: if isOwner(userId)
+        // El dueño puede borrar cualquiera de sus docs de ajustes (clearConfig).
+        allow delete: if isOwner(userId);
+
+        // settings/ai — clave BYOK de Gemini + consentimiento de IA (escritura con merge).
+        allow create, update: if isOwner(userId)
+          && settingId == 'ai'
+          && request.resource.data.keys().hasOnly(['geminiApiKey', 'aiConsent'])
           && (!('geminiApiKey' in request.resource.data.keys())
-              || request.resource.data.geminiApiKey is string)
+              || (request.resource.data.geminiApiKey is string
+                  && request.resource.data.geminiApiKey.size() <= 200))
           && (!('aiConsent' in request.resource.data.keys())
               || request.resource.data.aiConsent is bool);
+
+        // settings/planConfig — configuración del plan financiero.
+        allow create, update: if isOwner(userId)
+          && settingId == 'planConfig'
+          && request.resource.data.keys().hasOnly(['startMonth', 'declaredIncome'])
+          && request.resource.data.startMonth is string
+          && request.resource.data.startMonth.matches('[0-9]{4}-[0-9]{2}')
+          && isValidAmount(request.resource.data.declaredIncome);
       }
     }
 

@@ -52,6 +52,38 @@ describe('errorReporter (S8)', () => {
     expect(calls[0].args[0]).toBe('hello');
   });
 
+  it('redacts sensitive context fields before forwarding to the reporter (S-error-redact)', () => {
+    const { reporter, calls } = makeReporter();
+    configureErrorReporter(reporter);
+
+    captureError(new Error('boom'), {
+      accountId: 'acc-1',            // no sensible → se conserva
+      amount: 1_500_000,             // sensible → redacted
+      description: 'Pago secreto',   // sensible → redacted
+      geminiApiKey: 'AIza-supersecret',
+      nested: { declaredIncome: 9_000_000, type: 'expense' },
+    });
+
+    const ctx = calls[0].args[1] as Record<string, unknown>;
+    expect(ctx.accountId).toBe('acc-1');
+    expect(ctx.amount).toBe('[redacted]');
+    expect(ctx.description).toBe('[redacted]');
+    expect(ctx.geminiApiKey).toBe('[redacted]');
+    expect((ctx.nested as Record<string, unknown>).declaredIncome).toBe('[redacted]');
+    expect((ctx.nested as Record<string, unknown>).type).toBe('expense');
+  });
+
+  it('captureMessage also redacts sensitive context', () => {
+    const { reporter, calls } = makeReporter();
+    configureErrorReporter(reporter);
+
+    captureMessage('plan guardado', { declaredIncome: 5_000_000, startMonth: '2026-06' });
+
+    const ctx = calls[0].args[1] as Record<string, unknown>;
+    expect(ctx.declaredIncome).toBe('[redacted]');
+    expect(ctx.startMonth).toBe('2026-06');
+  });
+
   it('swallows errors thrown by the reporter itself', () => {
     configureErrorReporter({
       captureError: () => { throw new Error('reporter crashed'); },

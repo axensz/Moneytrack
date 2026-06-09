@@ -41,6 +41,7 @@ export const AccountsView: React.FC = () => {
     setDefaultAccount,
     getAccountBalance,
     getTransactionCountForAccount,
+    balancesReady,
   } = useAccountDomain();
   const { transactions, addTransaction } = useTransactionDomain();
   const { recurringPayments } = useRecurringDomain();
@@ -107,6 +108,7 @@ export const AccountsView: React.FC = () => {
     getAccountBalance,
     getCreditUsed,
     formatCurrency,
+    balancesReady,
   });
 
   // Estados locales
@@ -466,6 +468,7 @@ export const AccountsView: React.FC = () => {
               <AccountCard
                 account={account}
                 balance={balance}
+                balanceSettling={!balancesReady}
                 creditUsed={creditUsed}
                 nextCutoff={nextCutoff}
                 nextPayment={nextPayment}
@@ -515,6 +518,7 @@ export const AccountsView: React.FC = () => {
                       key={card.id}
                       account={card}
                       balance={getAccountBalance(card.id!)}
+                      balanceSettling={!balancesReady}
                       creditUsed={getCreditUsed(card.id!)}
                       nextCutoff={getNextCutoffDate(card)}
                       nextPayment={getNextPaymentDate(card)}

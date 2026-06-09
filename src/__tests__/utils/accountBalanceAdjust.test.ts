@@ -8,7 +8,7 @@ const savings: Account = {
   id: 'sav', name: 'Ahorros', type: 'savings', isDefault: true, initialBalance: 0,
 };
 
-function setup(currentBalance: number) {
+function setup(currentBalance: number, balancesReady = true) {
   const addTransaction = vi.fn(async (_tx: Omit<Transaction, 'id'>) => {});
   const updateAccount = vi.fn(async () => {});
   const hook = renderHook(() =>
@@ -19,6 +19,7 @@ function setup(currentBalance: number) {
       getAccountBalance: () => currentBalance,
       getCreditUsed: () => 0,
       formatCurrency: (n) => `$${n}`,
+      balancesReady,
     })
   );
   return { ...hook, addTransaction, updateAccount };
@@ -47,6 +48,27 @@ describe('useAccountForm — ajuste de saldo (repro del reporte)', () => {
     const tx = addTransaction.mock.calls[0]?.[0];
     expect(tx?.type).toBe('expense');
     expect(tx?.amount).toBeCloseTo(39999.22, 2);
+  });
+
+  it('con saldos NO asentados (balancesReady=false) el ajuste se BLOQUEA: no escribe nada', async () => {
+    const { result, addTransaction, updateAccount } = setup(603088.11, false);
+    act(() => result.current.openEditForm(savings));
+    act(() => result.current.setBalanceAdjustment('563088,89'));
+    await act(async () => { await result.current.handleSubmit(); });
+
+    // Ni transacción de ajuste ni update de cuenta: el delta saldría de un
+    // saldo de ventana transitorio y persistiría un ajuste mal dimensionado.
+    expect(addTransaction).not.toHaveBeenCalled();
+    expect(updateAccount).not.toHaveBeenCalled();
+  });
+
+  it('con saldos NO asentados pero SIN tocar el campo de ajuste, editar nombre sí funciona', async () => {
+    const { result, addTransaction, updateAccount } = setup(603088.11, false);
+    act(() => result.current.openEditForm(savings));
+    await act(async () => { await result.current.handleSubmit(); });
+
+    expect(updateAccount).toHaveBeenCalledTimes(1);
+    expect(addTransaction).not.toHaveBeenCalled();
   });
 
   it('input con MILES "563.088" se interpreta como 563088 (no decimal)', async () => {

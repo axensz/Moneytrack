@@ -22,6 +22,7 @@ import React, { createContext, useContext, useMemo, useCallback, useRef, useLayo
 import { createStore, useStoreSelector, type ExternalStore } from './financeStore';
 import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../config/constants';
 import { useTransactions } from '../hooks/useTransactions';
+import { useBalanceTransactions } from '../hooks/useBalanceTransactions';
 import { useAccounts } from '../hooks/useAccounts';
 import type { MergeCreditCardsParams } from '../hooks/useAccounts';
 import { useRecurringPayments } from '../hooks/useRecurringPayments';
@@ -52,6 +53,18 @@ export interface RecurringStats {
 export interface FinanceContextValue {
   // ── Datos ──
   transactions: Transaction[];
+  /**
+   * Historial COMPLETO para cálculos de saldo (C-FIX paginación + saldos).
+   * `transactions` es la ventana paginada (500 recientes); cualquier consumidor
+   * que derive un SALDO debe usar este array (igual al live con <500 txs).
+   */
+  balanceTransactions: Transaction[];
+  /**
+   * false mientras el primer fetch del historial completo está en vuelo: los
+   * saldos derivados pueden venir de la ventana paginada (incorrectos). La UI
+   * debe mostrar "calculando" y bloquear el ajuste de saldo hasta que sea true.
+   */
+  balancesReady: boolean;
   accounts: Account[];
   categories: Categories;
   recurringPayments: RecurringPayment[];
@@ -184,7 +197,15 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     loading: transactionsLoading,
   } = useTransactions(userId);
 
-  // 2. Cuentas (depende de transactions + deleteTransaction)
+  // 1.5. Historial COMPLETO para cálculos de saldo (C-FIX paginación + saldos):
+  // los saldos de ahorro/efectivo se derivan de initialBalance + Σ transacciones,
+  // así que NO pueden calcularse sobre la ventana paginada de 500 (cada tx nueva
+  // expulsa a la más antigua y el saldo salta por el monto expulsado). Solo
+  // fetchea cuando la ventana está saturada; con <500 txs devuelve el array live.
+  const { transactions: balanceTransactions, ready: balancesReady } =
+    useBalanceTransactions(userId, transactions, hasMoreTransactions);
+
+  // 2. Cuentas (depende de balanceTransactions + deleteTransaction)
   const {
     accounts,
     addAccount,
@@ -197,7 +218,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     totalBalance,
     defaultAccount,
     loading: accountsLoading,
-  } = useAccounts(userId, transactions, deleteTransaction);
+  } = useAccounts(userId, balanceTransactions, deleteTransaction);
 
   // Migración one-time: calcula usedCredit para TC existentes sin el campo
   useCreditMigration(userId, accounts);
@@ -304,6 +325,8 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
   const value: FinanceContextValue = useMemo(() => ({
     // Datos
     transactions,
+    balanceTransactions,
+    balancesReady,
     accounts,
     categories,
     recurringPayments,
@@ -384,7 +407,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     // Utilidades
     formatCurrency,
   }), [
-    transactions, accounts, categories, recurringPayments, defaultAccount, totalBalance,
+    transactions, balanceTransactions, balancesReady, accounts, categories, recurringPayments, defaultAccount, totalBalance,
     transactionsLoading, accountsLoading,
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
     firestoreError, retryLoad,

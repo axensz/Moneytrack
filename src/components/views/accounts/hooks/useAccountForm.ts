@@ -23,6 +23,13 @@ interface UseAccountFormProps {
   getAccountBalance: (id: string) => number;
   getCreditUsed: (id: string) => number;
   formatCurrency: (amount: number) => string;
+  /**
+   * false mientras el saldo aún se deriva de la ventana paginada (fetch del
+   * historial completo en vuelo). En ese estado el ajuste de saldo se BLOQUEA:
+   * el delta se calcularía contra un saldo transitorio incorrecto y quedaría
+   * persistida una transacción de ajuste mal dimensionada. Por defecto true.
+   */
+  balancesReady?: boolean;
 }
 
 interface UseAccountFormReturn {
@@ -56,6 +63,7 @@ export function useAccountForm({
   getAccountBalance,
   getCreditUsed,
   formatCurrency,
+  balancesReady = true,
 }: UseAccountFormProps): UseAccountFormReturn {
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
@@ -124,6 +132,13 @@ export function useAccountForm({
         let adjustmentData: Omit<Transaction, 'id'> | null = null;
 
         if (balanceAdjustment.trim() !== '') {
+          // Mientras el historial completo no haya asentado, el saldo actual es
+          // transitorio (ventana paginada): un ajuste ahora persistiría un delta
+          // mal dimensionado. Bloquear y pedir reintento.
+          if (!balancesReady) {
+            showToast.error('Los saldos aún se están calculando. Intenta de nuevo en unos segundos.');
+            return;
+          }
           const cleanValue = balanceAdjustment.trim().replace(/\./g, '').replace(',', '.');
           const newBalance = parseFloat(cleanValue);
 
@@ -248,6 +263,7 @@ export function useAccountForm({
     newAccount,
     editingAccount,
     balanceAdjustment,
+    balancesReady,
     addAccount,
     updateAccount,
     addTransaction,

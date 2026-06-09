@@ -14,6 +14,12 @@ const ACCOUNT_TYPES = [
 interface AccountCardProps {
   account: Account;
   balance: number;
+  /**
+   * true mientras el saldo aún se deriva de la ventana paginada (fetch del
+   * historial completo en vuelo): muestra "Calculando…" en vez de un número
+   * transitorio incorrecto. No aplica a TC (usan usedCredit persistido).
+   */
+  balanceSettling?: boolean;
   creditUsed: number;
   nextCutoff: Date | null;
   nextPayment: Date | null;
@@ -49,6 +55,7 @@ interface AccountCardProps {
 export const AccountCard: React.FC<AccountCardProps> = memo(({
   account,
   balance,
+  balanceSettling = false,
   creditUsed,
   nextCutoff,
   nextPayment,
@@ -232,7 +239,13 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
                   Disponible
                 </div>
               )}
-              {displayAmount(balance)}
+              {!isCredit && balanceSettling ? (
+                <span className="animate-pulse text-base font-medium text-gray-400 dark:text-gray-500" aria-live="polite">
+                  Calculando…
+                </span>
+              ) : (
+                displayAmount(balance)
+              )}
             </div>
           </div>
         </div>

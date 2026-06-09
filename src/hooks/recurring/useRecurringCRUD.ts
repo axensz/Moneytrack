@@ -6,7 +6,7 @@
 import { useCallback } from 'react';
 import { collection, doc, addDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { safeFirestoreOperation, checkNetworkConnection } from '../../utils/firestoreHelpers';
+import { safeFirestoreOperation, checkNetworkConnection, stripUndefined } from '../../utils/firestoreHelpers';
 import { generateId } from '../../utils/formatters';
 import type { RecurringPayment } from '../../types/finance';
 
@@ -61,9 +61,7 @@ export function useRecurringCRUD(
           throw new Error('Sin conexión a internet');
         }
 
-        const cleanUpdates = Object.fromEntries(
-          Object.entries(updates).filter(([, value]) => value !== undefined)
-        );
+        const cleanUpdates = stripUndefined(updates);
 
         await safeFirestoreOperation(
           () => updateDoc(

@@ -15,6 +15,7 @@ import { db } from '../lib/firebase';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
 import { generateId } from '../utils/formatters';
+import { stripUndefined } from '../utils/firestoreHelpers';
 import type { SavingsGoal } from '../types/finance';
 
 export interface GoalStatus {
@@ -74,9 +75,7 @@ export function useSavingsGoals(userId: string | null, externalGoals?: SavingsGo
   // CRUD
   const addGoal = useCallback(async (goal: Omit<SavingsGoal, 'id' | 'createdAt'>) => {
     // Limpiar campos undefined antes de enviar a Firestore
-    const cleanGoal = Object.fromEntries(
-      Object.entries(goal).filter(([, v]) => v !== undefined)
-    );
+    const cleanGoal = stripUndefined(goal);
 
     if (userId) {
       await addDoc(collection(db, `users/${userId}/savingsGoals`), {
@@ -91,9 +90,7 @@ export function useSavingsGoals(userId: string | null, externalGoals?: SavingsGo
 
   const updateGoal = useCallback(async (id: string, updates: Partial<SavingsGoal>) => {
     if (userId) {
-      const cleanUpdates = Object.fromEntries(
-        Object.entries(updates).filter(([, v]) => v !== undefined)
-      );
+      const cleanUpdates = stripUndefined(updates);
       await updateDoc(doc(db, `users/${userId}/savingsGoals`, id), cleanUpdates);
     } else {
       setLocalGoals(prev => prev.map(g => g.id === id ? { ...g, ...updates } : g));

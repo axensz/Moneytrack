@@ -19,7 +19,7 @@ import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, d
 import { db } from '../lib/firebase';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
-import { safeFirestoreOperation, checkNetworkConnection } from '../utils/firestoreHelpers';
+import { safeFirestoreOperation, checkNetworkConnection, stripUndefined } from '../utils/firestoreHelpers';
 import { generateId } from '../utils/formatters';
 import { creditDeltasByAccount } from '../utils/creditDeltas';
 import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../config/constants';
@@ -89,9 +89,7 @@ export function useDebts(
   // CRUD Operations
   const addDebt = useCallback(async (debt: Omit<Debt, 'id' | 'createdAt'>) => {
     // Limpiar campos undefined antes de enviar a Firestore
-    const cleanDebt = Object.fromEntries(
-      Object.entries(debt).filter(([, v]) => v !== undefined)
-    );
+    const cleanDebt = stripUndefined(debt);
 
     let debtId: string;
     if (userId) {
@@ -139,9 +137,7 @@ export function useDebts(
         throw new Error('Sin conexión a internet');
       }
 
-      const cleanUpdates = Object.fromEntries(
-        Object.entries(updates).filter(([, v]) => v !== undefined)
-      );
+      const cleanUpdates = stripUndefined(updates);
 
       await safeFirestoreOperation(
         () => updateDoc(doc(db, `users/${userId}/debts`, id), cleanUpdates),

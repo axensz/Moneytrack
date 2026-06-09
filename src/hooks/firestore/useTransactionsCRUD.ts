@@ -14,7 +14,7 @@ import {
 import { db } from '../../lib/firebase';
 import { TRANSFER_CATEGORY } from '../../config/constants';
 import type { Transaction, Account } from '../../types/finance';
-import { isOffline } from '../../utils/firestoreHelpers';
+import { isOffline, stripUndefined } from '../../utils/firestoreHelpers';
 import { getCreditDelta, creditDeltasByAccount } from '../../utils/creditDeltas';
 import { logger } from '../../utils/logger';
 import { validateTransactionUpdate } from '../../utils/transactionValidation';
@@ -184,12 +184,8 @@ export function useTransactionsCRUD(
         const creditTxRef = doc(collection(db, `users/${userId}/transactions`));
         const sourceTxRef = doc(collection(db, `users/${userId}/transactions`));
 
-        const cleanCredit = Object.fromEntries(
-          Object.entries(creditTx).filter(([, v]) => v !== undefined)
-        );
-        const cleanSource = Object.fromEntries(
-          Object.entries(sourceTx).filter(([, v]) => v !== undefined)
-        );
+        const cleanCredit = stripUndefined(creditTx);
+        const cleanSource = stripUndefined(sourceTx);
 
         firestoreTransaction.set(creditTxRef, { ...cleanCredit, createdAt: new Date() });
         firestoreTransaction.set(sourceTxRef, { ...cleanSource, createdAt: new Date() });
@@ -222,9 +218,7 @@ export function useTransactionsCRUD(
       }
 
       // Gasto/Ingreso
-      const cleanTransaction = Object.fromEntries(
-        Object.entries(transaction).filter(([, value]) => value !== undefined)
-      );
+      const cleanTransaction = stripUndefined(transaction);
 
       const deltas = creditDeltasByAccount(transaction, accountsRef.current);
 
@@ -314,9 +308,7 @@ export function useTransactionsCRUD(
       }
 
       // Filter undefined values
-      const cleanUpdates = Object.fromEntries(
-        Object.entries(updates).filter(([, value]) => value !== undefined)
-      );
+      const cleanUpdates = stripUndefined(updates);
 
       try {
         // Actualizar la transacción y ajustar usedCredit ATÓMICAMENTE comparando

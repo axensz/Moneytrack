@@ -7,6 +7,7 @@ import { useCallback, useState } from 'react';
 import { collection, doc, increment, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { logger } from '../utils/logger';
+import { stripUndefined } from '../utils/firestoreHelpers';
 import { setBatchImporting, registerImportedIds } from '../utils/importBatchFlag';
 import type { Account, Transaction } from '../types/finance';
 
@@ -132,9 +133,7 @@ export function useImportTransactions(userId: string | null, accounts: Account[]
               txData.exchangeRate = row.exchangeRate;
             }
             // Eliminar undefined antes de escribir
-            const clean = Object.fromEntries(
-              Object.entries(txData).filter(([, v]) => v !== undefined)
-            );
+            const clean = stripUndefined(txData as Record<string, unknown>);
             batch.set(txRef, clean);
             imported++;
           }

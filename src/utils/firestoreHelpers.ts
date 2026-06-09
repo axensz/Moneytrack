@@ -12,6 +12,14 @@ interface RetryOptions {
 }
 
 /**
+ * Quita las claves cuyo valor es undefined antes de escribir a Firestore
+ * (Firestore rechaza valores undefined). Devuelve un nuevo objeto.
+ */
+export function stripUndefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
+    return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as Partial<T>;
+}
+
+/**
  * Indica si el navegador está offline. A diferencia de checkNetworkConnection,
  * NO muestra ningún toast: el caller decide cómo notificar (evita toasts dobles).
  */

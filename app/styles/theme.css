@@ -51,6 +51,20 @@
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+
+  /* BOTONES — fuente ÚNICA de la paleta de botones (A4).
+     Consumidos por las clases .btn-* (components.css) Y por el <Button> del
+     design-system, que antes hardcodeaban literales (#7c3aed, from-violet-600…).
+     Cambiar estos valores rebranda TODOS los botones desde un solo sitio.
+     Mode-invariantes a propósito: preservan exactamente el aspecto actual. */
+  --btn-primary-from: #7c3aed;
+  --btn-primary-to: #8b5cf6;
+  --btn-primary-from-hover: #6d28d9;
+  --btn-primary-to-hover: #7c3aed;
+  --btn-submit-hover: #6d28d9;
+  --btn-cancel-hover: #e5e4e0;
+  --btn-danger: #dc2626;
+  --btn-danger-hover: #b91c1c;
 }
 
 .dark {

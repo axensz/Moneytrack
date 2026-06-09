@@ -1,194 +1,144 @@
 /**
- * S16 — Hooks selectores de dominio sobre FinanceContext.
+ * S16 / Q-context — Hooks selectores de dominio sobre el store de FinanceContext.
  *
- * MOTIVACIÓN:
- * useFinance() expone ~50 props. Los componentes que solo necesitan un dominio
- * (Goals, Debts, Budgets) deberían declararlo explícitamente para:
- *   1. Documentar dependencias reales → facilita auditorías y refactors
- *   2. Reducir el API surface visible por componente → menos acoplamiento
- *   3. Preparar migración futura a contextos separados sin romper consumidores:
- *      basta con cambiar el import de useFinance() a un Provider propio
- *      manteniendo el mismo contrato tipado.
+ * Cada hook se suscribe SOLO a su slice vía `useStoreSelector` (igualdad shallow):
+ * un componente que usa `useGoalsDomain()` NO se re-renderiza cuando cambian
+ * `debts` o `transactions` — solo cuando cambia su propio dominio. Esto es lo que
+ * el contexto monolítico previo no podía dar (todo cambio re-renderizaba a todos).
  *
- * RENDIMIENTO:
- * Estos hooks comparten el mismo contexto subyacente. El re-render se evita
- * completamente solo si se migra a contextos separados (paso futuro). La
- * ganancia actual es el useMemo del value en FinanceProvider, que elimina
- * re-renders causados por el padre.
+ * Los selectores se definen a nivel de módulo (referencias estables). Los campos
+ * de cada slice (arrays, stats y callbacks de los hooks) ya son referencias
+ * estables, así que `shallowEqual` hace bail-out cuando otro dominio cambia.
  *
  * USO:
- *   // En GoalsView — antes
- *   const { savingsGoals, addGoal, ... } = useFinance();
- *
- *   // Después
- *   const { savingsGoals, addGoal, ... } = useGoalsDomain();
+ *   const { savingsGoals, addGoal } = useGoalsDomain();
  */
 
-import { useFinance } from '../contexts/FinanceContext';
+import { useFinanceStore, type FinanceContextValue } from '../contexts/FinanceContext';
+import { useStoreSelector } from '../contexts/financeStore';
+
+// ── Utilidad transversal ───────────────────────────────────────────────────────
+
+const selectFormatCurrency = (s: FinanceContextValue) => s.formatCurrency;
+
+/** Solo el formateador de moneda (referencia estable). */
+export function useFormatCurrency() {
+  return useStoreSelector(useFinanceStore(), selectFormatCurrency, Object.is);
+}
 
 // ── Transacciones ─────────────────────────────────────────────────────────────
 
-export function useTransactionDomain() {
-  const {
-    transactions,
-    addTransaction,
-    addCreditPaymentAtomic,
-    deleteTransaction,
-    updateTransaction,
-    transactionsLoading,
-    hasMoreTransactions,
-    loadingMoreTransactions,
-    loadMoreTransactions,
-  } = useFinance();
+const selectTransactionDomain = (s: FinanceContextValue) => ({
+  transactions: s.transactions,
+  addTransaction: s.addTransaction,
+  addCreditPaymentAtomic: s.addCreditPaymentAtomic,
+  deleteTransaction: s.deleteTransaction,
+  updateTransaction: s.updateTransaction,
+  transactionsLoading: s.transactionsLoading,
+  hasMoreTransactions: s.hasMoreTransactions,
+  loadingMoreTransactions: s.loadingMoreTransactions,
+  loadMoreTransactions: s.loadMoreTransactions,
+}) as const;
 
-  return {
-    transactions,
-    addTransaction,
-    addCreditPaymentAtomic,
-    deleteTransaction,
-    updateTransaction,
-    transactionsLoading,
-    hasMoreTransactions,
-    loadingMoreTransactions,
-    loadMoreTransactions,
-  } as const;
+export function useTransactionDomain() {
+  return useStoreSelector(useFinanceStore(), selectTransactionDomain);
 }
 
 // ── Cuentas ───────────────────────────────────────────────────────────────────
 
-export function useAccountDomain() {
-  const {
-    accounts,
-    addAccount,
-    updateAccount,
-    deleteAccount,
-    mergeCreditCards,
-    setDefaultAccount,
-    getAccountBalance,
-    getTransactionCountForAccount,
-    totalBalance,
-    defaultAccount,
-    accountsLoading,
-  } = useFinance();
+const selectAccountDomain = (s: FinanceContextValue) => ({
+  accounts: s.accounts,
+  addAccount: s.addAccount,
+  updateAccount: s.updateAccount,
+  deleteAccount: s.deleteAccount,
+  mergeCreditCards: s.mergeCreditCards,
+  setDefaultAccount: s.setDefaultAccount,
+  getAccountBalance: s.getAccountBalance,
+  getTransactionCountForAccount: s.getTransactionCountForAccount,
+  totalBalance: s.totalBalance,
+  defaultAccount: s.defaultAccount,
+  accountsLoading: s.accountsLoading,
+}) as const;
 
-  return {
-    accounts,
-    addAccount,
-    updateAccount,
-    deleteAccount,
-    mergeCreditCards,
-    setDefaultAccount,
-    getAccountBalance,
-    getTransactionCountForAccount,
-    totalBalance,
-    defaultAccount,
-    accountsLoading,
-  } as const;
+export function useAccountDomain() {
+  return useStoreSelector(useFinanceStore(), selectAccountDomain);
 }
 
 // ── Categorías ────────────────────────────────────────────────────────────────
 
+const selectCategoryDomain = (s: FinanceContextValue) => ({
+  categories: s.categories,
+  addCategory: s.addCategory,
+  deleteCategory: s.deleteCategory,
+}) as const;
+
 export function useCategoryDomain() {
-  const { categories, addCategory, deleteCategory } = useFinance();
-  return { categories, addCategory, deleteCategory } as const;
+  return useStoreSelector(useFinanceStore(), selectCategoryDomain);
 }
 
 // ── Pagos Recurrentes ─────────────────────────────────────────────────────────
 
-export function useRecurringDomain() {
-  const {
-    recurringPayments,
-    addRecurringPayment,
-    updateRecurringPayment,
-    deleteRecurringPayment,
-    isPaidForMonth,
-    getNextDueDate,
-    getDaysUntilDue,
-    getPaymentHistory,
-    recurringStats,
-  } = useFinance();
+const selectRecurringDomain = (s: FinanceContextValue) => ({
+  recurringPayments: s.recurringPayments,
+  addRecurringPayment: s.addRecurringPayment,
+  updateRecurringPayment: s.updateRecurringPayment,
+  deleteRecurringPayment: s.deleteRecurringPayment,
+  isPaidForMonth: s.isPaidForMonth,
+  getNextDueDate: s.getNextDueDate,
+  getDaysUntilDue: s.getDaysUntilDue,
+  getDaysOverdue: s.getDaysOverdue,
+  getPaymentHistory: s.getPaymentHistory,
+  recurringStats: s.recurringStats,
+}) as const;
 
-  return {
-    recurringPayments,
-    addRecurringPayment,
-    updateRecurringPayment,
-    deleteRecurringPayment,
-    isPaidForMonth,
-    getNextDueDate,
-    getDaysUntilDue,
-    getPaymentHistory,
-    recurringStats,
-  } as const;
+export function useRecurringDomain() {
+  return useStoreSelector(useFinanceStore(), selectRecurringDomain);
 }
 
 // ── Deudas ────────────────────────────────────────────────────────────────────
 
-export function useDebtsDomain() {
-  const {
-    debts,
-    addDebt,
-    updateDebt,
-    deleteDebt,
-    registerDebtPayment,
-    modifyDebtBalance,
-    getDebtTransactions,
-    debtStats,
-  } = useFinance();
+const selectDebtsDomain = (s: FinanceContextValue) => ({
+  debts: s.debts,
+  addDebt: s.addDebt,
+  updateDebt: s.updateDebt,
+  deleteDebt: s.deleteDebt,
+  registerDebtPayment: s.registerDebtPayment,
+  modifyDebtBalance: s.modifyDebtBalance,
+  getDebtTransactions: s.getDebtTransactions,
+  debtStats: s.debtStats,
+}) as const;
 
-  return {
-    debts,
-    addDebt,
-    updateDebt,
-    deleteDebt,
-    registerDebtPayment,
-    modifyDebtBalance,
-    getDebtTransactions,
-    debtStats,
-  } as const;
+export function useDebtsDomain() {
+  return useStoreSelector(useFinanceStore(), selectDebtsDomain);
 }
 
 // ── Presupuestos ──────────────────────────────────────────────────────────────
 
-export function useBudgetsDomain() {
-  const {
-    budgets,
-    addBudget,
-    updateBudget,
-    deleteBudget,
-    budgetStatuses,
-    budgetStats,
-  } = useFinance();
+const selectBudgetsDomain = (s: FinanceContextValue) => ({
+  budgets: s.budgets,
+  addBudget: s.addBudget,
+  updateBudget: s.updateBudget,
+  deleteBudget: s.deleteBudget,
+  budgetStatuses: s.budgetStatuses,
+  budgetStats: s.budgetStats,
+}) as const;
 
-  return {
-    budgets,
-    addBudget,
-    updateBudget,
-    deleteBudget,
-    budgetStatuses,
-    budgetStats,
-  } as const;
+export function useBudgetsDomain() {
+  return useStoreSelector(useFinanceStore(), selectBudgetsDomain);
 }
 
 // ── Metas de Ahorro ───────────────────────────────────────────────────────────
 
-export function useGoalsDomain() {
-  const {
-    savingsGoals,
-    addGoal,
-    updateGoal,
-    deleteGoal,
-    addSavings,
-    goalStatuses,
-    goalStats,
-  } = useFinance();
+const selectGoalsDomain = (s: FinanceContextValue) => ({
+  savingsGoals: s.savingsGoals,
+  addGoal: s.addGoal,
+  updateGoal: s.updateGoal,
+  deleteGoal: s.deleteGoal,
+  addSavings: s.addSavings,
+  goalStatuses: s.goalStatuses,
+  goalStats: s.goalStats,
+}) as const;
 
-  return {
-    savingsGoals,
-    addGoal,
-    updateGoal,
-    deleteGoal,
-    addSavings,
-    goalStatuses,
-    goalStats,
-  } as const;
+export function useGoalsDomain() {
+  return useStoreSelector(useFinanceStore(), selectGoalsDomain);
 }

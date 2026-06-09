@@ -8,7 +8,7 @@ import { getCreditCardUsedCredit } from '@/utils/accountStrategies';
 import { INSTALLMENT_OPTIONS, calculateInterest } from '@/utils/interestCalculator';
 import { detectDuplicates, type DuplicateMatch } from '@/utils/duplicateDetector';
 import type { NewTransaction, Account, Categories, Transaction, RecurringPayment } from '@/types/finance';
-import { useFinance } from '@/contexts/FinanceContext';
+import { useTransactionDomain, useAccountDomain, useCategoryDomain, useRecurringDomain } from '@/hooks/useFinanceSelectors';
 
 interface TransactionFormProps {
   isOpen?: boolean;
@@ -29,13 +29,10 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
   onCancel,
   batchCount = 0,
 }) => {
-  const {
-    accounts,
-    transactions,
-    categories,
-    defaultAccount,
-    recurringPayments,
-  } = useFinance();
+  const { accounts, defaultAccount } = useAccountDomain();
+  const { transactions } = useTransactionDomain();
+  const { categories } = useCategoryDomain();
+  const { recurringPayments } = useRecurringDomain();
   // Obtener cuenta seleccionada para validar restricciones
   const selectedAccount = accounts.find(acc => acc.id === newTransaction.accountId) || defaultAccount;
   const isCreditCard = selectedAccount?.type === 'credit';

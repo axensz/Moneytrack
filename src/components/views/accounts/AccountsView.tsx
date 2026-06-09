@@ -5,7 +5,7 @@ import { Plus, Wallet, CreditCard, Banknote } from 'lucide-react';
 import { BALANCE_ADJUSTMENT_CATEGORY } from '../../../config/constants';
 import { showToast } from '../../../utils/toastHelpers';
 import { getCreditCardUsedCredit } from '../../../utils/accountStrategies';
-import { useFinance } from '../../../contexts/FinanceContext';
+import { useAccountDomain, useTransactionDomain, useRecurringDomain, useDebtsDomain, useFormatCurrency } from '../../../hooks/useFinanceSelectors';
 import type { Account } from '../../../types/finance';
 import type { MergeCreditCardsParams } from '../../../hooks/useAccounts';
 
@@ -34,7 +34,6 @@ const ACCOUNT_TYPES = [
 export const AccountsView: React.FC = () => {
   const {
     accounts,
-    transactions,
     addAccount,
     updateAccount,
     deleteAccount,
@@ -42,9 +41,11 @@ export const AccountsView: React.FC = () => {
     setDefaultAccount,
     getAccountBalance,
     getTransactionCountForAccount,
-    formatCurrency,
-    addTransaction,
-  } = useFinance();
+  } = useAccountDomain();
+  const { transactions, addTransaction } = useTransactionDomain();
+  const { recurringPayments } = useRecurringDomain();
+  const { debts } = useDebtsDomain();
+  const formatCurrency = useFormatCurrency();
   // Mapa memoizado de cupo usado por tarjeta (evita recalcular en cada render)
   const creditUsedMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -395,6 +396,12 @@ export const AccountsView: React.FC = () => {
         accountName={deleteConfirm?.name || ''}
         transactionCount={
           deleteConfirm ? getTransactionCountForAccount(deleteConfirm.accountId) : 0
+        }
+        recurringCount={
+          deleteConfirm ? recurringPayments.filter(p => p.accountId === deleteConfirm.accountId).length : 0
+        }
+        debtCount={
+          deleteConfirm ? debts.filter(d => d.accountId === deleteConfirm.accountId).length : 0
         }
         deleteConfirmName={deleteConfirm?.confirmName || ''}
         confirmDeleteWithTransactions={deleteConfirm?.confirmTransactions || false}

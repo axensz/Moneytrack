@@ -19,6 +19,18 @@ import { logger } from '../utils/logger';
  * Seguridad: el doc solo lo lee/escribe su dueño (reglas Firestore), Firestore
  * cifra en reposo, y la key nunca se loguea. Se recomienda al usuario restringir
  * su key en Google AI Studio como defensa en profundidad.
+ *
+ * MODELO DE AMENAZA (S-gemini-plaintext — decisión: aceptar + endurecer, no cifrar).
+ * La key se guarda en texto plano en `settings/ai` y el SDK de Firestore la
+ * cachea en IndexedDB (persistentLocalCache). NO se cifra en cliente a propósito:
+ * en una PWA static-export sin backend, el cifrado en reposo client-side es
+ * teatro — la clave de descifrado tendría que estar disponible al mismo JS, así
+ * que un XSS que lee el cifrado también lee la clave; protección real exigiría
+ * una passphrase por sesión (fricción) o un backend-proxy (no existe aquí). El
+ * riesgo queda acotado por diseño: (1) BYOK — es la propia key del usuario,
+ * revocable al instante en Google AI Studio; (2) owner-scoped por reglas
+ * Firestore (nadie más la lee); (3) la caché IndexedDB se VACÍA al cerrar sesión
+ * (`clearFirestorePersistence` en el logout) para dispositivos compartidos.
  */
 // Intencionalmente NO existe storage en cliente para la API key: solo memoria + Firestore.
 const consentKeyFor = (userId: string | null) => `moneytrack_ai_consent_${userId ?? 'guest'}`;

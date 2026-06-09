@@ -7,6 +7,10 @@ interface DeleteConfirmModalProps {
   isOpen: boolean;
   accountName: string;
   transactionCount: number;
+  /** Pagos recurrentes vinculados que se borrarán en cascada (P-cascade-incons). */
+  recurringCount?: number;
+  /** Deudas/préstamos vinculados que se borrarán en cascada (P-cascade-incons). */
+  debtCount?: number;
   deleteConfirmName: string;
   confirmDeleteWithTransactions: boolean;
   setDeleteConfirmName: (value: string) => void;
@@ -23,6 +27,8 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
   isOpen,
   accountName,
   transactionCount,
+  recurringCount = 0,
+  debtCount = 0,
   deleteConfirmName,
   confirmDeleteWithTransactions,
   setDeleteConfirmName,
@@ -57,16 +63,24 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
             ⚠️ Eliminar Cuenta
           </h3>
 
-          {transactionCount > 0 && (
+          {(transactionCount > 0 || recurringCount > 0 || debtCount > 0) && (
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mb-4">
               <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                Esta cuenta tiene {transactionCount} transacción
-                {transactionCount !== 1 ? 'es' : ''} asociada
-                {transactionCount !== 1 ? 's' : ''}.
+                Al eliminar esta cuenta también se borrarán permanentemente:
               </p>
-              <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                Al eliminar la cuenta, todas las transacciones también serán eliminadas
-                permanentemente.
+              <ul className="text-sm text-amber-700 dark:text-amber-300 mt-1 list-disc list-inside space-y-0.5">
+                {transactionCount > 0 && (
+                  <li>{transactionCount} transacción{transactionCount !== 1 ? 'es' : ''} asociada{transactionCount !== 1 ? 's' : ''}</li>
+                )}
+                {recurringCount > 0 && (
+                  <li>{recurringCount} pago{recurringCount !== 1 ? 's' : ''} recurrente{recurringCount !== 1 ? 's' : ''}</li>
+                )}
+                {debtCount > 0 && (
+                  <li>{debtCount} deuda{debtCount !== 1 ? 's' : ''}/préstamo{debtCount !== 1 ? 's' : ''}</li>
+                )}
+              </ul>
+              <p className="text-sm text-amber-700 dark:text-amber-300 mt-2">
+                Se revertirá también el cupo usado de las tarjetas de crédito afectadas. Esta acción no se puede deshacer.
               </p>
             </div>
           )}

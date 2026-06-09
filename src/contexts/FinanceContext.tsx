@@ -18,7 +18,8 @@
  *         └── Vistas (consumen vía useFinance())
  */
 
-import React, { createContext, useContext, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useMemo, useCallback, useRef, useLayoutEffect } from 'react';
+import { createStore, useStoreSelector, type ExternalStore } from './financeStore';
 import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../config/constants';
 import { useTransactions } from '../hooks/useTransactions';
 import { useAccounts } from '../hooks/useAccounts';
@@ -156,7 +157,10 @@ export interface FinanceContextValue {
 
 // ─── Context ──────────────────────────────────────────────
 
-const FinanceContext = createContext<FinanceContextValue | null>(null);
+// El Context lleva el STORE (referencia estable, creada una vez por provider) —
+// no el value. Así el Context nunca causa re-render por sí mismo; todo cambio de
+// datos fluye por las suscripciones de useSyncExternalStore (Q-context).
+const FinanceStoreContext = createContext<ExternalStore<FinanceContextValue> | null>(null);
 
 // ─── Provider ─────────────────────────────────────────────
 
@@ -379,7 +383,6 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
 
     // Utilidades
     formatCurrency,
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [
     transactions, accounts, categories, recurringPayments, defaultAccount, totalBalance,
     transactionsLoading, accountsLoading,
@@ -397,23 +400,49 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     savingsGoals, addGoal, updateGoal, deleteGoal, addSavings, goalStatuses, goalStats,
   ]);
 
+  // Store externo creado UNA vez (identidad estable). El value memoizado se
+  // empuja al store en un layout-effect (antes del paint, sin tearing visible);
+  // si la referencia no cambió, setSnapshot es no-op. Los consumidores leen vía
+  // useStoreSelector y se re-renderizan solo cuando cambia su selección.
+  const storeRef = useRef<ExternalStore<FinanceContextValue> | null>(null);
+  if (storeRef.current === null) {
+    storeRef.current = createStore(value);
+  }
+  const store = storeRef.current;
+  useLayoutEffect(() => {
+    store.setSnapshot(value);
+  }, [value, store]);
+
   return (
-    <FinanceContext.Provider value={value}>
+    <FinanceStoreContext.Provider value={store}>
       {children}
-    </FinanceContext.Provider>
+    </FinanceStoreContext.Provider>
   );
 }
 
 // ─── Hook consumidor ──────────────────────────────────────
 
 /**
- * Hook para consumir datos y operaciones financieras desde el Context.
+ * Acceso al store financiero (referencia estable). Lo usan useFinance y los
+ * hooks selectores de dominio (useFinanceSelectors) para suscribirse por slice.
  * Debe usarse dentro de un <FinanceProvider>.
  */
-export function useFinance(): FinanceContextValue {
-  const context = useContext(FinanceContext);
-  if (!context) {
+export function useFinanceStore(): ExternalStore<FinanceContextValue> {
+  const store = useContext(FinanceStoreContext);
+  if (!store) {
     throw new Error('useFinance debe usarse dentro de un <FinanceProvider>');
   }
-  return context;
+  return store;
+}
+
+const identitySelector = (s: FinanceContextValue): FinanceContextValue => s;
+
+/**
+ * Hook para consumir TODO el value financiero desde el store.
+ * Selector identidad → re-renderiza ante cualquier cambio (comportamiento
+ * equivalente al contexto monolítico previo). Para aislar re-renders por
+ * dominio, usar los hooks de useFinanceSelectors.
+ */
+export function useFinance(): FinanceContextValue {
+  return useStoreSelector(useFinanceStore(), identitySelector, Object.is);
 }

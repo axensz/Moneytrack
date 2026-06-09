@@ -2,7 +2,7 @@
 
 import React from 'react';
 import type { Transaction, Account } from '../../../types/finance';
-import { useFinance } from '../../../contexts/FinanceContext';
+import { useTransactionDomain, useAccountDomain, useFormatCurrency } from '../../../hooks/useFinanceSelectors';
 import { useAuth } from '../../../hooks/useAuth';
 import { useAllTransactions } from '../../../hooks/useAllTransactions';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
@@ -26,7 +26,9 @@ import { useStatsData } from './hooks/useStatsData';
  * @author Refactored following Clean Code principles
  */
 export const StatsView: React.FC = () => {
-  const { transactions, accounts, formatCurrency } = useFinance();
+  const { transactions } = useTransactionDomain();
+  const { accounts } = useAccountDomain();
+  const formatCurrency = useFormatCurrency();
   const { user } = useAuth();
   const { hideBalances } = useUIPreferences();
   // Historial COMPLETO (todas las cuentas, independiente de la paginación de 500)

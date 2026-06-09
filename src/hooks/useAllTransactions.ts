@@ -30,7 +30,24 @@ export function useAllTransactions(
   userId: string | null,
   liveTransactions: Transaction[],
 ): Transaction[] {
+  return useAllTransactionsWithStatus(userId, liveTransactions).transactions;
+}
+
+/**
+ * Variante con estado de asentamiento: `settled` indica que el PRIMER fetch del
+ * historial completo para este usuario ya resolvió (con éxito o error). Mientras
+ * settled=false el resultado puede ser solo la ventana live (incompleta): los
+ * consumidores que derivan SALDOS deben tratar ese estado como "calculando"
+ * (C-FIX paginación + saldos: el flash de saldo incorrecto al recargar).
+ * Los refetches posteriores NO des-asientan: el snapshot stale + el array live
+ * mantienen el conjunto completo durante el gap.
+ */
+export function useAllTransactionsWithStatus(
+  userId: string | null,
+  liveTransactions: Transaction[],
+): { transactions: Transaction[]; settled: boolean } {
   const [fullTxs, setFullTxs] = useState<Transaction[]>([]);
+  const [settledForUser, setSettledForUser] = useState<string | null>(null);
 
   // Firma = SET de IDs del array live (no los campos). El refetch del historial
   // completo solo debe ocurrir cuando cambia la MEMBRESÍA (alta/baja), no al
@@ -77,6 +94,10 @@ export function useAllTransactions(
       } catch (err) {
         logger.error('Error cargando el historial completo de transacciones', err);
         // Degradación suave: el merge cae al array live.
+      } finally {
+        // Asentado con éxito O error: en error degradamos al array live en vez
+        // de dejar la UI en "calculando" para siempre.
+        if (!cancelled) setSettledForUser(userId);
       }
     };
 
@@ -88,8 +109,14 @@ export function useAllTransactions(
     // NO al editar campos (el merge con precedencia live ya refleja la edición).
   }, [userId, liveIdsSignature]);
 
-  return useMemo(
+  const transactions = useMemo(
     () => mergeTransactionsById(liveTransactions, fullTxs),
     [liveTransactions, fullTxs],
   );
+
+  return {
+    transactions,
+    // Invitado (sin userId): no hay nada que fetchear → siempre asentado.
+    settled: !userId || settledForUser === userId,
+  };
 }

@@ -56,6 +56,7 @@ const selectAccountDomain = (s: FinanceContextValue) => ({
   getAccountBalance: s.getAccountBalance,
   getTransactionCountForAccount: s.getTransactionCountForAccount,
   totalBalance: s.totalBalance,
+  balancesReady: s.balancesReady,
   defaultAccount: s.defaultAccount,
   accountsLoading: s.accountsLoading,
 }) as const;

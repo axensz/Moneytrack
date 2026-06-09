@@ -5,6 +5,8 @@ import type { Transaction } from '../../types/finance';
 // ─── Mock firebase/firestore: getDocs sirve el "historial completo" ──
 let getDocsCalls = 0;
 let storeDocs: { id: string; data: Record<string, unknown> }[] = [];
+let resolveFetch: (() => void) | null = null;
+let holdFetch = false;
 
 vi.mock('firebase/firestore', () => ({
   collection: () => ({ __c: true }),
@@ -12,6 +14,9 @@ vi.mock('firebase/firestore', () => ({
   orderBy: (...args: unknown[]) => ({ __orderBy: args }),
   getDocs: vi.fn(async () => {
     getDocsCalls += 1;
+    if (holdFetch) {
+      await new Promise<void>((resolve) => { resolveFetch = resolve; });
+    }
     return { docs: storeDocs.map((d) => ({ id: d.id, data: () => d.data })) };
   }),
 }));
@@ -38,21 +43,25 @@ describe('useBalanceTransactions — fuente de saldos bajo paginación', () => {
   beforeEach(() => {
     getDocsCalls = 0;
     storeDocs = [];
+    holdFetch = false;
+    resolveFetch = null;
   });
 
-  it('ventana NO saturada (hasMore=false): no fetchea, devuelve el array live', async () => {
+  it('ventana NO saturada (hasMore=false): no fetchea, devuelve el array live, ready=true', async () => {
     const live = [tx('t1')];
     const { result } = renderHook(() => useBalanceTransactions('user1', live, false));
     await new Promise((r) => setTimeout(r, 20));
     expect(getDocsCalls).toBe(0);
-    expect(result.current).toEqual(live);
+    expect(result.current.transactions).toEqual(live);
+    expect(result.current.ready).toBe(true);
   });
 
-  it('modo invitado: no fetchea aunque hasMore sea true', async () => {
+  it('modo invitado: no fetchea aunque hasMore sea true, ready=true', async () => {
     const live = [tx('t1')];
-    renderHook(() => useBalanceTransactions(null, live, true));
+    const { result } = renderHook(() => useBalanceTransactions(null, live, true));
     await new Promise((r) => setTimeout(r, 20));
     expect(getDocsCalls).toBe(0);
+    expect(result.current.ready).toBe(true);
   });
 
   it('ventana saturada: fusiona el historial completo y el saldo incluye txs fuera de la ventana', async () => {
@@ -65,10 +74,47 @@ describe('useBalanceTransactions — fuente de saldos bajo paginación', () => {
     const live = [tx('t1')];
     const { result } = renderHook(() => useBalanceTransactions('user1', live, true));
 
-    await waitFor(() => expect(result.current).toHaveLength(2));
+    await waitFor(() => expect(result.current.transactions).toHaveLength(2));
     expect(getDocsCalls).toBe(1);
+    expect(result.current.ready).toBe(true);
 
     const account: Account = { id: 'sav', name: 'A', type: 'savings', isDefault: true, initialBalance: 0 };
-    expect(BalanceCalculator.calculateAccountBalance(account, result.current)).toBeCloseTo(338_520, 2);
+    expect(BalanceCalculator.calculateAccountBalance(account, result.current.transactions)).toBeCloseTo(338_520, 2);
+  });
+
+  it('ready=false MIENTRAS el primer fetch está en vuelo (flash de saldo de ventana), true al resolver', async () => {
+    holdFetch = true;
+    storeDocs = [
+      { id: 'old1', data: { type: 'income', amount: 500_000, date: new Date('2025-01-01'), category: 'Otros', paid: true, accountId: 'sav' } },
+    ];
+    const live = [tx('t1')];
+    const { result } = renderHook(() => useBalanceTransactions('user1', live, true));
+
+    // Fetch en vuelo: NO asentado — la UI debe mostrar "Calculando…" y bloquear ajustes.
+    await waitFor(() => expect(getDocsCalls).toBe(1));
+    expect(result.current.ready).toBe(false);
+    expect(result.current.transactions).toEqual(live); // solo ventana, incompleto
+
+    resolveFetch!();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.transactions).toHaveLength(2);
+  });
+
+  it('refetch posterior (alta/baja) NO vuelve a des-asentar: ready permanece true', async () => {
+    storeDocs = [
+      { id: 't1', data: { type: 'income', amount: 1000, date: new Date('2026-06-01'), category: 'Otros', paid: true, accountId: 'sav' } },
+    ];
+    const { result, rerender } = renderHook(
+      ({ live }) => useBalanceTransactions('user1', live, true),
+      { initialProps: { live: [tx('t1')] } },
+    );
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    // Alta de una tx → cambia la firma de ids → refetch; ready no debe parpadear.
+    holdFetch = true;
+    rerender({ live: [tx('t1'), tx('t2')] });
+    await waitFor(() => expect(getDocsCalls).toBe(2));
+    expect(result.current.ready).toBe(true);
+    resolveFetch!();
   });
 });

@@ -132,6 +132,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const {
     transactions,
     balanceTransactions,
+    balancesReady,
     accounts,
     categories,
     recurringPayments,
@@ -549,6 +550,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
               onOpenAISettings={() => setShowAISettingsModal(true)}
             />
             <StatsCards
+              balanceSettling={!balancesReady}
               totalBalance={dynamicTotalBalance}
               totalIncome={dynamicStats.totalIncome}
               totalExpenses={dynamicStats.totalExpenses}

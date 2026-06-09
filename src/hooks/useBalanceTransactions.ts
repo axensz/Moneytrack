@@ -27,15 +27,31 @@
  * tampoco: el array local es completo por construcción.
  */
 
-import { useAllTransactions } from './useAllTransactions';
+import { useAllTransactionsWithStatus } from './useAllTransactions';
 import type { Transaction } from '../types/finance';
+
+export interface BalanceTransactionsResult {
+  /** Conjunto de transacciones para derivar saldos (historial completo si aplica). */
+  transactions: Transaction[];
+  /**
+   * false mientras el primer fetch del historial completo está en vuelo: en ese
+   * estado los saldos derivados provienen solo de la ventana paginada y pueden
+   * ser incorrectos (flash al recargar). La UI debe mostrar "calculando" y el
+   * ajuste de saldo debe bloquearse hasta que sea true.
+   */
+  ready: boolean;
+}
 
 export function useBalanceTransactions(
   userId: string | null,
   liveTransactions: Transaction[],
   hasMoreTransactions: boolean,
-): Transaction[] {
+): BalanceTransactionsResult {
   // Gate: pasar userId=null desactiva el fetch en useAllTransactions y devuelve
   // el array live tal cual (que en ese caso es el historial completo).
-  return useAllTransactions(hasMoreTransactions ? userId : null, liveTransactions);
+  const { transactions, settled } = useAllTransactionsWithStatus(
+    hasMoreTransactions ? userId : null,
+    liveTransactions,
+  );
+  return { transactions, ready: settled };
 }

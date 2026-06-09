@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, Target, Trophy, Calendar, Trash2, DollarSign, X, Clock, CheckCircle2 } from 'lucide-react';
+import { Plus, Target, Trophy, Calendar, Trash2, DollarSign, X, Clock, CheckCircle2, Info } from 'lucide-react';
 import { useGoalsDomain } from '../../../hooks/useFinanceSelectors';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { formatCurrency, formatNumberForInput, unformatNumber } from '../../../utils/formatters';
@@ -15,7 +15,6 @@ import type { SavingsGoal } from '../../../types/finance';
  */
 export const GoalsView: React.FC = () => {
   const {
-    savingsGoals,
     addGoal,
     deleteGoal,
     addSavings,
@@ -100,6 +99,16 @@ export const GoalsView: React.FC = () => {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Define y alcanza tus objetivos financieros
           </p>
+          {/* P-goals-isolated: las metas son un seguimiento informativo aparte.
+              "Agregar ahorro" solo incrementa un contador; NO descuenta dinero de
+              ninguna cuenta. Se divulga para evitar que el usuario crea que el
+              dinero ahorrado dejó sus saldos (se contaría doble). */}
+          <div className="mt-3 flex items-start gap-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 px-3 py-2">
+            <Info size={14} className="mt-0.5 shrink-0 text-blue-500 dark:text-blue-400" aria-hidden="true" />
+            <p className="text-xs text-blue-700 dark:text-blue-300">
+              Seguimiento manual — registrar un ahorro aquí <strong>no mueve dinero</strong> de tus cuentas ni afecta tus saldos.
+            </p>
+          </div>
         </div>
 
         {/* Stats */}
@@ -308,6 +317,11 @@ export const GoalsView: React.FC = () => {
                       <X size={16} />
                     </button>
                   </div>
+                )}
+                {showAddSavings === goal.id && (
+                  <p className="mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+                    Solo actualiza el progreso de la meta; no descuenta de tus cuentas.
+                  </p>
                 )}
               </div>
             ))}

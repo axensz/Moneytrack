@@ -1,200 +1,128 @@
-import { describe, it, expect } from 'vitest';
+/**
+ * A1 — Ejecuta el CÓDIGO REAL de modifyDebtBalance (useDebts), no una copia.
+ *
+ * Antes este archivo re-implementaba `modifyDebtBalance` standalone dentro del
+ * test, así que la función de producción nunca corría. Ahora rendereamos el hook
+ * real en modo invitado (userId=null → todas las mutaciones pasan por
+ * setLocalDebts, sin Firestore) y observamos result.current.debts tras cada
+ * operación. Audit A1.
+ */
+import { describe, it, expect, beforeEach } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { useDebts } from '../../hooks/useDebts';
 import type { Debt } from '../../types/finance';
 
-// Standalone version of modifyDebtBalance logic for testing
-function modifyDebtBalance(
-    debt: Debt,
-    amount: number,
-    operation: 'add' | 'subtract'
-): { originalAmount: number; remainingAmount: number; isSettled: boolean; settledAt?: Date } {
-    if (debt.isSettled) {
-        throw new Error('No puedes modificar un préstamo ya saldado');
-    }
+const seedDebts = (debts: Partial<Debt>[]) =>
+  localStorage.setItem('debts', JSON.stringify(debts));
 
-    let newOriginalAmount: number;
-    let newRemainingAmount: number;
+const makeDebt = (o: Partial<Debt> = {}): Partial<Debt> => ({
+  id: 'd1',
+  personName: 'Juan',
+  type: 'lent',
+  originalAmount: 1000,
+  remainingAmount: 1000,
+  isSettled: false,
+  createdAt: new Date('2026-01-01').toISOString() as unknown as Date,
+  ...o,
+});
 
-    if (operation === 'add') {
-        newOriginalAmount = debt.originalAmount + amount;
-        newRemainingAmount = debt.remainingAmount + amount;
-    } else {
-        // Subtract
-        if (amount > debt.remainingAmount) {
-            throw new Error('No puedes restar más del saldo pendiente');
-        }
-        newOriginalAmount = debt.originalAmount - amount;
-        newRemainingAmount = debt.remainingAmount - amount;
-    }
+const renderDebts = () =>
+  renderHook(() => useDebts(null, [], undefined, {})).result;
 
-    // Check if debt becomes settled
-    const isSettled = newRemainingAmount === 0;
+beforeEach(() => {
+  localStorage.clear();
+});
 
-    return {
-        originalAmount: newOriginalAmount,
-        remainingAmount: newRemainingAmount,
-        isSettled,
-        ...(isSettled ? { settledAt: new Date() } : {}),
-    };
-}
+describe('modifyDebtBalance (código real de useDebts) — A1', () => {
+  describe('add', () => {
+    it('aumenta original y remaining', async () => {
+      seedDebts([makeDebt({ originalAmount: 1000, remainingAmount: 1000 })]);
+      const result = renderDebts();
 
-describe('modifyDebtBalance', () => {
-    const createDebt = (overrides?: Partial<Debt>): Debt => ({
-        id: 'debt-1',
-        personName: 'Juan',
-        type: 'lent',
-        originalAmount: 1000,
-        remainingAmount: 1000,
-        isSettled: false,
-        createdAt: new Date(),
-        ...overrides
+      await act(async () => {
+        await result.current.modifyDebtBalance('d1', 500, 'add');
+      });
+
+      expect(result.current.debts[0].originalAmount).toBe(1500);
+      expect(result.current.debts[0].remainingAmount).toBe(1500);
+      expect(result.current.debts[0].isSettled).toBe(false);
     });
 
-    describe('add operation', () => {
-        it('increases both originalAmount and remainingAmount', () => {
-            const debt = createDebt();
-            const result = modifyDebtBalance(debt, 500, 'add');
+    it('funciona con deuda parcialmente pagada', async () => {
+      seedDebts([makeDebt({ originalAmount: 1000, remainingAmount: 600 })]);
+      const result = renderDebts();
 
-            expect(result.originalAmount).toBe(1500);
-            expect(result.remainingAmount).toBe(1500);
-            expect(result.isSettled).toBe(false);
-        });
+      await act(async () => {
+        await result.current.modifyDebtBalance('d1', 400, 'add');
+      });
 
-        it('works with partially paid debt', () => {
-            const debt = createDebt({ remainingAmount: 600 });
-            const result = modifyDebtBalance(debt, 400, 'add');
+      expect(result.current.debts[0].originalAmount).toBe(1400);
+      expect(result.current.debts[0].remainingAmount).toBe(1000);
+    });
+  });
 
-            expect(result.originalAmount).toBe(1400);
-            expect(result.remainingAmount).toBe(1000);
-            expect(result.isSettled).toBe(false);
-        });
+  describe('subtract', () => {
+    it('reduce original y remaining', async () => {
+      seedDebts([makeDebt({ originalAmount: 1000, remainingAmount: 1000 })]);
+      const result = renderDebts();
 
-        it('works with small amounts', () => {
-            const debt = createDebt();
-            const result = modifyDebtBalance(debt, 0.01, 'add');
+      await act(async () => {
+        await result.current.modifyDebtBalance('d1', 300, 'subtract');
+      });
 
-            expect(result.originalAmount).toBe(1000.01);
-            expect(result.remainingAmount).toBe(1000.01);
-        });
-
-        it('works with large amounts', () => {
-            const debt = createDebt();
-            const result = modifyDebtBalance(debt, 1000000, 'add');
-
-            expect(result.originalAmount).toBe(1001000);
-            expect(result.remainingAmount).toBe(1001000);
-        });
+      expect(result.current.debts[0].originalAmount).toBe(700);
+      expect(result.current.debts[0].remainingAmount).toBe(700);
     });
 
-    describe('subtract operation', () => {
-        it('decreases both originalAmount and remainingAmount', () => {
-            const debt = createDebt();
-            const result = modifyDebtBalance(debt, 300, 'subtract');
+    it('salda la deuda cuando remaining llega a 0', async () => {
+      seedDebts([makeDebt({ originalAmount: 1000, remainingAmount: 500 })]);
+      const result = renderDebts();
 
-            expect(result.originalAmount).toBe(700);
-            expect(result.remainingAmount).toBe(700);
-            expect(result.isSettled).toBe(false);
-        });
+      await act(async () => {
+        await result.current.modifyDebtBalance('d1', 500, 'subtract');
+      });
 
-        it('works with partially paid debt', () => {
-            const debt = createDebt({ remainingAmount: 600 });
-            const result = modifyDebtBalance(debt, 200, 'subtract');
-
-            expect(result.originalAmount).toBe(800);
-            expect(result.remainingAmount).toBe(400);
-            expect(result.isSettled).toBe(false);
-        });
-
-        it('sets debt as settled when remainingAmount reaches zero', () => {
-            const debt = createDebt({ remainingAmount: 500 });
-            const result = modifyDebtBalance(debt, 500, 'subtract');
-
-            expect(result.originalAmount).toBe(500);
-            expect(result.remainingAmount).toBe(0);
-            expect(result.isSettled).toBe(true);
-            expect(result.settledAt).toBeInstanceOf(Date);
-        });
-
-        it('throws error when subtracting more than remainingAmount', () => {
-            const debt = createDebt({ remainingAmount: 500 });
-
-            expect(() => modifyDebtBalance(debt, 600, 'subtract'))
-                .toThrow('No puedes restar más del saldo pendiente');
-        });
-
-        it('throws error when subtracting from fully paid debt', () => {
-            const debt = createDebt({ remainingAmount: 0 });
-
-            expect(() => modifyDebtBalance(debt, 100, 'subtract'))
-                .toThrow('No puedes restar más del saldo pendiente');
-        });
-
-        it('allows subtracting exact remaining amount', () => {
-            const debt = createDebt({ remainingAmount: 1000 });
-            const result = modifyDebtBalance(debt, 1000, 'subtract');
-
-            expect(result.remainingAmount).toBe(0);
-            expect(result.isSettled).toBe(true);
-        });
+      expect(result.current.debts[0].remainingAmount).toBe(0);
+      expect(result.current.debts[0].isSettled).toBe(true);
+      expect(result.current.debts[0].settledAt).toBeTruthy();
     });
 
-    describe('settled debt validation', () => {
-        it('throws error when modifying settled debt with add', () => {
-            const debt = createDebt({ isSettled: true, remainingAmount: 0 });
+    it('lanza al restar más que el saldo pendiente', async () => {
+      seedDebts([makeDebt({ remainingAmount: 500 })]);
+      const result = renderDebts();
 
-            expect(() => modifyDebtBalance(debt, 100, 'add'))
-                .toThrow('No puedes modificar un préstamo ya saldado');
-        });
+      await expect(
+        act(async () => {
+          await result.current.modifyDebtBalance('d1', 600, 'subtract');
+        })
+      ).rejects.toThrow(/no puedes restar más del saldo pendiente/i);
 
-        it('throws error when modifying settled debt with subtract', () => {
-            const debt = createDebt({ isSettled: true, remainingAmount: 0 });
+      // El saldo no cambió.
+      expect(result.current.debts[0].remainingAmount).toBe(500);
+    });
+  });
 
-            expect(() => modifyDebtBalance(debt, 100, 'subtract'))
-                .toThrow('No puedes modificar un préstamo ya saldado');
-        });
+  describe('validaciones', () => {
+    it('lanza al modificar una deuda ya saldada', async () => {
+      seedDebts([makeDebt({ isSettled: true, remainingAmount: 0 })]);
+      const result = renderDebts();
+
+      await expect(
+        act(async () => {
+          await result.current.modifyDebtBalance('d1', 100, 'add');
+        })
+      ).rejects.toThrow(/ya saldado/i);
     });
 
-    describe('edge cases', () => {
-        it('handles decimal amounts correctly', () => {
-            const debt = createDebt({ originalAmount: 100.50, remainingAmount: 100.50 });
-            const result = modifyDebtBalance(debt, 25.25, 'add');
+    it('lanza si la deuda no existe', async () => {
+      seedDebts([makeDebt()]);
+      const result = renderDebts();
 
-            expect(result.originalAmount).toBe(125.75);
-            expect(result.remainingAmount).toBe(125.75);
-        });
-
-        it('handles very small subtractions', () => {
-            const debt = createDebt({ originalAmount: 100, remainingAmount: 100 });
-            const result = modifyDebtBalance(debt, 0.01, 'subtract');
-
-            expect(result.originalAmount).toBe(99.99);
-            expect(result.remainingAmount).toBe(99.99);
-        });
-
-        it('preserves debt type and person name', () => {
-            const debt = createDebt({ type: 'borrowed', personName: 'Maria' });
-            const result = modifyDebtBalance(debt, 100, 'add');
-
-            // These fields should not be in the result, but the operation should work
-            expect(result.originalAmount).toBe(1100);
-            expect(result.remainingAmount).toBe(1100);
-        });
+      await expect(
+        act(async () => {
+          await result.current.modifyDebtBalance('no-existe', 100, 'add');
+        })
+      ).rejects.toThrow(/no encontrado/i);
     });
-
-    describe('arithmetic precision', () => {
-        it('maintains precision with floating point operations', () => {
-            const debt = createDebt({ originalAmount: 1000.33, remainingAmount: 1000.33 });
-            const result = modifyDebtBalance(debt, 500.22, 'add');
-
-            expect(result.originalAmount).toBeCloseTo(1500.55, 2);
-            expect(result.remainingAmount).toBeCloseTo(1500.55, 2);
-        });
-
-        it('handles subtraction precision correctly', () => {
-            const debt = createDebt({ originalAmount: 1000.99, remainingAmount: 1000.99 });
-            const result = modifyDebtBalance(debt, 500.50, 'subtract');
-
-            expect(result.originalAmount).toBeCloseTo(500.49, 2);
-            expect(result.remainingAmount).toBeCloseTo(500.49, 2);
-        });
-    });
+  });
 });

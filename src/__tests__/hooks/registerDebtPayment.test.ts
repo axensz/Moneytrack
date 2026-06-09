@@ -1,89 +1,144 @@
-import { describe, it, expect } from 'vitest';
-import type { Debt } from '../../types/finance';
-
 /**
- * Standalone version of the registerDebtPayment clamp logic (#24).
+ * A1 — Ejecuta el CÓDIGO REAL de registerDebtPayment (useDebts), no una copia.
  *
- * El monto que se mueve a la cuenta debe estar clampado a lo que la deuda justifica
- * (min(amount, remainingAmount)) ANTES de crear la transacción, para no mover más
- * dinero del que la deuda respalda al sobrepagar. El saldo restante y el monto
- * posteado deben quedar consistentes entre sí.
+ * Antes este archivo re-implementaba `computeDebtPayment` standalone dentro del
+ * propio test → la función de producción nunca corría y podía romperse en verde.
+ * Ahora rendereamos el hook real en modo invitado (userId=null: todas las
+ * mutaciones pasan por setLocalDebts, sin Firestore) y observamos result.current
+ * tras cada operación. Además espiamos addTransaction para verificar que el dinero
+ * que se mueve (tipo/monto/categoría/cuenta) es el correcto. Audit A1.
  */
-function computeDebtPayment(debt: Debt, amount: number): {
-  effectiveAmount: number;
-  newRemaining: number;
-  isSettled: boolean;
-  posts: boolean;
-} {
-  const effectiveAmount = Math.min(amount, debt.remainingAmount);
-  const newRemaining = Math.max(0, debt.remainingAmount - effectiveAmount);
-  const isSettled = newRemaining === 0;
-  // Solo se postea transacción cuando hay cuenta asociada y monto efectivo > 0.
-  const posts = !!debt.accountId && effectiveAmount > 0;
-  return { effectiveAmount, newRemaining, isSettled, posts };
-}
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { useDebts } from '../../hooks/useDebts';
+import { LOAN_PAYMENT_CATEGORY } from '../../config/constants';
+import type { Debt, Transaction } from '../../types/finance';
 
-describe('registerDebtPayment clamp (#24)', () => {
-  const createDebt = (overrides?: Partial<Debt>): Debt => ({
-    id: 'debt-1',
-    personName: 'Juan',
-    type: 'lent',
-    originalAmount: 1000,
-    remainingAmount: 1000,
-    isSettled: false,
-    accountId: 'acc-1',
-    createdAt: new Date(),
-    ...overrides,
+type AddTransactionFn = (tx: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
+
+const seedDebts = (debts: Partial<Debt>[]) =>
+  localStorage.setItem('debts', JSON.stringify(debts));
+
+const makeDebt = (o: Partial<Debt> = {}): Partial<Debt> => ({
+  id: 'd1',
+  personName: 'Juan',
+  type: 'lent',
+  originalAmount: 1000,
+  remainingAmount: 1000,
+  isSettled: false,
+  accountId: 'acc-1',
+  createdAt: new Date('2026-01-01').toISOString() as unknown as Date,
+  ...o,
+});
+
+const renderDebts = (addTransaction?: ReturnType<typeof vi.fn>) =>
+  renderHook(() =>
+    useDebts(null, [], undefined, addTransaction ? { addTransaction: addTransaction as unknown as AddTransactionFn } : {})
+  ).result;
+
+beforeEach(() => {
+  localStorage.clear();
+});
+
+describe('registerDebtPayment (código real de useDebts) — A1', () => {
+  it('pago parcial de un préstamo (lent): reduce el saldo y postea un INGRESO por el monto', async () => {
+    seedDebts([makeDebt({ type: 'lent', remainingAmount: 1000, accountId: 'acc-1' })]);
+    const addTransaction = vi.fn().mockResolvedValue(undefined);
+    const result = renderDebts(addTransaction);
+
+    await act(async () => {
+      await result.current.registerDebtPayment('d1', 300);
+    });
+
+    expect(result.current.debts[0].remainingAmount).toBe(700);
+    expect(result.current.debts[0].isSettled).toBe(false);
+    expect(addTransaction).toHaveBeenCalledTimes(1);
+    expect(addTransaction.mock.calls[0][0]).toMatchObject({
+      type: 'income', // cobrar un préstamo prestado = ingreso
+      amount: 300,
+      category: LOAN_PAYMENT_CATEGORY,
+      accountId: 'acc-1',
+      debtId: 'd1',
+    });
   });
 
-  it('posts the exact amount on a partial payment', () => {
-    const result = computeDebtPayment(createDebt(), 300);
-    expect(result.effectiveAmount).toBe(300);
-    expect(result.newRemaining).toBe(700);
-    expect(result.isSettled).toBe(false);
-    expect(result.posts).toBe(true);
+  it('sobrepago: el monto efectivo se CLAMPEA al saldo y la deuda queda saldada', async () => {
+    seedDebts([makeDebt({ remainingAmount: 500 })]);
+    const addTransaction = vi.fn().mockResolvedValue(undefined);
+    const result = renderDebts(addTransaction);
+
+    await act(async () => {
+      await result.current.registerDebtPayment('d1', 800);
+    });
+
+    expect(result.current.debts[0].remainingAmount).toBe(0);
+    expect(result.current.debts[0].isSettled).toBe(true);
+    // Solo se mueve lo que la deuda respalda (500), no los 800 crudos.
+    expect(addTransaction.mock.calls[0][0].amount).toBe(500);
   });
 
-  it('clamps an overpayment to the remaining amount', () => {
-    const debt = createDebt({ remainingAmount: 500 });
-    const result = computeDebtPayment(debt, 800);
-    // Se mueve solo lo que la deuda justifica, no los 800 crudos.
-    expect(result.effectiveAmount).toBe(500);
-    expect(result.newRemaining).toBe(0);
-    expect(result.isSettled).toBe(true);
-    expect(result.posts).toBe(true);
+  it('pagar el saldo exacto salda la deuda', async () => {
+    seedDebts([makeDebt({ remainingAmount: 1000 })]);
+    const addTransaction = vi.fn().mockResolvedValue(undefined);
+    const result = renderDebts(addTransaction);
+
+    await act(async () => {
+      await result.current.registerDebtPayment('d1', 1000);
+    });
+
+    expect(result.current.debts[0].remainingAmount).toBe(0);
+    expect(result.current.debts[0].isSettled).toBe(true);
   });
 
-  it('settles exactly when paying the full remaining amount', () => {
-    const debt = createDebt({ remainingAmount: 1000 });
-    const result = computeDebtPayment(debt, 1000);
-    expect(result.effectiveAmount).toBe(1000);
-    expect(result.newRemaining).toBe(0);
-    expect(result.isSettled).toBe(true);
+  it('préstamo recibido (borrowed): el pago postea un GASTO', async () => {
+    seedDebts([makeDebt({ type: 'borrowed', remainingAmount: 1000, accountId: 'acc-1' })]);
+    const addTransaction = vi.fn().mockResolvedValue(undefined);
+    const result = renderDebts(addTransaction);
+
+    await act(async () => {
+      await result.current.registerDebtPayment('d1', 400);
+    });
+
+    expect(result.current.debts[0].remainingAmount).toBe(600);
+    expect(addTransaction.mock.calls[0][0]).toMatchObject({ type: 'expense', amount: 400 });
   });
 
-  it('does not post a transaction when the debt is already settled (no money moves)', () => {
-    const debt = createDebt({ remainingAmount: 0, isSettled: true });
-    const result = computeDebtPayment(debt, 200);
-    expect(result.effectiveAmount).toBe(0);
-    expect(result.newRemaining).toBe(0);
-    expect(result.posts).toBe(false);
+  it('sin cuenta asociada: reduce el saldo pero NO mueve dinero', async () => {
+    seedDebts([makeDebt({ accountId: undefined, remainingAmount: 1000 })]);
+    const addTransaction = vi.fn().mockResolvedValue(undefined);
+    const result = renderDebts(addTransaction);
+
+    await act(async () => {
+      await result.current.registerDebtPayment('d1', 300);
+    });
+
+    expect(result.current.debts[0].remainingAmount).toBe(700);
+    expect(addTransaction).not.toHaveBeenCalled();
   });
 
-  it('does not post when there is no associated account', () => {
-    const debt = createDebt({ accountId: undefined });
-    const result = computeDebtPayment(debt, 300);
-    // El saldo igual se reduce, pero no se mueve dinero en ninguna cuenta.
-    expect(result.effectiveAmount).toBe(300);
-    expect(result.newRemaining).toBe(700);
-    expect(result.posts).toBe(false);
+  it('deuda ya saldada: el monto efectivo es 0 y no se mueve dinero', async () => {
+    seedDebts([makeDebt({ remainingAmount: 0, isSettled: true })]);
+    const addTransaction = vi.fn().mockResolvedValue(undefined);
+    const result = renderDebts(addTransaction);
+
+    await act(async () => {
+      await result.current.registerDebtPayment('d1', 200);
+    });
+
+    expect(result.current.debts[0].remainingAmount).toBe(0);
+    expect(addTransaction).not.toHaveBeenCalled();
   });
 
-  it('clamps a borrowed-debt overpayment the same way', () => {
-    const debt = createDebt({ type: 'borrowed', remainingAmount: 250 });
-    const result = computeDebtPayment(debt, 1000);
-    expect(result.effectiveAmount).toBe(250);
-    expect(result.newRemaining).toBe(0);
-    expect(result.isSettled).toBe(true);
+  it('debtId inexistente: no-op (no lanza, no mueve dinero)', async () => {
+    seedDebts([makeDebt()]);
+    const addTransaction = vi.fn().mockResolvedValue(undefined);
+    const result = renderDebts(addTransaction);
+
+    await act(async () => {
+      await result.current.registerDebtPayment('no-existe', 300);
+    });
+
+    expect(result.current.debts[0].remainingAmount).toBe(1000);
+    expect(addTransaction).not.toHaveBeenCalled();
   });
 });

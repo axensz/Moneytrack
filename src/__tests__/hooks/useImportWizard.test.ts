@@ -4,7 +4,7 @@ import type { Account, Categories, Transaction } from '../../types/finance';
 import type { ImportRow } from '../../hooks/useImportTransactions';
 
 // ── Mocks de dependencias del hook ──────────────────────────────────────────
-const importTransactionsSpy = vi.fn(async () => {});
+const importTransactionsSpy = vi.fn(async (_rows: ImportRow[]) => {});
 const resetSpy = vi.fn();
 const setLearningRulesSpy = vi.fn();
 

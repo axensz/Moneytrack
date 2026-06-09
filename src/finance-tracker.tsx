@@ -47,6 +47,7 @@ const AIChatBot = lazy(() =>
   import('./components/chat/AIChatBot').then(m => ({ default: m.AIChatBot }))
 );
 import { AITeaserButton } from './components/chat/AITeaserButton';
+import { OnboardingChecklist } from './components/onboarding/OnboardingChecklist';
 
 // Lazy-loaded secondary views
 const StatsView = lazy(() =>
@@ -534,6 +535,14 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
       <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-auto">
         <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-5 pb-24 sm:pb-6">
           <div className="max-w-7xl mx-auto">
+            <OnboardingChecklist
+              hasAccounts={accounts.length > 0}
+              hasTransactions={transactions.length > 0}
+              aiReady={!!user && aiKeyConfigured && aiHasConsent}
+              onGoToAccounts={() => setView('accounts')}
+              onAddTransaction={() => { setView('transactions'); setShowForm(true); }}
+              onOpenAISettings={() => setShowAISettingsModal(true)}
+            />
             <StatsCards
               totalBalance={dynamicTotalBalance}
               totalIncome={dynamicStats.totalIncome}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useGlobalStats } from '../../hooks/useGlobalStats';
-import { CREDIT_PAYMENT_CATEGORY, BALANCE_ADJUSTMENT_CATEGORY, TRANSFER_CATEGORY } from '../../config/constants';
+import { CREDIT_PAYMENT_CATEGORY, BALANCE_ADJUSTMENT_CATEGORY, TRANSFER_CATEGORY, LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../../config/constants';
 import type { Account, Transaction } from '../../types/finance';
 
 const savings: Account = {
@@ -75,5 +75,24 @@ describe('useGlobalStats', () => {
 
     expect(result.current.totalExpenses).toBe(400_000);
     expect(result.current.unpaidTCExpenses).toBe(0);
+  });
+
+  it('excludes loan principal and repayments from income/expense totals (#10)', () => {
+    const transactions: Transaction[] = [
+      tx({ type: 'income', amount: 1_000_000, category: 'Salario' }),
+      tx({ type: 'expense', amount: 200_000, category: 'Alimentación' }),
+      // Prestar dinero: sale del banco como expense 'Préstamo'. Mueve el SALDO pero
+      // NO es gasto operativo → no debe contar en totalExpenses.
+      tx({ type: 'expense', amount: 1_000_000, category: LOAN_CATEGORY, accountId: 'bank' }),
+      // Cobrar un préstamo: entra como income 'Cobro Préstamo' → no es ingreso real.
+      tx({ type: 'income', amount: 400_000, category: LOAN_PAYMENT_CATEGORY, accountId: 'bank' }),
+    ];
+
+    const { result } = renderHook(() => useGlobalStats(transactions, [savings, card]));
+
+    // Solo el salario real (no el préstamo cobrado).
+    expect(result.current.totalIncome).toBe(1_000_000);
+    // Solo el gasto real de alimentación (no el dinero prestado).
+    expect(result.current.totalExpenses).toBe(200_000);
   });
 });

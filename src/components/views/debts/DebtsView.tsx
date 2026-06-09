@@ -7,6 +7,7 @@ import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { formatCurrency, formatNumberForInput, unformatNumber, formatDateForInput, parseDateFromInput, formatDate, formatRelativeTime } from '../../../utils/formatters';
 import { ensureDate } from '../../../utils/dateUtils';
 import { showToast } from '../../../utils/toastHelpers';
+import { ConfirmDialog } from '../../modals/ConfirmDialog';
 import type { Debt } from '../../../types/finance';
 
 /**
@@ -434,43 +435,24 @@ export const DebtsView: React.FC = () => {
       </div>
 
       {/* Modal confirmación eliminar */}
-      {debtToDelete && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDebtToDelete(null)} />
-          <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-sm p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-xl">
-                <AlertTriangle size={20} className="text-red-600 dark:text-red-400" />
-              </div>
-              <h3 className="text-base font-bold text-gray-900 dark:text-white">
-                Eliminar {debtToDelete.type === 'lent' ? 'préstamo' : 'deuda'}
-              </h3>
-            </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
-              ¿Estás seguro de eliminar{' '}
-              <span className="font-semibold text-gray-900 dark:text-white">
-                {debtToDelete.type === 'lent' ? 'el préstamo a' : 'la deuda con'}{' '}
-                {debtToDelete.personName}
-              </span>
-              ? Esta acción no se puede deshacer.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setDebtToDelete(null)}
-                className="flex-1 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={confirmDelete}
-                className="flex-1 px-4 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-xl transition-colors"
-              >
-                Eliminar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        isOpen={!!debtToDelete}
+        title={`Eliminar ${debtToDelete?.type === 'lent' ? 'préstamo' : 'deuda'}`}
+        message={debtToDelete && (
+          <>
+            ¿Estás seguro de eliminar{' '}
+            <span className="font-semibold text-gray-900 dark:text-white">
+              {debtToDelete.type === 'lent' ? 'el préstamo a' : 'la deuda con'}{' '}
+              {debtToDelete.personName}
+            </span>
+            ? Se eliminarán también sus transacciones vinculadas y se revertirán los
+            saldos afectados. Esta acción no se puede deshacer.
+          </>
+        )}
+        confirmLabel="Eliminar"
+        onConfirm={confirmDelete}
+        onClose={() => setDebtToDelete(null)}
+      />
     </div>
   );
 };

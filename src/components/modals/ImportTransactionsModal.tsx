@@ -1,141 +1,13 @@
 'use client';
 
-import React, { useState, useRef, useCallback, useMemo } from 'react';
+import React from 'react';
 import { X, Upload, FileText, CheckCircle, AlertCircle, ChevronDown, Loader2, ToggleLeft, ToggleRight, ArrowLeft, Sparkles, Calendar } from 'lucide-react';
-import { getGeminiClient } from '../../lib/geminiClient';
 import { useAccountDomain, useTransactionDomain, useCategoryDomain } from '../../hooks/useFinanceSelectors';
-import { useGeminiKey } from '../../contexts/GeminiKeyContext';
-import { useAuth } from '../../hooks/useAuth';
-import { useImportTransactions } from '../../hooks/useImportTransactions';
-import { useLocalStorage } from '../../hooks/useLocalStorage';
-import { isInternalTransferDescription, parseCSV } from '../../utils/csvParser';
-import { transferImportKey } from '../../utils/importDuplicates';
-import { parseXLSX } from '../../utils/xlsxParser';
-import { parsePDF } from '../../utils/pdfParser';
-import { categorizeWithAI, isAIAvailable } from '../../utils/aiCategorizer';
-import {
-  findLearnedCategory,
-  groupImportRowsByPattern,
-  upsertImportLearningRule,
-  type ImportLearningRule,
-} from '../../utils/importLearning';
-import { CREDIT_PAYMENT_CATEGORY, DEFAULT_CATEGORIES, SPECIAL_CATEGORIES } from '../../config/constants';
+import { useImportWizard } from '../../hooks/useImportWizard';
+import { isAIAvailable } from '../../utils/aiCategorizer';
 import { formatCurrency } from '../../utils/formatters';
-import type { ImportRow } from '../../hooks/useImportTransactions';
-
-/** Sub-component: AI-powered date range adjuster for imported rows */
-function AIDateAdjuster({ rows, setRows }: { rows: ImportRow[]; setRows: React.Dispatch<React.SetStateAction<ImportRow[]>> }) {
-  const [prompt, setPrompt] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [feedback, setFeedback] = useState('');
-
-  const handleAdjust = async () => {
-    if (!prompt.trim()) return;
-    setLoading(true);
-    setFeedback('');
-
-    if (!isAIAvailable()) { setFeedback('Configura tu API key de Gemini en Ajustes'); setLoading(false); return; }
-
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
-    const dayName = today.toLocaleDateString('es-CO', { weekday: 'long' });
-
-    // Build transaction list with descriptions for individual date assignment
-    const transactionList = rows.map((r, i) => ({
-      index: i,
-      description: r.description,
-      currentDate: r.date.toISOString().split('T')[0],
-      amount: r.amount,
-      type: r.type,
-    }));
-
-    try {
-      const ai = getGeminiClient();
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: `Hoy es ${dayName} ${todayStr}. Tengo ${rows.length} transacciones importadas de un extracto bancario. El usuario dice: "${prompt.trim()}".
-
-Necesito que asignes la fecha correcta a CADA transacción individualmente basándote en el contexto del usuario y las descripciones. Si una descripción menciona un día de la semana o una fecha relativa, úsala. Si no hay pista clara, distribuye lógicamente según el contexto.
-
-Transacciones:
-${transactionList.map(t => `[${t.index}] "${t.description}" (${t.type}, $${t.amount}, fecha actual: ${t.currentDate})`).join('\n')}
-
-Responde SOLO un JSON array con la fecha asignada a cada transacción por su índice:
-[{"index":0,"date":"YYYY-MM-DD"},{"index":1,"date":"YYYY-MM-DD"},...]
-
-Sin explicaciones, solo el JSON array.`,
-        config: { temperature: 0 },
-      });
-
-      const text = response.text?.trim() || '';
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) { setFeedback('No pude interpretar. Intenta ser más específico.'); setLoading(false); return; }
-
-      const assignments: { index: number; date: string }[] = JSON.parse(jsonMatch[0]);
-      if (!Array.isArray(assignments) || assignments.length === 0) {
-        setFeedback('Respuesta incompleta de la IA.'); setLoading(false); return;
-      }
-
-      // Apply individual dates
-      const dateMap = new Map(assignments.map(a => [a.index, a.date]));
-      setRows(prev => prev.map((r, i) => {
-        const newDateStr = dateMap.get(i);
-        if (newDateStr) {
-          const newDate = new Date(newDateStr + 'T12:00:00');
-          if (!isNaN(newDate.getTime())) {
-            return { ...r, date: newDate };
-          }
-        }
-        return r;
-      }));
-
-      // Show range of assigned dates
-      const assignedDates = assignments.map(a => new Date(a.date + 'T12:00:00')).filter(d => !isNaN(d.getTime()));
-      const minAssigned = new Date(Math.min(...assignedDates.map(d => d.getTime())));
-      const maxAssigned = new Date(Math.max(...assignedDates.map(d => d.getTime())));
-
-      setFeedback(`✓ ${assignments.length} fechas asignadas individualmente: ${minAssigned.toLocaleDateString('es-CO')} → ${maxAssigned.toLocaleDateString('es-CO')}`);
-      setPrompt('');
-    } catch {
-      setFeedback('Error al consultar la IA.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl border border-purple-200 dark:border-purple-800/50">
-      <div className="flex items-center gap-2 mb-2">
-        <Sparkles size={14} className="text-purple-600 dark:text-purple-400" />
-        <span className="text-xs font-semibold text-purple-700 dark:text-purple-300">Ajustar fechas con IA</span>
-      </div>
-      <div className="flex gap-1.5">
-        <input
-          type="text"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleAdjust()}
-          placeholder='Ej: "la primera es de hoy, las demás del lunes y martes"'
-          className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-purple-200 dark:border-purple-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
-          disabled={loading}
-        />
-        <button
-          onClick={handleAdjust}
-          disabled={loading || !prompt.trim()}
-          className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition-colors"
-        >
-          {loading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-          Ajustar
-        </button>
-      </div>
-      {feedback && (
-        <p className={`text-[11px] mt-1.5 ${feedback.startsWith('✓') ? 'text-green-600 dark:text-green-400' : 'text-rose-500 dark:text-rose-400'}`}>
-          {feedback}
-        </p>
-      )}
-    </div>
-  );
-}
+import { AIDateAdjuster } from './import/AIDateAdjuster';
+import type { WizardStep } from '../../types/import';
 
 interface ImportTransactionsModalProps {
   isOpen: boolean;
@@ -143,423 +15,51 @@ interface ImportTransactionsModalProps {
   onOpenAISettings?: () => void;
 }
 
-type Step = 'upload' | 'review' | 'done';
-
-interface AISuggestion {
-  id: string;
-  pattern: string;
-  category: string;
-  confidence: number;
-  indexes: number[];
-  sampleDescription: string;
-  sampleAmount: number;
-}
-
-const FALLBACK_CATEGORIES = [
-  ...new Set([...DEFAULT_CATEGORIES.expense, ...DEFAULT_CATEGORIES.income, CREDIT_PAYMENT_CATEGORY]),
-];
-
-const categoryCollator = new Intl.Collator('es-CO', { sensitivity: 'base' });
-
-const normalizeCategory = (category: string) =>
-  category.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-
-const isOtherCategory = (category: string) => normalizeCategory(category) === 'otros';
-
-const isSpecialCategory = (category: string) =>
-  SPECIAL_CATEGORIES.adjustmentCategories.some(item => normalizeCategory(item) === normalizeCategory(category));
-
+/**
+ * Wizard de importación de extractos (Q-godfiles). El estado y la lógica viven
+ * en `useImportWizard`; este componente es la capa de presentación (3 pasos:
+ * upload → review → done). El commit de dinero está aislado en
+ * `useImportTransactions`, que el hook orquesta.
+ */
 export function ImportTransactionsModal({ isOpen, onClose, onOpenAISettings }: ImportTransactionsModalProps) {
   const { accounts } = useAccountDomain();
   const { transactions: existingTransactions } = useTransactionDomain();
   const { categories } = useCategoryDomain();
-  const { isConfigured: aiKeyConfigured, hasConsent: aiHasConsent } = useGeminiKey();
-  // Motivo por el que la IA no está disponible (para mensajes precisos):
-  // 'no-key' = falta API key · 'no-consent' = hay key pero falta autorizar.
-  const aiReason: 'no-key' | 'no-consent' | null =
-    !aiKeyConfigured ? 'no-key' : !aiHasConsent ? 'no-consent' : null;
-  const aiUnavailableMessage =
-    aiReason === 'no-key'
-      ? 'Necesitas una API key gratuita de Gemini.'
-      : 'Tienes API key pero falta autorizar el envío de datos a Gemini.';
-  const { user } = useAuth();
-  const { importTransactions, status, progress, result, reset } = useImportTransactions(user?.uid || null, accounts);
-  const importRulesKey = `moneytrack_import_rules_${user?.uid ?? 'guest'}`;
-  const [learningRules, setLearningRules] = useLocalStorage<ImportLearningRule[]>(importRulesKey, []);
-
-  const [step, setStep] = useState<Step>('upload');
-  const [rows, setRows] = useState<ImportRow[]>([]);
-  const [selectedAccountId, setSelectedAccountId] = useState('');
-  const [parseError, setParseError] = useState('');
-  const [fileName, setFileName] = useState('');
-  const [parseStats, setParseStats] = useState<{ total: number; skipped: number; duplicates: number; needsRate?: number } | null>(null);
-  const [aiCategorizing, setAiCategorizing] = useState(false);
-  const [aiApplied, setAiApplied] = useState(false);
-  const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
-  const [pdfParsing, setPdfParsing] = useState(false);
-  const [pdfNeedsAI, setPdfNeedsAI] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const nonCreditAccounts = accounts.filter(a => a.type !== 'credit');
-  const creditAccounts = accounts.filter(a => a.type === 'credit');
-  const categoryOptions = useMemo(
-    () => [...new Set([...categories.expense, ...categories.income, CREDIT_PAYMENT_CATEGORY])]
-      .sort(categoryCollator.compare),
-    [categories.expense, categories.income]
-  );
-  const availableCategoryOptions = useMemo(
-    () => categoryOptions.length > 0
-      ? categoryOptions
-      : [...FALLBACK_CATEGORIES].sort(categoryCollator.compare),
-    [categoryOptions]
-  );
-  const inferTransferRoute = useCallback((baseAccountId: string, isInternalTransfer: boolean): { accountId: string; toAccountId?: string } => {
-    if (!isInternalTransfer) return { accountId: baseAccountId };
-
-    const selectedAccount = accounts.find(account => account.id === baseAccountId);
-    if (selectedAccount?.type === 'credit' && selectedAccount.id) {
-      const linkedSourceId = selectedAccount.bankAccountId && accounts.some(account => account.id === selectedAccount.bankAccountId)
-        ? selectedAccount.bankAccountId
-        : undefined;
-
-      return linkedSourceId
-        ? { accountId: linkedSourceId, toAccountId: selectedAccount.id }
-        : { accountId: baseAccountId };
-    }
-
-    const linkedCreditAccounts = accounts.filter(account =>
-      account.type === 'credit' &&
-      account.bankAccountId === baseAccountId &&
-      account.id
-    );
-
-    return linkedCreditAccounts.length === 1
-      ? { accountId: baseAccountId, toAccountId: linkedCreditAccounts[0].id }
-      : { accountId: baseAccountId };
-  }, [accounts]);
-
-  const handleClose = useCallback(() => {
-    setStep('upload');
-    setRows([]);
-    setSelectedAccountId('');
-    setParseError('');
-    setFileName('');
-    setParseStats(null);
-    setAiApplied(false);
-    setAiSuggestions([]);
-    setPdfParsing(false);
-    setPdfNeedsAI(false);
-    reset();
-    onClose();
-  }, [onClose, reset]);
-
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setParseError('');
-    setFileName(file.name);
-    setAiSuggestions([]);
-    setAiApplied(false);
-    setPdfNeedsAI(false);
-
-    const name = file.name.toLowerCase();
-    const isXLSX = name.endsWith('.xlsx') || name.endsWith('.xls');
-    const isPDF = name.endsWith('.pdf');
-
-    const applyResult = (result: ReturnType<typeof parseCSV>) => {
-      if (result.rows.length === 0) {
-        setParseError(
-          result.errors.length > 0
-            ? result.errors.join('. ')
-            : 'No se encontraron transacciones válidas. Verifica que el archivo tenga columnas de fecha, descripción y monto.'
-        );
-        return;
-      }
-
-      const accountId = selectedAccountId || nonCreditAccounts[0]?.id || accounts[0]?.id || '';
-      if (!selectedAccountId && accountId) {
-        setSelectedAccountId(accountId);
-      }
-
-      // ── Detección de duplicados (todo en memoria, sin llamadas a Firestore) ──
-
-      // Clave de identidad: tipo|día|monto
-      const dayKey = (d: Date) =>
-        `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-      const descKey = (description: string) =>
-        description.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 20);
-      const txKey = (type: string, date: Date, amount: number, description: string) =>
-        `${type}|${dayKey(date)}|${amount.toFixed(2)}|${descKey(description)}`;
-      const txDate = (value: unknown) => {
-        if (value instanceof Date) return value;
-        if (value && typeof (value as { toDate?: () => Date }).toDate === 'function') {
-          return (value as { toDate: () => Date }).toDate();
-        }
-        return new Date(value as string | number);
-      };
-
-      // 1. Índice de transacciones existentes ya en memoria (cero reads Firestore)
-      const existingAccountKeys = new Set<string>();
-      const existingInternalTransferKeys = new Set<string>();
-      existingTransactions.forEach(tx => {
-        const d = txDate(tx.date);
-        if (isNaN(d.getTime())) return;
-
-        if (tx.accountId === accountId) {
-          existingAccountKeys.add(txKey(tx.type, d, tx.amount, tx.description));
-        }
-        // Huella de transferencia/pago SIN descripción: el texto difiere entre
-        // bancos ("Pago PSE Nu" vs "Gracias por tu pago"), así que cruzamos por
-        // monto+día contra todas las cuentas (F7).
-        existingInternalTransferKeys.add(transferImportKey(d, tx.amount));
-      });
-
-      // 2. Detectar duplicados dentro del propio archivo (misma fila repetida)
-      const seenInFile = new Set<string>();
-
-      const mapped = result.rows.map(r => {
-        const isInternalTransfer = r.type === 'transfer' || isInternalTransferDescription(r.description);
-        const key = isInternalTransfer
-          ? transferImportKey(r.date, r.amount)
-          : txKey(r.type, r.date, r.amount, r.description);
-
-        const duplicateInDB = isInternalTransfer
-          ? existingInternalTransferKeys.has(key)
-          : existingAccountKeys.has(key);
-        const duplicateInFile = seenInFile.has(key);
-
-        if (!duplicateInFile) seenInFile.add(key);
-
-        const isDuplicate = duplicateInDB || duplicateInFile;
-        const transferRoute = inferTransferRoute(accountId, isInternalTransfer);
-        const learnedCategory = r.categorySource === 'file'
-          ? null
-          : findLearnedCategory(r.description, learningRules, availableCategoryOptions);
-        return {
-          ...r,
-          category: learnedCategory ?? r.suggestedCategory,
-          accountId: transferRoute.accountId,
-          toAccountId: transferRoute.toAccountId,
-          // No incluir por defecto duplicados, transferencias ni montos en moneda
-          // extranjera sin TRM (no se pueden convertir a COP de forma segura).
-          include: !isDuplicate && !isInternalTransfer && !r.needsExchangeRate,
-          isDuplicate,
-        };
-      });
-
-      const duplicateCount = mapped.filter(r => r.isDuplicate).length;
-      const needsRateCount = mapped.filter(r => r.needsExchangeRate).length;
-      setParseStats({ total: result.rows.length, skipped: result.skippedRows, duplicates: duplicateCount, needsRate: needsRateCount });
-      setRows(mapped);
-    };
-
-    if (isPDF) {
-      // El PDF se procesa con IA: si no está disponible, mostramos un bloque
-      // con CTA en vez de dejar al usuario sin salida con un error técnico.
-      if (aiReason) {
-        setPdfNeedsAI(true);
-        setFileName('');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-        const buffer = ev.target?.result as ArrayBuffer;
-        setPdfParsing(true);
-        const result = await parsePDF(buffer);
-        setPdfParsing(false);
-        applyResult(result);
-      };
-      reader.readAsArrayBuffer(file);
-    } else if (isXLSX) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const buffer = ev.target?.result as ArrayBuffer;
-        applyResult(parseXLSX(buffer, categories));
-      };
-      reader.readAsArrayBuffer(file);
-    } else {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const text = ev.target?.result as string;
-        applyResult(parseCSV(text, categories));
-      };
-      reader.readAsText(file, 'UTF-8');
-    }
-  }, [
+  const {
+    step, setStep,
+    rows, setRows,
     selectedAccountId,
-    accounts,
+    parseError,
+    fileName,
+    parseStats,
+    aiCategorizing,
+    aiApplied,
+    aiSuggestions,
+    pdfParsing,
+    pdfNeedsAI,
+    fileInputRef,
+    status, progress, result,
     nonCreditAccounts,
-    existingTransactions,
-    categories,
-    inferTransferRoute,
-    learningRules,
+    creditAccounts,
     availableCategoryOptions,
-    aiReason,
-  ]);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (!file) return;
-    // Reusar la lógica del input
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    if (fileInputRef.current) {
-      fileInputRef.current.files = dt.files;
-      fileInputRef.current.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-  }, []);
-
-  const handleAccountChange = useCallback((accountId: string) => {
-    setSelectedAccountId(accountId);
-    setRows(prev => prev.map(r => {
-      const isInternalTransfer = r.type === 'transfer' || isInternalTransferDescription(r.description);
-      const transferRoute = inferTransferRoute(accountId, isInternalTransfer);
-      return { ...r, accountId: transferRoute.accountId, toAccountId: transferRoute.toAccountId };
-    }));
-  }, [inferTransferRoute]);
-
-  const handleToggleRow = useCallback((index: number) => {
-    setRows(prev => prev.map((r, i) => i === index ? { ...r, include: !r.include } : r));
-  }, []);
-
-  const handleToggleAll = useCallback((include: boolean) => {
-    setRows(prev => prev.map(r => ({ ...r, include })));
-  }, []);
-
-  const handleCategoryChange = useCallback((index: number, category: string) => {
-    const row = rows[index];
-    if (row && row.category !== category) {
-      setLearningRules(prev => upsertImportLearningRule(prev, row.description, category));
-      setAiSuggestions(prev => prev
-        .map(suggestion => ({
-          ...suggestion,
-          indexes: suggestion.indexes.filter(rowIndex => rowIndex !== index),
-        }))
-        .filter(suggestion => suggestion.indexes.length > 0)
-      );
-    }
-    setRows(prev => prev.map((r, i) => i === index ? { ...r, category } : r));
-  }, [rows, setLearningRules]);
-
-  const handleTypeChange = useCallback((index: number, type: 'income' | 'expense' | 'transfer') => {
-    setRows(prev => prev.map((r, i) => {
-      if (i !== index) return r;
-      const transferRoute = inferTransferRoute(r.accountId, type === 'transfer');
-      return { ...r, type, accountId: transferRoute.accountId, toAccountId: transferRoute.toAccountId };
-    }));
-  }, [inferTransferRoute]);
-
-  const handleImport = useCallback(async () => {
-    await importTransactions(rows);
-    setStep('done');
-  }, [importTransactions, rows]);
-
-  const handleAICategorize = useCallback(async () => {
-    if (aiCategorizing || rows.length === 0) return;
-    setAiCategorizing(true);
-    try {
-      const rowsForAI = rows
-        .map((row, index) => ({ row, index }))
-        .filter((item): item is { row: ImportRow & { type: 'income' | 'expense' }; index: number } =>
-          item.row.include &&
-          item.row.type !== 'transfer' &&
-          item.row.categorySource !== 'file' &&
-          isOtherCategory(item.row.category) &&
-          !isSpecialCategory(item.row.category)
-        );
-
-      const groups = groupImportRowsByPattern(rowsForAI);
-      const toAnalyze = groups.map((group, index) => ({
-        index,
-        description: `${group.pattern}: ${group.sample.description}`,
-        amount: group.sample.amount,
-        type: group.sample.type,
-        currentCategory: group.sample.category,
-      }));
-
-      const results = await categorizeWithAI(toAnalyze);
-      const applicableResults = results.filter(r => r.confidence >= 0.75 && !isOtherCategory(r.category));
-      const suggestions = applicableResults
-        .map((result): AISuggestion | null => {
-          const group = groups[result.index];
-          if (!group) return null;
-
-          return {
-            id: `${group.pattern}-${result.category}`,
-            pattern: group.pattern,
-            category: result.category,
-            confidence: result.confidence,
-            indexes: group.indexes,
-            sampleDescription: group.sample.description,
-            sampleAmount: group.sample.amount,
-          };
-        })
-        .filter((suggestion): suggestion is AISuggestion => suggestion !== null)
-        .sort((a, b) => categoryCollator.compare(a.category, b.category) || categoryCollator.compare(a.pattern, b.pattern));
-
-      setAiSuggestions(suggestions);
-    } catch {
-      // silently fail — categories stay as keyword-based
-    } finally {
-      setAiCategorizing(false);
-    }
-  }, [aiCategorizing, rows]);
-
-  const handleSuggestionCategoryChange = useCallback((suggestionId: string, category: string) => {
-    setAiSuggestions(prev => prev.map(suggestion =>
-      suggestion.id === suggestionId ? { ...suggestion, category } : suggestion
-    ));
-  }, []);
-
-  const handleDiscardAISuggestions = useCallback(() => {
-    setAiSuggestions([]);
-  }, []);
-
-  const handleApplyAISuggestions = useCallback(() => {
-    if (aiSuggestions.length === 0) return;
-
-    setRows(prev => {
-      const updated = [...prev];
-      aiSuggestions.forEach(suggestion => {
-        suggestion.indexes.forEach(rowIndex => {
-          if (updated[rowIndex]) {
-            updated[rowIndex] = { ...updated[rowIndex], category: suggestion.category };
-          }
-        });
-      });
-      return updated;
-    });
-
-    setLearningRules(prev => aiSuggestions.reduce(
-      (acc, suggestion) => upsertImportLearningRule(acc, suggestion.sampleDescription, suggestion.category),
-      prev
-    ));
-    setAiSuggestions([]);
-    setAiApplied(true);
-  }, [aiSuggestions, setLearningRules]);
-
-  const includedCount = rows.filter(r => r.include).length;
-  const aiSuggestionTransactionCount = useMemo(
-    () => new Set(aiSuggestions.flatMap(suggestion => suggestion.indexes)).size,
-    [aiSuggestions]
-  );
-  const aiSuggestionsByCategory = useMemo(() => {
-    const grouped = new Map<string, AISuggestion[]>();
-    aiSuggestions.forEach(suggestion => {
-      const current = grouped.get(suggestion.category) ?? [];
-      current.push(suggestion);
-      grouped.set(suggestion.category, current);
-    });
-
-    return [...grouped.entries()]
-      .sort(([a], [b]) => categoryCollator.compare(a, b))
-      .map(([category, suggestions]) => ({
-        category,
-        suggestions: suggestions.sort((a, b) => categoryCollator.compare(a.pattern, b.pattern)),
-      }));
-  }, [aiSuggestions]);
+    includedCount,
+    aiSuggestionTransactionCount,
+    aiSuggestionsByCategory,
+    aiUnavailableMessage,
+    handleClose,
+    handleFileChange,
+    handleDrop,
+    handleAccountChange,
+    handleToggleRow,
+    handleToggleAll,
+    handleCategoryChange,
+    handleTypeChange,
+    handleImport,
+    handleAICategorize,
+    handleSuggestionCategoryChange,
+    handleDiscardAISuggestions,
+    handleApplyAISuggestions,
+  } = useImportWizard({ accounts, existingTransactions, categories, onClose });
 
   if (!isOpen) return null;
 
@@ -603,7 +103,7 @@ export function ImportTransactionsModal({ isOpen, onClose, onOpenAISettings }: I
 
         {/* Stepper */}
         <div className="flex items-center gap-0 px-4 sm:px-6 pt-3 sm:pt-4">
-          {(['upload', 'review', 'done'] as Step[]).map((s, i) => (
+          {(['upload', 'review', 'done'] as WizardStep[]).map((s, i) => (
             <React.Fragment key={s}>
               <div className={`flex items-center gap-1.5 text-xs font-medium ${step === s ? 'text-purple-600 dark:text-purple-400' : i < ['upload', 'review', 'done'].indexOf(step) ? 'text-green-600' : 'text-gray-400'}`}>
                 <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${step === s ? 'bg-purple-600 text-white' : i < ['upload', 'review', 'done'].indexOf(step) ? 'bg-green-500 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500'}`}>
@@ -892,7 +392,7 @@ export function ImportTransactionsModal({ isOpen, onClose, onOpenAISettings }: I
                                 </span>
                               </div>
                               <p className="text-[10px] text-gray-400 truncate" title={suggestion.sampleDescription}>
-                                {suggestion.sampleDescription} Â· {Math.round(suggestion.confidence * 100)}%
+                                {suggestion.sampleDescription} · {Math.round(suggestion.confidence * 100)}%
                               </p>
                             </div>
                             <select

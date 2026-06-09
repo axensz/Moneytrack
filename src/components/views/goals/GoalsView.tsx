@@ -6,6 +6,7 @@ import { useGoalsDomain } from '../../../hooks/useFinanceSelectors';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { formatCurrency, formatNumberForInput, unformatNumber } from '../../../utils/formatters';
 import { showToast } from '../../../utils/toastHelpers';
+import { ConfirmDialog } from '../../modals/ConfirmDialog';
 import type { SavingsGoal } from '../../../types/finance';
 
 /**
@@ -27,6 +28,7 @@ export const GoalsView: React.FC = () => {
   const [showAddSavings, setShowAddSavings] = useState<string | null>(null);
   const [savingsAmount, setSavingsAmount] = useState('');
   const [showCompleted, setShowCompleted] = useState(false);
+  const [goalToDelete, setGoalToDelete] = useState<SavingsGoal | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -71,9 +73,14 @@ export const GoalsView: React.FC = () => {
     setShowAddSavings(null);
   };
 
-  const handleDelete = async (goal: SavingsGoal) => {
-    if (!confirm(`¿Eliminar la meta "${goal.name}"?`)) return;
-    await deleteGoal(goal.id!);
+  const handleDelete = (goal: SavingsGoal) => {
+    setGoalToDelete(goal);
+  };
+
+  const confirmDeleteGoal = async () => {
+    if (!goalToDelete) return;
+    await deleteGoal(goalToDelete.id!);
+    setGoalToDelete(null);
     showToast.success('Meta eliminada');
   };
 
@@ -344,6 +351,21 @@ export const GoalsView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Confirmación eliminar meta */}
+      <ConfirmDialog
+        isOpen={!!goalToDelete}
+        title="Eliminar meta"
+        message={goalToDelete && (
+          <>
+            ¿Eliminar la meta{' '}
+            <span className="font-semibold text-gray-900 dark:text-white">{goalToDelete.name}</span>?
+          </>
+        )}
+        confirmLabel="Eliminar"
+        onConfirm={confirmDeleteGoal}
+        onClose={() => setGoalToDelete(null)}
+      />
     </div>
   );
 };

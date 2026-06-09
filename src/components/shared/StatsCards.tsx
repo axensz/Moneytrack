@@ -12,6 +12,12 @@ interface StatsCardsProps {
   periodLabel?: string;
   /** Cuando no hay cuentas creadas, muestra un mensaje orientativo bajo las tarjetas */
   hasAccounts?: boolean;
+  /**
+   * true mientras el saldo aún se calcula desde la ventana paginada (el fetch
+   * del historial completo está en vuelo): muestra "Calculando…" en vez de un
+   * número transitorio incorrecto.
+   */
+  balanceSettling?: boolean;
 }
 
 export const StatsCards: React.FC<StatsCardsProps> = memo(({
@@ -23,6 +29,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
   balanceLabel = 'Balance',
   periodLabel = 'este mes',
   hasAccounts = true,
+  balanceSettling = false,
 }) => {
   const { hideBalances, setHideBalances } = useUIPreferences();
 
@@ -54,7 +61,13 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
             </div>
           </div>
           <div className="text-lg sm:text-xl lg:text-2xl font-bold text-purple-900 dark:text-purple-100 break-words">
-            {displayValue(totalBalance)}
+            {balanceSettling ? (
+              <span className="animate-pulse text-purple-400 dark:text-purple-500" aria-live="polite">
+                Calculando…
+              </span>
+            ) : (
+              displayValue(totalBalance)
+            )}
           </div>
         </div>
 

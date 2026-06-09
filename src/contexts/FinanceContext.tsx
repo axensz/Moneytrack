@@ -59,6 +59,12 @@ export interface FinanceContextValue {
    * que derive un SALDO debe usar este array (igual al live con <500 txs).
    */
   balanceTransactions: Transaction[];
+  /**
+   * false mientras el primer fetch del historial completo está en vuelo: los
+   * saldos derivados pueden venir de la ventana paginada (incorrectos). La UI
+   * debe mostrar "calculando" y bloquear el ajuste de saldo hasta que sea true.
+   */
+  balancesReady: boolean;
   accounts: Account[];
   categories: Categories;
   recurringPayments: RecurringPayment[];
@@ -196,7 +202,8 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
   // así que NO pueden calcularse sobre la ventana paginada de 500 (cada tx nueva
   // expulsa a la más antigua y el saldo salta por el monto expulsado). Solo
   // fetchea cuando la ventana está saturada; con <500 txs devuelve el array live.
-  const balanceTransactions = useBalanceTransactions(userId, transactions, hasMoreTransactions);
+  const { transactions: balanceTransactions, ready: balancesReady } =
+    useBalanceTransactions(userId, transactions, hasMoreTransactions);
 
   // 2. Cuentas (depende de balanceTransactions + deleteTransaction)
   const {
@@ -319,6 +326,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     // Datos
     transactions,
     balanceTransactions,
+    balancesReady,
     accounts,
     categories,
     recurringPayments,
@@ -399,7 +407,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     // Utilidades
     formatCurrency,
   }), [
-    transactions, balanceTransactions, accounts, categories, recurringPayments, defaultAccount, totalBalance,
+    transactions, balanceTransactions, balancesReady, accounts, categories, recurringPayments, defaultAccount, totalBalance,
     transactionsLoading, accountsLoading,
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
     firestoreError, retryLoad,

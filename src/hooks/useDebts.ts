@@ -15,14 +15,15 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, getDocs, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, getDocs, where, runTransaction, increment } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
 import { safeFirestoreOperation, checkNetworkConnection } from '../utils/firestoreHelpers';
 import { generateId } from '../utils/formatters';
+import { creditDeltasByAccount } from '../utils/creditDeltas';
 import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../config/constants';
-import type { Debt, Transaction } from '../types/finance';
+import type { Debt, Transaction, Account } from '../types/finance';
 
 interface DebtTransactionOps {
   addTransaction?: (tx: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
@@ -33,7 +34,8 @@ export function useDebts(
   userId: string | null,
   transactions: Transaction[],
   externalDebts?: Debt[],
-  txOps: DebtTransactionOps = {}
+  txOps: DebtTransactionOps = {},
+  accounts: Account[] = []
 ) {
   const { addTransaction, deleteTransaction } = txOps;
   // Firestore state
@@ -151,43 +153,88 @@ export function useDebts(
     }
   }, [userId, setLocalDebts]);
 
-  const deleteDebt = useCallback(async (id: string) => {
-    // Eliminar primero las transacciones vinculadas para no dejar saldos desfasados.
-    // #11: NO filtrar desde el array en memoria (`transactions`), que está paginado
-    // y puede no contener todas las transacciones del préstamo — eso dejaría
-    // transacciones de préstamo huérfanas (afectando saldos/usedCredit). Para el
-    // usuario autenticado consultamos Firestore por TODAS las transacciones con este
-    // debtId y las borramos por la ruta deleteTransaction (reversión-aware de
-    // usedCredit). En modo invitado seguimos con el array en memoria (es la fuente
-    // completa: localStorage no pagina).
-    if (deleteTransaction) {
-      let linkedTxIds: string[];
-      if (userId) {
-        const txCollection = collection(db, `users/${userId}/transactions`);
-        const snap = await getDocs(query(txCollection, where('debtId', '==', id)));
-        linkedTxIds = snap.docs.map(d => d.id);
-      } else {
-        linkedTxIds = transactions.filter(t => t.debtId === id && t.id).map(t => t.id!);
-      }
-      for (const txId of linkedTxIds) {
-        await deleteTransaction(txId);
-      }
-    }
+  // Nº máximo de transacciones vinculadas que se borran ATÓMICAMENTE en una sola
+  // runTransaction (Firestore limita a ~500 ops por transacción: borrados + updates
+  // de usedCredit + el borrado de la deuda). Por encima, se cae a la ruta secuencial
+  // (cada deleteTransaction es atómica por sí misma). Préstamos reales tienen pocas.
+  const ATOMIC_DELETE_LIMIT = 400;
 
+  const deleteDebt = useCallback(async (id: string) => {
     if (userId) {
       if (!checkNetworkConnection()) {
         throw new Error('Sin conexión a internet');
       }
 
+      // #11: consultar Firestore por TODAS las transacciones del préstamo (el array en
+      // memoria está paginado). runTransaction NO permite queries, así que obtenemos
+      // los ids fuera y luego operamos sobre refs concretas dentro de la transacción.
+      const txCollection = collection(db, `users/${userId}/transactions`);
+      const snap = await getDocs(query(txCollection, where('debtId', '==', id)));
+      const linkedTxIds = snap.docs.map(d => d.id);
+      const debtRef = doc(db, `users/${userId}/debts`, id);
+
+      // Préstamo con demasiadas transacciones para una sola transacción atómica:
+      // caer a la ruta secuencial (cada deleteTransaction revierte usedCredit de forma
+      // atómica e idempotente). La deuda se borra al final.
+      if (linkedTxIds.length > ATOMIC_DELETE_LIMIT) {
+        if (deleteTransaction) {
+          for (const txId of linkedTxIds) {
+            await deleteTransaction(txId);
+          }
+        }
+        await safeFirestoreOperation(() => deleteDoc(debtRef), 'deleteDebt', { maxRetries: 2 });
+        return;
+      }
+
+      // F-debt-cascade: borrado ATÓMICO. Borra todas las transacciones vinculadas,
+      // revierte usedCredit de las TC afectadas y borra la deuda en UNA runTransaction.
+      // Un fallo a mitad no aplica nada → nunca quedan deuda o transacciones huérfanas
+      // ni saldos/usedCredit desincronizados (antes era una secuencia no atómica).
       await safeFirestoreOperation(
-        () => deleteDoc(doc(db, `users/${userId}/debts`, id)),
+        () => runTransaction(db, async (firestoreTransaction) => {
+          const txRefs = linkedTxIds.map(txId => doc(db, `users/${userId}/transactions`, txId));
+
+          // LECTURAS primero (requisito de Firestore).
+          const txSnaps = await Promise.all(txRefs.map(ref => firestoreTransaction.get(ref)));
+
+          // Acumular el delta de usedCredit a revertir por cada TC afectada.
+          const revertByAccount = new Map<string, number>();
+          txSnaps.forEach(s => {
+            if (!s.exists()) return;
+            const txData = { id: s.id, ...s.data() } as Transaction;
+            for (const [accId, delta] of creditDeltasByAccount(txData, accounts)) {
+              revertByAccount.set(accId, (revertByAccount.get(accId) ?? 0) + delta);
+            }
+          });
+
+          const accountIds = Array.from(revertByAccount.keys());
+          const accountRefs = accountIds.map(accId => doc(db, `users/${userId}/accounts`, accId));
+          const accountSnaps = await Promise.all(accountRefs.map(ref => firestoreTransaction.get(ref)));
+
+          // ESCRITURAS después.
+          txRefs.forEach(ref => firestoreTransaction.delete(ref));
+          accountIds.forEach((accId, i) => {
+            const delta = revertByAccount.get(accId) ?? 0;
+            if (accountSnaps[i].exists() && delta !== 0) {
+              firestoreTransaction.update(accountRefs[i], { usedCredit: increment(-delta) });
+            }
+          });
+          firestoreTransaction.delete(debtRef);
+        }),
         'deleteDebt',
         { maxRetries: 2 }
       );
     } else {
+      // Modo invitado (en memoria): borrar transacciones vinculadas + la deuda.
+      if (deleteTransaction) {
+        const linkedTxIds = transactions.filter(t => t.debtId === id && t.id).map(t => t.id!);
+        for (const txId of linkedTxIds) {
+          await deleteTransaction(txId);
+        }
+      }
       setLocalDebts(prev => prev.filter(d => d.id !== id));
     }
-  }, [userId, setLocalDebts, deleteTransaction, transactions]);
+  }, [userId, setLocalDebts, deleteTransaction, transactions, accounts]);
 
   // Register a payment against a debt
   const registerDebtPayment = useCallback(async (debtId: string, amount: number) => {

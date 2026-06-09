@@ -280,8 +280,24 @@ class NumberFormatter {
    * @returns Número sin formato pero preservando coma decimal (ej: "1234,56")
    */
   static unformat(value: string): string {
-    // Remover puntos (miles) pero preservar coma (decimal)
-    return value.replace(/\./g, '').replace(/[^\d,]/g, '');
+    // Normaliza un input a formato es-CO (coma decimal, sin separador de miles).
+    // Solo dígitos, puntos y comas.
+    const v = value.replace(/[^\d.,]/g, '');
+
+    // Si ya hay coma decimal: los puntos son separadores de miles → quitarlos.
+    if (v.includes(',')) {
+      return v.replace(/\./g, '');
+    }
+
+    // Sin coma: un ÚNICO punto seguido de 1–2 dígitos es un separador DECIMAL
+    // (al teclear/pegar "563088.89" con teclado de punto decimal), NO de miles.
+    // Conservarlo como coma evita perder el decimal e inflar el valor ~100×
+    // (esto corrompía los ajustes de saldo al editar una cuenta).
+    const decimal = v.match(/^(\d+)\.(\d{1,2})$/);
+    if (decimal) return `${decimal[1]},${decimal[2]}`;
+
+    // Resto (sin coma): los puntos son separadores de miles → quitarlos.
+    return v.replace(/\./g, '');
   }
   /**
    * Parsea un string a número de forma segura

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { memo } from 'react';
-import { Edit2, Trash2, GripVertical, Wallet, CreditCard, Banknote, Combine } from 'lucide-react';
+import { Edit2, Trash2, GripVertical, ChevronUp, ChevronDown, Wallet, CreditCard, Banknote, Combine } from 'lucide-react';
 import type { Account, Transaction } from '../../../../types/finance';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 
@@ -27,6 +27,11 @@ interface AccountCardProps {
   onSetDefault: () => void;
   onDelete: () => void;
   onMerge?: () => void;
+  /** Alternativa de teclado a drag & drop (WCAG 2.1.1). Opcional para no romper otros usos. */
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
   onDragStart: (e: React.DragEvent) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDragLeave: () => void;
@@ -57,6 +62,10 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
   onSetDefault,
   onDelete,
   onMerge,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp = false,
+  canMoveDown = false,
   onDragStart,
   onDragOver,
   onDragLeave,
@@ -134,7 +143,30 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
               <GripVertical
                 size={isAssociated ? 16 : 20}
                 className="text-gray-400 cursor-grab active:cursor-grabbing flex-shrink-0"
+                aria-hidden="true"
               />
+              {(onMoveUp || onMoveDown) && (
+                <div className="flex flex-col flex-shrink-0" role="group" aria-label={`Reordenar ${account.name}`}>
+                  <button
+                    type="button"
+                    onClick={onMoveUp}
+                    disabled={!canMoveUp}
+                    aria-label={`Mover ${account.name} hacia arriba`}
+                    className="flex items-center justify-center h-5 w-6 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                  >
+                    <ChevronUp size={14} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onMoveDown}
+                    disabled={!canMoveDown}
+                    aria-label={`Mover ${account.name} hacia abajo`}
+                    className="flex items-center justify-center h-5 w-6 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                  >
+                    <ChevronDown size={14} aria-hidden="true" />
+                  </button>
+                </div>
+              )}
               <div
                 className={`p-1.5 rounded-lg flex-shrink-0 ${isCredit
                   ? 'bg-purple-100 dark:bg-purple-900/40'

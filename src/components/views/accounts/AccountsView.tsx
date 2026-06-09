@@ -442,7 +442,7 @@ export const AccountsView: React.FC = () => {
 
       {/* Lista de cuentas */}
       <div className="space-y-4">
-        {mainAccounts.map((account) => {
+        {mainAccounts.map((account, mainIndex) => {
           const balance = getAccountBalance(account.id!);
           const creditUsed = getCreditUsed(account.id!);
           const nextCutoff = getNextCutoffDate(account);
@@ -483,6 +483,10 @@ export const AccountsView: React.FC = () => {
                   })
                 }
                 onMerge={account.type === 'credit' && account.bankAccountId && creditCards.some(c => c.id !== account.id && c.bankAccountId === account.bankAccountId) ? () => openMergeCreditCardsModal(account) : undefined}
+                onMoveUp={() => dragDrop.moveAccount(account.id!, 'up')}
+                onMoveDown={() => dragDrop.moveAccount(account.id!, 'down')}
+                canMoveUp={mainIndex > 0}
+                canMoveDown={mainIndex < mainAccounts.length - 1}
                 onDragStart={(e) => dragDrop.handleDragStart(e, account.id!)}
                 onDragOver={(e) => dragDrop.handleDragOver(e, account.id!)}
                 onDragLeave={dragDrop.handleDragLeave}
@@ -499,7 +503,7 @@ export const AccountsView: React.FC = () => {
                   className={`ml-4 sm:ml-8 mt-3 space-y-3 border-l-2 border-purple-200 dark:border-purple-800 pl-4 transition-opacity duration-200 ${dragDrop.draggedAccountId === account.id ? 'opacity-50' : ''
                     }`}
                 >
-                  {associatedCards.map((card) => (
+                  {associatedCards.map((card, cardIndex) => (
                     <AccountCard
                       key={card.id}
                       account={card}
@@ -530,6 +534,10 @@ export const AccountsView: React.FC = () => {
                         })
                       }
                       onMerge={card.bankAccountId && creditCards.some(c => c.id !== card.id && c.bankAccountId === card.bankAccountId) ? () => openMergeCreditCardsModal(card) : undefined}
+                      onMoveUp={() => dragDrop.moveAccount(card.id!, 'up')}
+                      onMoveDown={() => dragDrop.moveAccount(card.id!, 'down')}
+                      canMoveUp={cardIndex > 0}
+                      canMoveDown={cardIndex < associatedCards.length - 1}
                       onDragStart={(e) => dragDrop.handleDragStart(e, card.id!)}
                       onDragOver={(e) => dragDrop.handleDragOver(e, card.id!)}
                       onDragLeave={dragDrop.handleDragLeave}

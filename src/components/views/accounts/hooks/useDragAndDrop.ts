@@ -21,6 +21,7 @@ interface UseDragAndDropReturn {
   handleTouchStart: (e: React.TouchEvent, accountId: string) => void;
   handleTouchMove: (e: React.TouchEvent) => void;
   handleTouchEnd: () => Promise<void>;
+  moveAccount: (accountId: string, direction: 'up' | 'down') => Promise<void>;
 }
 
 /**
@@ -80,6 +81,30 @@ export function useDragAndDrop({
       showToast.error('Error al reordenar cuentas');
     }
   }, [accounts, updateAccount, areSiblings, isMainAccount]);
+
+  // Alternativa accesible por teclado (WCAG 2.1.1): reordena moviendo la cuenta
+  // un puesto arriba/abajo respecto a su hermano adyacente, reutilizando la misma
+  // lógica de reorderAccounts que usan drag & drop y touch.
+  const moveAccount = useCallback(async (accountId: string, direction: 'up' | 'down') => {
+    const account = accounts.find(acc => acc.id === accountId);
+    if (!account) return;
+
+    const siblings = (isMainAccount(account)
+      ? accounts.filter(acc => isMainAccount(acc))
+      : accounts.filter(acc => acc.bankAccountId === account.bankAccountId)
+    ).sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    const currentIndex = siblings.findIndex(acc => acc.id === accountId);
+    if (currentIndex === -1) return;
+
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= siblings.length) return;
+
+    const targetId = siblings[targetIndex].id;
+    if (!targetId) return;
+
+    await reorderAccounts(accountId, targetId);
+  }, [accounts, isMainAccount, reorderAccounts]);
 
   // Desktop handlers
   const handleDragStart = useCallback((e: React.DragEvent, accountId: string) => {
@@ -174,5 +199,6 @@ export function useDragAndDrop({
     handleTouchStart,
     handleTouchMove,
     handleTouchEnd,
+    moveAccount,
   };
 }

@@ -146,12 +146,27 @@ describe('validateInterestConfig', () => {
     expect(tooHigh.valid).toBe(false);
   });
 
-  it('fails on out-of-range installments', () => {
+  it('fails on out-of-range installments (cap real = 36)', () => {
     const zero = validateInterestConfig(1000, 20, 0);
     expect(zero.valid).toBe(false);
 
-    const over60 = validateInterestConfig(1000, 20, 61);
-    expect(over60.valid).toBe(false);
+    // 48 y 60 ya no son válidas: el cap real (36) lo imponen firestore.rules
+    // (hasValidInstallments) e INSTALLMENT_OPTIONS de la UI (F-cuotas-capas).
+    const fortyEight = validateInterestConfig(1000, 20, 48);
+    expect(fortyEight.valid).toBe(false);
+    expect(fortyEight.errors.some(e => e.includes('entre 1 y 36'))).toBe(true);
+
+    const sixty = validateInterestConfig(1000, 20, 60);
+    expect(sixty.valid).toBe(false);
+
+    const over36 = validateInterestConfig(1000, 20, 37);
+    expect(over36.valid).toBe(false);
+  });
+
+  it('accepts 36 installments (máximo real permitido)', () => {
+    const result = validateInterestConfig(1000, 20, 36);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
   });
 
   it('warns on non-standard installment count', () => {

@@ -5,6 +5,7 @@
 import React from 'react';
 import { X } from 'lucide-react';
 import { NotificationPreferences } from '../notifications/NotificationPreferences';
+import { useModalA11y } from '../../hooks/useModalA11y';
 
 interface NotificationPreferencesModalProps {
     isOpen: boolean;
@@ -15,11 +16,22 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
     isOpen,
     onClose,
 }) => {
+    // A11y: Escape, focus trap y restauración de foco.
+    const { modalRef, onKeyDown } = useModalA11y({ isOpen, onClose });
+
     if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="relative w-full max-w-3xl max-h-[90vh] bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden">
+            <div
+                ref={modalRef}
+                onKeyDown={onKeyDown}
+                tabIndex={-1}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Configuración de Notificaciones"
+                className="relative w-full max-w-3xl max-h-[90vh] bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden outline-none"
+            >
                 {/* Header */}
                 <div className="sticky top-0 z-10 flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
                     <h2 className="text-2xl font-bold text-gray-900 dark:text-white">

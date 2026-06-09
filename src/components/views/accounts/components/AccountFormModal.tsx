@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { X } from 'lucide-react';
+import { useModalA11y } from '../../../../hooks/useModalA11y';
 import type { Account, NewAccount } from '../../../../types/finance';
 
 interface AccountType {
@@ -59,6 +60,9 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
   getAccountBalance,
   getCreditUsed,
 }) => {
+  // A11y: Escape, focus trap y restauración de foco.
+  const { modalRef, onKeyDown } = useModalA11y({ isOpen, onClose });
+
   if (!isOpen) return null;
 
   const handleInterestRateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -80,7 +84,15 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div
+        ref={modalRef}
+        onKeyDown={onKeyDown}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label={editingAccount ? 'Editar Cuenta' : 'Nueva Cuenta'}
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto outline-none"
+      >
         <div className="p-4 sm:p-6">
           <div className="flex justify-between items-center mb-4">
             <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">

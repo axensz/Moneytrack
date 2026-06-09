@@ -190,23 +190,34 @@ class DateFormatter {
 
     const diffDays = Math.round((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 
+    // F-fecha-relativa: los meses/años se cuentan por CALENDARIO real (no
+    // dividiendo días entre 30/365, que daba labels imprecisas cerca de bordes
+    // de mes). `calendarMonths(a, b)` = meses completos transcurridos de b a a.
+    const calendarMonths = (later: Date, earlier: Date): number => {
+      let months = (later.getFullYear() - earlier.getFullYear()) * 12 + (later.getMonth() - earlier.getMonth());
+      if (later.getDate() < earlier.getDate()) months--; // aún no se cumple el mes
+      return months;
+    };
+
     if (diffDays < 0) {
       // Fecha futura
       const future = Math.abs(diffDays);
       if (future === 1) return 'mañana';
       if (future < 30) return `en ${future} días`;
-      const months = Math.round(future / 30);
+      const months = calendarMonths(start, today);
+      if (months < 1) return `en ${future} días`;
       if (months < 12) return `en ${months} ${months === 1 ? 'mes' : 'meses'}`;
-      const years = Math.round(future / 365);
+      const years = Math.floor(months / 12);
       return `en ${years} ${years === 1 ? 'año' : 'años'}`;
     }
 
     if (diffDays === 0) return 'hoy';
     if (diffDays === 1) return 'ayer';
     if (diffDays < 30) return `hace ${diffDays} días`;
-    const months = Math.floor(diffDays / 30);
+    const months = calendarMonths(today, start);
+    if (months < 1) return `hace ${diffDays} días`;
     if (months < 12) return `hace ${months} ${months === 1 ? 'mes' : 'meses'}`;
-    const years = Math.floor(diffDays / 365);
+    const years = Math.floor(months / 12);
     return `hace ${years} ${years === 1 ? 'año' : 'años'}`;
   }
 }

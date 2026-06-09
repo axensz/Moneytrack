@@ -65,6 +65,43 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
 
   if (!isOpen) return null;
 
+  // Preview en vivo del ajuste: usa EXACTAMENTE el mismo parseo y la misma fuente
+  // de saldo/deuda que handleSubmit, para que el usuario vea el saldo actual, el
+  // nuevo y el ajuste que se creará ANTES de confirmar (transparencia + evita
+  // sorpresas si el saldo computado no es el esperado).
+  const adjustPreview = (() => {
+    if (!editingAccount || balanceAdjustment.trim() === '') return null;
+    const target = parseFloat(balanceAdjustment.trim().replace(/\./g, '').replace(',', '.'));
+    if (isNaN(target) || target < 0) return null;
+    const current = editingAccount.type === 'credit'
+      ? getCreditUsed(editingAccount.id!)
+      : getAccountBalance(editingAccount.id!);
+    return { current, target, delta: target - current };
+  })();
+
+  const renderAdjustPreview = () => {
+    if (!adjustPreview || !editingAccount) return null;
+    const isCredit = editingAccount.type === 'credit';
+    return (
+      <div className="mt-2 text-xs rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 p-2 space-y-0.5">
+        <div className="flex justify-between">
+          <span className="text-gray-500 dark:text-gray-400">{isCredit ? 'Deuda actual' : 'Saldo actual'}</span>
+          <span className="font-medium text-gray-700 dark:text-gray-200">{formatCurrency(adjustPreview.current)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-500 dark:text-gray-400">Nuevo</span>
+          <span className="font-medium text-gray-700 dark:text-gray-200">{formatCurrency(adjustPreview.target)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-500 dark:text-gray-400">Ajuste a crear</span>
+          <span className={`font-semibold ${adjustPreview.delta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+            {adjustPreview.delta >= 0 ? '+' : ''}{formatCurrency(adjustPreview.delta)}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
   const handleInterestRateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     const numericOnly = value.replace(/[^0-9]/g, '');
@@ -179,6 +216,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   Ingresa el nuevo saldo deseado. Se creará un ajuste automático.
                 </p>
+                {renderAdjustPreview()}
               </div>
             )}
 
@@ -201,6 +239,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   Ingresa el monto real que debes. Se creará un ajuste automático.
                 </p>
+                {renderAdjustPreview()}
               </div>
             )}
 

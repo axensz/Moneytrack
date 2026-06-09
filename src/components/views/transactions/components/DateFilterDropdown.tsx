@@ -107,9 +107,20 @@ export const DateFilterDropdown: React.FC<DateFilterDropdownProps> = ({
     DATE_PRESETS.find((p) => p.value === dateRangePreset)?.label || 'Fecha';
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div
+      className="relative"
+      ref={dropdownRef}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && showDatePicker) {
+          e.stopPropagation();
+          setShowDatePicker(false);
+        }
+      }}
+    >
       <button
         onClick={() => setShowDatePicker(!showDatePicker)}
+        aria-haspopup="dialog"
+        aria-expanded={showDatePicker}
         className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${dateRangePreset !== 'all'
           ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
           : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600'
@@ -121,7 +132,7 @@ export const DateFilterDropdown: React.FC<DateFilterDropdownProps> = ({
       </button>
 
       {showDatePicker && (
-        <div className="absolute top-full right-0 mt-1 z-[100] bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-2 min-w-[240px] max-w-[calc(100vw-2rem)]">
+        <div role="dialog" aria-label="Filtrar por fecha" className="absolute top-full right-0 mt-1 z-[100] bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-2 min-w-[240px] max-w-[calc(100vw-2rem)]">
           {/* AI date input */}
           {isGeminiConfigured() && (
             <div className="mb-2 pb-2 border-b border-gray-200 dark:border-gray-700">

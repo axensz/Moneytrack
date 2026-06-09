@@ -79,4 +79,56 @@ describe('TransactionItem a11y / máscara', () => {
       expect(btn.className).toContain('focus-visible:ring-purple-500');
     }
   });
+
+  it('expone la expansión como <button> con aria-expanded (no como div role=button anidando botones)', () => {
+    const { rerender } = render(
+      <TransactionItem
+        transaction={baseTx}
+        account={account}
+        isEditing={false}
+        editForm={{ description: '', amount: '', date: '', category: '' }}
+        categories={categories}
+        formatCurrency={(n) => `$${n.toLocaleString('es-CO')}`}
+        onEdit={noop}
+        onDelete={noop}
+        onSave={noop}
+        onCancel={noop}
+        onEditFormChange={noop}
+        isExpanded={false}
+        onToggleExpand={noop}
+      />
+    );
+
+    const toggle = screen.getByRole('button', { name: 'Expandir detalle' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle.tagName).toBe('BUTTON');
+    // El contenedor de la fila ya no debe anunciarse como button (ARIA inválido:
+    // button anidando button). No debe existir un role=button salvo los reales.
+    expect(screen.queryByRole('button', { name: '' })).toBeNull();
+
+    rerender(
+      <TransactionItem
+        transaction={baseTx}
+        account={account}
+        isEditing={false}
+        editForm={{ description: '', amount: '', date: '', category: '' }}
+        categories={categories}
+        formatCurrency={(n) => `$${n.toLocaleString('es-CO')}`}
+        onEdit={noop}
+        onDelete={noop}
+        onSave={noop}
+        onCancel={noop}
+        onEditFormChange={noop}
+        isExpanded
+        onToggleExpand={noop}
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Contraer detalle' })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('revela las acciones de fila también con focus-within (no solo hover) para teclado', () => {
+    const { container } = renderItem();
+    const wrapper = container.querySelector('.sm\\:group-hover\\:opacity-100');
+    expect(wrapper?.className).toContain('sm:group-focus-within:opacity-100');
+  });
 });

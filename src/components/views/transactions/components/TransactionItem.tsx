@@ -180,10 +180,6 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
     <div
       className={`border rounded-xl p-3.5 sm:p-4 transition-all bg-white dark:bg-gray-800 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md shadow-sm group ${isExpanded ? 'border-purple-300 dark:border-purple-600' : 'border-gray-200 dark:border-gray-700'} ${onToggleExpand ? 'cursor-pointer' : ''}`}
       onClick={onToggleExpand}
-      role={onToggleExpand ? 'button' : undefined}
-      tabIndex={onToggleExpand ? 0 : undefined}
-      aria-expanded={onToggleExpand ? isExpanded : undefined}
-      onKeyDown={onToggleExpand ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleExpand(); } } : undefined}
     >
       <div className="flex items-start gap-3">
         {/* Icon */}
@@ -224,7 +220,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
               <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
                 {transaction.category}
               </span>
-              <span className="text-[11px] text-gray-400 dark:text-gray-500">
+              <span className="text-[11px] text-gray-500 dark:text-gray-400">
                 {dateLabel}
               </span>
               {!transaction.paid && (
@@ -252,7 +248,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
 
             {/* Action buttons */}
             <div className="flex items-center gap-0.5 shrink-0">
-              <div className="flex gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+              <div className="flex gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
                 <button
                   onClick={(e) => { e.stopPropagation(); onEdit(); }}
                   className="flex items-center justify-center p-1.5 min-h-[44px] min-w-[44px] text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
@@ -271,11 +267,19 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
                 </button>
               </div>
               {onToggleExpand && (
-                <ChevronDown
-                  size={16}
-                  className={`text-gray-300 dark:text-gray-600 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                  aria-hidden="true"
-                />
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onToggleExpand(); }}
+                  aria-expanded={isExpanded}
+                  aria-label={isExpanded ? 'Contraer detalle' : 'Expandir detalle'}
+                  className="flex items-center justify-center p-1.5 min-h-[44px] min-w-[44px] text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                >
+                  <ChevronDown
+                    size={16}
+                    className={`text-gray-400 dark:text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                    aria-hidden="true"
+                  />
+                </button>
               )}
             </div>
           </div>

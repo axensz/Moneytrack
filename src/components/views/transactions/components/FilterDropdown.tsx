@@ -49,9 +49,20 @@ export const FilterDropdown: React.FC<FilterDropdownProps> = ({
   const isActive = value !== 'all';
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div
+      className="relative"
+      ref={dropdownRef}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && isOpen) {
+          e.stopPropagation();
+          onClose();
+        }
+      }}
+    >
       <button
         onClick={onToggle}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
         className={`flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${isActive
           ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
           : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600'
@@ -66,10 +77,15 @@ export const FilterDropdown: React.FC<FilterDropdownProps> = ({
       </button>
 
       {isOpen && (
-        <div className={`absolute top-full mt-1 z-[100] bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-2 min-w-[200px] max-w-[calc(100vw-2rem)] max-h-[350px] overflow-y-auto ${align === 'left' ? 'left-0' : 'right-0'
+        <div
+          role="listbox"
+          aria-label={label}
+          className={`absolute top-full mt-1 z-[100] bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-2 min-w-[200px] max-w-[calc(100vw-2rem)] max-h-[350px] overflow-y-auto ${align === 'left' ? 'left-0' : 'right-0'
           }`}>
           <div className="space-y-0.5">
             <button
+              role="option"
+              aria-selected={value === 'all'}
               onClick={() => {
                 onChange('all');
                 onClose();
@@ -84,6 +100,8 @@ export const FilterDropdown: React.FC<FilterDropdownProps> = ({
             {options.map((option) => (
               <button
                 key={option.value}
+                role="option"
+                aria-selected={value === option.value}
                 onClick={() => {
                   onChange(option.value);
                   onClose();

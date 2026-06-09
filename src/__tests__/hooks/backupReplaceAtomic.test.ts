@@ -5,11 +5,13 @@
  * fallo a mitad provocaba pérdida total de datos.
  *
  * Invariantes verificadas:
- *  - "replace": ningún batch.delete (vía commit) ocurre ANTES de que se hayan
- *    hecho todos los batch.set de los datos nuevos; los delete van DESPUÉS.
- *  - "replace": si una escritura (commit de transacciones) RECHAZA, NO se ejecuta
- *    ningún delete -> los datos viejos sobreviven.
- *  - "merge": nunca se ejecuta ningún delete.
+ *  - "replace" OK: ningún batch.delete ocurre ANTES de escribir todo lo nuevo; los
+ *    delete (de los datos VIEJOS, el swap) van DESPUÉS.
+ *  - "replace" con fallo: ROLLBACK — se borran los docs NUEVOS ya escritos (auto-*)
+ *    y NINGÚN dato viejo (old-*) se borra → el estado vuelve a "no pasó nada", sin
+ *    duplicados huérfanos (atomicidad efectiva dentro de los límites de Firestore).
+ *  - "merge" OK: nunca se ejecuta ningún delete.
+ *  - "merge" con fallo: rollback de lo nuevo (no hay datos viejos que tocar).
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
@@ -17,6 +19,9 @@ import { renderHook, act } from '@testing-library/react';
 // --- Registro de llamadas compartido entre el mock y el test ---------------
 type CallKind = 'set' | 'delete' | 'commit';
 const callLog: CallKind[] = [];
+// Ids de los docs borrados (para distinguir rollback de lo NUEVO (auto-*) del
+// borrado de lo VIEJO (old-*) en un replace exitoso).
+const deleteLog: string[] = [];
 
 // Permite forzar que un commit concreto rechace (simula fallo a mitad de escritura).
 let rejectCommitWhenSetSeen = false;
@@ -68,8 +73,9 @@ vi.mock('firebase/firestore', () => {
         callLog.push('set');
         sawSet = true;
       }),
-      delete: vi.fn(() => {
+      delete: vi.fn((ref: { id: string }) => {
         callLog.push('delete');
+        deleteLog.push(ref.id);
       }),
       commit: vi.fn(async () => {
         callLog.push('commit');
@@ -142,6 +148,7 @@ function lastIndexOf(kind: CallKind): number {
 describe('C1 — backup replace: write-then-delete', () => {
   beforeEach(() => {
     callLog.length = 0;
+    deleteLog.length = 0;
     rejectCommitWhenSetSeen = false;
     vi.clearAllMocks();
   });
@@ -163,9 +170,13 @@ describe('C1 — backup replace: write-then-delete', () => {
     expect(lastSet).toBeGreaterThanOrEqual(0);
     expect(firstDelete).toBeGreaterThanOrEqual(0);
     expect(lastSet).toBeLessThan(firstDelete);
+
+    // Los borrados son los datos VIEJOS (el swap), no un rollback de lo nuevo.
+    expect(deleteLog.some(id => id.startsWith('old-'))).toBe(true);
+    expect(deleteLog.some(id => id.startsWith('auto-'))).toBe(false);
   });
 
-  it('replace: si una escritura RECHAZA, NO se ejecuta ningún delete (datos viejos sobreviven)', async () => {
+  it('replace: si una escritura falla, ROLLBACK de lo nuevo y los datos viejos sobreviven', async () => {
     rejectCommitWhenSetSeen = true; // cualquier commit con sets previos rechaza
     const { result } = renderHook(() => useBackup({ ...hookProps }));
 
@@ -176,8 +187,10 @@ describe('C1 — backup replace: write-then-delete', () => {
 
     // Hubo intento de escritura...
     expect(callLog).toContain('set');
-    // ...pero NUNCA un borrado.
-    expect(callLog).not.toContain('delete');
+    // ...y un ROLLBACK que borró docs NUEVOS (auto-*)...
+    expect(deleteLog.some(id => id.startsWith('auto-'))).toBe(true);
+    // ...pero NINGÚN dato viejo (old-*) se borró → el estado vuelve a "no pasó nada".
+    expect(deleteLog.some(id => id.startsWith('old-'))).toBe(false);
   });
 
   it('merge: nunca se ejecuta ningún delete', async () => {
@@ -189,5 +202,17 @@ describe('C1 — backup replace: write-then-delete', () => {
 
     expect(callLog).toContain('set');
     expect(callLog).not.toContain('delete');
+  });
+
+  it('merge: si una escritura falla, ROLLBACK de lo nuevo (no hay datos viejos que borrar)', async () => {
+    rejectCommitWhenSetSeen = true;
+    const { result } = renderHook(() => useBackup({ ...hookProps }));
+
+    await act(async () => {
+      await result.current.importData(makeFile(BACKUP), 'merge');
+    });
+
+    expect(deleteLog.some(id => id.startsWith('auto-'))).toBe(true);
+    expect(deleteLog.some(id => id.startsWith('old-'))).toBe(false);
   });
 });

@@ -26,6 +26,13 @@ import type {
 interface UseNotificationMonitoringProps {
     userId: string | null;
     transactions: Transaction[];
+    /**
+     * Historial COMPLETO para cálculos de saldo (C-FIX paginación + saldos).
+     * BalanceMonitor deriva saldos de ahorro/efectivo sumando transacciones;
+     * con la ventana paginada de 500 el saldo evaluado sería incorrecto.
+     * Si no se pasa, cae al array `transactions`.
+     */
+    balanceTransactions?: Transaction[];
     budgets: Budget[];
     recurringPayments: RecurringPayment[];
     accounts: Account[];
@@ -36,12 +43,14 @@ interface UseNotificationMonitoringProps {
 export function useNotificationMonitoring({
     userId,
     transactions,
+    balanceTransactions,
     budgets,
     recurringPayments,
     accounts,
     debts,
     notificationManager,
 }: UseNotificationMonitoringProps) {
+    const txsForBalance = balanceTransactions ?? transactions;
     const prevTransactionIdsRef = useRef<Set<string>>(new Set());
     const dailyCheckDoneRef = useRef<boolean>(false);
     const monitorsInitializedRef = useRef<boolean>(false);
@@ -91,7 +100,7 @@ export function useNotificationMonitoring({
             createNotification: (n) => notificationManager.createNotification(n),
             preferences,
             accounts,
-            transactions,
+            transactions: txsForBalance,
         });
 
         monitorsRef.current.debtMonitor = new DebtMonitor({
@@ -130,14 +139,14 @@ export function useNotificationMonitoring({
         m.balanceMonitor!.deps = {
             ...m.balanceMonitor!.deps,
             accounts,
-            transactions,
+            transactions: txsForBalance,
             preferences,
         };
         m.debtMonitor!.deps = {
             ...m.debtMonitor!.deps,
             debts,
         };
-    }, [transactions, budgets, recurringPayments, accounts, debts, notificationManager]);
+    }, [transactions, txsForBalance, budgets, recurringPayments, accounts, debts, notificationManager]);
 
     // Run daily checks on mount
     useEffect(() => {

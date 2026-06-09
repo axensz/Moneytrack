@@ -131,6 +131,7 @@ const FinanceTracker = () => {
 const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | null; isOnline: boolean; onDataReady: (ready: boolean) => void }) => {
   const {
     transactions,
+    balanceTransactions,
     accounts,
     categories,
     recurringPayments,
@@ -164,6 +165,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   useNotificationMonitoring({
     userId: user?.uid || null,
     transactions,
+    balanceTransactions,
     budgets,
     recurringPayments,
     accounts,

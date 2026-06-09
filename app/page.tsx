@@ -1,7 +1,7 @@
 'use client';
 
 import FinanceTracker from '../src/finance-tracker';
-import { ErrorBoundary } from '../src/components/ErrorBoundary';
+import { ErrorBoundary } from '../src/components/layout/ErrorBoundary';
 
 export default function Home() {
   return (

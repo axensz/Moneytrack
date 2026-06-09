@@ -5,6 +5,15 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 
+// P-welcome-dup: la decisión de cerrar el welcome se persiste en localStorage.
+// Antes vivía solo en un useRef en memoria, así que el modal reaparecía en CADA
+// recarga mientras el usuario no tuviera cuentas. Se limpia al crear la primera
+// cuenta (para que reaparezca si en el futuro se queda sin cuentas).
+const WELCOME_DISMISSED_KEY = 'moneytrack_welcome_dismissed';
+
+const readDismissed = (): boolean =>
+  typeof window !== 'undefined' && localStorage.getItem(WELCOME_DISMISSED_KEY) === 'true';
+
 interface UseWelcomeModalProps {
   mounted: boolean;
   authLoading: boolean;
@@ -26,8 +35,9 @@ export function useWelcomeModal({
 }: UseWelcomeModalProps): UseWelcomeModalReturn {
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
 
-  // Ref para evitar mostrar el modal si ya se cerró manualmente
-  const welcomeModalDismissed = useRef(false);
+  // Ref para evitar mostrar el modal si ya se cerró manualmente.
+  // Inicializa desde localStorage → no reaparece en cada recarga (P-welcome-dup).
+  const welcomeModalDismissed = useRef(readDismissed());
 
   // Determinar si debería mostrarse el modal
   const shouldShowWelcome = mounted && !authLoading && !accountsLoading && accountsCount === 0;
@@ -36,6 +46,7 @@ export function useWelcomeModal({
     // Si hay cuentas, resetear el flag de dismissal para futuras sesiones
     if (accountsCount > 0) {
       welcomeModalDismissed.current = false;
+      if (typeof window !== 'undefined') localStorage.removeItem(WELCOME_DISMISSED_KEY);
     }
 
     // Solo mostrar si debería mostrarse Y no fue cerrado manualmente
@@ -50,6 +61,7 @@ export function useWelcomeModal({
   // Handler para cerrar el modal manualmente
   const handleDismissWelcomeModal = useCallback(() => {
     welcomeModalDismissed.current = true;
+    if (typeof window !== 'undefined') localStorage.setItem(WELCOME_DISMISSED_KEY, 'true');
     setShowWelcomeModal(false);
   }, []);
 

@@ -76,6 +76,24 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             </>
           )}
         </button>
+
+        {/* P-guest-hidden: el modo invitado era indescubrible (el modal solo
+            ofrecía Google). Se divulga que la app es usable sin cuenta. */}
+        <div className="mt-5 flex items-center gap-3" aria-hidden="true">
+          <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+          <span className="text-xs text-gray-400 dark:text-gray-500">o</span>
+          <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+        </div>
+        <button
+          onClick={onClose}
+          disabled={isLoading}
+          className="mt-4 w-full py-3 px-4 rounded-xl font-medium text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+        >
+          Continuar sin cuenta
+        </button>
+        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          Puedes usar MoneyTrack sin cuenta — tus datos se guardan solo en este dispositivo.
+        </p>
       </div>
     </BaseModal>
   );

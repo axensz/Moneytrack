@@ -185,7 +185,7 @@ export function TransactionsList({
                     <React.Fragment key={item.key}>
                         {item.showDateHeader && (
                             <div className="pt-4 pb-1.5 first:pt-0">
-                                <span className="text-[11px] font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                                <span className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-500">
                                     {item.headerLabel}
                                 </span>
                             </div>

@@ -76,7 +76,7 @@ export const AdjustmentGroup: React.FC<AdjustmentGroupProps> = ({
         <div className="border-t border-gray-100 dark:border-gray-700 p-2 space-y-3">
           {Array.from(byAccount.entries()).map(([accountId, { account, items }]) => (
             <div key={accountId}>
-              <p className="text-[11px] font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500 px-1 mb-1.5">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-500 px-1 mb-1.5">
                 {account?.name || 'Cuenta desconocida'}
               </p>
               <div className="space-y-2">

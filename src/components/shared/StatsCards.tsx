@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { TrendingUp, TrendingDown, Wallet, Calendar, Eye, EyeOff } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, Calendar, Eye, EyeOff, Info } from 'lucide-react';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 
 interface StatsCardsProps {
@@ -87,7 +87,13 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
         {/* Pendientes Card */}
         <div className="col-span-2 lg:col-span-1 p-3 sm:p-4 md:p-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-md hover:shadow-lg transition-all">
           <div className="flex items-center justify-between mb-1.5 sm:mb-2">
-            <span className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Pendientes</span>
+            <span
+              className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 inline-flex items-center gap-1 cursor-help"
+              title="Incluye la deuda de tus tarjetas de crédito (compras que aún no pagas al banco), no solo gastos sin marcar como pagados. Una compra de TC cuenta como gasto (ya gastaste el dinero) y como pendiente (lo debes a la tarjeta) hasta que pagas el extracto."
+            >
+              Pendientes
+              <Info size={12} className="text-gray-400 dark:text-gray-500" aria-hidden="true" />
+            </span>
             <div className="p-1.5 sm:p-2 rounded-lg bg-amber-100 dark:bg-amber-900/30">
               <Calendar size={16} className="sm:w-[18px] sm:h-[18px] text-amber-600 dark:text-amber-400" />
             </div>

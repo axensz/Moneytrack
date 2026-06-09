@@ -15,6 +15,12 @@ import { DebtMonitor } from '../services/DebtMonitor';
 import { NotificationManager } from '../services/NotificationManager';
 import { logger } from '../utils/logger';
 import { shouldSuppressNotification } from '../utils/importBatchFlag';
+import { ensureDate } from '../utils/dateUtils';
+
+// Ventana de "recién creada": una transacción cuyo createdAt es más viejo que
+// esto NO dispara alertas individuales aunque su id acabe de entrar al array
+// (entró por paginación/"Cargar más", no porque el usuario la registrara).
+const FRESH_CREATION_MS = 2 * 60 * 1000;
 import type {
     Transaction,
     Budget,
@@ -189,7 +195,18 @@ export function useNotificationMonitoring({
                 return;
             }
 
-            const newTransactions = transactions.filter(t => t.id && newIds.includes(t.id));
+            // Solo alertar sobre transacciones recién CREADAS por el usuario
+            // (createdAt fresco). Un id "nuevo" en el array también aparece cuando
+            // la PAGINACIÓN carga transacciones antiguas ("Cargar más" añade cientos
+            // de ids de golpe) → sin este guard, cada tx histórica disparaba alertas
+            // de gasto inusual/presupuesto como si fuera nueva (flood reportado).
+            // Sin createdAt (docs legacy, solo llegan vía paginación) → suprimir.
+            const newTransactions = transactions.filter(t => {
+                if (!t.id || !newIds.includes(t.id)) return false;
+                if (!t.createdAt) return false;
+                const createdMs = ensureDate(t.createdAt).getTime();
+                return Date.now() - createdMs < FRESH_CREATION_MS;
+            });
 
             newTransactions.forEach(async (transaction) => {
                 // Double-check per transaction in case only some are from import

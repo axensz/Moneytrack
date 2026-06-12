@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 
 const M = vi.hoisted(() => ({
-  getDocImpl: vi.fn(async () => ({ exists: () => false, data: () => undefined })),
+  getDocImpl: vi.fn(async (_ref: unknown) => ({ exists: () => false, data: () => undefined as unknown })),
   loggedErrors: [] as unknown[],
 }));
 

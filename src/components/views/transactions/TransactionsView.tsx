@@ -79,8 +79,9 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     hasMoreTransactions,
     loadingMoreTransactions,
     loadMoreTransactions,
+    balanceTransactions,
   } = useTransactionDomain();
-  const { accounts } = useAccountDomain();
+  const { accounts, balancesReady } = useAccountDomain();
   const { recurringPayments } = useRecurringDomain();
   const { categories } = useCategoryDomain();
   const formatCurrency = useFormatCurrency();
@@ -118,6 +119,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     deleteTransaction,
     updateTransaction,
     onRestore,
+    balanceTransactions,
+    balancesReady,
   });
 
   const { exportTransactionsCSV } = useCSVExport();

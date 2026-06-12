@@ -4,6 +4,13 @@
 # See https://help.github.com/articles/ignoring-files/
 
 # ============================================================
+# Datos personales (extractos bancarios y archivos de prueba con
+# datos reales NUNCA deben commitearse)
+# ============================================================
+*.xlsx
+*.xls
+
+# ============================================================
 # Dependencies
 # ============================================================
 node_modules/

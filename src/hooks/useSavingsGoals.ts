@@ -32,9 +32,12 @@ export function useSavingsGoals(userId: string | null, externalGoals?: SavingsGo
   const [loading, setLoading] = useState(true);
   const [localGoals, setLocalGoals] = useLocalStorage<SavingsGoal[]>('savingsGoals', []);
 
-  // Firestore subscription — skip if data provided externally (centralized)
+  // Firestore subscription — skip if data provided externally (centralized).
+  // Se depende del MODO (hay/no hay datos externos), no de la identidad del
+  // array externo: cada snapshot crea un array nuevo y re-suscribiría en vano.
+  const hasExternalGoals = externalGoals !== undefined;
   useEffect(() => {
-    if (externalGoals !== undefined) {
+    if (hasExternalGoals) {
       setLoading(false);
       return;
     }
@@ -68,7 +71,7 @@ export function useSavingsGoals(userId: string | null, externalGoals?: SavingsGo
     );
 
     return () => unsubscribe();
-  }, [userId, externalGoals !== undefined]);
+  }, [userId, hasExternalGoals]);
 
   const goals = externalGoals ?? (userId ? firestoreGoals : localGoals);
 

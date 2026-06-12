@@ -8,9 +8,11 @@ import type {
   DateRangePreset,
   RecurringPayment,
 } from '../../../../types/finance';
-import { parseDateFromInput, parseDateWithTime } from '../../../../utils/formatters';
+import { parseDateFromInput, parseDateWithTime, roundMoney } from '../../../../utils/formatters';
 import { getDateRangeFromPreset, ensureDate } from '../../../../utils/dateUtils';
 import { findAccountForTransaction, transactionUsesAccount } from '../../../../utils/accountTransactions';
+import { AccountStrategyFactory } from '../../../../utils/accountStrategies';
+import { getCreditDelta } from '../../../../utils/creditDeltas';
 import { showToast } from '../../../../utils/toastHelpers';
 import { logger } from '../../../../utils/logger';
 import { SUCCESS_MESSAGES, TRANSACTION_VALIDATION } from '../../../../config/constants';
@@ -30,6 +32,10 @@ interface UseTransactionsViewParams {
   deleteTransaction: (id: string) => Promise<void>;
   updateTransaction: (id: string, updates: Partial<Transaction>) => Promise<void>;
   onRestore?: (transaction: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
+  /** Historial completo para validar saldo/cupo (nunca la ventana paginada). */
+  balanceTransactions: Transaction[];
+  /** false mientras el historial completo asienta: se omite la validación. */
+  balancesReady: boolean;
 }
 
 /**
@@ -53,6 +59,8 @@ export const useTransactionsView = ({
   deleteTransaction,
   updateTransaction,
   onRestore,
+  balanceTransactions,
+  balancesReady,
 }: UseTransactionsViewParams) => {
   // Estado de edición
   const [editingTransaction, setEditingTransaction] = useState<string | null>(null);
@@ -218,6 +226,40 @@ export const useTransactionsView = ({
 
       try {
         const original = transactions.find((t) => t.id === id);
+
+        // Validación de saldo/cupo (#8): el nuevo monto se valida contra el
+        // historial COMPLETO excluyendo la transacción original (sin excluirla,
+        // editar cerca del saldo daría falsos rechazos). Mientras el historial
+        // no asienta (balancesReady=false) se omite, igual que antes del fix.
+        if (
+          original &&
+          balancesReady &&
+          (original.type === 'expense' || original.type === 'transfer')
+        ) {
+          const account = accountsById.get(original.accountId);
+          if (account) {
+            const rest = balanceTransactions.filter((t) => t.id !== id);
+            // En TC el usedCredit persistido ya incluye la original: restarla
+            // para no contarla doble al validar el nuevo monto.
+            const accountForValidation =
+              account.type === 'credit' && account.usedCredit != null
+                ? {
+                    ...account,
+                    usedCredit: Math.max(
+                      0,
+                      roundMoney(account.usedCredit - getCreditDelta(original, account.id!))
+                    ),
+                  }
+                : account;
+            const validation = AccountStrategyFactory.getStrategy(account.type)
+              .validateTransaction(accountForValidation, amount, rest, original.type);
+            if (!validation.valid) {
+              showToast.error(validation.error ?? 'La transacción no es válida');
+              return;
+            }
+          }
+        }
+
         await updateTransaction(id, {
           description: editForm.description.trim(),
           amount,
@@ -232,20 +274,17 @@ export const useTransactionsView = ({
         setEditForm({ description: '', amount: '', date: '', category: '' });
         showToast.success(SUCCESS_MESSAGES.TRANSACTION_UPDATED);
       } catch (error) {
-        // Enhanced error handling - close form on error
         const errorMessage = error instanceof Error
           ? error.message
           : 'Error desconocido al actualizar la transacción';
 
         logger.error('Error updating transaction:', error);
         showToast.error(errorMessage);
-
-        // Close the edit form
-        setEditingTransaction(null);
-        setEditForm({ description: '', amount: '', date: '', category: '' });
+        // #7: NO descartar la edición — el usuario conserva lo escrito y puede
+        // reintentar (antes se cerraba el form y se perdía todo).
       }
     },
-    [editForm, updateTransaction]
+    [editForm, updateTransaction, transactions, accountsById, balanceTransactions, balancesReady]
   );
 
   const handleCancelEdit = useCallback(() => {

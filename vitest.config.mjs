@@ -12,6 +12,20 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
     include: ['src/**/*.test.{ts,tsx}', 'src/__tests__/**/*.test.{ts,tsx}'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/__tests__/**', 'src/types/**'],
+      // Piso anti-regresión fijado justo bajo la medición del 2026-06-12
+      // (stmts 38.26 / branch 32.52 / func 32.41 / lines 39.36). Subirlo a
+      // medida que crezca la cobertura; bajarlo requiere justificación.
+      thresholds: {
+        statements: 37,
+        branches: 31,
+        functions: 31,
+        lines: 38,
+      },
+    },
   },
   resolve: {
     alias: {

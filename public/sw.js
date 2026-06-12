@@ -1,6 +1,6 @@
 // Service Worker for MoneyTrack PWA
 // Bump CACHE_VERSION on each deploy to invalidate old caches
-const CACHE_VERSION = 'v3-c499d2f';
+const CACHE_VERSION = 'v3-02134f3';
 const APP_BASE_PATH = (() => {
     const scopePath = new URL(self.registration.scope).pathname.replace(/\/$/, '');
     return scopePath === '' ? '' : scopePath;

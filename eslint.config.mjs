@@ -22,6 +22,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Prototipos estáticos de diseño (no se compilan ni se envían):
+    "design-system/**",
+    // Worktrees y ajustes locales de Claude Code (copias del repo: no lintear).
+    ".claude/**",
   ]),
 ]);
 

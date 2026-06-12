@@ -38,6 +38,7 @@ const selectTransactionDomain = (s: FinanceContextValue) => ({
   hasMoreTransactions: s.hasMoreTransactions,
   loadingMoreTransactions: s.loadingMoreTransactions,
   loadMoreTransactions: s.loadMoreTransactions,
+  balanceTransactions: s.balanceTransactions,
 }) as const;
 
 export function useTransactionDomain() {

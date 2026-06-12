@@ -218,7 +218,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     totalBalance,
     defaultAccount,
     loading: accountsLoading,
-  } = useAccounts(userId, balanceTransactions, deleteTransaction);
+  } = useAccounts(userId, balanceTransactions, deleteTransaction, balancesReady);
 
   // Migración one-time: calcula usedCredit para TC existentes sin el campo
   useCreditMigration(userId, accounts);

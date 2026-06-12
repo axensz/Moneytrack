@@ -209,7 +209,6 @@ interface MergeCreditCardsPlan {
   sourceIdSet: Set<string>;
   uniqueSourceIds: string[];
   accounts: Account[];
-  transactions: Transaction[];
   recurringPayments: RecurringPayment[];
   debts: Debt[];
 }
@@ -226,12 +225,8 @@ export async function mergeCreditCardsOrchestrated(
 ): Promise<void> {
   const {
     destinationId, destinationAccount, existingDestination, shouldMakeDestinationDefault,
-    sourceIdSet, uniqueSourceIds, accounts, transactions, recurringPayments, debts,
+    sourceIdSet, uniqueSourceIds, accounts, recurringPayments, debts,
   } = plan;
-
-  const migrateAccountReference = (accountId?: string): string | undefined => (
-    accountId && sourceIdSet.has(accountId) ? destinationId : accountId
-  );
 
   if (!checkNetworkConnection()) {
     throw new Error('Sin conexión a internet');
@@ -264,21 +259,29 @@ export async function mergeCreditCardsOrchestrated(
           });
       }
 
-      transactions.forEach(transactionItem => {
-        if (!transactionItem.id) return;
-
-        const updates = stripUndefined({
-          accountId: migrateAccountReference(transactionItem.accountId),
-          toAccountId: migrateAccountReference(transactionItem.toAccountId),
+      // Reapuntar consultando Firestore, NO el array en memoria: la ventana
+      // paginada (500) puede omitir transacciones antiguas, que quedarían
+      // huérfanas apuntando a una tarjeta borrada (mismo patrón que el cascade).
+      const txCollection = collection(db, `users/${userId}/transactions`);
+      const txUpdates = new Map<string, Record<string, unknown>>();
+      for (const sourceId of uniqueSourceIds) {
+        const [byAccount, byDestinationRef] = await Promise.all([
+          getDocs(query(txCollection, where('accountId', '==', sourceId))),
+          getDocs(query(txCollection, where('toAccountId', '==', sourceId))),
+        ]);
+        byAccount.docs.forEach(snapshot => {
+          txUpdates.set(snapshot.id, { ...txUpdates.get(snapshot.id), accountId: destinationId });
         });
-
-        if (updates.accountId !== transactionItem.accountId || updates.toAccountId !== transactionItem.toAccountId) {
-          operations.push({
-            type: 'update',
-            ref: doc(db, `users/${userId}/transactions`, transactionItem.id),
-            data: updates,
-          });
-        }
+        byDestinationRef.docs.forEach(snapshot => {
+          txUpdates.set(snapshot.id, { ...txUpdates.get(snapshot.id), toAccountId: destinationId });
+        });
+      }
+      txUpdates.forEach((updates, transactionId) => {
+        operations.push({
+          type: 'update',
+          ref: doc(db, `users/${userId}/transactions`, transactionId),
+          data: updates,
+        });
       });
 
       recurringPayments.forEach(payment => {

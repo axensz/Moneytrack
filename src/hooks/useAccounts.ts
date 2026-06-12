@@ -21,7 +21,10 @@ export interface MergeCreditCardsParams {
 export function useAccounts(
   userId: string | null,
   transactions: Transaction[],
-  deleteTransactionFn: (id: string) => Promise<void>
+  deleteTransactionFn: (id: string) => Promise<void>,
+  // false mientras el primer fetch del historial completo está en vuelo (ventana
+  // paginada): cualquier cálculo derivado de `transactions` puede subcontar.
+  balancesReady: boolean = true
 ) {
   const {
     accounts: firestoreAccounts,
@@ -197,6 +200,11 @@ export function useAccounts(
     const cardsToConsolidate = [existingDestination, ...sourceAccounts].filter(
       (account): account is Account => Boolean(account)
     );
+    // El fallback (sin usedCredit persistido) deriva la deuda del historial:
+    // con la ventana paginada aún sin asentar subcontaría. Bloquear hasta ready.
+    if (!balancesReady && cardsToConsolidate.some(account => account.usedCredit == null)) {
+      throw new Error('Los saldos aún se están calculando. Intenta unificar de nuevo en unos segundos.');
+    }
     const mergedUsedCredit = cardsToConsolidate.reduce(
       (sum, account) =>
         sum +
@@ -236,7 +244,6 @@ export function useAccounts(
         sourceIdSet,
         uniqueSourceIds,
         accounts,
-        transactions,
         recurringPayments: firestoreRecurringPayments,
         debts: firestoreDebts,
       });

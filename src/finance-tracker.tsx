@@ -312,14 +312,14 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     }
   }, []);
 
-  const handleCloseAuthModal = useCallback(() => setIsAuthModalOpen(false), []);
+  const handleCloseAuthModal = useCallback(() => setIsAuthModalOpen(false), [setIsAuthModalOpen]);
   const handleOpenHelpModal = useCallback(() => setShowHelpModal(true), []);
   const handleOpenCategories = useCallback(() => setShowCategoriesModal(true), []);
   const handleOpenNotificationPreferences = useCallback(() => setShowNotificationPreferences(true), []);
   const handleCloseCategories = useCallback(() => setShowCategoriesModal(false), []);
   const handleCloseHelpModal = useCallback(() => setShowHelpModal(false), []);
   const handleCloseNotificationPreferences = useCallback(() => setShowNotificationPreferences(false), []);
-  const handleCloseForm = useCallback(() => { setBatchCount(0); setShowForm(false); }, []);
+  const handleCloseForm = useCallback(() => { setBatchCount(0); setShowForm(false); }, [setBatchCount, setShowForm]);
   const handleRestoreTransaction = useCallback(
     (t: Omit<import('./types/finance').Transaction, 'id' | 'createdAt'>) => addTransaction(t),
     [addTransaction]

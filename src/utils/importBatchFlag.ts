@@ -11,7 +11,7 @@
 let _isBatchImporting = false;
 
 /** IDs of transactions imported in the most recent batch */
-let _importedIds: Set<string> = new Set();
+const _importedIds: Set<string> = new Set();
 
 /** Timestamp when the last import finished — used as a grace period */
 let _importFinishedAt = 0;

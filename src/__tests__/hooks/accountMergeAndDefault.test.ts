@@ -110,6 +110,8 @@ describe('useAccounts.mergeCreditCards — caracterización', () => {
     const recurring: RecurringPayment[] = [{ id: 'r1', accountId: 'cc1' } as RecurringPayment];
     const debts: Debt[] = [{ id: 'd1', accountId: 'cc2' } as Debt];
     seed([bank, cc1, cc2, dest], recurring, debts);
+    // El reapunte consulta Firestore (no el array en memoria): sembrar el store.
+    transactions.forEach(t => M.txStore.set(t.id!, { ...t }));
 
     const acc = renderHook(() => useAccounts(UID, transactions, vi.fn())).result;
     await acc.current.mergeCreditCards({ sourceAccountIds: ['cc1', 'cc2'], destination: { id: 'dest', name: 'Visa Unificada' } });
@@ -146,6 +148,50 @@ describe('useAccounts.mergeCreditCards — caracterización', () => {
     await expect(
       acc.current.mergeCreditCards({ sourceAccountIds: ['cc1', 'dest'], destination: { id: 'dest', name: 'X' } })
     ).rejects.toThrow(/no puede ser también/i);
+  });
+
+  it('reapunta vía Firestore las transacciones FUERA del array en memoria (ventana paginada)', async () => {
+    seed([bank, cc1, cc2, dest]);
+    // Historial completo en Firestore: t-mem está en memoria; t-old y t-transfer
+    // quedaron fuera de la ventana paginada de 500 (no están en el array).
+    const tMem: Transaction = { id: 't-mem', type: 'expense', amount: 100_000, category: 'Compras', description: '', date: new Date(), paid: true, accountId: 'cc1' };
+    M.txStore.set('t-mem', { ...tMem });
+    M.txStore.set('t-old', { id: 't-old', type: 'expense', amount: 50_000, accountId: 'cc1' });
+    M.txStore.set('t-transfer', { id: 't-transfer', type: 'transfer', amount: 70_000, accountId: 'bank', toAccountId: 'cc2' });
+
+    const acc = renderHook(() => useAccounts(UID, [tMem], vi.fn())).result;
+    await acc.current.mergeCreditCards({ sourceAccountIds: ['cc1', 'cc2'], destination: { id: 'dest', name: 'Visa Unificada' } });
+
+    expect(findOp('update', 't-mem')?.data?.accountId).toBe('dest');
+    expect(findOp('update', 't-old')?.data?.accountId).toBe('dest');
+    expect(findOp('update', 't-transfer')?.data?.toAccountId).toBe('dest');
+    // La transferencia sale de una cuenta NO fusionada: accountId no se toca.
+    expect(findOp('update', 't-transfer')?.data?.accountId).toBeUndefined();
+  });
+
+  it('bloquea el merge si falta usedCredit persistido y los saldos no están asentados (balancesReady=false)', async () => {
+    const ccSinCupo: Account = { ...cc1, usedCredit: undefined };
+    seed([bank, ccSinCupo, cc2, dest]);
+    const acc = renderHook(() => useAccounts(UID, [], vi.fn(), false)).result;
+    await expect(
+      acc.current.mergeCreditCards({ sourceAccountIds: ['cc1', 'cc2'], destination: { id: 'dest', name: 'X' } })
+    ).rejects.toThrow(/asentando|calculando/i);
+    expect(M.log).toHaveLength(0);
+  });
+
+  it('con saldos asentados, el fallback de usedCredit se calcula del historial recibido', async () => {
+    const ccSinCupo: Account = { ...cc1, usedCredit: undefined };
+    seed([bank, ccSinCupo, cc2, dest]);
+    const fullHistory: Transaction[] = [
+      { id: 'h1', type: 'expense', amount: 500_000, category: 'Compras', description: '', date: new Date(), paid: false, accountId: 'cc1' },
+    ];
+    M.txStore.set('h1', { ...fullHistory[0] });
+
+    const acc = renderHook(() => useAccounts(UID, fullHistory, vi.fn(), true)).result;
+    await acc.current.mergeCreditCards({ sourceAccountIds: ['cc1', 'cc2'], destination: { id: 'dest', name: 'Visa Unificada' } });
+
+    // dest 100k + cc1 fallback 500k + cc2 200k = 800k.
+    expect(findOp('update', 'dest')?.data?.usedCredit).toBe(800_000);
   });
 });
 

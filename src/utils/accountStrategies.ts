@@ -173,7 +173,9 @@ export class CreditCardStrategy implements AccountBalanceStrategy {
     // RUTA DE DISPLAY/BALANCE: preferir el campo persistido (no depende de
     // paginación). Es la fuente autoritativa para mostrar cupo disponible.
     if (account.usedCredit != null) {
-      return Math.max(0, account.usedCredit);
+      // roundMoney: el persistido se actualiza con increment(delta) de floats
+      // crudos y puede acumular residuo IEEE-754 (cupo mostrado 4.999.999,99999999).
+      return Math.max(0, roundMoney(account.usedCredit));
     }
 
     // Fallback: recalcular desde las transacciones en memoria.
@@ -227,7 +229,7 @@ export class CreditCardStrategy implements AccountBalanceStrategy {
     const creditLimit = account.creditLimit || 0;
     const usedCredit = this.calculateUsedCredit(account, transactions);
 
-    return Math.max(0, creditLimit - usedCredit);
+    return Math.max(0, roundMoney(creditLimit - usedCredit));
   }
 
   validateTransaction(

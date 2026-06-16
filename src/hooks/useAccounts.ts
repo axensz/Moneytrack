@@ -219,7 +219,12 @@ export function useAccounts(
     }
 
     const sourceHadDefault = sourceAccounts.some(account => account?.isDefault);
-    const shouldMakeDestinationDefault = destination.isDefault ?? existingDestination?.isDefault ?? sourceHadDefault;
+    // sourceHadDefault SIEMPRE fuerza default en el destino: si una tarjeta origen
+    // era la default, al borrarla en la fusión no se debe quedar el usuario sin
+    // ninguna. Con `??` un destination.isDefault=false explícito ignoraba
+    // sourceHadDefault → cero defaults (#accounts-4).
+    const shouldMakeDestinationDefault =
+      (destination.isDefault ?? existingDestination?.isDefault ?? false) || sourceHadDefault;
     const destinationId = destination.id ?? generateId();
 
     // Consolidar el cupo utilizado: la deuda del destino pasa a ser la suma de la

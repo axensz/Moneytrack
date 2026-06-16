@@ -55,22 +55,4 @@ export class BalanceCalculator {
         0
       );
   }
-
-  /**
-   * 🟢 Valida si una cuenta puede realizar una transacción, delegando en su
-   * estrategia (cualquier tipo de cuenta puede tener lógica de validación).
-   *
-   * @param account - Cuenta origen
-   * @param amount - Monto de la transacción
-   * @param transactions - Lista de transacciones
-   * @returns Resultado de validación
-   */
-  static validateTransaction(
-    account: Account,
-    amount: number,
-    transactions: Transaction[]
-  ): { valid: boolean; error?: string } {
-    const strategy = AccountStrategyFactory.getStrategy(account.type);
-    return strategy.validateTransaction(account, amount, transactions);
-  }
 }

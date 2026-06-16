@@ -42,6 +42,7 @@ export const AccountsView: React.FC = () => {
     getCreditUsed,
     getTransactionCountForAccount,
     balancesReady,
+    accountsLoading,
   } = useAccountDomain();
   const { addTransaction } = useTransactionDomain();
   const { recurringPayments } = useRecurringDomain();
@@ -165,7 +166,8 @@ export const AccountsView: React.FC = () => {
     return card.usedCredit != null ? Math.max(0, card.usedCredit) : getCreditUsed(card.id);
   };
   const mergeCombinedUsedDebt = usedDebtForMerge(mergeSourceCard) + usedDebtForMerge(mergeTargetCard);
-  const mergeCombinedAvailableCredit = mergeCombinedCreditLimit - mergeCombinedUsedDebt;
+  // Clamp a 0: si la deuda combinada supera el cupo, "disponible" es 0, no negativo (#accounts).
+  const mergeCombinedAvailableCredit = Math.max(0, mergeCombinedCreditLimit - mergeCombinedUsedDebt);
 
   const parseCurrencyInput = (value: string): number => parseFloat(value.replace(',', '.'));
 
@@ -367,8 +369,12 @@ export const AccountsView: React.FC = () => {
 
         <button
           onClick={() => {
+            // No crear antes de que cargue el snapshot: isFirst (accounts.length===0)
+            // marcaría una SEGUNDA cuenta por defecto al llegar las reales (#accounts-5).
+            if (accountsLoading) return;
             accountForm.openCreateForm();
           }}
+          disabled={accountsLoading}
           className="btn-primary"
         >
           <Plus size={18} />

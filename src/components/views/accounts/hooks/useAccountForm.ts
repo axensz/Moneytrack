@@ -229,12 +229,14 @@ export function useAccountForm({
           const cutoffDay = parseInt(newAccount.cutoffDay.toString());
           const paymentDay = parseInt(newAccount.paymentDay.toString());
 
-          if (cutoffDay < 1 || cutoffDay > 31) {
+          // isNaN: vaciar el input deja NaN, que pasaba el rango (NaN<1 y NaN>31
+          // son ambos false) y se guardaba enmascarado con ||1/||10. Rechazar.
+          if (isNaN(cutoffDay) || cutoffDay < 1 || cutoffDay > 31) {
             showToast.error(ERROR_MESSAGES.INVALID_CUTOFF_DAY);
             return;
           }
 
-          if (paymentDay < 1 || paymentDay > 31) {
+          if (isNaN(paymentDay) || paymentDay < 1 || paymentDay > 31) {
             showToast.error(ERROR_MESSAGES.INVALID_PAYMENT_DAY);
             return;
           }

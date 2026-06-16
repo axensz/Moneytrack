@@ -10,8 +10,6 @@ import { db } from '../../lib/firebase';
 import type { Account, Transaction } from '../../types/finance';
 import { logger } from '../../utils/logger';
 
-const CREDIT_EPSILON = 0.01;
-
 export function calculateCreditUsedFromTransactions(
   account: Pick<Account, 'id' | 'mergedAccountIds'>,
   transactions: Transaction[]
@@ -41,8 +39,13 @@ export function useCreditMigration(userId: string | null, accounts: Account[]) {
   useEffect(() => {
     if (!userId || accounts.length === 0) return;
 
+    // Solo cuentas SIN usedCredit persistido (legacy, anteriores al campo). Una
+    // vez fijado, el valor lo mantienen las escrituras incrementales y la
+    // reconciliación en borrado/fusión; re-migrar en cada montaje re-consultaba
+    // toda la colección y podía pisar un valor fresco escrito atómicamente por
+    // otra vía (carrera). Backfill-once por campo nulo = idempotente (#accounts-7).
     const creditAccountsNeedingMigration = accounts.filter(
-      a => a.type === 'credit' && a.id && !migratedRef.current.has(a.id)
+      a => a.type === 'credit' && a.id && a.usedCredit == null && !migratedRef.current.has(a.id)
     );
 
     if (creditAccountsNeedingMigration.length === 0) return;
@@ -80,17 +83,11 @@ export function useCreditMigration(userId: string | null, accounts: Account[]) {
             allTxs.push(...transferDocs.filter(t => !existingIds.has(t.id)));
           }
 
+          // Siempre persistir (incluso 0): así el campo deja de ser null y la
+          // cuenta no se vuelve a evaluar en el próximo montaje (idempotente).
           const usedCredit = calculateCreditUsedFromTransactions(account, allTxs);
-          const currentUsedCredit = account.usedCredit ?? 0;
-
-          if (Math.abs(currentUsedCredit - usedCredit) < CREDIT_EPSILON) {
-            logger.info(`usedCredit already synced for ${account.name}: ${usedCredit}`);
-            continue;
-          }
-
-          // Persist to Firestore
           await updateDoc(doc(db, `${base}/accounts`, account.id), { usedCredit });
-          logger.info(`Repaired usedCredit for ${account.name}: ${currentUsedCredit} -> ${usedCredit}`);
+          logger.info(`Backfilled usedCredit for ${account.name}: ${usedCredit}`);
         } catch (err) {
           logger.error(`Error migrating usedCredit for ${account.name}`, err);
         }

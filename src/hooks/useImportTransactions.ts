@@ -84,6 +84,8 @@ export function useImportTransactions(userId: string | null, accounts: Account[]
       let invalidSkipped = 0;
       const importedDocIds: string[] = [];
 
+      const accountIds = new Set(accounts.filter(a => a.id).map(a => a.id));
+
       try {
         const txCollection = collection(db, `users/${userId}/transactions`);
         const creditAccountWriteReserve = accounts.filter(account => account.type === 'credit' && account.id).length;
@@ -92,22 +94,44 @@ export function useImportTransactions(userId: string | null, accounts: Account[]
         // Dividir en chunks de BATCH_SIZE
         for (let chunkStart = 0; chunkStart < selected.length; chunkStart += batchSize) {
           const chunk = selected.slice(chunkStart, chunkStart + batchSize);
-          const batch = writeBatch(db);
 
-          for (const row of chunk) {
+          // Validar una sola vez: la fila inválida se omite TANTO de la escritura
+          // como del cálculo de usedCredit. Filtrar aquí evita que el delta de crédito
+          // de una fila NO escrita (p.ej. sin TRM) igual incremente usedCredit, y que
+          // un amount NaN/≤0 meta increment(NaN) y corrompa el cupo de forma persistente.
+          const validRows = chunk.filter(row => {
             if (row.type === 'transfer' && !row.toAccountId) {
               invalidSkipped++;
               errors.push(`Transferencia sin cuenta destino omitida: ${row.description}`);
-              continue;
+              return false;
             }
-
             // Moneda extranjera sin TRM: no se puede convertir a COP de forma segura.
             if (row.needsExchangeRate) {
               invalidSkipped++;
               errors.push(`Movimiento en ${row.originalCurrency ?? 'moneda extranjera'} sin TRM omitido: ${row.description}`);
-              continue;
+              return false;
             }
+            if (!Number.isFinite(row.amount) || row.amount <= 0) {
+              invalidSkipped++;
+              errors.push(`Monto inválido omitido: ${row.description || '(sin descripción)'}`);
+              return false;
+            }
+            if (!accountIds.has(row.accountId)) {
+              invalidSkipped++;
+              errors.push(`Cuenta inexistente omitida: ${row.description || '(sin descripción)'}`);
+              return false;
+            }
+            if (row.type === 'transfer' && !accountIds.has(row.toAccountId)) {
+              invalidSkipped++;
+              errors.push(`Cuenta destino inexistente omitida: ${row.description || '(sin descripción)'}`);
+              return false;
+            }
+            return true;
+          });
 
+          const batch = writeBatch(db);
+
+          for (const row of validRows) {
             const txRef = doc(txCollection);
             importedDocIds.push(txRef.id);
             const txData: Omit<Transaction, 'id'> = {
@@ -139,9 +163,7 @@ export function useImportTransactions(userId: string | null, accounts: Account[]
           }
 
           const creditDeltas = new Map<string, number>();
-          chunk.forEach(row => {
-            if (row.type === 'transfer' && !row.toAccountId) return;
-
+          validRows.forEach(row => {
             accounts
               .filter(account => account.type === 'credit' && account.id)
               .forEach(account => {

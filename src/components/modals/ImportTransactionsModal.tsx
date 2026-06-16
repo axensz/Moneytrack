@@ -90,7 +90,7 @@ export function ImportTransactionsModal({ isOpen, onClose, onOpenAISettings }: I
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 {step === 'upload' && 'Carga tu extracto en formato CSV'}
                 {step === 'review' && `${includedCount} de ${rows.length} transacciones seleccionadas`}
-                {step === 'done' && 'Importación completada'}
+                {step === 'done' && (result && result.errors.length > 0 ? 'Importación con errores' : 'Importación completada')}
               </p>
             </div>
           </div>

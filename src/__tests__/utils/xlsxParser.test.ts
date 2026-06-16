@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
-import { parseXLSX } from '../../utils/xlsxParser';
+import { parseXLSX, parseColombianAmount } from '../../utils/xlsxParser';
 
 function workbookBuffer(rows: unknown[][]): ArrayBuffer {
   const wb = XLSX.utils.book_new();
@@ -53,5 +53,24 @@ describe('parseXLSX', () => {
       amount: 200000,
       type: 'transfer',
     });
+  });
+});
+
+describe('parseColombianAmount', () => {
+  it('NO infla ×100 un decimal con coma sin miles (antes "99,99" daba 9999)', () => {
+    expect(parseColombianAmount('99,99')).toBe(99.99);
+    expect(parseColombianAmount('1,50')).toBe(1.5);
+    expect(parseColombianAmount('-99,99')).toBe(-99.99);
+  });
+
+  it('sigue parseando miles colombianos y US sin romper', () => {
+    expect(parseColombianAmount('1.234.567,89')).toBe(1234567.89);
+    expect(parseColombianAmount('271,400.00')).toBe(271400);
+  });
+
+  it('passthrough de número y vacíos → null', () => {
+    expect(parseColombianAmount(99.99)).toBe(99.99);
+    expect(parseColombianAmount('')).toBeNull();
+    expect(parseColombianAmount('-')).toBeNull();
   });
 });

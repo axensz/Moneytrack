@@ -271,11 +271,20 @@ function makeDate(year: number, month0: number, day: number): Date | null {
 }
 
 const DATE_FORMATS: Array<(s: string) => Date | null> = [
-  // DD/MM/YYYY o DD-MM-YYYY
+  // DD/MM/YYYY o DD-MM-YYYY (formato colombiano por defecto). Si el SEGUNDO
+  // grupo no puede ser mes (>12) pero el primero sí, es MM/DD/YYYY (US): así una
+  // fecha US inequívoca (06/15/2026) se interpreta bien en vez de descartarse, y
+  // 12/31/2026 no se pierde. Ambiguo (ambos ≤12) se mantiene como DD/MM.
   (s) => {
     const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
     if (!m) return null;
-    return makeDate(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]));
+    const a = parseInt(m[1]);
+    const b = parseInt(m[2]);
+    const year = parseInt(m[3]);
+    if (b > 12 && a <= 12) {
+      return makeDate(year, a - 1, b); // MM/DD/YYYY
+    }
+    return makeDate(year, b - 1, a); // DD/MM/YYYY
   },
   // YYYY-MM-DD (ISO)
   (s) => {
@@ -779,10 +788,12 @@ export function parseCSV(text: string, categories?: CategoryLookup): ParseResult
     let amount = 0;
     let type: 'income' | 'expense' = 'expense';
 
-    if (mapping.debit !== null && mapping.credit !== null) {
-      // Bancolombia style: columnas débito y crédito separadas
-      const debitAmt = parseAmount(cols[mapping.debit] || '');
-      const creditAmt = parseAmount(cols[mapping.credit] || '');
+    if (mapping.debit !== null || mapping.credit !== null) {
+      // Columnas débito/crédito separadas. Acepta débito-solo o crédito-solo:
+      // antes exigía AMBAS (&&), así que un extracto con solo "Cargos"/"Débito"
+      // caía sin rama → amount 0 → se descartaban TODAS las filas en silencio.
+      const debitAmt = mapping.debit !== null ? parseAmount(cols[mapping.debit] || '') : 0;
+      const creditAmt = mapping.credit !== null ? parseAmount(cols[mapping.credit] || '') : 0;
       if (creditAmt > 0) {
         amount = creditAmt;
         type = 'income';

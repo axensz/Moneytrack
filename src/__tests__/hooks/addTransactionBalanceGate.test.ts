@@ -73,4 +73,22 @@ describe('useAddTransaction — gate de balancesReady (#3)', () => {
     expect(params.addTransaction).toHaveBeenCalledTimes(1);
     expect(M.toastErrors).toHaveLength(0);
   });
+
+  it('doble submit concurrente crea UNA sola transacción (#tx-3)', async () => {
+    const params = makeParams();
+    const { result } = renderHook(() => useAddTransaction(params));
+    // income → sin chequeo de saldo, así pasa validación y aísla el guard de doble submit.
+    const income: NewTransaction = {
+      type: 'income', amount: '50000', category: 'Sueldo', description: 'x',
+      date: '2026-06-15', paid: true, accountId: 'sav', toAccountId: '',
+      hasInterest: false, installments: 0,
+    };
+    await act(async () => {
+      const p1 = result.current.handleAddTransaction(income);
+      const p2 = result.current.handleAddTransaction(income); // segundo clic, mismo tick
+      await Promise.all([p1, p2]);
+    });
+
+    expect(params.addTransaction).toHaveBeenCalledTimes(1);
+  });
 });

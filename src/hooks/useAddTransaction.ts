@@ -11,7 +11,7 @@
  * - Manejo de estado del formulario
  */
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { showToast } from '../utils/toastHelpers';
 import { logger } from '../utils/logger';
 import { TransactionValidator } from '../utils/validators';
@@ -70,6 +70,9 @@ export function useAddTransaction({
   setShowForm,
   setShowWelcomeModal,
 }: UseAddTransactionParams) {
+  // Bloquea reentradas concurrentes de processTransaction (doble clic). #tx-3
+  const submittingRef = useRef(false);
+
   /**
    * Resetea el formulario a su estado inicial
    */
@@ -98,6 +101,12 @@ export function useAddTransaction({
    */
   const processTransaction = useCallback(
     async (newTransaction: NewTransaction): Promise<boolean> => {
+      // Guard anti doble-submit: un doble clic en "Agregar" creaba dos
+      // transacciones (el detector de duplicados solo compara contra lo ya
+      // persistido, no contra el envío en vuelo). El ref es síncrono (#tx-3).
+      if (submittingRef.current) return false;
+      submittingRef.current = true;
+      try {
       // Validar que existan cuentas
       if (accounts.length === 0) {
         showToast.error('Debes crear al menos una cuenta primero');
@@ -242,6 +251,9 @@ export function useAddTransaction({
         showToast.error(message);
         logger.error('Error adding transaction', error);
         return false;
+      }
+      } finally {
+        submittingRef.current = false;
       }
     },
     [

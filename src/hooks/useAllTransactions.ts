@@ -35,7 +35,9 @@ export function useAllTransactions(
 
 /**
  * Variante con estado de asentamiento: `settled` indica que el PRIMER fetch del
- * historial completo para este usuario ya resolvió (con éxito o error). Mientras
+ * historial completo para este usuario resolvió CON ÉXITO (tenemos el historial
+ * completo). En error NO se asienta: `settled` queda false para que el gate de
+ * SALDOS no calcule contra la ventana paginada truncada (C1/C2). Mientras
  * settled=false el resultado puede ser solo la ventana live (incompleta): los
  * consumidores que derivan SALDOS deben tratar ese estado como "calculando"
  * (C-FIX paginación + saldos: el flash de saldo incorrecto al recargar).
@@ -90,14 +92,20 @@ export function useAllTransactionsWithStatus(
               date: ensureDate(d.data().date),
             }) as Transaction),
           );
+          // Asentar SOLO con éxito: ya tenemos el historial completo. En error NO
+          // se asienta (C1/C2): el único consumidor de `settled` es el gate de
+          // SALDOS (useBalanceTransactions); darle luz verde sobre la ventana
+          // paginada truncada corrompe el saldo al ajustar. Stats no lee `settled`,
+          // así que degrada al array live igual. Recuperación: recarga o el refetch
+          // por cambio de membresía (alta/baja) reintenta.
+          // ponytail: sin reintento automático; añadir uno si el "Calculando…"
+          // tras un blip transitorio resulta molesto.
+          setSettledForUser(userId);
         }
       } catch (err) {
         logger.error('Error cargando el historial completo de transacciones', err);
-        // Degradación suave: el merge cae al array live.
-      } finally {
-        // Asentado con éxito O error: en error degradamos al array live en vez
-        // de dejar la UI en "calculando" para siempre.
-        if (!cancelled) setSettledForUser(userId);
+        // NO asentar en error: ver nota arriba. El gate de saldos se mantiene en
+        // "Calculando…" (seguro) en vez de calcular contra la ventana incompleta.
       }
     };
 

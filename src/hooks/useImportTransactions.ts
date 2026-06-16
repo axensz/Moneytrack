@@ -151,7 +151,11 @@ export function useImportTransactions(userId: string | null, accounts: Account[]
               paid: true,
               accountId: row.accountId,
               toAccountId: row.toAccountId,
-              createdAt: new Date(),
+              // createdAt = fecha del extracto, NO la de importación: un import de
+              // movimientos históricos no debe parecer "recién creado" al monitor de
+              // notificaciones (useNotificationMonitoring usa createdAt < 30min como
+              // recencia) si el flag de supresión expira antes de llegar el snapshot.
+              createdAt: row.date,
             };
             if (row.installments && row.installments > 1) {
               txData.installments = row.installments;

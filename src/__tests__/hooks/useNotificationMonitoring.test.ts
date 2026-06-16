@@ -129,6 +129,20 @@ describe('useNotificationMonitoring — guard anti-flood por paginación', () =>
     expect(spy.mock.calls[0][0].id).toBe(skewed.id);
   });
 
+  it('re-ejecuta los daily checks al volver a la pestaña (visibilitychange) — #3', async () => {
+    const { result } = mount([tx(new Date(2026, 1, 1))]);
+    const paySpy = vi.spyOn(result.current.monitors.paymentMonitor!, 'checkUpcomingPayments').mockResolvedValue(undefined);
+    const debtSpy = vi.spyOn(result.current.monitors.debtMonitor!, 'checkOverdueDebts').mockResolvedValue(undefined);
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(paySpy).toHaveBeenCalled();
+    expect(debtSpy).toHaveBeenCalled();
+  });
+
   it('transacción sin createdAt (doc legacy vía paginación) NO dispara alertas', async () => {
     const initial = [tx(new Date(2026, 1, 1))];
     const { result, rerender } = mount(initial);

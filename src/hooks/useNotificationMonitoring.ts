@@ -68,7 +68,6 @@ export function useNotificationMonitoring({
 }: UseNotificationMonitoringProps) {
     const txsForBalance = balanceTransactions ?? transactions;
     const prevTransactionIdsRef = useRef<Set<string>>(new Set());
-    const dailyCheckDoneRef = useRef<boolean>(false);
     const monitorsInitializedRef = useRef<boolean>(false);
 
     const monitorsRef = useRef<{
@@ -97,7 +96,10 @@ export function useNotificationMonitoring({
             createNotification: (n) => notificationManager.createNotification(n),
             preferences,
             budgets,
-            transactions,
+            // Historial COMPLETO: el gasto del mes se subcontaría sobre la ventana
+            // paginada de 500 para un usuario de alto volumen → alerta que no
+            // dispara (falso negativo). Mismo motivo que balanceMonitor (#6).
+            transactions: txsForBalance,
         });
 
         monitorsRef.current.paymentMonitor = new PaymentMonitor({
@@ -109,7 +111,9 @@ export function useNotificationMonitoring({
         monitorsRef.current.spendingAnalyzer = new SpendingAnalyzer({
             createNotification: (n) => notificationManager.createNotification(n),
             preferences,
-            transactions,
+            // Historial COMPLETO: el promedio de 90 días sería incorrecto sobre la
+            // ventana paginada (#6).
+            transactions: txsForBalance,
         });
 
         monitorsRef.current.balanceMonitor = new BalanceMonitor({
@@ -139,7 +143,7 @@ export function useNotificationMonitoring({
         m.budgetMonitor.deps = {
             ...m.budgetMonitor.deps,
             budgets,
-            transactions,
+            transactions: txsForBalance, // historial completo (#6)
             preferences,
         };
         m.paymentMonitor!.deps = {
@@ -149,7 +153,7 @@ export function useNotificationMonitoring({
         };
         m.spendingAnalyzer!.deps = {
             ...m.spendingAnalyzer!.deps,
-            transactions,
+            transactions: txsForBalance, // historial completo (#6)
             preferences,
         };
         m.balanceMonitor!.deps = {
@@ -164,25 +168,31 @@ export function useNotificationMonitoring({
         };
     }, [transactions, txsForBalance, budgets, recurringPayments, accounts, debts, notificationManager]);
 
-    // Run daily checks on mount
+    // Daily checks (pagos próximos / deudas vencidas): al montar y al volver a la
+    // pestaña. En sesiones largas (PWA/pestaña abierta varios días) el efecto de
+    // solo-mount no re-evaluaba hasta recargar (#3). Los monitores tienen su
+    // propio guard once-per-day (lastCheckDate), así que re-invocar es
+    // idempotente: solo dispara al cruzar de día.
     useEffect(() => {
-        if (dailyCheckDoneRef.current) return;
-        if (!monitorsRef.current.paymentMonitor || !monitorsRef.current.debtMonitor) return;
-
         const runDailyChecks = async () => {
+            if (!monitorsRef.current.paymentMonitor || !monitorsRef.current.debtMonitor) return;
             try {
-                logger.info('Running daily notification checks');
                 await monitorsRef.current.paymentMonitor?.checkUpcomingPayments();
                 await monitorsRef.current.debtMonitor?.checkOverdueDebts();
-                dailyCheckDoneRef.current = true;
-                logger.info('Daily notification checks completed');
             } catch (error) {
                 logger.error('Daily notification checks failed', error);
             }
         };
 
         runDailyChecks();
-    }, []);
+
+        if (typeof document === 'undefined') return;
+        const onVisible = () => {
+            if (document.visibilityState === 'visible') runDailyChecks();
+        };
+        document.addEventListener('visibilitychange', onVisible);
+        return () => document.removeEventListener('visibilitychange', onVisible);
+    }, [notificationManager]);
 
     // Fix #3: Detect new transactions by comparing IDs, not array slicing
     useEffect(() => {

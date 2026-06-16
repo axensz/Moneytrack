@@ -43,6 +43,7 @@ export const MonthlyComparisonChart: React.FC<MonthlyComparisonChartProps> = ({
   formatCurrency,
 }) => {
   const CustomTooltip = createChartTooltip(formatCurrency);
+  const hasData = data.some((d) => d.ingresos > 0 || d.gastos > 0);
 
   return (
     <div className="card">
@@ -60,6 +61,12 @@ export const MonthlyComparisonChart: React.FC<MonthlyComparisonChartProps> = ({
         </div>
       </div>
 
+      {!hasData ? (
+        <div className="text-center py-12 text-gray-400 dark:text-gray-500" role="status">
+          <BarChart3 size={48} className="mx-auto mb-3 opacity-30" />
+          <p className="text-sm">No hay movimientos en los últimos 6 meses</p>
+        </div>
+      ) : (
       <ResponsiveContainer width="100%" height={CHART_HEIGHTS.medium}>
         <BarChart data={data} margin={CHART_MARGINS}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f3e8ff" />
@@ -81,6 +88,7 @@ export const MonthlyComparisonChart: React.FC<MonthlyComparisonChartProps> = ({
           />
         </BarChart>
       </ResponsiveContainer>
+      )}
     </div>
   );
 };

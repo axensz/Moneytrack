@@ -45,6 +45,7 @@ export const CashFlowChart: React.FC<CashFlowChartProps> = ({
   formatCurrency,
 }) => {
   const CustomTooltip = createChartTooltip(formatCurrency);
+  const hasData = data.some((d) => d.ingresos > 0 || d.gastos > 0);
 
   return (
     <div className="card">
@@ -62,6 +63,12 @@ export const CashFlowChart: React.FC<CashFlowChartProps> = ({
         </div>
       </div>
 
+      {!hasData ? (
+        <div className="text-center py-12 text-gray-400 dark:text-gray-500" role="status">
+          <Activity size={48} className="mx-auto mb-3 opacity-30" />
+          <p className="text-sm">No hay movimientos en los últimos 6 meses</p>
+        </div>
+      ) : (
       <ResponsiveContainer width="100%" height={CHART_HEIGHTS.large}>
         <AreaChart data={data} margin={CHART_MARGINS}>
           <defs>
@@ -117,6 +124,7 @@ export const CashFlowChart: React.FC<CashFlowChartProps> = ({
           />
         </AreaChart>
       </ResponsiveContainer>
+      )}
     </div>
   );
 };

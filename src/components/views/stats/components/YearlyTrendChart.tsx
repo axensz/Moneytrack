@@ -43,6 +43,7 @@ export const YearlyTrendChart: React.FC<YearlyTrendChartProps> = ({
   formatCurrency,
 }) => {
   const CustomTooltip = createChartTooltip(formatCurrency);
+  const hasData = data.some((d) => d.ingresos > 0 || d.gastos > 0);
 
   return (
     <div className="card">
@@ -60,6 +61,12 @@ export const YearlyTrendChart: React.FC<YearlyTrendChartProps> = ({
         </div>
       </div>
 
+      {!hasData ? (
+        <div className="text-center py-12 text-gray-400 dark:text-gray-500" role="status">
+          <TrendingUp size={48} className="mx-auto mb-3 opacity-30" />
+          <p className="text-sm">Aún no hay datos por año</p>
+        </div>
+      ) : (
       <ResponsiveContainer width="100%" height={CHART_HEIGHTS.medium}>
         <LineChart data={data} margin={CHART_MARGINS}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f3e8ff" />
@@ -85,6 +92,7 @@ export const YearlyTrendChart: React.FC<YearlyTrendChartProps> = ({
           />
         </LineChart>
       </ResponsiveContainer>
+      )}
     </div>
   );
 };

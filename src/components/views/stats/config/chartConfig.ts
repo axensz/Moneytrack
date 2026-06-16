@@ -28,7 +28,15 @@ export const AXIS_CONFIG = {
 export const Y_AXIS_CONFIG = {
   ...AXIS_CONFIG,
   width: 45,
-  tickFormatter: (value: number) => `${(value / 1000).toFixed(0)}k`,
+  // Compacto pero sin colapsar todo <1000 a "0k": montos pequeños se muestran
+  // tal cual, miles como "Nk", millones como "N,NM". (#stats-yaxis)
+  tickFormatter: (value: number) => {
+    if (!Number.isFinite(value) || value === 0) return '0';
+    const abs = Math.abs(value);
+    if (abs < 1000) return `${Math.round(value)}`;
+    if (abs < 1_000_000) return `${(value / 1000).toFixed(abs < 10_000 ? 1 : 0)}k`;
+    return `${(value / 1_000_000).toFixed(1)}M`;
+  },
 } as const;
 
 // Márgenes estándar para gráficos

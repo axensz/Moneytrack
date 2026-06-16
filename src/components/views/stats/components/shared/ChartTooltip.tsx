@@ -29,10 +29,12 @@ export const ChartTooltip: React.FC<ChartTooltipProps> = ({
 
   return (
     <div className="bg-white/95 backdrop-blur-sm border border-purple-200 rounded-lg p-3 shadow-lg">
-      <p className="text-sm font-semibold text-gray-900 mb-2">{label}</p>
+      {label && <p className="text-sm font-semibold text-gray-900 mb-2">{label}</p>}
       {payload.map((entry, index) => (
-        <p key={index} className="text-sm" style={{ color: entry.color }}>
-          {entry.name}: {formatCurrency(entry.value)}
+        <p key={entry.name ?? index} className="text-sm" style={{ color: entry.color }}>
+          {/* Recharts puede pasar value undefined/NaN en un punto sin dato de una
+              serie → mostrar guion en vez de "$NaN". (#stats-tooltip) */}
+          {entry.name}: {typeof entry.value === 'number' && Number.isFinite(entry.value) ? formatCurrency(entry.value) : '—'}
         </p>
       ))}
     </div>

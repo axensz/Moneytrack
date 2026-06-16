@@ -17,7 +17,7 @@
  */
 
 import type { Account, Transaction } from '../types/finance';
-import { transactionAccountIs, transactionDestinationIs, getAccountReferenceIds } from './accountTransactions';
+import { getAccountReferenceIds } from './accountTransactions';
 import { getCreditDelta } from './creditDeltas';
 import { roundMoney } from './formatters';
 
@@ -380,27 +380,6 @@ export class AccountStrategyFactory {
     }
 
     return strategy;
-  }
-
-  /**
-   * 🆕 Registra una nueva estrategia (para extensibilidad futura)
-   * Permite agregar nuevos tipos de cuenta sin modificar el factory
-   *
-   * @example
-   * ```typescript
-   * class InvestmentAccountStrategy implements AccountBalanceStrategy { ... }
-   * AccountStrategyFactory.registerStrategy('investment', new InvestmentAccountStrategy());
-   * ```
-   */
-  static registerStrategy(accountType: string, strategy: AccountBalanceStrategy): void {
-    this.strategies.set(accountType as Account['type'], strategy);
-  }
-
-  /**
-   * Verifica si existe estrategia para un tipo
-   */
-  static hasStrategy(accountType: string): boolean {
-    return this.strategies.has(accountType as Account['type']);
   }
 }
 

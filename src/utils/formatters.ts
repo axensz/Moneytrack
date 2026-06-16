@@ -2,7 +2,7 @@
  * Utilidades de formato para la aplicación
  */
 
-import { APP_CONFIG, NUMBER_FORMAT_THRESHOLDS } from '../config/constants';
+import { APP_CONFIG } from '../config/constants';
 
 /**
  * Formateador de moneda (singleton)
@@ -60,22 +60,6 @@ class CurrencyFormatter {
     return this.compactFormatter.format(amount);
   }
 
-  /**
-   * Formatea un número con símbolo de moneda manualmente
-   * Útil para cantidades muy grandes
-   */
-  static formatLarge(amount: number): string {
-    if (amount >= NUMBER_FORMAT_THRESHOLDS.BILLION) {
-      return `$${(amount / NUMBER_FORMAT_THRESHOLDS.BILLION).toFixed(1)}B`;
-    }
-    if (amount >= NUMBER_FORMAT_THRESHOLDS.MILLION) {
-      return `$${(amount / NUMBER_FORMAT_THRESHOLDS.MILLION).toFixed(1)}M`;
-    }
-    if (amount >= NUMBER_FORMAT_THRESHOLDS.THOUSAND) {
-      return `$${(amount / NUMBER_FORMAT_THRESHOLDS.THOUSAND).toFixed(1)}K`;
-    }
-    return this.format(amount);
-  }
 }
 
 /**
@@ -299,38 +283,6 @@ class NumberFormatter {
     // Resto (sin coma): los puntos son separadores de miles → quitarlos.
     return v.replace(/\./g, '');
   }
-  /**
-   * Parsea un string a número de forma segura
-   * @param value - Valor a parsear
-   * @param defaultValue - Valor por defecto si el parseo falla
-   * @returns Número parseado o valor por defecto
-   */
-  static parseFloat(value: string | number, defaultValue: number = 0): number {
-    const parsed = typeof value === 'string' ? parseFloat(value) : value;
-    return isNaN(parsed) ? defaultValue : parsed;
-  }
-
-  /**
-   * Parsea un string a entero de forma segura
-   * @param value - Valor a parsear
-   * @param defaultValue - Valor por defecto si el parseo falla
-   * @returns Entero parseado o valor por defecto
-   */
-  static parseInt(value: string | number, defaultValue: number = 0): number {
-    const parsed = typeof value === 'string' ? parseInt(value, 10) : Math.floor(value);
-    return isNaN(parsed) ? defaultValue : parsed;
-  }
-
-  /**
-   * Limita un número entre un rango
-   * @param value - Valor a limitar
-   * @param min - Valor mínimo
-   * @param max - Valor máximo
-   * @returns Valor limitado
-   */
-  static clamp(value: number, min: number, max: number): number {
-    return Math.min(Math.max(value, min), max);
-  }
 }
 
 /**
@@ -359,7 +311,6 @@ export const generateId = (): string => {
 // Exportar funciones directas para compatibilidad
 export const formatCurrency = (amount: number): string => CurrencyFormatter.format(amount);
 export const formatCurrencyCompact = (amount: number): string => CurrencyFormatter.formatCompact(amount);
-export const formatCurrencyLarge = (amount: number): string => CurrencyFormatter.formatLarge(amount);
 
 export const formatDate = (date: Date | string): string => DateFormatter.formatDate(date);
 export const formatDateLong = (date: Date | string): string => DateFormatter.formatDateLong(date);
@@ -370,9 +321,6 @@ export const formatMonthYear = (date: Date | string): string => DateFormatter.fo
 export const formatRelativeTime = (date: Date | string): string => DateFormatter.formatRelativeTime(date);
 export const getMonthName = (monthNumber: number): string => DateFormatter.getMonthName(monthNumber);
 
-export const parseFloatSafe = (value: string | number, defaultValue?: number): number => NumberFormatter.parseFloat(value, defaultValue);
-export const parseIntSafe = (value: string | number, defaultValue?: number): number => NumberFormatter.parseInt(value, defaultValue);
-export const clamp = (value: number, min: number, max: number): number => NumberFormatter.clamp(value, min, max);
 export const formatNumberForInput = (value: string | number): string => NumberFormatter.formatForInput(value);
 export const unformatNumber = (value: string): string => NumberFormatter.unformat(value);
 

@@ -43,20 +43,24 @@ export const AccountsView: React.FC = () => {
     getTransactionCountForAccount,
     balancesReady,
   } = useAccountDomain();
-  const { transactions, addTransaction } = useTransactionDomain();
+  const { balanceTransactions, addTransaction } = useTransactionDomain();
   const { recurringPayments } = useRecurringDomain();
   const { debts } = useDebtsDomain();
   const formatCurrency = useFormatCurrency();
-  // Mapa memoizado de cupo usado por tarjeta (evita recalcular en cada render)
+  // Mapa memoizado de cupo usado por tarjeta (evita recalcular en cada render).
+  // Usa balanceTransactions (historial COMPLETO), no la ventana paginada: para
+  // una TC legacy sin usedCredit persistido el cupo se recalcula desde las
+  // transacciones, y con la ventana de 500 subcontaría la deuda → el "ajuste de
+  // deuda" del formulario quedaría sobredimensionado (#4a).
   const creditUsedMap = useMemo(() => {
     const map = new Map<string, number>();
     accounts.forEach(a => {
       if (a.type === 'credit' && a.id) {
-        map.set(a.id, getCreditCardUsedCredit(a, transactions));
+        map.set(a.id, getCreditCardUsedCredit(a, balanceTransactions));
       }
     });
     return map;
-  }, [accounts, transactions]);
+  }, [accounts, balanceTransactions]);
 
   const getCreditUsed = useCallback((accountId: string): number => {
     return creditUsedMap.get(accountId) ?? 0;

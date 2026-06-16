@@ -324,6 +324,35 @@ export async function mergeCreditCardsOrchestrated(
         });
         await batch.commit();
       }
+
+      // FASE 2 — Reconciliar usedCredit del destino desde las transacciones YA
+      // reapuntadas (idempotente; mismo patrón y motivo que deleteAccountCascade).
+      // El plan fija usedCredit sumando los valores PERSISTIDOS de cada tarjeta,
+      // que pueden estar stale (una compra reciente aún no reflejada en el campo)
+      // → la deuda consolidada quedaría mal y, al borrar los orígenes, ese error
+      // se vuelve permanente. Recomputar desde las transacciones reales que ahora
+      // referencian el destino converge al valor correcto y es seguro ante
+      // reintentos / commits multi-batch no atómicos.
+      const destinationRef = doc(accountCollection, destinationId);
+      const destSnap = await getDoc(destinationRef);
+      if (destSnap.exists()) {
+        const destAccount = { id: destinationId, ...(destSnap.data() as Omit<Account, 'id'>) } as Account;
+        const referenceIds = getAccountReferenceIds(destAccount);
+        const snapshots = await Promise.all(
+          referenceIds.flatMap(refId => [
+            getDocs(query(txCollection, where('accountId', '==', refId))),
+            getDocs(query(txCollection, where('toAccountId', '==', refId))),
+          ])
+        );
+        const survivors = new Map<string, Transaction>();
+        snapshots.forEach(snapshot => {
+          snapshot.docs.forEach(snap => {
+            survivors.set(snap.id, { id: snap.id, ...(snap.data() as Transaction) });
+          });
+        });
+        const usedCredit = reconcileUsedCredit(referenceIds, Array.from(survivors.values()));
+        await updateDoc(destinationRef, { usedCredit });
+      }
     },
     'mergeCreditCards',
     { maxRetries: 2 }

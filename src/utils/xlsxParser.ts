@@ -94,7 +94,7 @@ function isMetadataRow(cols: unknown[]): boolean {
   return SKIP_KEYWORDS.some(k => first.startsWith(k) || first === normalize(k));
 }
 
-function parseColombianAmount(raw: unknown): number | null {
+export function parseColombianAmount(raw: unknown): number | null {
   if (raw === null || raw === undefined) return null;
 
   // SheetJS a veces devuelve el número ya parseado
@@ -116,6 +116,9 @@ function parseColombianAmount(raw: unknown): number | null {
   let normalizedAmount: string;
   if (/\d\.\d{3}/.test(cleaned)) {
     normalizedAmount = cleaned.replace(/\./g, '').replace(',', '.');
+  } else if (/^-?\d+,\d{1,2}$/.test(cleaned)) {
+    // Decimal con coma sin miles: "99,99" → 99.99 (antes el else daba 9999, ×100).
+    normalizedAmount = cleaned.replace(',', '.');
   } else {
     normalizedAmount = cleaned.replace(/,/g, '');
   }

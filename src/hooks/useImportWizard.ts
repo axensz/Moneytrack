@@ -345,9 +345,19 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
     }));
   }, []);
 
+  const importingRef = useRef(false);
   const handleImport = useCallback(async () => {
-    await importTransactions(rows);
-    setStep('done');
+    // Guard SÍNCRONO contra doble clic: el botón solo se deshabilita cuando
+    // status='importing' propaga al re-render, pero un segundo clic en el mismo
+    // tick dispararía un import completo duplicado. El ref bloquea de inmediato.
+    if (importingRef.current) return;
+    importingRef.current = true;
+    try {
+      await importTransactions(rows);
+      setStep('done');
+    } finally {
+      importingRef.current = false;
+    }
   }, [importTransactions, rows]);
 
   const handleAICategorize = useCallback(async () => {

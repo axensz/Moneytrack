@@ -104,6 +104,22 @@ describe('useImportWizard — caracterización de la lógica del wizard', () => 
     expect(result.current.step).toBe('done');
   });
 
+  it('handleImport ignora doble clic concurrente (guard síncrono): solo importa una vez', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    importTransactionsSpy.mockImplementationOnce(async () => { await gate; });
+    const { result } = setup();
+    act(() => result.current.setRows([row()]));
+    await act(async () => {
+      const p1 = result.current.handleImport();
+      const p2 = result.current.handleImport(); // segundo clic mientras el primero corre
+      release();
+      await Promise.all([p1, p2]);
+    });
+    expect(importTransactionsSpy).toHaveBeenCalledTimes(1);
+    expect(result.current.step).toBe('done');
+  });
+
   it('handleApplyAISuggestions sin sugerencias es no-op (no altera categorías)', () => {
     const { result } = setup();
     act(() => result.current.setRows([row(), row({ description: 'B' })]));

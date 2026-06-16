@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Plus, HandCoins, Users, CheckCircle2, ArrowDownLeft, ArrowUpRight, Trash2, X, DollarSign, Edit, AlertTriangle } from 'lucide-react';
 import { useDebtsDomain, useAccountDomain } from '../../../hooks/useFinanceSelectors';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
-import { formatCurrency, formatNumberForInput, unformatNumber, formatDateForInput, parseDateFromInput, formatDate, formatRelativeTime } from '../../../utils/formatters';
+import { formatCurrency, formatNumberForInput, unformatNumber, parseCurrency, formatDateForInput, parseDateFromInput, formatDate, formatRelativeTime } from '../../../utils/formatters';
 import { ensureDate } from '../../../utils/dateUtils';
 import { showToast } from '../../../utils/toastHelpers';
 import { ConfirmDialog } from '../../modals/ConfirmDialog';
@@ -51,7 +51,7 @@ export const DebtsView: React.FC = () => {
   });
 
   const handleSubmit = async () => {
-    const amount = parseFloat(unformatNumber(formData.originalAmount));
+    const amount = parseCurrency(formData.originalAmount);
     if (!formData.personName.trim()) {
       showToast.error('Ingresa el nombre de la persona');
       return;
@@ -79,7 +79,7 @@ export const DebtsView: React.FC = () => {
   };
 
   const handlePayment = async (debtId: string) => {
-    const amount = parseFloat(unformatNumber(paymentAmount));
+    const amount = parseCurrency(paymentAmount);
     if (isNaN(amount) || amount <= 0) {
       showToast.error('El monto debe ser mayor a 0');
       return;
@@ -101,7 +101,7 @@ export const DebtsView: React.FC = () => {
   };
 
   const handleModifyBalance = async (debtId: string, operation: 'add' | 'subtract') => {
-    const amount = parseFloat(unformatNumber(modifierAmount));
+    const amount = parseCurrency(modifierAmount);
     if (isNaN(amount) || amount <= 0) {
       showToast.error('El monto debe ser mayor a 0');
       return;

@@ -376,5 +376,19 @@ export const clamp = (value: number, min: number, max: number): number => Number
 export const formatNumberForInput = (value: string | number): string => NumberFormatter.formatForInput(value);
 export const unformatNumber = (value: string): string => NumberFormatter.unformat(value);
 
+/**
+ * Parser ÚNICO de moneda en formato colombiano → número JS.
+ * Maneja miles con punto y decimal con coma ("1.000.000,50" → 1000000.5),
+ * decimal con punto tecleado ("563088.89" → 563088.89), símbolos ("$1.234,56"),
+ * y strings ya normalizados ("1234,56"). Devuelve NaN si no hay número válido.
+ *
+ * `unformatNumber` deja coma decimal sin separador de miles, pero NO es un número
+ * (parseFloat("1234,56") = 1234, perdiendo los centavos). Hacer
+ * `parseFloat(unformatNumber(x))` era el bug recurrente en Goals/Debts/Budgets.
+ * Usa SIEMPRE esta función para parsear montos tecleados por el usuario.
+ */
+export const parseCurrency = (value: string): number =>
+  parseFloat(NumberFormatter.unformat(value).replace(',', '.'));
+
 // Exportar clases para uso avanzado
 export { CurrencyFormatter, DateFormatter, NumberFormatter };

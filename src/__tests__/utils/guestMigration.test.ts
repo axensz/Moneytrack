@@ -191,4 +191,41 @@ describe('migrateGuestData orchestration (S1)', () => {
   it('throws without a userId', async () => {
     await expect(migrateGuestData('', { read: emptyData })).rejects.toThrow();
   });
+
+  it('NO pisa el planConfig si la cuenta ya tiene uno (filtra ese write) (#guest-plan)', async () => {
+    const data = emptyData();
+    data.accounts = [{ id: 'a1', name: 'A', type: 'cash', isDefault: true, initialBalance: 0 } as Account];
+    data.planConfig = { startMonth: '2026-03', declaredIncome: 2000 };
+
+    let committed: WriteOp[] = [];
+    const commit = vi.fn(async (w: WriteOp[]) => { committed = w; });
+    const clear = vi.fn();
+
+    const result = await migrateGuestData(UID, {
+      read: () => data, commit, clear,
+      planConfigExists: async () => true, // la cuenta YA tiene plan
+    });
+
+    expect(result.migrated).toBe(true);
+    // Se migra la cuenta pero NO el planConfig (se preserva el de la cuenta).
+    expect(findByPathSuffix(committed, '/settings/planConfig')).toBeUndefined();
+    expect(findByPathSuffix(committed, '/accounts/a1')).toBeDefined();
+    expect(clear).toHaveBeenCalled();
+  });
+
+  it('SÍ migra el planConfig del invitado si la cuenta no tiene uno', async () => {
+    const data = emptyData();
+    data.accounts = [{ id: 'a1', name: 'A', type: 'cash', isDefault: true, initialBalance: 0 } as Account];
+    data.planConfig = { startMonth: '2026-03', declaredIncome: 2000 };
+
+    let committed: WriteOp[] = [];
+    const commit = vi.fn(async (w: WriteOp[]) => { committed = w; });
+
+    await migrateGuestData(UID, {
+      read: () => data, commit, clear: vi.fn(),
+      planConfigExists: async () => false, // cuenta nueva, sin plan
+    });
+
+    expect(findByPathSuffix(committed, '/settings/planConfig')?.data).toEqual({ startMonth: '2026-03', declaredIncome: 2000 });
+  });
 });

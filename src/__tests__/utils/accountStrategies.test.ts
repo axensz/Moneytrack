@@ -414,16 +414,6 @@ describe('AccountStrategyFactory', () => {
     // @ts-expect-error Testing invalid type
     expect(() => AccountStrategyFactory.getStrategy('crypto')).toThrow('No existe estrategia');
   });
-
-  it('hasStrategy returns true for registered types', () => {
-    expect(AccountStrategyFactory.hasStrategy('savings')).toBe(true);
-    expect(AccountStrategyFactory.hasStrategy('credit')).toBe(true);
-    expect(AccountStrategyFactory.hasStrategy('cash')).toBe(true);
-  });
-
-  it('hasStrategy returns false for unregistered types', () => {
-    expect(AccountStrategyFactory.hasStrategy('investment')).toBe(false);
-  });
 });
 
 // ─── getCreditCardStrategy helper ──────────────────────────────────

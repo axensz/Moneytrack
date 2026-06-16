@@ -255,13 +255,6 @@ export const TOAST_CONFIG = {
   },
 } as const;
 
-// Constantes para formato de números grandes
-export const NUMBER_FORMAT_THRESHOLDS = {
-  BILLION: 1_000_000_000,
-  MILLION: 1_000_000,
-  THOUSAND: 1_000,
-} as const;
-
 // Fecha LOCAL de hoy en formato YYYY-MM-DD (mismo cálculo que
 // formatDateForInput de formatters.ts: getFullYear/Month/Date son locales).
 // Se duplica aquí en vez de importar formatters para no crear un ciclo de

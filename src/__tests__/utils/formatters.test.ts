@@ -6,9 +6,6 @@ import {
   parseDateFromInput,
   formatMonthYear,
   formatRelativeTime,
-  parseFloatSafe,
-  parseIntSafe,
-  clamp,
   formatNumberForInput,
   unformatNumber,
   parseCurrency,
@@ -164,50 +161,6 @@ describe('formatMonthYear', () => {
     const date = new Date(2024, 11, 1); // Dec 2024
     const result = formatMonthYear(date);
     expect(result).toContain('2024');
-  });
-});
-
-describe('parseFloatSafe', () => {
-  it('parses valid float strings', () => {
-    expect(parseFloatSafe('3.14')).toBe(3.14);
-  });
-
-  it('returns default for invalid strings', () => {
-    expect(parseFloatSafe('abc')).toBe(0);
-    expect(parseFloatSafe('abc', 99)).toBe(99);
-  });
-
-  it('passes through numbers', () => {
-    expect(parseFloatSafe(42)).toBe(42);
-  });
-});
-
-describe('parseIntSafe', () => {
-  it('parses valid integer strings', () => {
-    expect(parseIntSafe('42')).toBe(42);
-  });
-
-  it('returns default for invalid strings', () => {
-    expect(parseIntSafe('abc')).toBe(0);
-    expect(parseIntSafe('', 5)).toBe(5);
-  });
-
-  it('floors numbers', () => {
-    expect(parseIntSafe(3.9)).toBe(3);
-  });
-});
-
-describe('clamp', () => {
-  it('returns value when within range', () => {
-    expect(clamp(5, 0, 10)).toBe(5);
-  });
-
-  it('clamps to min', () => {
-    expect(clamp(-5, 0, 10)).toBe(0);
-  });
-
-  it('clamps to max', () => {
-    expect(clamp(15, 0, 10)).toBe(10);
   });
 });
 

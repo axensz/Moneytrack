@@ -103,7 +103,11 @@ export function useCreditCardInterests(
             const monthsPassed =
               (currentYear - txDate.getFullYear()) * 12 +
               (currentMonth - txDate.getMonth()) - 1;
-            const paidInstallments = Math.min(Math.max(0, monthsPassed + 1), t.installments);
+            // "Pendiente" = interés que AÚN NO se ha pagado. La cuota del ciclo en
+            // curso (la que se factura este mes, monthsPassed) todavía no está
+            // pagada → cuenta como pendiente. Solo se descuentan las cuotas de
+            // ciclos ANTERIORES (monthsPassed, no monthsPassed+1). (#stats-2)
+            const paidInstallments = Math.min(Math.max(0, monthsPassed), t.installments);
             const remainingInstallments = t.installments - paidInstallments;
             const interestPerInstallment = t.totalInterestAmount / t.installments;
             return sum + (remainingInstallments * interestPerInstallment);

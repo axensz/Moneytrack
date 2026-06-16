@@ -194,6 +194,16 @@ export function useNotificationMonitoring({
         return () => document.removeEventListener('visibilitychange', onVisible);
     }, [notificationManager]);
 
+    // Al cambiar de usuario (guest→login o cambio de cuenta sin recargar) se
+    // reinicia el set de ids previos. Sin esto, las transacciones del nuevo
+    // usuario se diffean contra los ids del anterior y se tratarían como "nuevas"
+    // (#8). El logout normal hace reload, pero guest→login es un cambio de prop
+    // en sitio. Declarado ANTES del efecto de detección para que, en un commit
+    // donde cambian userId y transactions a la vez, limpie primero.
+    useEffect(() => {
+        prevTransactionIdsRef.current = new Set();
+    }, [userId]);
+
     // Fix #3: Detect new transactions by comparing IDs, not array slicing
     useEffect(() => {
         const currentIds = new Set(transactions.map(t => t.id).filter(Boolean) as string[]);

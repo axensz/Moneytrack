@@ -129,6 +129,27 @@ describe('useNotificationMonitoring — guard anti-flood por paginación', () =>
     expect(spy.mock.calls[0][0].id).toBe(skewed.id);
   });
 
+  it('al cambiar de usuario (guest→login) NO trata las tx del nuevo usuario como nuevas (#8)', async () => {
+    const old = new Date(2026, 1, 1);
+    const fresh = new Date(2026, 5, 9, 11, 59, 30); // 30s atrás → dentro de la ventana fresca
+    const { result, rerender } = renderHook(
+      ({ userId, transactions }) =>
+        useNotificationMonitoring({
+          userId, transactions, budgets: [], recurringPayments: [], accounts: [], debts: [], notificationManager,
+        }),
+      { initialProps: { userId: null as string | null, transactions: [tx(old)] } }
+    );
+    const spy = vi.spyOn(result.current.monitors.spendingAnalyzer!, 'evaluateUnusualSpending').mockResolvedValue(undefined);
+
+    // login: cambia userId y llegan las tx del nuevo usuario (una con createdAt fresco).
+    await act(async () => {
+      rerender({ userId: 'userB', transactions: [tx(fresh)] });
+    });
+
+    // Sin el reset, la tx fresca de B se diffea contra los ids del invitado y dispararía.
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it('re-ejecuta los daily checks al volver a la pestaña (visibilitychange) — #3', async () => {
     const { result } = mount([tx(new Date(2026, 1, 1))]);
     const paySpy = vi.spyOn(result.current.monitors.paymentMonitor!, 'checkUpcomingPayments').mockResolvedValue(undefined);

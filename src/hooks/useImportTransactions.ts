@@ -91,6 +91,14 @@ export function useImportTransactions(userId: string | null, accounts: Account[]
         const creditAccountWriteReserve = accounts.filter(account => account.type === 'credit' && account.id).length;
         const batchSize = Math.max(1, FIRESTORE_BATCH_LIMIT - creditAccountWriteReserve);
 
+        // ponytail: el commit NO es atómico entre chunks (Firestore tope 500 ops
+        // por batch). Un fallo a mitad deja los chunks ya commiteados escritos —
+        // estado consistente, porque las tx y su increment de usedCredit van en el
+        // mismo batch. El reintento es seguro: el dedup compara contra el historial
+        // completo (balanceTransactions), así que las filas ya escritas se marcan
+        // duplicado y se excluyen → ni se reescriben ni vuelven a incrementar el
+        // cupo. Atomicidad total exigiría doc-id determinista + reconciliación;
+        // innecesario mientras el dedup sea correcto.
         // Dividir en chunks de BATCH_SIZE
         for (let chunkStart = 0; chunkStart < selected.length; chunkStart += batchSize) {
           const chunk = selected.slice(chunkStart, chunkStart + batchSize);

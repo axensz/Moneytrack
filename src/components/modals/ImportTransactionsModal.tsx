@@ -23,7 +23,11 @@ interface ImportTransactionsModalProps {
  */
 export function ImportTransactionsModal({ isOpen, onClose, onOpenAISettings }: ImportTransactionsModalProps) {
   const { accounts } = useAccountDomain();
-  const { transactions: existingTransactions } = useTransactionDomain();
+  // Dedup de import contra el HISTORIAL COMPLETO (balanceTransactions), NO la
+  // ventana paginada de 500: con solo las 500 recientes, re-importar un extracto
+  // antiguo no detectaría los duplicados y duplicaría el dinero. Con el historial
+  // completo, re-importar el mismo archivo queda idempotente (todo → duplicado).
+  const { balanceTransactions: existingTransactions } = useTransactionDomain();
   const { categories } = useCategoryDomain();
   const wizard = useImportWizard({ accounts, existingTransactions, categories, onClose });
   const {

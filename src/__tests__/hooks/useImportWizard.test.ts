@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import type { Account, Categories, Transaction } from '../../types/finance';
 import type { ImportRow } from '../../hooks/useImportTransactions';
 
@@ -126,6 +126,32 @@ describe('useImportWizard — caracterización de la lógica del wizard', () => 
     act(() => result.current.handleApplyAISuggestions());
     expect(result.current.rows[0].category).toBe('Otros');
     expect(result.current.aiSuggestions).toEqual([]);
+  });
+
+  it('dedup contra el historial recibido: re-importar una tx ya existente la excluye (idempotente)', async () => {
+    const existing: Transaction[] = [
+      { id: 't1', type: 'expense', amount: 50000, date: new Date(2026, 2, 10), description: 'SUPERMERCADO', accountId: 'acc1', paid: true, category: 'Otros' } as Transaction,
+    ];
+    const onClose = vi.fn();
+    const { result } = renderHook(() => useImportWizard({ accounts, existingTransactions: existing, categories, onClose }));
+
+    const csv = 'Fecha,Descripción,Valor\n10/03/2026,SUPERMERCADO,-50000\n11/03/2026,CAFE NUEVO,-8000\n';
+    const file = new File([csv], 'extracto.csv', { type: 'text/csv' });
+    type ChangeArg = Parameters<typeof result.current.handleFileChange>[0];
+
+    await act(async () => {
+      result.current.handleFileChange({ target: { files: [file] } } as unknown as ChangeArg);
+    });
+    await waitFor(() => expect(result.current.rows.length).toBe(2));
+
+    const dup = result.current.rows.find(r => r.description.includes('SUPERMERCADO'));
+    const fresh = result.current.rows.find(r => r.description.includes('CAFE'));
+    // La que ya está en el historial: marcada duplicado y excluida → re-import no la reescribe.
+    expect(dup?.isDuplicate).toBe(true);
+    expect(dup?.include).toBe(false);
+    // La nueva: se incluye normalmente.
+    expect(fresh?.isDuplicate).toBe(false);
+    expect(fresh?.include).toBe(true);
   });
 
   it('handleClose resetea el estado y llama onClose + reset', () => {

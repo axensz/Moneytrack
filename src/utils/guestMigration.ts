@@ -20,7 +20,7 @@
  * Los datos locales solo se borran DESPUÉS de un commit exitoso.
  */
 
-import { doc, writeBatch } from 'firebase/firestore';
+import { doc, writeBatch, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { generateId } from './formatters';
 import { clearGuestFinanceData } from './localData';
@@ -75,6 +75,8 @@ export interface MigrationDeps {
   read?: () => GuestData;
   commit?: (writes: WriteOp[]) => Promise<void>;
   clear?: () => void;
+  /** ¿La cuenta YA tiene un plan financiero? Para no pisarlo al migrar (#guest-plan). */
+  planConfigExists?: (userId: string) => Promise<boolean>;
 }
 
 export interface MigrationResult {
@@ -275,6 +277,12 @@ export function buildMigrationWrites(data: GuestData, userId: string): WriteOp[]
   return writes;
 }
 
+/** ¿La cuenta ya tiene un plan financiero persistido? (lectura real a Firestore). */
+async function defaultPlanConfigExists(userId: string): Promise<boolean> {
+  const snap = await getDoc(doc(db, `users/${userId}/settings/planConfig`));
+  return snap.exists();
+}
+
 /** Commit real a Firestore en batches de tamaño seguro. */
 export async function commitWrites(writes: WriteOp[]): Promise<void> {
   for (let i = 0; i < writes.length; i += BATCH_SIZE) {
@@ -298,11 +306,25 @@ export async function migrateGuestData(
 ): Promise<MigrationResult> {
   if (!userId) throw new Error('migrateGuestData requiere un userId');
 
-  const { read = readGuestData, commit = commitWrites, clear = clearGuestFinanceData } = deps;
+  const {
+    read = readGuestData,
+    commit = commitWrites,
+    clear = clearGuestFinanceData,
+    planConfigExists = defaultPlanConfigExists,
+  } = deps;
 
   const data = read();
   const counts = countGuestData(data);
-  const writes = buildMigrationWrites(data, userId);
+  let writes = buildMigrationWrites(data, userId);
+
+  // No pisar un plan financiero YA existente en la cuenta: las entidades usan ids
+  // aleatorios (se SUMAN, no sobrescriben), pero planConfig es un doc singleton y
+  // `set` reemplaza → un usuario que regresa (plan en la cuenta + plan de invitado)
+  // perdería el suyo. Solo migramos el plan del invitado si la cuenta no tiene uno.
+  const planPath = `users/${userId}/settings/planConfig`;
+  if (writes.some((w) => w.path === planPath) && (await planConfigExists(userId))) {
+    writes = writes.filter((w) => w.path !== planPath);
+  }
 
   if (writes.length === 0) {
     return { migrated: false, counts, writeCount: 0 };

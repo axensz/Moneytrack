@@ -9,7 +9,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 
 const M = vi.hoisted(() => ({
-  getDocImpl: vi.fn(async (_ref: unknown) => ({ exists: () => false, data: () => undefined as unknown })),
+  getDocImpl: vi.fn(
+    async (_ref: unknown): Promise<{ exists: () => boolean; data: () => unknown }> => ({
+      exists: () => false,
+      data: () => undefined,
+    })
+  ),
   loggedErrors: [] as unknown[],
 }));
 
@@ -52,6 +57,44 @@ describe('usePlanConfig — modo invitado', () => {
     const { result } = renderHook(() => usePlanConfig(null));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.config).toBeNull();
+  });
+});
+
+describe('usePlanConfig — no filtra el plan entre cuentas (#6)', () => {
+  it('al cerrar sesión (userId→null) sin plan de invitado, no conserva el plan del usuario anterior', async () => {
+    M.getDocImpl.mockImplementation(async () => ({
+      exists: () => true,
+      data: () => ({ startMonth: '2026-01', declaredIncome: 5_000_000 }),
+    }));
+    const { result, rerender } = renderHook(({ uid }) => usePlanConfig(uid), {
+      initialProps: { uid: 'A' as string | null },
+    });
+    await waitFor(() =>
+      expect(result.current.config).toEqual({ startMonth: '2026-01', declaredIncome: 5_000_000 })
+    );
+
+    rerender({ uid: null });
+    await waitFor(() => expect(result.current.config).toBeNull());
+  });
+
+  it('al entrar a una cuenta sin plan (doc inexistente), no conserva el plan del usuario anterior', async () => {
+    // A tiene plan; B no.
+    M.getDocImpl.mockImplementation(async (ref: unknown) => {
+      const path = (ref as { __path?: string })?.__path ?? '';
+      if (path.includes('users/A/')) {
+        return { exists: () => true, data: () => ({ startMonth: '2026-01', declaredIncome: 5_000_000 }) };
+      }
+      return { exists: () => false, data: () => undefined };
+    });
+    const { result, rerender } = renderHook(({ uid }) => usePlanConfig(uid), {
+      initialProps: { uid: 'A' as string },
+    });
+    await waitFor(() =>
+      expect(result.current.config).toEqual({ startMonth: '2026-01', declaredIncome: 5_000_000 })
+    );
+
+    rerender({ uid: 'B' });
+    await waitFor(() => expect(result.current.config).toBeNull());
   });
 });
 

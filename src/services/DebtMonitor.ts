@@ -113,16 +113,24 @@ export class DebtMonitor {
     }
 
     /**
-     * Calculate days since debt was created
+     * Días "vencidos": desde la fecha de vencimiento si existe; si no, desde la
+     * creación (heurística para deudas sin fecha).
+     *
+     * Antes medía SIEMPRE desde createdAt, lo que daba dos errores (#2): una
+     * deuda con vencimiento futuro se reportaba como "vencida hace N días", y una
+     * ya vencida pero registrada hoy nunca alertaba (createdAt ≈ 0). Con dueDate
+     * la cuenta es negativa antes del vencimiento (< umbrales → no alerta) y
+     * positiva después.
      */
     getDaysOutstanding(debt: Debt): number {
-        if (!debt.createdAt) {
+        const reference = debt.dueDate ?? debt.createdAt;
+        if (!reference) {
             return 0;
         }
 
         const now = new Date();
-        const created = new Date(debt.createdAt);
-        const diffTime = now.getTime() - created.getTime();
+        const ref = new Date(reference);
+        const diffTime = now.getTime() - ref.getTime();
         const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
         return diffDays;

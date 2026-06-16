@@ -3,7 +3,7 @@
  *
  * Espiamos getAccountBalance para fijar el saldo y probar el límite exacto:
  *  - savings: umbral configurable (default 100.000). Alerta SOLO si balance < umbral.
- *  - credit: umbral 0 (cupo agotado).
+ *  - credit: umbral = 10% del límite (cupo casi agotado).
  * Audit A3.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -43,15 +43,26 @@ describe('BalanceMonitor — umbral de saldo bajo (A3)', () => {
     expect(createNotification).not.toHaveBeenCalled();
   });
 
-  it('credit: umbral 0 — alerta solo con saldo negativo (cupo excedido)', async () => {
+  it('credit: alerta cuando el cupo disponible cae bajo el 10% del límite (50k < 100k)', async () => {
+    // límite 1.000.000 → umbral 100.000; cupo disponible 50.000 → casi agotado.
     const { monitor, createNotification } = setup([credit]);
-    vi.spyOn(monitor, 'getAccountBalance').mockReturnValue(-1);
+    vi.spyOn(monitor, 'getAccountBalance').mockReturnValue(50_000);
     await monitor.evaluateBalanceAlerts('cc');
     expect(createNotification).toHaveBeenCalledTimes(1);
+    const arg = createNotification.mock.calls[0][0] as { type: string; title: string };
+    expect(arg.type).toBe('low_balance');
+    expect(arg.title).toMatch(/cupo/i);
   });
 
-  it('credit: NO alerta con cupo disponible (0 no es < 0)', async () => {
+  it('credit: NO alerta con cupo de sobra (200k > 100k)', async () => {
     const { monitor, createNotification } = setup([credit]);
+    vi.spyOn(monitor, 'getAccountBalance').mockReturnValue(200_000);
+    await monitor.evaluateBalanceAlerts('cc');
+    expect(createNotification).not.toHaveBeenCalled();
+  });
+
+  it('credit sin límite: no hay umbral con sentido → no alerta', async () => {
+    const { monitor, createNotification } = setup([{ ...credit, creditLimit: 0 }]);
     vi.spyOn(monitor, 'getAccountBalance').mockReturnValue(0);
     await monitor.evaluateBalanceAlerts('cc');
     expect(createNotification).not.toHaveBeenCalled();

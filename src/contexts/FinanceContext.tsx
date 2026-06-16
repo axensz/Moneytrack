@@ -100,6 +100,8 @@ export interface FinanceContextValue {
   mergeCreditCards: (params: MergeCreditCardsParams) => Promise<void>;
   setDefaultAccount: (id: string) => Promise<void>;
   getAccountBalance: (id: string) => number;
+  /** Cupo usado de una TC, derivado del historial completo (no re-derivar en vistas). */
+  getCreditUsed: (id: string) => number;
   getTransactionCountForAccount: (id: string) => number;
 
   // ── Category CRUD ──
@@ -214,6 +216,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     mergeCreditCards,
     setDefaultAccount,
     getAccountBalance,
+    getCreditUsed,
     getTransactionCountForAccount,
     totalBalance,
     defaultAccount,
@@ -359,6 +362,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     mergeCreditCards,
     setDefaultAccount,
     getAccountBalance,
+    getCreditUsed,
     getTransactionCountForAccount,
 
     // Category CRUD
@@ -413,7 +417,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     firestoreError, retryLoad,
     addTransaction, addCreditPaymentAtomic, deleteTransactionWithDebtSync, updateTransaction,
     addAccount, updateAccount, deleteAccount, mergeCreditCards, setDefaultAccount,
-    getAccountBalance, getTransactionCountForAccount,
+    getAccountBalance, getCreditUsed, getTransactionCountForAccount,
     addCategory, deleteCategory,
     addRecurringPayment, updateRecurringPayment, deleteRecurringPayment,
     isPaidForMonth, getNextDueDate, getDaysUntilDue, getDaysOverdue, isOverdue, getPaymentHistory, recurringStats,

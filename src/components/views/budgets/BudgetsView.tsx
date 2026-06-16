@@ -6,7 +6,7 @@ import { useBudgetsDomain, useCategoryDomain, useTransactionDomain } from '../..
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { useAuth } from '../../../hooks/useAuth';
 import { usePlanConfig } from '../../../hooks/usePlanConfig';
-import { formatCurrency, formatNumberForInput, unformatNumber } from '../../../utils/formatters';
+import { formatCurrency, formatNumberForInput, unformatNumber, parseCurrency } from '../../../utils/formatters';
 import { showToast } from '../../../utils/toastHelpers';
 import { useFinancialPlan, type PlanConfig } from '../../../hooks/useFinancialPlan';
 import { isGeminiConfigured } from '../../../lib/gemini';
@@ -48,7 +48,7 @@ export const BudgetsView: React.FC = () => {
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
 
   const handleSetupSubmit = async () => {
-    const income = parseFloat(unformatNumber(setupForm.income));
+    const income = parseCurrency(setupForm.income);
     if (isNaN(income) || income <= 0) { showToast.error('Ingresa tu ingreso mensual'); return; }
     await saveConfig({ startMonth: setupForm.startMonth, declaredIncome: income });
     setShowSetup(false);
@@ -64,7 +64,7 @@ export const BudgetsView: React.FC = () => {
   };
 
   const handleBudgetSubmit = async () => {
-    const limit = parseFloat(unformatNumber(formData.monthlyLimit));
+    const limit = parseCurrency(formData.monthlyLimit);
     if (!formData.category) { showToast.error('Selecciona una categoría'); return; }
     if (isNaN(limit) || limit <= 0) { showToast.error('El límite debe ser mayor a 0'); return; }
     await addBudget({ category: formData.category, monthlyLimit: limit, isActive: true });

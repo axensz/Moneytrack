@@ -11,6 +11,7 @@ import {
   clamp,
   formatNumberForInput,
   unformatNumber,
+  parseCurrency,
   generateId,
   roundMoney,
 } from '../../utils/formatters';
@@ -246,6 +247,37 @@ describe('unformatNumber', () => {
 
   it('handles plain numbers', () => {
     expect(unformatNumber('100')).toBe('100');
+  });
+});
+
+describe('parseCurrency (formato colombiano ##.###.##,##)', () => {
+  it('miles con punto + decimal con coma', () => {
+    expect(parseCurrency('1.000.000,50')).toBe(1_000_000.5);
+    expect(parseCurrency('1.234.567,89')).toBe(1_234_567.89);
+  });
+
+  it('miles con punto, sin decimal', () => {
+    expect(parseCurrency('1.000.000')).toBe(1_000_000);
+    expect(parseCurrency('97.515')).toBe(97_515);
+  });
+
+  it('decimal tecleado con punto (teclado numérico)', () => {
+    expect(parseCurrency('563088.89')).toBe(563_088.89);
+  });
+
+  it('NO pierde los centavos de un string ya normalizado (regresión Goals/Debts/Budgets)', () => {
+    // unformatNumber devuelve "1234,56"; el bug era parseFloat de eso = 1234.
+    expect(parseCurrency('1234,56')).toBe(1234.56);
+    expect(parseCurrency(unformatNumber('1.234,56'))).toBe(1234.56);
+  });
+
+  it('tolera símbolo de moneda y espacios', () => {
+    expect(parseCurrency('$1.234,56')).toBe(1234.56);
+  });
+
+  it('vacío/ inválido → NaN', () => {
+    expect(Number.isNaN(parseCurrency(''))).toBe(true);
+    expect(Number.isNaN(parseCurrency('abc'))).toBe(true);
   });
 });
 

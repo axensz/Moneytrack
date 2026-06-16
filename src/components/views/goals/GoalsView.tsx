@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Plus, Target, Trophy, Calendar, Trash2, DollarSign, X, Clock, CheckCircle2, Info } from 'lucide-react';
 import { useGoalsDomain } from '../../../hooks/useFinanceSelectors';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
-import { formatCurrency, formatNumberForInput, unformatNumber } from '../../../utils/formatters';
+import { formatCurrency, formatNumberForInput, unformatNumber, parseCurrency } from '../../../utils/formatters';
 import { showToast } from '../../../utils/toastHelpers';
 import { ConfirmDialog } from '../../modals/ConfirmDialog';
 import type { SavingsGoal } from '../../../types/finance';
@@ -36,7 +36,7 @@ export const GoalsView: React.FC = () => {
   });
 
   const handleSubmit = async () => {
-    const amount = parseFloat(unformatNumber(formData.targetAmount));
+    const amount = parseCurrency(formData.targetAmount);
     if (!formData.name.trim()) {
       showToast.error('Ingresa un nombre para la meta');
       return;
@@ -60,7 +60,7 @@ export const GoalsView: React.FC = () => {
   };
 
   const handleAddSavings = async (goalId: string) => {
-    const amount = parseFloat(unformatNumber(savingsAmount));
+    const amount = parseCurrency(savingsAmount);
     if (isNaN(amount) || amount <= 0) {
       showToast.error('El monto debe ser mayor a 0');
       return;

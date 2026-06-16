@@ -216,8 +216,12 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     return DATE_PRESETS.find((preset) => preset.value === dateRangePreset)?.label.toLowerCase() || 'todo el tiempo';
   }, [dateRangePreset]);
 
+  // Historial COMPLETO (balanceTransactions), no la ventana paginada de 500: las
+  // tarjetas de resumen (Ingresos/Gastos/Pendientes) agregan sobre transacciones,
+  // y con >500 tx un filtro "este año"/"todo" subcontaría periodos antiguos. Mismo
+  // motivo que los saldos (C2) y los monitores de notificación. (#stats-1)
   const { dynamicStats, dynamicTotalBalance, balanceLabel } = useFilteredData({
-    transactions, accounts, filterAccount, filterCategory, dateRange, totalBalance, getAccountBalance,
+    transactions: balanceTransactions, accounts, filterAccount, filterCategory, dateRange, totalBalance, getAccountBalance,
   });
 
   const [newTransaction, setNewTransaction] = useState<NewTransaction>({

@@ -86,7 +86,7 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
           {/* Leyenda de categorías */}
           <div className="mt-4 space-y-2">
             {data.slice(0, 5).map((item, index) => (
-              <div key={index} className="flex items-center justify-between text-sm">
+              <div key={item.name} className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
                   <div
                     className="w-3 h-3 rounded-full"

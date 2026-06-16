@@ -110,6 +110,10 @@ export function useSavingsGoals(userId: string | null, externalGoals?: SavingsGo
 
   // Add savings to a goal
   const addSavings = useCallback(async (goalId: string, amount: number) => {
+    // Guard de dinero: amount debe ser positivo finito. El llamador (GoalsView)
+    // ya valida, pero esta es una mutación de saldo expuesta por el store: no
+    // persistir un currentAmount corrupto (negativo/NaN) si otro llamador falla.
+    if (!Number.isFinite(amount) || amount <= 0) return;
     const goal = goals.find(g => g.id === goalId);
     if (!goal) return;
 

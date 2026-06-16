@@ -271,8 +271,10 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   // C-FIX (paginación + saldos): la validación de "Saldo insuficiente" de
   // useAddTransaction deriva el saldo sumando transacciones; debe usar el
   // historial completo (balanceTransactions), no la ventana paginada de 500.
+  // balancesReady: mientras el historial asienta se omite la validación de
+  // saldo/cupo (si no, se rechazaría con un falso "Saldo insuficiente"). #3.
   const { handleAddTransaction, handleAddAndContinue } = useAddTransaction({
-    accounts, transactions: balanceTransactions, recurringPayments,
+    accounts, transactions: balanceTransactions, balancesReady, recurringPayments,
     defaultAccount: defaultAccount || null,
     addTransaction, addCreditPaymentAtomic, updateRecurringPayment,
     setNewTransaction, setShowForm, setShowWelcomeModal,

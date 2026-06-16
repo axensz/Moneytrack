@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Wallet, CreditCard, Banknote } from 'lucide-react';
 import { BALANCE_ADJUSTMENT_CATEGORY } from '../../../config/constants';
 import { showToast } from '../../../utils/toastHelpers';
-import { getCreditCardUsedCredit } from '../../../utils/accountStrategies';
 import { useAccountDomain, useTransactionDomain, useRecurringDomain, useDebtsDomain, useFormatCurrency } from '../../../hooks/useFinanceSelectors';
 import type { Account } from '../../../types/finance';
 import type { MergeCreditCardsParams } from '../../../hooks/useAccounts';
@@ -40,27 +39,27 @@ export const AccountsView: React.FC = () => {
     mergeCreditCards: mergeCreditCardsDomain,
     setDefaultAccount,
     getAccountBalance,
+    getCreditUsed,
     getTransactionCountForAccount,
     balancesReady,
   } = useAccountDomain();
-  const { transactions, addTransaction } = useTransactionDomain();
+  const { addTransaction } = useTransactionDomain();
   const { recurringPayments } = useRecurringDomain();
   const { debts } = useDebtsDomain();
   const formatCurrency = useFormatCurrency();
-  // Mapa memoizado de cupo usado por tarjeta (evita recalcular en cada render)
+  // Mapa memoizado del cupo usado por tarjeta para el resumen (evita llamar al
+  // accesor por tarjeta en cada render). El cálculo correcto (historial
+  // completo, no la ventana paginada) vive en el store vía getCreditUsed; aquí
+  // solo se cachea por id (#11).
   const creditUsedMap = useMemo(() => {
     const map = new Map<string, number>();
     accounts.forEach(a => {
       if (a.type === 'credit' && a.id) {
-        map.set(a.id, getCreditCardUsedCredit(a, transactions));
+        map.set(a.id, getCreditUsed(a.id));
       }
     });
     return map;
-  }, [accounts, transactions]);
-
-  const getCreditUsed = useCallback((accountId: string): number => {
-    return creditUsedMap.get(accountId) ?? 0;
-  }, [creditUsedMap]);
+  }, [accounts, getCreditUsed]);
 
   const creditCardSummary = useMemo(() => {
     const cards = accounts

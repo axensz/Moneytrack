@@ -29,6 +29,9 @@ export function useFormatCurrency() {
 // ── Transacciones ─────────────────────────────────────────────────────────────
 
 const selectTransactionDomain = (s: FinanceContextValue) => ({
+  // Ventana PAGINADA (500 recientes): para listar/filtrar transacciones. NO
+  // derivar saldos de aquí — usar los accesores del store (getAccountBalance,
+  // getCreditUsed) o balanceTransactions (historial completo). Ver #4a/#11.
   transactions: s.transactions,
   addTransaction: s.addTransaction,
   addCreditPaymentAtomic: s.addCreditPaymentAtomic,
@@ -55,6 +58,7 @@ const selectAccountDomain = (s: FinanceContextValue) => ({
   mergeCreditCards: s.mergeCreditCards,
   setDefaultAccount: s.setDefaultAccount,
   getAccountBalance: s.getAccountBalance,
+  getCreditUsed: s.getCreditUsed,
   getTransactionCountForAccount: s.getTransactionCountForAccount,
   totalBalance: s.totalBalance,
   balancesReady: s.balancesReady,

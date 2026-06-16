@@ -7,15 +7,15 @@ import type {
   FilterValue,
   DateRangePreset,
   RecurringPayment,
+  NewTransaction,
 } from '../../../../types/finance';
-import { parseDateFromInput, parseDateWithTime, roundMoney } from '../../../../utils/formatters';
+import { parseDateFromInput, parseDateWithTime } from '../../../../utils/formatters';
 import { getDateRangeFromPreset, ensureDate } from '../../../../utils/dateUtils';
 import { findAccountForTransaction, transactionUsesAccount } from '../../../../utils/accountTransactions';
-import { AccountStrategyFactory } from '../../../../utils/accountStrategies';
-import { getCreditDelta } from '../../../../utils/creditDeltas';
+import { TransactionValidator } from '../../../../utils/validators';
 import { showToast } from '../../../../utils/toastHelpers';
 import { logger } from '../../../../utils/logger';
-import { SUCCESS_MESSAGES, TRANSACTION_VALIDATION } from '../../../../config/constants';
+import { SUCCESS_MESSAGES } from '../../../../config/constants';
 
 interface UseTransactionsViewParams {
   transactions: Transaction[];
@@ -204,62 +204,36 @@ export const useTransactionsView = ({
 
   const handleSaveEdit = useCallback(
     async (id: string) => {
-      // Parse amount - CurrencyInput gives us a plain string like "88888" or "88888.5"
+      // CurrencyInput entrega un string numérico plano ("88888" o "88888.5").
       const amount = parseFloat(editForm.amount);
+      const original = transactions.find((t) => t.id === id);
+      const account = original ? accountsById.get(original.accountId) : undefined;
 
-      // Client-side validation
-      if (isNaN(amount) || amount <= 0) {
-        showToast.error('El monto debe ser un número válido mayor a 0');
-        return;
-      }
-
-      // Validar monto máximo
-      if (amount > TRANSACTION_VALIDATION.amount.max) {
-        showToast.error(TRANSACTION_VALIDATION.amount.errorMessage);
-        return;
-      }
-
-      if (!editForm.category) {
-        showToast.error('Debes seleccionar una categoría');
+      // Validación unificada con el alta (#10): el MISMO TransactionValidator
+      // valida monto/categoría y saldo/cupo. `original` excluye la tx editada del
+      // cálculo (evita falsos rechazos por doble conteo) y cubre TODOS los tipos,
+      // incluido el pago de TC (income) que antes se omitía y permitía sobrepagar
+      // borrando deuda (#2). El saldo/cupo se omite mientras el historial no
+      // asienta (balancesReady=false) pasando transactions=undefined.
+      const validation = TransactionValidator.validate(
+        {
+          type: original?.type ?? 'expense',
+          amount: editForm.amount,
+          category: editForm.category,
+          description: editForm.description,
+          accountId: original?.accountId ?? '',
+          toAccountId: original?.toAccountId ?? '',
+        } as NewTransaction,
+        account,
+        balancesReady ? balanceTransactions : undefined,
+        original
+      );
+      if (!validation.isValid) {
+        validation.errors.forEach((error) => showToast.error(error));
         return;
       }
 
       try {
-        const original = transactions.find((t) => t.id === id);
-
-        // Validación de saldo/cupo (#8): el nuevo monto se valida contra el
-        // historial COMPLETO excluyendo la transacción original (sin excluirla,
-        // editar cerca del saldo daría falsos rechazos). Mientras el historial
-        // no asienta (balancesReady=false) se omite, igual que antes del fix.
-        if (
-          original &&
-          balancesReady &&
-          (original.type === 'expense' || original.type === 'transfer')
-        ) {
-          const account = accountsById.get(original.accountId);
-          if (account) {
-            const rest = balanceTransactions.filter((t) => t.id !== id);
-            // En TC el usedCredit persistido ya incluye la original: restarla
-            // para no contarla doble al validar el nuevo monto.
-            const accountForValidation =
-              account.type === 'credit' && account.usedCredit != null
-                ? {
-                    ...account,
-                    usedCredit: Math.max(
-                      0,
-                      roundMoney(account.usedCredit - getCreditDelta(original, account.id!))
-                    ),
-                  }
-                : account;
-            const validation = AccountStrategyFactory.getStrategy(account.type)
-              .validateTransaction(accountForValidation, amount, rest, original.type);
-            if (!validation.valid) {
-              showToast.error(validation.error ?? 'La transacción no es válida');
-              return;
-            }
-          }
-        }
-
         await updateTransaction(id, {
           description: editForm.description.trim(),
           amount,

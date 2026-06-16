@@ -26,17 +26,27 @@ export function usePlanConfig(userId: string | null) {
   // Cargar desde Firestore (autenticado)
   useEffect(() => {
     if (!userId) return;
+    let cancelled = false;
+    // Limpia de inmediato la config de un usuario anterior; se rellena al
+    // resolver. Sin esto el plan del usuario previo se filtraba a la cuenta
+    // nueva durante (y, si el doc no existe, después de) la carga (#6).
+    setConfig(null);
     const docRef = doc(db, `users/${userId}/settings/planConfig`);
     getDoc(docRef).then(snap => {
-      if (snap.exists()) {
-        const data = snap.data() as StoredPlanConfig;
-        setConfig({ startMonth: data.startMonth, declaredIncome: data.declaredIncome });
-      }
+      if (cancelled) return;
+      // snap inexistente → null: la cuenta no tiene plan, no heredar el anterior.
+      setConfig(snap.exists()
+        ? { startMonth: (snap.data() as StoredPlanConfig).startMonth, declaredIncome: (snap.data() as StoredPlanConfig).declaredIncome }
+        : null);
       setLoading(false);
     }).catch(error => {
+      if (cancelled) return;
       logger.error('Error cargando la configuración del plan', error);
       setLoading(false);
     });
+    // cancelled: evita que un getDoc lento de la cuenta A pise la config de B
+    // si se cambia de usuario antes de resolver.
+    return () => { cancelled = true; };
   }, [userId]);
 
   // Cargar desde localStorage (invitado). Depende de localConfig porque la
@@ -44,9 +54,11 @@ export function usePlanConfig(userId: string | null) {
   // plan guardado nunca se cargaba al recargar la app en modo invitado.
   useEffect(() => {
     if (userId) return;
-    if (localConfig) {
-      setConfig({ startMonth: localConfig.startMonth, declaredIncome: localConfig.declaredIncome });
-    }
+    // Invitado sin plan guardado → null: no heredar el plan de un usuario
+    // autenticado anterior tras cerrar sesión (#6).
+    setConfig(localConfig
+      ? { startMonth: localConfig.startMonth, declaredIncome: localConfig.declaredIncome }
+      : null);
     setLoading(false);
   }, [userId, localConfig]);
 

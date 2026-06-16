@@ -7,6 +7,7 @@ let getDocsCalls = 0;
 let storeDocs: { id: string; data: Record<string, unknown> }[] = [];
 let resolveFetch: (() => void) | null = null;
 let holdFetch = false;
+let throwFetch = false;
 
 vi.mock('firebase/firestore', () => ({
   collection: () => ({ __c: true }),
@@ -17,6 +18,7 @@ vi.mock('firebase/firestore', () => ({
     if (holdFetch) {
       await new Promise<void>((resolve) => { resolveFetch = resolve; });
     }
+    if (throwFetch) throw new Error('network down');
     return { docs: storeDocs.map((d) => ({ id: d.id, data: () => d.data })) };
   }),
 }));
@@ -45,6 +47,7 @@ describe('useBalanceTransactions — fuente de saldos bajo paginación', () => {
     storeDocs = [];
     holdFetch = false;
     resolveFetch = null;
+    throwFetch = false;
   });
 
   it('ventana NO saturada (hasMore=false): no fetchea, devuelve el array live, ready=true', async () => {
@@ -98,6 +101,21 @@ describe('useBalanceTransactions — fuente de saldos bajo paginación', () => {
     resolveFetch!();
     await waitFor(() => expect(result.current.ready).toBe(true));
     expect(result.current.transactions).toHaveLength(2);
+  });
+
+  it('fetch fallido sobre ventana saturada: ready queda FALSE (no da luz verde a saldos sobre la ventana truncada)', async () => {
+    // C2 regresión: antes el fetch fallido asentaba igual (ready=true) y los
+    // saldos se calculaban contra la ventana paginada de 500 → corrupción al
+    // ajustar. Ahora en error NO se asienta: la UI sigue en "Calculando…" y los
+    // ajustes quedan bloqueados hasta una recarga / refetch exitoso.
+    throwFetch = true;
+    const live = [tx('t1')];
+    const { result } = renderHook(() => useBalanceTransactions('user1', live, true));
+
+    await waitFor(() => expect(getDocsCalls).toBe(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(result.current.ready).toBe(false);
+    expect(result.current.transactions).toEqual(live); // solo la ventana, incompleto
   });
 
   it('refetch posterior (alta/baja) NO vuelve a des-asentar: ready permanece true', async () => {

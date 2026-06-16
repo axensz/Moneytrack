@@ -2,8 +2,9 @@
 
 import React, { memo } from 'react';
 import { Edit2, Trash2, GripVertical, ChevronUp, ChevronDown, Wallet, CreditCard, Banknote, Combine } from 'lucide-react';
-import type { Account, Transaction } from '../../../../types/finance';
+import type { Account } from '../../../../types/finance';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
+import { BalanceSettling } from '@/components/shared/BalanceSettling';
 
 const ACCOUNT_TYPES = [
   { value: 'savings' as const, label: 'Cuenta de Ahorros', icon: Wallet },
@@ -240,9 +241,7 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
                 </div>
               )}
               {!isCredit && balanceSettling ? (
-                <span className="animate-pulse text-base font-medium text-gray-400 dark:text-gray-500" aria-live="polite">
-                  Calculando…
-                </span>
+                <BalanceSettling className="text-base font-medium text-gray-400 dark:text-gray-500" />
               ) : (
                 displayAmount(balance)
               )}

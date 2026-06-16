@@ -1,6 +1,7 @@
 import React, { memo } from 'react';
 import { TrendingUp, TrendingDown, Wallet, Calendar, Eye, EyeOff, Info } from 'lucide-react';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
+import { BalanceSettling } from './BalanceSettling';
 
 interface StatsCardsProps {
   totalBalance: number;
@@ -62,9 +63,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
           </div>
           <div className="text-lg sm:text-xl lg:text-2xl font-bold text-purple-900 dark:text-purple-100 break-words">
             {balanceSettling ? (
-              <span className="animate-pulse text-purple-400 dark:text-purple-500" aria-live="polite">
-                Calculando…
-              </span>
+              <BalanceSettling className="text-purple-400 dark:text-purple-500" />
             ) : (
               displayValue(totalBalance)
             )}

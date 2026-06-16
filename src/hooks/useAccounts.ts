@@ -60,6 +60,17 @@ export function useAccounts(
     return transactions.filter(t => transactionUsesAccount(t, account)).length;
   }, [accounts, transactions]);
 
+  // Cupo usado (deuda pendiente) de una TC. Centralizado aquí —como
+  // getAccountBalance— para que NINGÚN consumidor re-derive el cupo desde un
+  // array elegido a mano: usa el mismo `transactions` de SALDO (historial
+  // completo, no la ventana paginada), que para una TC legacy sin usedCredit
+  // persistido evita subcontar la deuda (#4a/#11).
+  const getCreditUsed = useCallback((accountId: string): number => {
+    const account = accounts.find(a => a.id === accountId);
+    if (!account || account.type !== 'credit') return 0;
+    return getCreditCardUsedCredit(account, transactions);
+  }, [accounts, transactions]);
+
   const totalBalance = useMemo(() => {
     return BalanceCalculator.calculateTotalBalance(accounts, transactions);
   }, [accounts, transactions]);
@@ -308,6 +319,7 @@ export function useAccounts(
     mergeCreditCards,
     setDefaultAccount,
     getAccountBalance,
+    getCreditUsed,
     getTransactionCountForAccount,
     totalBalance,
     defaultAccount

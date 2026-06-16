@@ -109,6 +109,26 @@ describe('useNotificationMonitoring — guard anti-flood por paginación', () =>
     expect(spy.mock.calls[0][0].id).toBe(fresh.id);
   });
 
+  it('una tx creada hace ~5 min (desfase de reloj / latencia) SÍ dispara — antes la ventana de 2 min la descartaba (#5)', async () => {
+    const old = new Date(2026, 1, 1);
+    const initial = [tx(old)];
+    const { result, rerender } = mount(initial);
+
+    const spending = result.current.monitors.spendingAnalyzer!;
+    const spy = vi.spyOn(spending, 'evaluateUnusualSpending').mockResolvedValue(undefined);
+    vi.spyOn(result.current.monitors.balanceMonitor!, 'evaluateBalanceAlerts').mockResolvedValue(undefined);
+    vi.spyOn(result.current.monitors.budgetMonitor!, 'evaluateBudgetAlerts').mockResolvedValue(undefined);
+
+    // Creada hace 5 min: real, pero >2 min → bajo la ventana vieja se perdía.
+    const skewed = tx(new Date(2026, 5, 9, 11, 55, 0));
+    await act(async () => {
+      rerender({ transactions: [...initial, skewed] });
+    });
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0][0].id).toBe(skewed.id);
+  });
+
   it('transacción sin createdAt (doc legacy vía paginación) NO dispara alertas', async () => {
     const initial = [tx(new Date(2026, 1, 1))];
     const { result, rerender } = mount(initial);

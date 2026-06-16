@@ -58,6 +58,15 @@ vi.mock('firebase/firestore', () => ({
       commit: async () => {
         for (const o of ops) {
           M.log.push({ op: o.op, path: o.ref.__path, id: o.ref.__id, data: o.data });
+          // Aplicar al store para que una lectura POSTERIOR (p. ej. la
+          // reconciliación de usedCredit) vea las transacciones reapuntadas.
+          const store = o.ref.__path?.endsWith('/transactions') ? M.txStore
+            : o.ref.__path?.endsWith('/accounts') ? M.acctStore : null;
+          if (store) {
+            if (o.op === 'delete') store.delete(o.ref.__id);
+            else if (o.op === 'set') store.set(o.ref.__id, { id: o.ref.__id, ...(o.data || {}) });
+            else store.set(o.ref.__id, { ...(store.get(o.ref.__id) || {}), ...(o.data || {}) });
+          }
         }
         ops.length = 0;
       },
@@ -177,6 +186,25 @@ describe('useAccounts.mergeCreditCards — caracterización', () => {
       acc.current.mergeCreditCards({ sourceAccountIds: ['cc1', 'cc2'], destination: { id: 'dest', name: 'X' } })
     ).rejects.toThrow(/asentando|calculando/i);
     expect(M.log).toHaveLength(0);
+  });
+
+  it('reconcilia usedCredit del destino desde las transacciones reapuntadas, ignorando un persistido stale (#4b)', async () => {
+    // cc1 tiene un persistido STALE (0) pero en Firestore ya hay una compra de
+    // 200k suya. Confiar en el persistido subcontaría la deuda consolidada; la
+    // fusión debe reconciliar desde las transacciones, igual que el cascade.
+    const cc1Stale: Account = { ...cc1, usedCredit: 0 };
+    seed([bank, cc1Stale, cc2, dest]);
+    M.txStore.set('s1', { id: 's1', type: 'expense', amount: 200_000, category: 'Compras', paid: true, accountId: 'cc1' });
+    M.txStore.set('s2', { id: 's2', type: 'expense', amount: 200_000, category: 'Compras', paid: true, accountId: 'cc2' });
+    M.txStore.set('sd', { id: 'sd', type: 'expense', amount: 100_000, category: 'Compras', paid: true, accountId: 'dest' });
+
+    const acc = renderHook(() => useAccounts(UID, [], vi.fn())).result;
+    await acc.current.mergeCreditCards({ sourceAccountIds: ['cc1', 'cc2'], destination: { id: 'dest', name: 'Visa Unificada' } });
+
+    // Persistido (buggy): 0(cc1 stale) + 200k(cc2) + 100k(dest) = 300k.
+    // Reconciliado desde transacciones reapuntadas: 200k + 200k + 100k = 500k.
+    const reconciled = M.log.filter(l => l.op === 'updateDoc' && l.id === 'dest').pop();
+    expect(reconciled?.data?.usedCredit).toBe(500_000);
   });
 
   it('con saldos asentados, el fallback de usedCredit se calcula del historial recibido', async () => {

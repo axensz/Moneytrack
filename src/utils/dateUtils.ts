@@ -28,6 +28,19 @@ export function ensureDate(value: unknown): Date {
 }
 
 /**
+ * Clave de día en hora LOCAL (YYYY-MM-DD) para deduplicación diaria de
+ * notificaciones. `toISOString()` da la fecha en UTC, así que en zonas con
+ * offset (Colombia UTC-5) el "día" rodaba a las 19:00 locales y desalineaba el
+ * corte diario. Esta versión usa los getters locales del Date.
+ */
+export function localDateKey(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/**
  * Calcula el rango de fechas basado en un preset
  */
 export const getDateRangeFromPreset = (

@@ -5,10 +5,12 @@
 
 import toast from 'react-hot-toast';
 import { logger } from '../utils/logger';
+import { localDateKey } from '../utils/dateUtils';
 import type { Notification, NotificationFilter, NotificationPreferences } from '../types/finance';
 
 interface NotificationManagerDeps {
-    addNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => Promise<void>;
+    /** Devuelve true si creó la notificación; false si ya existía (dedup diario). */
+    addNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => Promise<boolean>;
     updateNotification: (id: string, updates: Partial<Notification>) => Promise<void>;
     deleteNotification: (id: string) => Promise<void>;
     clearAll: () => Promise<void>;
@@ -48,7 +50,15 @@ export class NotificationManager {
 
         try {
             // Store notification (addNotification maneja deduplicación con docId)
-            await this.deps.addNotification(notification);
+            const created = await this.deps.addNotification(notification);
+
+            // Si ya existía (dedup diario por docId), NO mostrar toast: al recargar
+            // los daily checks reintentan la misma notificación; sin esto el toast
+            // re-aparecía aunque no se creara nada nuevo (minor de la revisión).
+            if (!created) {
+                logger.info('Notification already exists today, skipping toast', { notification });
+                return;
+            }
 
             // Update debounce map
             const dedupeKey = this.getDebounceKey(notification);
@@ -229,9 +239,9 @@ export class NotificationManager {
     private getDebounceKey(notification: Omit<Notification, 'id' | 'createdAt'>): string {
         const parts = [notification.type, notification.title];
 
-        // ✅ FIX #3: Agregar fecha para deduplicación diaria
-        const today = new Date().toISOString().split('T')[0]; // "2026-02-22"
-        parts.push(today);
+        // Fecha LOCAL para deduplicación diaria (no UTC: en UTC-5 el corte caía a
+        // las 19:00 locales y desalineaba el "día" — minor de la revisión).
+        parts.push(localDateKey());
 
         // Add relevant metadata to key for more specific deduplication
         if (notification.metadata) {

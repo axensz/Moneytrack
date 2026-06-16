@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { collection, onSnapshot, query, orderBy, limit as firestoreLimit, updateDoc, deleteDoc, doc, writeBatch, setDoc } from 'firebase/firestore';
-import { ensureDate } from '../utils/dateUtils';
+import { ensureDate, localDateKey } from '../utils/dateUtils';
 import { db } from '../lib/firebase';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
@@ -114,7 +114,7 @@ export function useNotificationStore(userId: string | null, externalNotification
 
     // ✅ FIX #2: Generar docId determinístico para deduplicación
     const generateDedupeDocId = useCallback((notification: Omit<Notification, 'id' | 'createdAt'>): string => {
-        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        const today = localDateKey(); // fecha LOCAL (no UTC): alinea el corte diario con el día del usuario
         const parts: string[] = [];
 
         // Tipo de notificación
@@ -140,7 +140,7 @@ export function useNotificationStore(userId: string | null, externalNotification
 
     // Add notification con docId determinístico (verdaderamente idempotente)
     const addNotification = useCallback(
-        async (notification: Omit<Notification, 'id' | 'createdAt'>) => {
+        async (notification: Omit<Notification, 'id' | 'createdAt'>): Promise<boolean> => {
             if (userId) {
                 try {
                     const docId = generateDedupeDocId(notification);
@@ -150,13 +150,14 @@ export function useNotificationStore(userId: string | null, externalNotification
                     // y el docId determinístico previene duplicados diarios en Firestore.
                     const existsInMemory = firestoreNotificationsRef.current.some(n => n.id === docId);
                     if (existsInMemory) {
-                        return;
+                        return false; // ya existe hoy → no se creó nada (no re-mostrar toast al recargar)
                     }
 
                     await setDoc(doc(db, `users/${userId}/notifications`, docId), {
                         ...notification,
                         createdAt: new Date(),
                     });
+                    return true;
                 } catch (error) {
                     logger.error('Failed to add notification', error);
                     throw error;
@@ -165,7 +166,7 @@ export function useNotificationStore(userId: string | null, externalNotification
                 const docId = generateDedupeDocId(notification);
 
                 if (localNotificationsRef.current.some(n => n.id === docId)) {
-                    return;
+                    return false;
                 }
 
                 const newNotification: Notification = {
@@ -180,6 +181,7 @@ export function useNotificationStore(userId: string | null, externalNotification
                 }
 
                 setLocalNotifications(updated);
+                return true;
             }
         },
         [userId, setLocalNotifications, generateDedupeDocId]

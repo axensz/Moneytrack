@@ -16,6 +16,7 @@ import {
   detectInstallments,
   inferImportType,
   matchKnownCategory,
+  parseAmount,
   parseDate,
   resolveImportCurrency,
   suggestCategory,
@@ -97,34 +98,25 @@ function isMetadataRow(cols: unknown[]): boolean {
 export function parseColombianAmount(raw: unknown): number | null {
   if (raw === null || raw === undefined) return null;
 
-  // SheetJS a veces devuelve el número ya parseado
-  if (typeof raw === 'number') return raw;
+  // SheetJS a veces devuelve el número ya parseado.
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
 
   const str = String(raw).trim();
   if (!str || str === 'nan' || str === '#N/A' || str === '-') return null;
 
-  // Quitar símbolos/moneda y conservar solo caracteres numéricos relevantes
-  let cleaned = str
-    .replace(/\(([^)]+)\)/, '-$1')
-    .replace(/cop/gi, '')
-    .replace(/[$\s]/g, '');
-
-  // Añadir cero inicial si empieza con punto: ".60" → "0.60"
-  cleaned = cleaned.replace(/^(-?)\./, '$10.');
-
-  // Detectar formato colombiano (punto como miles, coma como decimal)
-  let normalizedAmount: string;
-  if (/\d\.\d{3}/.test(cleaned)) {
-    normalizedAmount = cleaned.replace(/\./g, '').replace(',', '.');
-  } else if (/^-?\d+,\d{1,2}$/.test(cleaned)) {
-    // Decimal con coma sin miles: "99,99" → 99.99 (antes el else daba 9999, ×100).
-    normalizedAmount = cleaned.replace(',', '.');
-  } else {
-    normalizedAmount = cleaned.replace(/,/g, '');
+  // Delega en el parser canónico de extractos (csvParser.parseAmount): miles
+  // CO/US, decimal con coma, paréntesis contables, símbolos y CÓDIGOS DE MONEDA
+  // (USD/EUR…), que esta función antes no quitaba → "USD 1.234,56" daba null.
+  // parseAmount devuelve 0 tanto para "0" como para basura; preservamos el
+  // contrato null de esta función (parseDescription lo usa para distinguir una
+  // celda-monto de texto): si el valor es 0, solo es 0 genuino cuando los
+  // dígitos del string son todos cero; cualquier otra cosa es texto → null.
+  const value = parseAmount(str);
+  if (value === 0) {
+    const digits = str.replace(/[^\d]/g, '');
+    return digits !== '' && /^0+$/.test(digits) ? 0 : null;
   }
-
-  const num = parseFloat(normalizedAmount);
-  return isNaN(num) ? null : num;
+  return value;
 }
 
 function inferYear(month: number, hastaYear: number, hastaMonth: number): number {

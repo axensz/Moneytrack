@@ -9,6 +9,7 @@ import { db } from '../lib/firebase';
 import { logger } from '../utils/logger';
 import { stripUndefined } from '../utils/firestoreHelpers';
 import { setBatchImporting, registerImportedIds } from '../utils/importBatchFlag';
+import { getCreditDelta } from '../utils/creditDeltas';
 import type { Account, Transaction } from '../types/finance';
 
 export interface ImportRow {
@@ -41,16 +42,6 @@ export interface ImportResult {
 export type ImportStatus = 'idle' | 'importing' | 'done' | 'error';
 
 const FIRESTORE_BATCH_LIMIT = 500;
-
-function getCreditDelta(
-  row: Pick<ImportRow, 'type' | 'amount' | 'accountId' | 'toAccountId'>,
-  accountId: string
-): number {
-  if (row.type === 'expense' && row.accountId === accountId) return row.amount;
-  if (row.type === 'income' && row.accountId === accountId) return -row.amount;
-  if (row.type === 'transfer' && row.toAccountId === accountId) return -row.amount;
-  return 0;
-}
 
 export function useImportTransactions(userId: string | null, accounts: Account[] = []) {
   const [status, setStatus] = useState<ImportStatus>('idle');

@@ -152,7 +152,11 @@ export function TransactionsList({
                     day: 'numeric',
                 })
                 : '';
-            const key = item.type === 'transaction' ? item.transaction.id! : `adj-${item.dateKey}`;
+            // Key por id de la PRIMERA tx del grupo, no por fecha: dos rachas de
+            // ajustes del mismo día (separadas por una tx normal) producían dos
+            // grupos con la MISMA key `adj-<fecha>` → React mezclaba su estado
+            // (expandido/edición) y avisaba por keys duplicadas. (#tx-2)
+            const key = item.type === 'transaction' ? item.transaction.id! : `adj-${item.transactions[0].id}`;
             return { ...item, key, showDateHeader, headerLabel };
         });
     }, [transactions, visibleCount]);

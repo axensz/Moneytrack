@@ -273,6 +273,9 @@ export const useTransactionsView = ({
       try {
         await deleteTransaction(transaction.id!);
 
+        // Guard anti doble-clic en "Deshacer": el handler es async y sin esto un
+        // segundo clic re-crea la transacción (duplicado). Flag por-toast. (#tx-4)
+        let isRestoring = false;
         toast.success(
           (t) => (
             <div className="flex items-center gap-2">
@@ -280,12 +283,19 @@ export const useTransactionsView = ({
               {onRestore && (
                 <button
                   onClick={async () => {
+                    if (isRestoring) return;
+                    isRestoring = true;
                     toast.dismiss(t.id);
                     const transactionToRestore = { ...transaction };
                     delete transactionToRestore.id;
                     delete transactionToRestore.createdAt;
-                    await onRestore(transactionToRestore);
-                    toast.success('Restaurado');
+                    try {
+                      await onRestore(transactionToRestore);
+                      toast.success('Restaurado');
+                    } catch {
+                      isRestoring = false; // permitir reintento si falló
+                      toast.error('No se pudo restaurar');
+                    }
                   }}
                   className="px-2 py-1 text-xs bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors flex items-center gap-1"
                 >

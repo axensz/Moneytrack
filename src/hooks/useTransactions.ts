@@ -75,6 +75,24 @@ export function useTransactions(userId: string | null) {
     }
   };
 
+  // Pago de TC atómico (par ingreso-a-TC + gasto-en-origen). En modo invitado la
+  // versión Firestore hace no-op (if(!userId)return) → el invitado "pagaba" la TC
+  // sin que se escribiera nada (pérdida silenciosa). Paridad: crear ambas tx en
+  // localStorage. (#tx-1)
+  const addCreditPaymentAtomic = async (
+    creditTx: Omit<Transaction, 'id' | 'createdAt'>,
+    sourceTx: Omit<Transaction, 'id' | 'createdAt'>
+  ) => {
+    if (userId) {
+      await firestoreAddCreditPaymentAtomic(creditTx, sourceTx);
+    } else {
+      const now = new Date();
+      const credit: Transaction = { ...creditTx, id: generateId(), createdAt: now };
+      const source: Transaction = { ...sourceTx, id: generateId(), createdAt: now };
+      setLocalTransactions(prev => [credit, source, ...prev]);
+    }
+  };
+
   const deleteTransaction = async (id: string) => {
     if (userId) {
       await firestoreDeleteTransaction(id);
@@ -110,7 +128,7 @@ export function useTransactions(userId: string | null) {
     transactions,
     loading,
     addTransaction,
-    addCreditPaymentAtomic: firestoreAddCreditPaymentAtomic,
+    addCreditPaymentAtomic,
     deleteTransaction,
     togglePaid,
     updateTransaction

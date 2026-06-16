@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   SavingsAccountStrategy,
-  CashAccountStrategy,
   CreditCardStrategy,
   AccountStrategyFactory,
   getCreditCardStrategy,
@@ -124,17 +123,14 @@ describe('SavingsAccountStrategy', () => {
   });
 });
 
-// ─── CashAccountStrategy ──────────────────────────────────────────
+// ─── Efectivo (cash) reusa la estrategia de ahorro ─────────────────
 
-describe('CashAccountStrategy', () => {
-  const strategy = new CashAccountStrategy();
-
-  it('delegates calculation to savings logic', () => {
+describe('cash usa la estrategia de ahorro', () => {
+  it('calcula el balance como ahorro y se incluye en el total', () => {
     const acc = makeCash();
+    const strategy = AccountStrategyFactory.getStrategy('cash');
+    expect(strategy).toBeInstanceOf(SavingsAccountStrategy);
     expect(strategy.calculateBalance(acc, [])).toBe(500_000);
-  });
-
-  it('includes in total balance', () => {
     expect(strategy.includeInTotalBalance()).toBe(true);
   });
 });
@@ -400,9 +396,9 @@ describe('AccountStrategyFactory', () => {
     expect(strategy).toBeInstanceOf(SavingsAccountStrategy);
   });
 
-  it('returns CashAccountStrategy for cash', () => {
+  it('returns SavingsAccountStrategy for cash (efectivo reusa ahorro)', () => {
     const strategy = AccountStrategyFactory.getStrategy('cash');
-    expect(strategy).toBeInstanceOf(CashAccountStrategy);
+    expect(strategy).toBeInstanceOf(SavingsAccountStrategy);
   });
 
   it('returns CreditCardStrategy for credit', () => {

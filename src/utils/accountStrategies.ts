@@ -22,47 +22,12 @@ import { getCreditDelta } from './creditDeltas';
 import { roundMoney } from './formatters';
 
 /**
- * Interfaz base para estrategias de cuenta
- * Define el contrato que todas las estrategias deben cumplir
- */
-export interface AccountBalanceStrategy {
-  /**
-   * Calcula el balance de una cuenta específica
-   * @param account - La cuenta a calcular
-   * @param transactions - Lista de todas las transacciones
-   * @returns Balance calculado según la lógica del tipo de cuenta
-   */
-  calculateBalance(account: Account, transactions: Transaction[]): number;
-
-  /**
-   * Valida si se puede realizar una transacción
-   * @param account - Cuenta origen
-   * @param amount - Monto de la transacción
-   * @param transactions - Lista de transacciones para contexto
-   * @param transactionType - Tipo de transacción (income, expense, transfer)
-   * @returns Objeto con validación y mensaje de error si aplica
-   */
-  validateTransaction(
-    account: Account,
-    amount: number,
-    transactions: Transaction[],
-    transactionType?: 'income' | 'expense' | 'transfer'
-  ): { valid: boolean; error?: string };
-
-  /**
-   * Indica si este tipo de cuenta se incluye en el balance total
-   * (Las TC no se incluyen porque representan deuda)
-   */
-  includeInTotalBalance(): boolean;
-}
-
-/**
  * 🟢 ESTRATEGIA PARA CUENTAS DE AHORRO
  *
  * LÓGICA:
  * Balance = Saldo Inicial + Ingresos - Gastos - Transferencias Salientes + Transferencias Entrantes
  */
-export class SavingsAccountStrategy implements AccountBalanceStrategy {
+export class SavingsAccountStrategy {
   calculateBalance(account: Account, transactions: Transaction[]): number {
     // Solo considerar transacciones pagadas
     const paidTransactions = transactions.filter(t => t.paid);
@@ -116,34 +81,6 @@ export class SavingsAccountStrategy implements AccountBalanceStrategy {
 }
 
 /**
- * 🟢 ESTRATEGIA PARA EFECTIVO
- *
- * LÓGICA: Idéntica a cuentas de ahorro
- * (Separada por si en el futuro se necesita lógica diferente)
- */
-export class CashAccountStrategy implements AccountBalanceStrategy {
-  private savingsStrategy = new SavingsAccountStrategy();
-
-  calculateBalance(account: Account, transactions: Transaction[]): number {
-    // Por ahora, efectivo funciona igual que ahorro
-    return this.savingsStrategy.calculateBalance(account, transactions);
-  }
-
-  validateTransaction(
-    account: Account,
-    amount: number,
-    transactions: Transaction[],
-    transactionType?: 'income' | 'expense' | 'transfer'
-  ): { valid: boolean; error?: string } {
-    return this.savingsStrategy.validateTransaction(account, amount, transactions, transactionType);
-  }
-
-  includeInTotalBalance(): boolean {
-    return true; // El efectivo SÍ se incluye en el balance total
-  }
-}
-
-/**
  * 🟢 ESTRATEGIA PARA TARJETAS DE CRÉDITO
  *
  * LÓGICA:
@@ -162,7 +99,7 @@ export class CashAccountStrategy implements AccountBalanceStrategy {
  * la migración (useCreditMigration) y la importación (useImportTransactions),
  * que también acumulan el monto completo de cada compra.
  */
-export class CreditCardStrategy implements AccountBalanceStrategy {
+export class CreditCardStrategy {
   /**
    * Calcula el cupo utilizado (capital pendiente por pagar)
    *
@@ -353,46 +290,33 @@ export class CreditCardStrategy implements AccountBalanceStrategy {
   }
 }
 
-/**
- * 🟢 FACTORY PARA ESTRATEGIAS
- *
- * Crea la estrategia correcta según el tipo de cuenta
- * Centraliza la creación y elimina if/switch del código cliente
- */
-export class AccountStrategyFactory {
-  private static strategies: Map<Account['type'], AccountBalanceStrategy> = new Map([
-    ['savings', new SavingsAccountStrategy()],
-    ['cash', new CashAccountStrategy()],
-    ['credit', new CreditCardStrategy()]
-  ]);
+// Instancias únicas por tipo (sin estado mutable). 'cash' reusa la lógica de
+// ahorro (mismo cálculo); si algún día difieren, se añade un case. Reemplaza el
+// Factory+Map previos: un union cerrado de 3 tipos no necesita registro dinámico.
+const SAVINGS_STRATEGY = new SavingsAccountStrategy();
+const CREDIT_STRATEGY = new CreditCardStrategy();
 
-  /**
-   * Obtiene la estrategia para un tipo de cuenta
-   * @param accountType - Tipo de cuenta ('savings' | 'credit' | 'cash')
-   * @returns Estrategia correspondiente
-   * @throws Error si el tipo no está registrado
-   */
-  static getStrategy(accountType: Account['type']): AccountBalanceStrategy {
-    const strategy = this.strategies.get(accountType);
-
-    if (!strategy) {
-      throw new Error(`No existe estrategia para el tipo de cuenta: ${accountType}`);
+export const AccountStrategyFactory = {
+  /** Estrategia de balance/validación para un tipo de cuenta. */
+  getStrategy(accountType: Account['type']): SavingsAccountStrategy | CreditCardStrategy {
+    switch (accountType) {
+      case 'credit':
+        return CREDIT_STRATEGY;
+      case 'savings':
+      case 'cash':
+        return SAVINGS_STRATEGY;
+      default:
+        throw new Error(`No existe estrategia para el tipo de cuenta: ${accountType}`);
     }
-
-    return strategy;
-  }
-}
+  },
+} as const;
 
 /**
- * 🆕 HELPER: Obtener estrategia específica de TC
- * Útil cuando se necesita acceder a métodos específicos de CreditCardStrategy
+ * HELPER: estrategia específica de TC, para acceder a métodos propios de
+ * CreditCardStrategy (p.ej. getUsedCredit).
  */
 export function getCreditCardStrategy(): CreditCardStrategy {
-  const strategy = AccountStrategyFactory.getStrategy('credit');
-  if (!(strategy instanceof CreditCardStrategy)) {
-    throw new Error('La estrategia de crédito no es del tipo esperado');
-  }
-  return strategy;
+  return CREDIT_STRATEGY;
 }
 
 /**

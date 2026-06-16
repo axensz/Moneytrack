@@ -37,6 +37,12 @@ interface UseAddTransactionParams {
   transactions: Transaction[];
   recurringPayments: RecurringPayment[];
   defaultAccount: Account | null;
+  /**
+   * false mientras el historial completo asienta (ventana paginada en vuelo).
+   * En ese estado se OMITE la validación de saldo/cupo para no rechazar
+   * transacciones legítimas con un falso "Saldo insuficiente". Por defecto true.
+   */
+  balancesReady?: boolean;
   addTransaction: (transaction: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
   addCreditPaymentAtomic: (
     creditTx: Omit<Transaction, 'id' | 'createdAt'>,
@@ -56,6 +62,7 @@ export function useAddTransaction({
   transactions,
   recurringPayments,
   defaultAccount,
+  balancesReady = true,
   addTransaction,
   addCreditPaymentAtomic,
   updateRecurringPayment,
@@ -107,11 +114,15 @@ export function useAddTransaction({
         return false;
       }
 
-      // Validación usando Strategy Pattern
+      // Validación usando Strategy Pattern. Mientras el historial completo no
+      // asienta (balancesReady=false) se OMITE la validación de saldo/cupo
+      // (transactions=undefined): de otro modo se valida contra la ventana
+      // paginada incompleta y se rechazan transacciones legítimas con un falso
+      // "Saldo insuficiente" (#3). Misma decisión que el path de edición.
       const validation = TransactionValidator.validate(
         newTransaction,
         selectedAccount,
-        transactions
+        balancesReady ? transactions : undefined
       );
 
       if (!validation.isValid) {
@@ -238,6 +249,7 @@ export function useAddTransaction({
       transactions,
       recurringPayments,
       defaultAccount,
+      balancesReady,
       addTransaction,
       addCreditPaymentAtomic,
       updateRecurringPayment,

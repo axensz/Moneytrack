@@ -72,5 +72,17 @@ describe('parseColombianAmount', () => {
     expect(parseColombianAmount(99.99)).toBe(99.99);
     expect(parseColombianAmount('')).toBeNull();
     expect(parseColombianAmount('-')).toBeNull();
+    expect(parseColombianAmount(NaN)).toBeNull();
+  });
+
+  it('al delegar en parseAmount, ahora quita códigos de moneda (antes daba null)', () => {
+    expect(parseColombianAmount('USD 1.234,56')).toBeCloseTo(1234.56, 2);
+  });
+
+  it('preserva el contrato null: texto con dígitos NO es monto (parseDescription depende de esto)', () => {
+    expect(parseColombianAmount('Calle 50')).toBeNull();
+    expect(parseColombianAmount('MEDELLIN')).toBeNull();
+    expect(parseColombianAmount('0')).toBe(0); // cero genuino
+    expect(parseColombianAmount('0,00')).toBe(0);
   });
 });

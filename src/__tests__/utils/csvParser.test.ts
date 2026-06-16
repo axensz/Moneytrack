@@ -41,6 +41,15 @@ describe('parseDate', () => {
     expect(ymd(parseDate('05/04/2026'))).toBe('2026-4-5');
   });
 
+  it('recupera fechas US inequívocas (MM/DD) en vez de descartarlas', () => {
+    expect(ymd(parseDate('06/15/2026'))).toBe('2026-6-15'); // mes 6, día 15
+    expect(ymd(parseDate('12/31/2026'))).toBe('2026-12-31');
+  });
+
+  it('mantiene DD/MM cuando es ambiguo (ambos ≤ 12)', () => {
+    expect(ymd(parseDate('01/02/2026'))).toBe('2026-2-1'); // 1 de febrero (colombiano)
+  });
+
   it('parses ISO YYYY-MM-DD', () => {
     expect(ymd(parseDate('2026-06-01'))).toBe('2026-6-1');
   });
@@ -213,5 +222,25 @@ describe('parseCSV', () => {
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].date.getMonth()).toBe(4); // mayo
     expect(result.rows[0].suggestedCategory).toBe('Alimentación');
+  });
+
+  it('importa un extracto con SOLO columna de débito (antes descartaba todo)', () => {
+    const result = parseCSV([
+      'Fecha,Descripción,Cargos',
+      '10/03/2026,COMPRA TIENDA,50000',
+      '11/03/2026,RESTAURANTE,18000',
+    ].join('\n'));
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows.every(row => row.type === 'expense')).toBe(true);
+    expect(result.rows[0].amount).toBe(50000);
+  });
+
+  it('importa un extracto con SOLO columna de crédito', () => {
+    const result = parseCSV([
+      'Fecha,Descripción,Abonos',
+      '10/03/2026,DEPOSITO EFECTIVO,200000',
+    ].join('\n'));
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({ type: 'income', amount: 200000 });
   });
 });

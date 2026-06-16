@@ -14,6 +14,8 @@ import {
   TRANSFER_CATEGORY
 } from '../config/constants';
 import { AccountStrategyFactory } from './accountStrategies';
+import { getCreditDelta } from './creditDeltas';
+import { roundMoney } from './formatters';
 import type {
   NewTransaction,
   NewAccount,
@@ -37,12 +39,16 @@ export class TransactionValidator {
    * @param transaction - Transacción a validar
    * @param account - Cuenta completa (para usar estrategia)
    * @param transactions - Lista de transacciones (para calcular balance actual)
+   * @param original - Al EDITAR: la transacción original, que se excluye del
+   *   cálculo de saldo/cupo (en el alta se omite). Sin esto, editar cerca del
+   *   límite daría falsos rechazos por doble conteo.
    * @returns Resultado de validación con errores si los hay
    */
   static validate(
     transaction: NewTransaction,
     account?: Account,
-    transactions?: Transaction[]
+    transactions?: Transaction[],
+    original?: Transaction
   ): ValidationResult {
     const errors: string[] = [];
 
@@ -94,15 +100,33 @@ export class TransactionValidator {
 
     // Validar según tipo de transacción y cuenta
     if (account && transactions && !isNaN(amount)) {
+      // Al EDITAR (original definido) el saldo/cupo se valida como si la tx
+      // original no existiera: se excluye del array y, en TC, se descuenta su
+      // delta del usedCredit persistido (que ya la incluye).
+      let validationAccount = account;
+      let validationTxs = transactions;
+      if (original?.id) {
+        validationTxs = transactions.filter((t) => t.id !== original.id);
+        if (account.type === 'credit' && account.usedCredit != null) {
+          validationAccount = {
+            ...account,
+            usedCredit: Math.max(
+              0,
+              roundMoney(account.usedCredit - getCreditDelta(original, account.id!))
+            ),
+          };
+        }
+      }
+
       try {
         // ✅ Obtener estrategia para el tipo de cuenta
-        const strategy = AccountStrategyFactory.getStrategy(account.type);
+        const strategy = AccountStrategyFactory.getStrategy(validationAccount.type);
 
         // ✅ Delegar validación a la estrategia (pasando el tipo de transacción)
         const validation = strategy.validateTransaction(
-          account,
+          validationAccount,
           amount,
-          transactions,
+          validationTxs,
           transaction.type
         );
 

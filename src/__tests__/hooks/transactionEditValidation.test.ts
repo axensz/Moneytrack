@@ -127,3 +127,25 @@ describe('#8 — la edición valida saldo/cupo excluyendo la original', () => {
     expect(params.updateTransaction).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('#2 — editar un PAGO de TC (income) también valida la deuda', () => {
+  // usedCredit 800k INCLUYE el pago de 100k → deuda sin ese pago = 900k.
+  const paymentTc: Transaction = { id: 'p1', type: 'income', amount: 100_000, category: 'Pago', description: 'pago tc', date: new Date('2026-06-03T12:00:00'), paid: true, accountId: 'tc' };
+
+  it('rechaza editar un pago por encima de la deuda (no puedes pagar más de lo que debes)', async () => {
+    const txs = [paymentTc];
+    const params = makeParams({ transactions: txs, balanceTransactions: txs });
+    await editAndSave(params, paymentTc, '5000000');
+
+    expect(params.updateTransaction).not.toHaveBeenCalled();
+    expect(M.toastErrors.join(' ')).toMatch(/pagar más|debes|deuda/i);
+  });
+
+  it('acepta editar un pago dentro de la deuda ajustada', async () => {
+    const txs = [paymentTc];
+    const params = makeParams({ transactions: txs, balanceTransactions: txs });
+    await editAndSave(params, paymentTc, '200000');
+
+    expect(params.updateTransaction).toHaveBeenCalledTimes(1);
+  });
+});

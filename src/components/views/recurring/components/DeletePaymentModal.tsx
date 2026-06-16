@@ -4,6 +4,7 @@ import React from 'react';
 
 interface DeletePaymentModalProps {
   isOpen: boolean;
+  isDeleting?: boolean;
   onConfirm: () => void;
   onClose: () => void;
 }
@@ -13,6 +14,7 @@ interface DeletePaymentModalProps {
  */
 export const DeletePaymentModal: React.FC<DeletePaymentModalProps> = ({
   isOpen,
+  isDeleting = false,
   onConfirm,
   onClose,
 }) => {
@@ -36,13 +38,15 @@ export const DeletePaymentModal: React.FC<DeletePaymentModalProps> = ({
         <div className="flex gap-3">
           <button
             onClick={onConfirm}
-            className="flex-1 btn-danger"
+            disabled={isDeleting}
+            className="flex-1 btn-danger disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Eliminar
+            {isDeleting ? 'Eliminando...' : 'Eliminar'}
           </button>
           <button
             onClick={onClose}
-            className="flex-1 btn-cancel"
+            disabled={isDeleting}
+            className="flex-1 btn-cancel disabled:opacity-50"
           >
             Cancelar
           </button>

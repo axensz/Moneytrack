@@ -64,4 +64,21 @@ describe('useRecurringUtils — vencidos', () => {
     expect(result.current.stats.overduePayments.map((p) => p.id)).toEqual(['o1']);
     expect(result.current.stats.upcomingPayments.map((p) => p.id)).toEqual(['u1']);
   });
+
+  it('Total/Mes prorratea los pagos anuales /12 (#2: antes los ignoraba)', () => {
+    const monthly = payment({ id: 'm1', amount: 50_000, frequency: 'monthly' });
+    const yearly = payment({ id: 'y1', amount: 1_200_000, frequency: 'yearly', dueDay: 10 });
+    const { result } = renderHook(() => useRecurringUtils([monthly, yearly], []));
+    // 50.000 mensual + 1.200.000/12 = 50.000 + 100.000
+    expect(result.current.stats.totalMonthlyAmount).toBe(150_000);
+  });
+
+  it('Pendientes excluye anuales que vencen en otro mes (#3)', () => {
+    // Mensual día 20 (hoy es 15-jun) → pendiente este mes.
+    const monthlyPending = payment({ id: 'm1', dueDay: 20, frequency: 'monthly' });
+    // Anual anclado en diciembre (createdAt dic) → vence dic, no junio.
+    const yearlyDec = payment({ id: 'y1', dueDay: 10, frequency: 'yearly', createdAt: new Date(2020, 11, 1) });
+    const { result } = renderHook(() => useRecurringUtils([monthlyPending, yearlyDec], []));
+    expect(result.current.stats.pendingThisMonth).toBe(1); // solo el mensual
+  });
 });

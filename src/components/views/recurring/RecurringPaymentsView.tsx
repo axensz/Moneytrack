@@ -50,6 +50,7 @@ export const RecurringPaymentsView: React.FC = () => {
     closeForm,
     handleSubmit,
     deleteConfirm,
+    isDeleting,
     confirmDelete,
     cancelDelete,
     handleDelete,
@@ -205,6 +206,7 @@ export const RecurringPaymentsView: React.FC = () => {
 
       <DeletePaymentModal
         isOpen={!!deleteConfirm}
+        isDeleting={isDeleting}
         onConfirm={handleDelete}
         onClose={cancelDelete}
       />

@@ -59,25 +59,44 @@ Sin explicaciones, solo el JSON array.`,
         setFeedback('Respuesta incompleta de la IA.'); setLoading(false); return;
       }
 
+      // Validar rango/cordura: una fecha de extracto no puede caer fuera de
+      // [hoy-10 años, hoy+1 año]. Antes solo se filtraba !isNaN, así que la IA
+      // podía asignar un año absurdo (0202, 2099) que corrompía estadísticas.
+      const minDate = new Date(today.getFullYear() - 10, 0, 1);
+      const maxDate = new Date(today.getFullYear() + 1, 11, 31);
+      const toReasonableDate = (value: string): Date | null => {
+        const d = new Date(value + 'T12:00:00');
+        if (isNaN(d.getTime()) || d < minDate || d > maxDate) return null;
+        return d;
+      };
+
       // Apply individual dates
       const dateMap = new Map(assignments.map(a => [a.index, a.date]));
+      let applied = 0;
       setRows(prev => prev.map((r, i) => {
         const newDateStr = dateMap.get(i);
         if (newDateStr) {
-          const newDate = new Date(newDateStr + 'T12:00:00');
-          if (!isNaN(newDate.getTime())) {
+          const newDate = toReasonableDate(newDateStr);
+          if (newDate) {
+            applied++;
             return { ...r, date: newDate };
           }
         }
         return r;
       }));
 
+      if (applied === 0) {
+        setFeedback('La IA devolvió fechas fuera de rango; no se aplicó ninguna.'); setLoading(false); return;
+      }
+
       // Show range of assigned dates
-      const assignedDates = assignments.map(a => new Date(a.date + 'T12:00:00')).filter(d => !isNaN(d.getTime()));
+      const assignedDates = assignments
+        .map(a => toReasonableDate(a.date))
+        .filter((d): d is Date => d !== null);
       const minAssigned = new Date(Math.min(...assignedDates.map(d => d.getTime())));
       const maxAssigned = new Date(Math.max(...assignedDates.map(d => d.getTime())));
 
-      setFeedback(`✓ ${assignments.length} fechas asignadas individualmente: ${minAssigned.toLocaleDateString('es-CO')} → ${maxAssigned.toLocaleDateString('es-CO')}`);
+      setFeedback(`✓ ${applied} fechas asignadas individualmente: ${minAssigned.toLocaleDateString('es-CO')} → ${maxAssigned.toLocaleDateString('es-CO')}`);
       setPrompt('');
     } catch {
       setFeedback('Error al consultar la IA.');

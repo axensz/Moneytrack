@@ -82,6 +82,20 @@ export function extractLearningPattern(description: string): string {
   return tokens[0] ?? normalized.slice(0, 30);
 }
 
+/**
+ * ¿El patrón aparece como PALABRA completa en la descripción? Antes se usaba
+ * `includes` (substring), así que un patrón corto aprendido de una sola
+ * categorización ("col", "ave") matcheaba descripciones no relacionadas
+ * ("colombia", "favela") y envenenaba imports futuros. El límite por palabra
+ * evita ese falso positivo y conserva los patrones multi-palabra ("smart fit").
+ */
+function patternMatchesAsWord(normalizedDescription: string, pattern: string): boolean {
+  const pat = normalizeImportText(pattern);
+  if (!pat) return false;
+  const escaped = pat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\s)${escaped}(\\s|$)`).test(normalizedDescription);
+}
+
 export function findLearnedCategory(
   description: string,
   rules: ImportLearningRule[],
@@ -96,7 +110,7 @@ export function findLearnedCategory(
     .sort((a, b) => b.pattern.length - a.pattern.length)
     .find(rule => {
       if (validSet && !validSet.has(normalizeImportText(rule.category))) return false;
-      return normalizedDescription.includes(normalizeImportText(rule.pattern));
+      return patternMatchesAsWord(normalizedDescription, rule.pattern);
     });
 
   return match?.category ?? null;

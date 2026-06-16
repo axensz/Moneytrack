@@ -243,4 +243,16 @@ describe('parseCSV', () => {
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0]).toMatchObject({ type: 'income', amount: 200000 });
   });
+
+  it('detecta ; como delimitador aunque las descripciones tengan muchas comas (#12)', () => {
+    // ',' bruto (9) supera a ';' (8); el conteo por mínimo-por-línea elige ';'.
+    const result = parseCSV([
+      'Fecha;Detalle;Valor',
+      '10/03/2026;PAGO A, B, C, D;-25000',
+      '11/03/2026;COMPRA E, F, G, H;-18000',
+      '12/03/2026;VARIOS I, J, K, L;-12000',
+    ].join('\n'));
+    expect(result.rows).toHaveLength(3);
+    expect(result.rows[0].amount).toBe(25000);
+  });
 });

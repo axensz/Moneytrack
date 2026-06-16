@@ -52,4 +52,16 @@ describe('importLearning', () => {
     expect(groups[0]).toMatchObject({ pattern: 'oxxo', indexes: [0, 1] });
     expect(groups[1]).toMatchObject({ pattern: 'smart fit', indexes: [2] });
   });
+
+  it('NO aplica un patrón corto a descripciones no relacionadas (#15: match por palabra, no substring)', () => {
+    const rules = upsertImportLearningRule([], 'COL', 'Servicios', new Date('2026-01-01T00:00:00Z'));
+    // "col" como substring matchearía "colombia"/"escolar"; como palabra, no.
+    expect(findLearnedCategory('COLOMBIA TELECOMUNICACIONES', rules)).toBeNull();
+    expect(findLearnedCategory('COMPRA ESCOLAR', rules)).toBeNull();
+  });
+
+  it('sí aplica cuando el patrón aparece como palabra completa (#15)', () => {
+    const rules = upsertImportLearningRule([], 'RAPPI PAGO MENSUAL', 'Alimentación', new Date('2026-01-01T00:00:00Z'));
+    expect(findLearnedCategory('PAGO RAPPI DOMICILIO', rules)).toBe('Alimentación');
+  });
 });

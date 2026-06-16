@@ -119,6 +119,66 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
       : { accountId: baseAccountId };
   }, [accounts]);
 
+  // Detección de duplicados (todo en memoria, cero reads). Recibe filas ya ruteadas
+  // y la cuenta destino; devuelve las filas con isDuplicate/include recalculados.
+  // Reutilizable: se corre al cargar el archivo Y al cambiar la cuenta destino, para
+  // que el dedup nunca quede evaluado contra una cuenta distinta de la elegida.
+  const markDuplicates = useCallback((mappedRows: ImportRow[], accountId: string): ImportRow[] => {
+    const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    const descKey = (description: string) =>
+      description.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 20);
+    const txKey = (type: string, date: Date, amount: number, description: string) =>
+      `${type}|${dayKey(date)}|${amount.toFixed(2)}|${descKey(description)}`;
+    const txDate = (value: unknown) => {
+      if (value instanceof Date) return value;
+      if (value && typeof (value as { toDate?: () => Date }).toDate === 'function') {
+        return (value as { toDate: () => Date }).toDate();
+      }
+      return new Date(value as string | number);
+    };
+
+    const existingAccountKeys = new Set<string>();
+    const existingInternalTransferKeys = new Set<string>();
+    existingTransactions.forEach(tx => {
+      const d = txDate(tx.date);
+      if (isNaN(d.getTime())) return;
+
+      if (tx.accountId === accountId) {
+        existingAccountKeys.add(txKey(tx.type, d, tx.amount, tx.description));
+      }
+      // Huella de transferencia/pago SIN descripción (el texto difiere entre bancos):
+      // solo desde tx que SON transferencia/pago, no desde toda tx. Antes se poblaba
+      // con TODA tx, así que un gasto normal de igual monto+día marcaba como duplicada
+      // una transferencia real y la omitía (F7/#10).
+      if (tx.type === 'transfer' || isInternalTransferDescription(tx.description)) {
+        existingInternalTransferKeys.add(transferImportKey(d, tx.amount));
+      }
+    });
+
+    const seenInFile = new Set<string>();
+    return mappedRows.map(r => {
+      const isInternalTransfer = r.type === 'transfer' || isInternalTransferDescription(r.description);
+      const key = isInternalTransfer
+        ? transferImportKey(r.date, r.amount)
+        : txKey(r.type, r.date, r.amount, r.description);
+
+      const duplicateInDB = isInternalTransfer
+        ? existingInternalTransferKeys.has(key)
+        : existingAccountKeys.has(key);
+      const duplicateInFile = seenInFile.has(key);
+      if (!duplicateInFile) seenInFile.add(key);
+
+      const isDuplicate = duplicateInDB || duplicateInFile;
+      return {
+        ...r,
+        // No incluir por defecto duplicados, transferencias ni montos en moneda
+        // extranjera sin TRM (no se pueden convertir a COP de forma segura).
+        include: !isDuplicate && !isInternalTransfer && !r.needsExchangeRate,
+        isDuplicate,
+      };
+    });
+  }, [existingTransactions]);
+
   const handleClose = useCallback(() => {
     setStep('upload');
     setRows([]);
@@ -163,56 +223,10 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
         setSelectedAccountId(accountId);
       }
 
-      // ── Detección de duplicados (todo en memoria, sin llamadas a Firestore) ──
-
-      // Clave de identidad: tipo|día|monto
-      const dayKey = (d: Date) =>
-        `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-      const descKey = (description: string) =>
-        description.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 20);
-      const txKey = (type: string, date: Date, amount: number, description: string) =>
-        `${type}|${dayKey(date)}|${amount.toFixed(2)}|${descKey(description)}`;
-      const txDate = (value: unknown) => {
-        if (value instanceof Date) return value;
-        if (value && typeof (value as { toDate?: () => Date }).toDate === 'function') {
-          return (value as { toDate: () => Date }).toDate();
-        }
-        return new Date(value as string | number);
-      };
-
-      // 1. Índice de transacciones existentes ya en memoria (cero reads Firestore)
-      const existingAccountKeys = new Set<string>();
-      const existingInternalTransferKeys = new Set<string>();
-      existingTransactions.forEach(tx => {
-        const d = txDate(tx.date);
-        if (isNaN(d.getTime())) return;
-
-        if (tx.accountId === accountId) {
-          existingAccountKeys.add(txKey(tx.type, d, tx.amount, tx.description));
-        }
-        // Huella de transferencia/pago SIN descripción: el texto difiere entre
-        // bancos ("Pago PSE Nu" vs "Gracias por tu pago"), así que cruzamos por
-        // monto+día contra todas las cuentas (F7).
-        existingInternalTransferKeys.add(transferImportKey(d, tx.amount));
-      });
-
-      // 2. Detectar duplicados dentro del propio archivo (misma fila repetida)
-      const seenInFile = new Set<string>();
-
-      const mapped = result.rows.map(r => {
+      // Rutea cada fila (cuenta destino + categoría aprendida); el dedup se calcula
+      // aparte con markDuplicates para poder recomputarlo al cambiar de cuenta.
+      const routed = result.rows.map(r => {
         const isInternalTransfer = r.type === 'transfer' || isInternalTransferDescription(r.description);
-        const key = isInternalTransfer
-          ? transferImportKey(r.date, r.amount)
-          : txKey(r.type, r.date, r.amount, r.description);
-
-        const duplicateInDB = isInternalTransfer
-          ? existingInternalTransferKeys.has(key)
-          : existingAccountKeys.has(key);
-        const duplicateInFile = seenInFile.has(key);
-
-        if (!duplicateInFile) seenInFile.add(key);
-
-        const isDuplicate = duplicateInDB || duplicateInFile;
         const transferRoute = inferTransferRoute(accountId, isInternalTransfer);
         const learnedCategory = r.categorySource === 'file'
           ? null
@@ -222,13 +236,12 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
           category: learnedCategory ?? r.suggestedCategory,
           accountId: transferRoute.accountId,
           toAccountId: transferRoute.toAccountId,
-          // No incluir por defecto duplicados, transferencias ni montos en moneda
-          // extranjera sin TRM (no se pueden convertir a COP de forma segura).
-          include: !isDuplicate && !isInternalTransfer && !r.needsExchangeRate,
-          isDuplicate,
+          include: true,
+          isDuplicate: false,
         };
       });
 
+      const mapped = markDuplicates(routed, accountId);
       const duplicateCount = mapped.filter(r => r.isDuplicate).length;
       const needsRateCount = mapped.filter(r => r.needsExchangeRate).length;
       setParseStats({ total: result.rows.length, skipped: result.skippedRows, duplicates: duplicateCount, needsRate: needsRateCount });
@@ -271,12 +284,12 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
     selectedAccountId,
     accounts,
     nonCreditAccounts,
-    existingTransactions,
     categories,
     inferTransferRoute,
     learningRules,
     availableCategoryOptions,
     aiReason,
+    markDuplicates,
   ]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -294,12 +307,19 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
 
   const handleAccountChange = useCallback((accountId: string) => {
     setSelectedAccountId(accountId);
-    setRows(prev => prev.map(r => {
-      const isInternalTransfer = r.type === 'transfer' || isInternalTransferDescription(r.description);
-      const transferRoute = inferTransferRoute(accountId, isInternalTransfer);
-      return { ...r, accountId: transferRoute.accountId, toAccountId: transferRoute.toAccountId };
-    }));
-  }, [inferTransferRoute]);
+    setRows(prev => {
+      // Re-rutea a la nueva cuenta y RECALCULA duplicados contra ella: si no, el
+      // dedup quedaba evaluado contra la cuenta anterior y podía re-importar en la
+      // nueva (o marcar falsos duplicados de la previa). Recalcular resetea include
+      // según el dedup; el cambio de cuenta ocurre antes de la revisión manual.
+      const rerouted = prev.map(r => {
+        const isInternalTransfer = r.type === 'transfer' || isInternalTransferDescription(r.description);
+        const transferRoute = inferTransferRoute(accountId, isInternalTransfer);
+        return { ...r, accountId: transferRoute.accountId, toAccountId: transferRoute.toAccountId };
+      });
+      return markDuplicates(rerouted, accountId);
+    });
+  }, [inferTransferRoute, markDuplicates]);
 
   const handleToggleRow = useCallback((index: number) => {
     setRows(prev => prev.map((r, i) => i === index ? { ...r, include: !r.include } : r));

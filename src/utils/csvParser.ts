@@ -56,13 +56,27 @@ export interface ParseResult {
 // ── Detección de delimitador ─────────────────────────────────────────────────
 
 function detectDelimiter(sample: string): string {
-  const counts = {
-    ';': (sample.match(/;/g) || []).length,
-    ',': (sample.match(/,/g) || []).length,
-    '\t': (sample.match(/\t/g) || []).length,
-    '|': (sample.match(/\|/g) || []).length,
-  };
-  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+  const lines = sample.split(/\r?\n/).map(l => l.trim()).filter(Boolean).slice(0, 5);
+  if (lines.length === 0) return ',';
+
+  // Puntúa por el MÍNIMO de ocurrencias por línea, no por la frecuencia bruta. Un
+  // delimitador real aparece en TODAS las líneas; una coma decimal de un monto COP
+  // ("25.000,50") puede no estar en el header → su mínimo es 0 y queda descartada.
+  // Antes se sumaba todo y, en archivos ';', las comas de los montos ganaban.
+  const countChar = (line: string, ch: string) => line.split(ch).length - 1;
+  let best = ',';
+  let bestScore = -1;
+  for (const d of [';', ',', '\t', '|']) {
+    const counts = lines.map(l => countChar(l, d));
+    const min = Math.min(...counts);
+    const total = counts.reduce((a, b) => a + b, 0);
+    const score = min * 1000 + total; // prioriza presencia en todas las líneas
+    if (score > bestScore) {
+      bestScore = score;
+      best = d;
+    }
+  }
+  return best;
 }
 
 // ── Parser de CSV respetando comillas ────────────────────────────────────────

@@ -118,4 +118,11 @@ describe('useImportTransactions — validación por fila', () => {
     expect(mockState.sets).toHaveLength(1);
     expect(ccUpdates()[0].data.usedCredit).toEqual({ __increment: 25_000 });
   });
+
+  it('createdAt usa la fecha del extracto, no la de importación (#14)', async () => {
+    const statementDate = new Date(2025, 0, 5); // histórico
+    await runImport([row({ amount: 10_000, date: statementDate })]);
+    expect(mockState.sets[0].data.createdAt).toBe(statementDate);
+    expect(mockState.sets[0].data.date).toBe(statementDate);
+  });
 });

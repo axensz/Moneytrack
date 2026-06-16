@@ -45,13 +45,17 @@ export class BalanceMonitor {
             // Calculate current balance
             const balance = this.getAccountBalance(accountId);
             const threshold = this.getBalanceThreshold(account);
+            const isCredit = account.type === 'credit';
 
-            // Check if balance is below threshold
-            if (balance < threshold) {
+            // threshold > 0: una TC sin límite (o lowBalance=0) no tiene umbral
+            // con sentido. Para una TC el "balance" es el cupo disponible.
+            if (threshold > 0 && balance < threshold) {
                 await this.deps.createNotification({
                     type: 'low_balance',
-                    title: `Saldo bajo: ${account.name}`,
-                    message: `El saldo de ${formatCurrency(balance)} está por debajo del umbral de ${formatCurrency(threshold)}`,
+                    title: isCredit ? `Cupo casi agotado: ${account.name}` : `Saldo bajo: ${account.name}`,
+                    message: isCredit
+                        ? `Te queda ${formatCurrency(balance)} de cupo disponible en ${account.name}`
+                        : `El saldo de ${formatCurrency(balance)} está por debajo del umbral de ${formatCurrency(threshold)}`,
                     severity: 'warning',
                     isRead: false,
                     actionUrl: `/accounts`,
@@ -96,8 +100,13 @@ export class BalanceMonitor {
 
         // Apply different defaults based on account type
         if (account.type === 'credit') {
-            // For credit cards, threshold is 0 (available credit exhausted)
-            return 0;
+            // "Saldo bajo" en una TC = cupo casi agotado. El cupo disponible está
+            // clampeado a >=0 (CreditCardStrategy), así que el umbral 0 anterior
+            // nunca disparaba (código muerto, #4). Avisamos cuando queda menos del
+            // 10% del límite disponible.
+            // ponytail: 10% fijo; exponer en preferences.thresholds si se pide configurable.
+            const limit = account.creditLimit ?? 0;
+            return limit > 0 ? limit * 0.1 : 0;
         } else {
             // For savings/cash, use configured threshold (default 100,000 COP)
             return defaultThreshold;

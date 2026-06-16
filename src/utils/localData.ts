@@ -15,6 +15,7 @@ export const GUEST_DATA_KEYS = [
   'savingsGoals',
   'financialPlanConfig',
   'notifications',
+  'notificationPreferences',
 ] as const;
 
 /** Borra los datos financieros locales (modo invitado). Seguro si localStorage falla. */

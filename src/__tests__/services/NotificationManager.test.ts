@@ -10,12 +10,14 @@ vi.mock('react-hot-toast', () => ({
   default: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }),
 }));
 
+import toast from 'react-hot-toast';
 import { NotificationManager } from '../../services/NotificationManager';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../../types/finance';
 import type { Notification, NotificationPreferences } from '../../types/finance';
 
 const setup = (prefs: Partial<NotificationPreferences> = {}, notifications: Notification[] = []) => {
-  const addNotification = vi.fn().mockResolvedValue(undefined);
+  // Devuelve true = creó la notificación (false = ya existía, dedup diario).
+  const addNotification = vi.fn().mockResolvedValue(true);
   const mgr = new NotificationManager({
     addNotification,
     updateNotification: vi.fn().mockResolvedValue(undefined),
@@ -81,6 +83,31 @@ describe('NotificationManager (A3)', () => {
     vi.setSystemTime(new Date('2026-06-15T12:00:00')); // fuera
     expect(mgr.isInQuietHours()).toBe(false);
     expect(mgr.shouldShowToast(notif({ severity: 'warning' }))).toBe(true);
+  });
+
+  it('quiet hours con startHour === endHour NO silencia (rango vacío, no 24/7)', () => {
+    vi.useFakeTimers();
+    const { mgr } = setup({ quietHours: { enabled: true, startHour: 22, endHour: 22 } });
+
+    vi.setSystemTime(new Date('2026-06-15T22:30:00')); // dentro de la "ventana" degenerada
+    expect(mgr.isInQuietHours()).toBe(false);
+    expect(mgr.shouldShowToast(notif({ severity: 'warning' }))).toBe(true);
+  });
+
+  it('NO muestra toast si la notificación ya existía hoy (addNotification → false) — minor', async () => {
+    vi.mocked(toast.error).mockClear();
+    const { mgr, addNotification } = setup();
+    addNotification.mockResolvedValue(false); // dedup diario: ya existe
+    await mgr.createNotification(notif({ severity: 'error' }));
+    expect(addNotification).toHaveBeenCalledTimes(1);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('muestra toast cuando addNotification SÍ crea la notificación', async () => {
+    vi.mocked(toast.error).mockClear();
+    const { mgr } = setup(); // mock devuelve true por defecto
+    await mgr.createNotification(notif({ severity: 'error' }));
+    expect(toast.error).toHaveBeenCalledTimes(1);
   });
 
   it('getUnreadCount cuenta solo las no leídas', () => {

@@ -79,3 +79,41 @@ describe('DebtMonitor — umbrales (A3)', () => {
     expect(createNotification).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('DebtMonitor — getDaysOutstanding ancla en dueDate (#2)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('vencimiento futuro → días negativos (no se considera vencida) aunque se creó hace meses', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-15T12:00:00'));
+    const { monitor } = setup([]);
+    const debt = makeDebt({ createdAt: new Date('2026-04-16'), dueDate: new Date('2026-08-01') });
+    expect(monitor.getDaysOutstanding(debt)).toBeLessThan(0);
+  });
+
+  it('ya vencida → días positivos aunque se registró hoy', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-15T12:00:00'));
+    const { monitor } = setup([]);
+    const debt = makeDebt({ createdAt: new Date('2026-06-15'), dueDate: new Date('2026-05-01') });
+    expect(monitor.getDaysOutstanding(debt)).toBeGreaterThanOrEqual(40);
+  });
+
+  it('sin dueDate cae a createdAt (comportamiento previo)', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-15T12:00:00'));
+    const { monitor } = setup([]);
+    const debt = makeDebt({ createdAt: new Date('2026-05-16') }); // ~30 días
+    expect(monitor.getDaysOutstanding(debt)).toBeGreaterThanOrEqual(29);
+  });
+
+  it('borrowed con vencimiento futuro creada hace 60 días NO notifica (antes sí, por usar createdAt)', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-15T12:00:00'));
+    const { monitor, createNotification } = setup([
+      makeDebt({ type: 'borrowed', createdAt: new Date('2026-04-16'), dueDate: new Date('2026-08-01') }),
+    ]);
+    await monitor.checkOverdueDebts();
+    expect(createNotification).not.toHaveBeenCalled();
+  });
+});

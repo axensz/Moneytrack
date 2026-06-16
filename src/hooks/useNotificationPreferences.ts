@@ -3,13 +3,30 @@
  * Soporta Firebase (usuario autenticado) y localStorage (modo invitado)
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
 import type { NotificationPreferences } from '../types/finance';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../types/finance';
+
+/**
+ * Mergea las prefs cargadas (Firestore/localStorage/externas) con los defaults.
+ * Un doc guardado antes de que existiera un campo (quietHours, enabled.debt, …)
+ * deja ese objeto/clave undefined; sin este merge, NotificationManager leería
+ * quietHours.enabled / enabled[tipo] sobre undefined y lanzaría TypeError al
+ * crear CUALQUIER notificación. Garantiza que los objetos anidados existan.
+ */
+export function withDefaults(p?: Partial<NotificationPreferences> | null): NotificationPreferences {
+    return {
+        ...DEFAULT_NOTIFICATION_PREFERENCES,
+        ...p,
+        enabled: { ...DEFAULT_NOTIFICATION_PREFERENCES.enabled, ...p?.enabled },
+        thresholds: { ...DEFAULT_NOTIFICATION_PREFERENCES.thresholds, ...p?.thresholds },
+        quietHours: { ...DEFAULT_NOTIFICATION_PREFERENCES.quietHours, ...p?.quietHours },
+    };
+}
 
 export function useNotificationPreferences(userId: string | null, externalPreferences?: NotificationPreferences) {
     // Firestore state
@@ -67,8 +84,12 @@ export function useNotificationPreferences(userId: string | null, externalPrefer
         return () => unsubscribe();
     }, [userId]);
 
-    // Usar Firebase si hay usuario, localStorage si no
-    const preferences = externalPreferences ?? (userId ? firestorePreferences : localPreferences);
+    // Usar Firebase si hay usuario, localStorage si no. Siempre mergeado con
+    // defaults para que los objetos anidados existan aunque el doc sea legacy.
+    const preferences = useMemo(
+        () => withDefaults(externalPreferences ?? (userId ? firestorePreferences : localPreferences)),
+        [externalPreferences, userId, firestorePreferences, localPreferences]
+    );
 
     // Update preferences
     const updatePreferences = useCallback(

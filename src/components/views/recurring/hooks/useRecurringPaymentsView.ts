@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useRef } from 'react';
 import { showToast } from '../../../../utils/toastHelpers';
 import type { RecurringPayment, Account, Transaction } from '../../../../types/finance';
 
@@ -37,6 +37,8 @@ export const useRecurringPaymentsView = ({
   const [showForm, setShowForm] = useState(false);
   const [editingPayment, setEditingPayment] = useState<RecurringPayment | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const deletingRef = useRef(false);
 
   // Ordenar pagos: vencidos primero, luego pendientes por proximidad, luego pagados
   const sortedPayments = useMemo(() => {
@@ -105,6 +107,11 @@ export const useRecurringPaymentsView = ({
 
   const handleDelete = useCallback(async () => {
     if (!deleteConfirm) return;
+    // Guard SÍNCRONO: el botón tarda en deshabilitarse vía estado, así que un
+    // doble clic dispararía dos deletes del mismo id antes del re-render.
+    if (deletingRef.current) return;
+    deletingRef.current = true;
+    setIsDeleting(true);
 
     try {
       await deleteRecurringPayment(deleteConfirm);
@@ -112,6 +119,9 @@ export const useRecurringPaymentsView = ({
       setDeleteConfirm(null);
     } catch {
       showToast.error('Error al eliminar');
+    } finally {
+      deletingRef.current = false;
+      setIsDeleting(false);
     }
   }, [deleteConfirm, deleteRecurringPayment]);
 
@@ -146,6 +156,7 @@ export const useRecurringPaymentsView = ({
 
     // Delete state
     deleteConfirm,
+    isDeleting,
     confirmDelete,
     cancelDelete,
     handleDelete,

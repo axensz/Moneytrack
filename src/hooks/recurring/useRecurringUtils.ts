@@ -255,11 +255,24 @@ export function useRecurringUtils(
     const paidThisMonth = activePayments.filter((p) =>
       isPaidForMonth(p.id!, now)
     ).length;
-    const pendingThisMonth = activePayments.length - paidThisMonth;
 
-    const totalMonthlyAmount = activePayments
-      .filter((p) => p.frequency === 'monthly')
-      .reduce((sum, p) => sum + p.amount, 0);
+    // Pendiente este mes: no pagado en su ciclo Y que venza este mes o ya esté
+    // vencido. Antes era activos−pagados, que contaba como pendiente un pago
+    // ANUAL cuyo vencimiento cae en otro mes (inflaba el badge todo el año).
+    const pendingThisMonth = activePayments.filter((p) => {
+      if (isPaidForMonth(p.id!, now)) return false;
+      if (getDaysOverdue(p) > 0) return true;
+      const due = getNextDueDate(p);
+      return due.getMonth() === now.getMonth() && due.getFullYear() === now.getFullYear();
+    }).length;
+
+    // Costo mensual EQUIVALENTE: mensuales + anuales prorrateados (/12). Antes
+    // solo sumaba mensuales, así que un pago anual aportaba $0 al "Total/Mes" y
+    // su costo quedaba invisible (totalYearlyAmount no se muestra en la UI).
+    const totalMonthlyAmount = activePayments.reduce(
+      (sum, p) => sum + (p.frequency === 'yearly' ? p.amount / 12 : p.amount),
+      0
+    );
 
     const totalYearlyAmount = activePayments
       .filter((p) => p.frequency === 'yearly')
@@ -284,7 +297,7 @@ export function useRecurringUtils(
       upcomingPayments,
       overduePayments,
     };
-  }, [recurringPayments, isPaidForMonth, getDaysUntilDue, getDaysOverdue]);
+  }, [recurringPayments, isPaidForMonth, getDaysUntilDue, getDaysOverdue, getNextDueDate]);
 
   return {
     isPaidForMonth,

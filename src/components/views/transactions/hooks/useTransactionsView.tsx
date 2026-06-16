@@ -15,7 +15,14 @@ import { findAccountForTransaction, transactionUsesAccount } from '../../../../u
 import { TransactionValidator } from '../../../../utils/validators';
 import { showToast } from '../../../../utils/toastHelpers';
 import { logger } from '../../../../utils/logger';
-import { SUCCESS_MESSAGES } from '../../../../config/constants';
+import { SUCCESS_MESSAGES, CREDIT_PAYMENT_CATEGORY } from '../../../../config/constants';
+
+/**
+ * Normaliza texto para búsqueda: minúsculas + sin acentos. Así "almacen"
+ * encuentra "Almacén" y "alimentacion" encuentra "Alimentación" (#tx-search).
+ */
+const normalizeForSearch = (s: string): string =>
+  s.toLocaleLowerCase('es-CO').normalize('NFD').replace(/\p{Diacritic}/gu, '');
 
 interface UseTransactionsViewParams {
   transactions: Transaction[];
@@ -95,7 +102,21 @@ export const useTransactionsView = ({
   const filteredTransactions = useMemo(() => {
     const selectedAccount =
       filterAccount === 'all' ? null : accounts.find((account) => account.id === filterAccount);
-    const normalizedQuery = searchQuery.trim().toLocaleLowerCase('es-CO');
+    const normalizedQuery = normalizeForSearch(searchQuery.trim());
+
+    // Rango custom: límites calculados una vez. Si el usuario invierte Desde/Hasta
+    // se intercambian (antes daba 0 resultados en silencio). (#tx-range)
+    let customStart: Date | null = null;
+    let customEnd: Date | null = null;
+    if (dateRangePreset === 'custom') {
+      if (customStartDate) { customStart = parseDateFromInput(customStartDate); customStart.setHours(0, 0, 0, 0); }
+      if (customEndDate) { customEnd = parseDateFromInput(customEndDate); customEnd.setHours(23, 59, 59, 999); }
+      if (customStart && customEnd && customStart > customEnd) {
+        const lo = parseDateFromInput(customEndDate); lo.setHours(0, 0, 0, 0);
+        const hi = parseDateFromInput(customStartDate); hi.setHours(23, 59, 59, 999);
+        customStart = lo; customEnd = hi;
+      }
+    }
 
     return transactions.filter((t) => {
       // Filtro por categoría
@@ -114,20 +135,21 @@ export const useTransactionsView = ({
           : null;
         const typeLabel =
           t.type === 'income' ? 'ingreso' : t.type === 'expense' ? 'gasto' : 'transferencia';
-        const searchableText = [
-          t.description,
-          t.category,
-          typeLabel,
-          sourceAccount?.name,
-          destinationAccount?.name,
-          recurringPayment?.name,
-          t.amount.toString(),
-          t.amount.toLocaleString('es-CO'),
-          new Date(t.date).toLocaleDateString('es-CO'),
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLocaleLowerCase('es-CO');
+        const searchableText = normalizeForSearch(
+          [
+            t.description,
+            t.category,
+            typeLabel,
+            sourceAccount?.name,
+            destinationAccount?.name,
+            recurringPayment?.name,
+            t.amount.toString(),
+            t.amount.toLocaleString('es-CO'),
+            new Date(t.date).toLocaleDateString('es-CO'),
+          ]
+            .filter(Boolean)
+            .join(' ')
+        );
 
         if (!searchableText.includes(normalizedQuery)) {
           return false;
@@ -139,16 +161,8 @@ export const useTransactionsView = ({
         const transactionDate = new Date(t.date);
 
         if (dateRangePreset === 'custom') {
-          if (customStartDate) {
-            const start = parseDateFromInput(customStartDate);
-            start.setHours(0, 0, 0, 0);
-            if (transactionDate < start) return false;
-          }
-          if (customEndDate) {
-            const end = parseDateFromInput(customEndDate);
-            end.setHours(23, 59, 59, 999);
-            if (transactionDate > end) return false;
-          }
+          if (customStart && transactionDate < customStart) return false;
+          if (customEnd && transactionDate > customEnd) return false;
         } else {
           const { start, end } = getDateRangeFromPreset(dateRangePreset);
           if (start && transactionDate < start) return false;
@@ -276,11 +290,17 @@ export const useTransactionsView = ({
         // Guard anti doble-clic en "Deshacer": el handler es async y sin esto un
         // segundo clic re-crea la transacción (duplicado). Flag por-toast. (#tx-4)
         let isRestoring = false;
+        // No ofrecer "Deshacer" cuando el borrado disparó una cascada (tx ligada a
+        // una deuda) o es parte de un par atómico (pago de TC): restaurar SOLO esta
+        // tx con addTransaction crudo dejaría la deuda/usedCredit descuadrados o una
+        // tx huérfana. Mejor sin undo que un undo que corrompe. (#tx-restore)
+        const canRestore =
+          !!onRestore && !transaction.debtId && transaction.category !== CREDIT_PAYMENT_CATEGORY;
         toast.success(
           (t) => (
             <div className="flex items-center gap-2">
               <span>Eliminado</span>
-              {onRestore && (
+              {canRestore && (
                 <button
                   onClick={async () => {
                     if (isRestoring) return;

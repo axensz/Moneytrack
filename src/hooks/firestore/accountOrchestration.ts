@@ -375,10 +375,17 @@ export async function setDefaultAccountAtomic(
   await safeFirestoreOperation(
     async () => {
       await runTransaction(db, async (transaction) => {
-        for (const account of accounts) {
-          const accountRef = doc(db, `users/${userId}/accounts`, account.id!);
-          transaction.update(accountRef, { isDefault: account.id === id });
-        }
+        // Leer antes de escribir (requisito de runTransaction) y saltar cuentas
+        // que ya no existan en Firestore: un transaction.update ciego sobre una
+        // cuenta borrada/fusionada (array en memoria rezagado) lanza NOT_FOUND y
+        // aborta TODA la operación → el usuario no podría cambiar su default (#accounts-6).
+        const refs = accounts.map(account => doc(db, `users/${userId}/accounts`, account.id!));
+        const snaps = await Promise.all(refs.map(ref => transaction.get(ref)));
+        snaps.forEach((snap, i) => {
+          if (snap.exists()) {
+            transaction.update(refs[i], { isDefault: accounts[i].id === id });
+          }
+        });
       });
     },
     'setDefaultAccount',

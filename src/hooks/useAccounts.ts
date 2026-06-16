@@ -138,7 +138,26 @@ export function useAccounts(
         options
       );
     } else {
-      setLocalAccounts(prev => prev.filter(acc => acc.id !== id));
+      // Paridad con deleteAccountCascade (#accounts-1): el borrado en modo
+      // invitado NO debe dejar transacciones/deudas/recurrentes huérfanas,
+      // debe limpiar el bankAccountId colgante de las TC asociadas y conservar
+      // la invariante de "exactamente una cuenta por defecto". Antes solo
+      // quitaba la cuenta y corrompía saldos/stats con referencias colgantes.
+      if (!options.preserveTransactions) {
+        setLocalTransactions(prev => prev.filter(t => t.accountId !== id && t.toAccountId !== id));
+      }
+      setLocalDebts(prev => prev.filter(d => d.accountId !== id));
+      setLocalRecurringPayments(prev => prev.filter(p => p.accountId !== id));
+      setLocalAccounts(prev => {
+        let remaining = prev
+          .filter(acc => acc.id !== id)
+          .map(acc => (acc.bankAccountId === id ? { ...acc, bankAccountId: undefined } : acc));
+        // Si se borró la cuenta por defecto, promover otra para no quedar sin default.
+        if (account?.isDefault && remaining.length > 0 && !remaining.some(a => a.isDefault)) {
+          remaining = remaining.map((acc, i) => (i === 0 ? { ...acc, isDefault: true } : acc));
+        }
+        return remaining;
+      });
     }
   };
 
@@ -200,7 +219,12 @@ export function useAccounts(
     }
 
     const sourceHadDefault = sourceAccounts.some(account => account?.isDefault);
-    const shouldMakeDestinationDefault = destination.isDefault ?? existingDestination?.isDefault ?? sourceHadDefault;
+    // sourceHadDefault SIEMPRE fuerza default en el destino: si una tarjeta origen
+    // era la default, al borrarla en la fusión no se debe quedar el usuario sin
+    // ninguna. Con `??` un destination.isDefault=false explícito ignoraba
+    // sourceHadDefault → cero defaults (#accounts-4).
+    const shouldMakeDestinationDefault =
+      (destination.isDefault ?? existingDestination?.isDefault ?? false) || sourceHadDefault;
     const destinationId = destination.id ?? generateId();
 
     // Consolidar el cupo utilizado: la deuda del destino pasa a ser la suma de la

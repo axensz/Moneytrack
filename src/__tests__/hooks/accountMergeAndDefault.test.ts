@@ -74,7 +74,10 @@ vi.mock('firebase/firestore', () => ({
   },
   runTransaction: async (_db: unknown, fn: (t: unknown) => Promise<unknown>) =>
     fn({
-      get: async () => ({ exists: () => false }),
+      get: async (ref: { __id: string }) => ({
+        exists: () => M.acctStore.has(ref.__id),
+        data: () => M.acctStore.get(ref.__id),
+      }),
       set: () => {},
       update: (ref: { __id: string }, data: Record<string, unknown>) => M.log.push({ op: 'txn-update', id: ref.__id, data }),
       delete: () => {},
@@ -233,5 +236,26 @@ describe('useAccounts.setDefaultAccount — caracterización', () => {
     expect(txnUpdates.find(u => u.id === 'cc1')?.data?.isDefault).toBe(true);
     expect(txnUpdates.find(u => u.id === 'bank')?.data?.isDefault).toBe(false);
     expect(txnUpdates.find(u => u.id === 'cc2')?.data?.isDefault).toBe(false);
+  });
+
+  it('salta cuentas del array que ya no existen en Firestore (no aborta por NOT_FOUND) (#accounts-6)', async () => {
+    // 'ghost' está en el array en memoria (firestoreData) pero NO en el store
+    // (borrada/fusionada, snapshot rezagado).
+    M.acctStore.set('bank', { ...bank, isDefault: false });
+    M.acctStore.set('cc1', { ...cc1, isDefault: true });
+    M.firestoreData = {
+      accounts: [{ ...bank, isDefault: false }, { ...cc1, isDefault: true }, { ...cc2, id: 'ghost' }],
+      recurringPayments: [], debts: [], loading: false,
+      addAccount: vi.fn(), deleteAccount: vi.fn(), updateAccount: vi.fn(),
+    };
+    const acc = renderHook(() => useAccounts(UID, [], vi.fn())).result;
+
+    await acc.current.setDefaultAccount('bank');
+
+    const txnUpdates = opsByType('txn-update');
+    // Solo se actualizan las existentes; 'ghost' se salta sin abortar.
+    expect(txnUpdates.find(u => u.id === 'bank')?.data?.isDefault).toBe(true);
+    expect(txnUpdates.find(u => u.id === 'cc1')?.data?.isDefault).toBe(false);
+    expect(txnUpdates.some(u => u.id === 'ghost')).toBe(false);
   });
 });

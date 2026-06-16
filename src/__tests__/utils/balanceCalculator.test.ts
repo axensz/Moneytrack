@@ -89,20 +89,6 @@ describe('BalanceCalculator.calculateTotalBalance', () => {
   });
 });
 
-// ─── BalanceCalculator.validateTransaction ─────────────────────────
-
-describe('BalanceCalculator.validateTransaction', () => {
-  it('delegates to savings strategy for savings accounts', () => {
-    const result = BalanceCalculator.validateTransaction(savings, 100_000, []);
-    expect(result.valid).toBe(true);
-  });
-
-  it('delegates to credit strategy for credit accounts', () => {
-    const result = BalanceCalculator.validateTransaction(credit, 100_000, []);
-    expect(result.valid).toBe(true);
-  });
-});
-
 // ─── getCreditCardUsedCredit (API viva, reemplaza CreditCardCalculator) ──
 // (canMakeExpense/calculateAvailableCredit eran API muerta; su comportamiento ya
 //  está cubierto por accountStrategies.test: validateTransaction y calculateBalance.)

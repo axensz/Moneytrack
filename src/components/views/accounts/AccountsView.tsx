@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Wallet, CreditCard, Banknote } from 'lucide-react';
 import { BALANCE_ADJUSTMENT_CATEGORY } from '../../../config/constants';
 import { showToast } from '../../../utils/toastHelpers';
@@ -42,6 +42,7 @@ export const AccountsView: React.FC = () => {
     getCreditUsed,
     getTransactionCountForAccount,
     balancesReady,
+    accountsLoading,
   } = useAccountDomain();
   const { addTransaction } = useTransactionDomain();
   const { recurringPayments } = useRecurringDomain();
@@ -123,6 +124,10 @@ export const AccountsView: React.FC = () => {
   const [mergeCreditLimitInput, setMergeCreditLimitInput] = useState('');
   const [mergeDesiredDebtInput, setMergeDesiredDebtInput] = useState('');
   const [isMergingCreditCards, setIsMergingCreditCards] = useState(false);
+  // Guard de borrado en curso: el ref bloquea el doble clic en el mismo tick
+  // (la acción es destructiva en cascada); el state deshabilita el botón (#accounts-8).
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const isDeletingAccountRef = useRef(false);
 
   // Inicializar order si no existe
   // AUDIT-FIX (MEDIO-01): deps correctas para evitar stale closures
@@ -161,7 +166,8 @@ export const AccountsView: React.FC = () => {
     return card.usedCredit != null ? Math.max(0, card.usedCredit) : getCreditUsed(card.id);
   };
   const mergeCombinedUsedDebt = usedDebtForMerge(mergeSourceCard) + usedDebtForMerge(mergeTargetCard);
-  const mergeCombinedAvailableCredit = mergeCombinedCreditLimit - mergeCombinedUsedDebt;
+  // Clamp a 0: si la deuda combinada supera el cupo, "disponible" es 0, no negativo (#accounts).
+  const mergeCombinedAvailableCredit = Math.max(0, mergeCombinedCreditLimit - mergeCombinedUsedDebt);
 
   const parseCurrencyInput = (value: string): number => parseFloat(value.replace(',', '.'));
 
@@ -304,7 +310,7 @@ export const AccountsView: React.FC = () => {
   };
 
   const handleDeleteAccount = async () => {
-    if (!deleteConfirm) return;
+    if (!deleteConfirm || isDeletingAccountRef.current) return;
 
     const account = accounts.find((a) => a.id === deleteConfirm.accountId);
     if (!account) return;
@@ -321,6 +327,8 @@ export const AccountsView: React.FC = () => {
       return;
     }
 
+    isDeletingAccountRef.current = true;
+    setIsDeletingAccount(true);
     try {
       await deleteAccount(deleteConfirm.accountId);
       setDeleteConfirm(null);
@@ -335,6 +343,9 @@ export const AccountsView: React.FC = () => {
       }
     } catch (error) {
       showToast.error(`Error: ${(error as Error).message || 'Error desconocido'}`);
+    } finally {
+      isDeletingAccountRef.current = false;
+      setIsDeletingAccount(false);
     }
   };
 
@@ -358,8 +369,12 @@ export const AccountsView: React.FC = () => {
 
         <button
           onClick={() => {
+            // No crear antes de que cargue el snapshot: isFirst (accounts.length===0)
+            // marcaría una SEGUNDA cuenta por defecto al llegar las reales (#accounts-5).
+            if (accountsLoading) return;
             accountForm.openCreateForm();
           }}
+          disabled={accountsLoading}
           className="btn-primary"
         >
           <Plus size={18} />
@@ -416,6 +431,7 @@ export const AccountsView: React.FC = () => {
         }
         onConfirm={handleDeleteAccount}
         onClose={() => setDeleteConfirm(null)}
+        isDeleting={isDeletingAccount}
       />
 
       <CreditCardsConsolidatedSummary

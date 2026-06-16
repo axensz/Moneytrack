@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import type { Account, NewAccount, Transaction } from '../../../../types/finance';
 import { showToast } from '../../../../utils/toastHelpers';
 import { formatNumberForInput, unformatNumber } from '../../../../utils/formatters';
@@ -72,6 +72,10 @@ export function useAccountForm({
   const [initialBalanceInput, setInitialBalanceInput] = useState('');
   const [creditLimitInput, setCreditLimitInput] = useState('');
   const [interestRateInput, setInterestRateInput] = useState('');
+  // Evita el doble submit: un doble clic en "Actualizar" creaba DOS transacciones
+  // de ajuste de saldo/deuda (el closeForm de la rama editar corre después de los
+  // await). Un ref es síncrono → bloquea la segunda entrada en el mismo tick (#accounts-2).
+  const submittingRef = useRef(false);
 
   const resetForm = useCallback(() => {
     setNewAccount(INITIAL_ACCOUNT);
@@ -120,6 +124,9 @@ export function useAccountForm({
   }, []);
 
   const handleSubmit = useCallback(async () => {
+    if (submittingRef.current) return; // re-entrada (doble clic) → no-op
+    submittingRef.current = true;
+    try {
     if (!newAccount.name.trim()) {
       showToast.error(ERROR_MESSAGES.EMPTY_ACCOUNT_NAME);
       return;
@@ -258,6 +265,9 @@ export function useAccountForm({
     } catch (error) {
       showToast.error(ERROR_MESSAGES.ADD_ACCOUNT_ERROR);
       logger.error('Error saving account', error);
+    }
+    } finally {
+      submittingRef.current = false;
     }
   }, [
     newAccount,

@@ -17,6 +17,8 @@ interface DeleteConfirmModalProps {
   setConfirmDeleteWithTransactions: (value: boolean) => void;
   onConfirm: () => void;
   onClose: () => void;
+  /** Borrado en curso: deshabilita el botón para evitar doble envío (#accounts-8). */
+  isDeleting?: boolean;
 }
 
 /**
@@ -35,6 +37,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
   setConfirmDeleteWithTransactions,
   onConfirm,
   onClose,
+  isDeleting = false,
 }) => {
   // A11y: Escape, focus trap y restauración de foco. autoFocusContainer=false
   // porque el input de confirmación ya recibe el foco inicial (autoFocus).
@@ -119,13 +122,14 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
           <div className="flex gap-3">
             <button
               onClick={onConfirm}
-              disabled={!canDelete}
+              disabled={!canDelete || isDeleting}
               className="flex-1 btn-danger"
             >
-              Eliminar{' '}
-              {transactionCount > 0
-                ? `cuenta y ${transactionCount} transacción${transactionCount !== 1 ? 'es' : ''}`
-                : 'cuenta'}
+              {isDeleting
+                ? 'Eliminando…'
+                : `Eliminar ${transactionCount > 0
+                  ? `cuenta y ${transactionCount} transacción${transactionCount !== 1 ? 'es' : ''}`
+                  : 'cuenta'}`}
             </button>
             <button onClick={onClose} className="flex-1 btn-cancel">
               Cancelar

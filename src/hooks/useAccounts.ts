@@ -138,7 +138,26 @@ export function useAccounts(
         options
       );
     } else {
-      setLocalAccounts(prev => prev.filter(acc => acc.id !== id));
+      // Paridad con deleteAccountCascade (#accounts-1): el borrado en modo
+      // invitado NO debe dejar transacciones/deudas/recurrentes huérfanas,
+      // debe limpiar el bankAccountId colgante de las TC asociadas y conservar
+      // la invariante de "exactamente una cuenta por defecto". Antes solo
+      // quitaba la cuenta y corrompía saldos/stats con referencias colgantes.
+      if (!options.preserveTransactions) {
+        setLocalTransactions(prev => prev.filter(t => t.accountId !== id && t.toAccountId !== id));
+      }
+      setLocalDebts(prev => prev.filter(d => d.accountId !== id));
+      setLocalRecurringPayments(prev => prev.filter(p => p.accountId !== id));
+      setLocalAccounts(prev => {
+        let remaining = prev
+          .filter(acc => acc.id !== id)
+          .map(acc => (acc.bankAccountId === id ? { ...acc, bankAccountId: undefined } : acc));
+        // Si se borró la cuenta por defecto, promover otra para no quedar sin default.
+        if (account?.isDefault && remaining.length > 0 && !remaining.some(a => a.isDefault)) {
+          remaining = remaining.map((acc, i) => (i === 0 ? { ...acc, isDefault: true } : acc));
+        }
+        return remaining;
+      });
     }
   };
 

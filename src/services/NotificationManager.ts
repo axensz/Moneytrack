@@ -156,6 +156,13 @@ export class NotificationManager {
         const currentHour = now.getHours();
         const { startHour, endHour } = quietHours;
 
+        // start === end es un rango VACÍO, no "24 horas": sin este guard la rama
+        // de abajo (>= start || < end) sería una tautología y silenciaría los
+        // toasts 24/7 ante una config plausible del usuario.
+        if (startHour === endHour) {
+            return false;
+        }
+
         // Handle cases where quiet hours span midnight
         if (startHour < endHour) {
             return currentHour >= startHour && currentHour < endHour;

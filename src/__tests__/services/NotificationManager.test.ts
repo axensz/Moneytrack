@@ -83,6 +83,15 @@ describe('NotificationManager (A3)', () => {
     expect(mgr.shouldShowToast(notif({ severity: 'warning' }))).toBe(true);
   });
 
+  it('quiet hours con startHour === endHour NO silencia (rango vacío, no 24/7)', () => {
+    vi.useFakeTimers();
+    const { mgr } = setup({ quietHours: { enabled: true, startHour: 22, endHour: 22 } });
+
+    vi.setSystemTime(new Date('2026-06-15T22:30:00')); // dentro de la "ventana" degenerada
+    expect(mgr.isInQuietHours()).toBe(false);
+    expect(mgr.shouldShowToast(notif({ severity: 'warning' }))).toBe(true);
+  });
+
   it('getUnreadCount cuenta solo las no leídas', () => {
     const read = { id: '1', createdAt: new Date(), isRead: true } as Notification;
     const unread = { id: '2', createdAt: new Date(), isRead: false } as Notification;

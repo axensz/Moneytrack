@@ -56,7 +56,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
         // engranaje no se recortaba por ser descendiente del header).
         <div className="fixed inset-0 z-[110] flex items-start justify-end p-4 pt-16">
             <div
-                className="absolute inset-0 bg-black/30 backdrop-blur-sm -z-10 animate-in fade-in duration-200"
+                className="absolute inset-0 bg-black/30 -z-10 animate-in fade-in duration-200"
                 onClick={(e) => { e.stopPropagation(); onClose(); }}
             />
             <div

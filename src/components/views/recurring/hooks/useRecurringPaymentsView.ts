@@ -37,7 +37,8 @@ export const useRecurringPaymentsView = ({
   const [showForm, setShowForm] = useState(false);
   const [editingPayment, setEditingPayment] = useState<RecurringPayment | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
+  // ConfirmDialog ya deshabilita su botón mientras la acción corre; mantenemos
+  // además un guard síncrono por si el modal cambia.
   const deletingRef = useRef(false);
 
   // Ordenar pagos: vencidos primero, luego pendientes por proximidad, luego pagados
@@ -111,7 +112,6 @@ export const useRecurringPaymentsView = ({
     // doble clic dispararía dos deletes del mismo id antes del re-render.
     if (deletingRef.current) return;
     deletingRef.current = true;
-    setIsDeleting(true);
 
     try {
       await deleteRecurringPayment(deleteConfirm);
@@ -121,7 +121,6 @@ export const useRecurringPaymentsView = ({
       showToast.error('Error al eliminar');
     } finally {
       deletingRef.current = false;
-      setIsDeleting(false);
     }
   }, [deleteConfirm, deleteRecurringPayment]);
 
@@ -156,7 +155,6 @@ export const useRecurringPaymentsView = ({
 
     // Delete state
     deleteConfirm,
-    isDeleting,
     confirmDelete,
     cancelDelete,
     handleDelete,

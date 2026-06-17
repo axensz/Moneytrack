@@ -51,7 +51,10 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
     if (!isOpen) return null;
 
     return createPortal(
-        <div className="fixed inset-0 z-[90] flex items-start justify-end p-4 pt-16">
+        // z-[110]: por encima del header (z-[100]). Antes en z-[90] el header se
+        // pintaba ENCIMA y recortaba el borde superior del panel (el menú del
+        // engranaje no se recortaba por ser descendiente del header).
+        <div className="fixed inset-0 z-[110] flex items-start justify-end p-4 pt-16">
             <div
                 className="absolute inset-0 bg-black/30 backdrop-blur-sm -z-10 animate-in fade-in duration-200"
                 onClick={(e) => { e.stopPropagation(); onClose(); }}

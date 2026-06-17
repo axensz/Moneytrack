@@ -6,7 +6,6 @@ export { RecurringStatsCards } from './components/RecurringStatsCards';
 export { UpcomingPaymentsAlert } from './components/UpcomingPaymentsAlert';
 export { RecurringPaymentCard } from './components/RecurringPaymentCard';
 export { PaymentFormModal } from './components/PaymentFormModal';
-export { DeletePaymentModal } from './components/DeletePaymentModal';
 export { InactivePaymentsList } from './components/InactivePaymentsList';
 
 // Hooks (for extension or testing)

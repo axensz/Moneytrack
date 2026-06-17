@@ -12,7 +12,7 @@ import { RecurringStatsCards } from './components/RecurringStatsCards';
 import { UpcomingPaymentsAlert } from './components/UpcomingPaymentsAlert';
 import { RecurringPaymentCard } from './components/RecurringPaymentCard';
 import { PaymentFormModal } from './components/PaymentFormModal';
-import { DeletePaymentModal } from './components/DeletePaymentModal';
+import { ConfirmDialog } from '../../modals/ConfirmDialog';
 import { InactivePaymentsList } from './components/InactivePaymentsList';
 import { RecurringCalendar } from './components/RecurringCalendar';
 
@@ -50,7 +50,6 @@ export const RecurringPaymentsView: React.FC = () => {
     closeForm,
     handleSubmit,
     deleteConfirm,
-    isDeleting,
     confirmDelete,
     cancelDelete,
     handleDelete,
@@ -204,9 +203,10 @@ export const RecurringPaymentsView: React.FC = () => {
         onSubmit={handleSubmit}
       />
 
-      <DeletePaymentModal
+      <ConfirmDialog
         isOpen={!!deleteConfirm}
-        isDeleting={isDeleting}
+        title="¿Eliminar pago periódico?"
+        message="El pago será eliminado pero las transacciones asociadas se mantendrán."
         onConfirm={handleDelete}
         onClose={cancelDelete}
       />

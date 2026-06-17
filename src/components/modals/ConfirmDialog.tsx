@@ -9,7 +9,7 @@
  * nativo (no temático, no accesible, suprimible en algunos WebView/PWA). Audit A5.
  */
 
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { BaseModal } from './BaseModal';
 
@@ -19,7 +19,7 @@ interface ConfirmDialogProps {
   message: React.ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   onClose: () => void;
   /** 'danger' (rojo, default) para acciones destructivas; 'default' para el resto. */
   variant?: 'danger' | 'default';
@@ -35,6 +35,22 @@ export function ConfirmDialog({
   onClose,
   variant = 'danger',
 }: ConfirmDialogProps) {
+  const [isConfirming, setIsConfirming] = useState(false);
+  // Guard SÍNCRONO: onConfirm suele ser una acción destructiva async (borrar
+  // cuenta/meta/deuda). Sin esto, un doble clic antes de que el padre cierre el
+  // diálogo la dispara dos veces (doble borrado / doble request).
+  const confirmingRef = useRef(false);
+  const handleConfirm = async () => {
+    if (confirmingRef.current) return;
+    confirmingRef.current = true;
+    setIsConfirming(true);
+    try {
+      await onConfirm();
+    } finally {
+      confirmingRef.current = false;
+      setIsConfirming(false);
+    }
+  };
   const iconColor = variant === 'danger'
     ? 'text-rose-600 dark:text-rose-400'
     : 'text-purple-600 dark:text-purple-400';
@@ -54,12 +70,13 @@ export function ConfirmDialog({
         {message}
       </div>
       <div className="flex gap-3 mt-6">
-        <button onClick={onClose} className="flex-1 btn-cancel">
+        <button onClick={onClose} disabled={isConfirming} className="flex-1 btn-cancel disabled:opacity-50">
           {cancelLabel}
         </button>
         <button
-          onClick={onConfirm}
-          className={`flex-1 px-4 py-2 text-sm font-semibold rounded-xl text-white transition-colors ${confirmClass}`}
+          onClick={handleConfirm}
+          disabled={isConfirming}
+          className={`flex-1 px-4 py-2 text-sm font-semibold rounded-xl text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${confirmClass}`}
         >
           {confirmLabel}
         </button>

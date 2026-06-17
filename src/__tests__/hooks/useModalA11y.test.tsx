@@ -33,11 +33,13 @@ afterEach(() => {
 });
 
 describe('useModalA11y (A5)', () => {
-  it('bloquea el scroll del body mientras está abierto y lo restaura al cerrar', () => {
+  it('bloquea el scroll del body mientras está abierto y restaura el valor original al cerrar', () => {
+    // El body arranca sin overflow inline (''); al cerrar debe volver a ese valor
+    // original, no a un 'unset' hardcodeado (que pisaría un overflow previo del body).
     const { rerender } = render(<TestModal isOpen onClose={() => {}} />);
     expect(document.body.style.overflow).toBe('hidden');
     rerender(<TestModal isOpen={false} onClose={() => {}} />);
-    expect(document.body.style.overflow).toBe('unset');
+    expect(document.body.style.overflow).toBe('');
   });
 
   it('cierra con la tecla Escape', () => {

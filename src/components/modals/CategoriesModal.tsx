@@ -14,8 +14,8 @@ interface CategoriesModalProps {
     expense: string[];
     income: string[];
   };
-  addCategory: (type: 'expense' | 'income', name: string) => void;
-  deleteCategory: (type: 'expense' | 'income', name: string) => void;
+  addCategory: (type: 'expense' | 'income', name: string) => void | Promise<void>;
+  deleteCategory: (type: 'expense' | 'income', name: string) => void | Promise<void>;
 }
 
 export const CategoriesModal: React.FC<CategoriesModalProps> = ({
@@ -31,12 +31,32 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
     name: string;
   }>({ type: 'expense', name: '' });
 
-  const handleSubmit = () => {
+  const [submitting, setSubmitting] = useState(false);
+
+  // addCategory es async: hay que await-earlo para capturar errores (nombre
+  // duplicado, fallo de Firestore) y para no mostrar el toast de éxito ni doble
+  // crear ante un doble clic / Enter repetido.
+  const handleSubmit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
     try {
-      addCategory(newCategory.type, newCategory.name);
+      await addCategory(newCategory.type, newCategory.name);
       setNewCategory({ type: 'expense', name: '' });
       setShowForm(false);
       showToast.success(SUCCESS_MESSAGES.CATEGORY_ADDED);
+    } catch (error) {
+      showToast.error((error as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // deleteCategory también es async y puede lanzar (p.ej. categoría en uso por
+  // transacciones); sin manejarlo, el throw quedaba sin capturar y el ítem no
+  // desaparecía sin explicación para el usuario.
+  const handleDelete = async (type: 'expense' | 'income', name: string) => {
+    try {
+      await deleteCategory(type, name);
     } catch (error) {
       showToast.error((error as Error).message);
     }
@@ -102,7 +122,7 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
               </div>
             </div>
             <div className="flex gap-2">
-              <button onClick={handleSubmit} className="btn-submit text-sm">
+              <button onClick={handleSubmit} disabled={submitting} className="btn-submit text-sm disabled:opacity-50 disabled:cursor-not-allowed">
                 Crear
               </button>
               <button
@@ -134,7 +154,7 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
                   isProtected={(
                     PROTECTED_CATEGORIES.expense as readonly string[]
                   ).includes(cat)}
-                  onDelete={() => deleteCategory('expense', cat)}
+                  onDelete={() => handleDelete('expense', cat)}
                 />
               ))}
             </div>
@@ -154,7 +174,7 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
                   isProtected={(
                     PROTECTED_CATEGORIES.income as readonly string[]
                   ).includes(cat)}
-                  onDelete={() => deleteCategory('income', cat)}
+                  onDelete={() => handleDelete('income', cat)}
                 />
               ))}
             </div>

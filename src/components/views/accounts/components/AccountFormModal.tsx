@@ -1,8 +1,8 @@
 'use client';
 
 import React from 'react';
-import { X } from 'lucide-react';
-import { useModalA11y } from '../../../../hooks/useModalA11y';
+import { Wallet } from 'lucide-react';
+import { BaseModal } from '../../../modals/BaseModal';
 import type { Account, NewAccount } from '../../../../types/finance';
 
 interface AccountType {
@@ -60,9 +60,6 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
   getAccountBalance,
   getCreditUsed,
 }) => {
-  // A11y: Escape, focus trap y restauración de foco.
-  const { modalRef, onKeyDown } = useModalA11y({ isOpen, onClose });
-
   if (!isOpen) return null;
 
   // Preview en vivo del ajuste: usa EXACTAMENTE el mismo parseo y la misma fuente
@@ -120,31 +117,14 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm">
-      <div
-        ref={modalRef}
-        onKeyDown={onKeyDown}
-        tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
-        aria-label={editingAccount ? 'Editar Cuenta' : 'Nueva Cuenta'}
-        className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto outline-none"
-      >
-        <div className="p-4 sm:p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              {editingAccount ? 'Editar Cuenta' : 'Nueva Cuenta'}
-            </h4>
-            {/* S14: aria-label + tap target mínimo 44px */}
-            <button
-              onClick={onClose}
-              aria-label="Cerrar"
-              className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors p-2 rounded-xl min-w-[44px] min-h-[44px] flex items-center justify-center"
-            >
-              <X size={20} />
-            </button>
-          </div>
-
+    <BaseModal
+      isOpen={isOpen}
+      onClose={onClose}
+      closeOnBackdrop={false}
+      title={editingAccount ? 'Editar Cuenta' : 'Nueva Cuenta'}
+      titleIcon={<Wallet size={20} className="text-purple-600 dark:text-purple-400" />}
+      maxWidth="max-w-2xl"
+    >
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Nombre (siempre visible) */}
             <div>
@@ -383,8 +363,6 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
               Cancelar
             </button>
           </div>
-        </div>
-      </div>
-    </div>
+    </BaseModal>
   );
 };

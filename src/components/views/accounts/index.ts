@@ -12,7 +12,6 @@ export { AccountsView } from './AccountsView';
 
 // Componentes (por si se necesitan individualmente)
 export { AccountFormModal } from './components/AccountFormModal';
-export { CategoryFormModal } from './components/CategoryFormModal';
 export { DeleteConfirmModal } from './components/DeleteConfirmModal';
 export { AccountCard } from './components/AccountCard';
 export { CategoriesList } from './components/CategoriesList';

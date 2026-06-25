@@ -12,6 +12,7 @@ import {
   getYearlyAnchorMonth,
   getNextDueDate as computeNextDueDate,
   getCycleWindow as computeCycleWindow,
+  cycleKey as computeCycleKey,
 } from '../../utils/recurringDates';
 
 interface RecurringStats {
@@ -125,11 +126,19 @@ export function useRecurringUtils(
       const list = transactionsByPaymentId.get(paymentId);
       if (!list || list.length === 0) return false;
 
+      // Atribución explícita: una transacción estampada con recurringCycle salda
+      // ESE ciclo, sin importar dónde caiga su fecha (pago anticipado/atrasado o
+      // vinculado tarde desde la tarjeta).
+      const targetKey = computeCycleKey(payment, month);
+
       const { start, end } = getCycleWindow(payment, month);
       const startMs = start.getTime();
       const endMs = end.getTime();
 
       return list.some((t) => {
+        if (t.recurringCycle) return t.recurringCycle === targetKey;
+        // Fallback retrocompatible: transacciones sin estampa cuentan por la
+        // ventana que contiene su fecha.
         const tMs = new Date(t.date).getTime();
         return tMs >= startMs && tMs < endMs;
       });

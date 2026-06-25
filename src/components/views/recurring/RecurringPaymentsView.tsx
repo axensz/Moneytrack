@@ -1,18 +1,22 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, Repeat, List, CalendarDays } from 'lucide-react';
+import { Plus, Repeat, List, CalendarDays, AlertTriangle } from 'lucide-react';
 
 import type { RecurringPayment, Account, Transaction } from '../../../types/finance';
-import { useRecurringDomain, useAccountDomain, useCategoryDomain, useFormatCurrency } from '../../../hooks/useFinanceSelectors';
+import { useRecurringDomain, useAccountDomain, useCategoryDomain, useFormatCurrency, useTransactionDomain } from '../../../hooks/useFinanceSelectors';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
+import { cycleKey } from '../../../utils/recurringDates';
+import { showToast } from '../../../utils/toastHelpers';
 
 // Componentes
 import { RecurringStatsCards } from './components/RecurringStatsCards';
 import { UpcomingPaymentsAlert } from './components/UpcomingPaymentsAlert';
 import { RecurringPaymentCard } from './components/RecurringPaymentCard';
 import { PaymentFormModal } from './components/PaymentFormModal';
+import { MarkPaidModal } from './components/MarkPaidModal';
 import { ConfirmDialog } from '../../modals/ConfirmDialog';
+import { BaseModal } from '../../modals/BaseModal';
 import { InactivePaymentsList } from './components/InactivePaymentsList';
 import { RecurringCalendar } from './components/RecurringCalendar';
 
@@ -36,7 +40,8 @@ export const RecurringPaymentsView: React.FC = () => {
     getPaymentHistory,
     recurringStats: stats,
   } = useRecurringDomain();
-  const { accounts } = useAccountDomain();
+  const { accounts, defaultAccount } = useAccountDomain();
+  const { transactions, addTransaction, updateTransaction, deleteTransaction } = useTransactionDomain();
   const { categories } = useCategoryDomain();
   const formatCurrency = useFormatCurrency();
   const { hideBalances } = useUIPreferences();
@@ -70,6 +75,74 @@ export const RecurringPaymentsView: React.FC = () => {
 
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+
+  // "Ya pagó": pago seleccionado para el modal de marcar/vincular.
+  const [markPaidPayment, setMarkPaidPayment] = useState<RecurringPayment | null>(null);
+
+  // Pago del historial ("Últimos pagos") pendiente de quitar. Dos caminos: borrar
+  // el gasto (revierte saldo) o solo desvincularlo (conserva el gasto). Ambos
+  // dejan el ciclo sin transacción → el periódico vuelve a por cobrar/vencido.
+  const [deletePaymentTx, setDeletePaymentTx] = useState<Transaction | null>(null);
+  const [busyDelete, setBusyDelete] = useState(false);
+
+  const runDelete = async (fn: () => Promise<void>, okMsg: string) => {
+    if (!deletePaymentTx?.id || busyDelete) return;
+    setBusyDelete(true);
+    try {
+      await fn();
+      showToast.success(okMsg);
+      setDeletePaymentTx(null);
+    } catch {
+      showToast.error('No se pudo completar');
+    } finally {
+      setBusyDelete(false);
+    }
+  };
+
+  // Eliminar el gasto: revierte saldo/crédito (atómico).
+  const handleDeletePayment = () =>
+    runDelete(() => deleteTransaction(deletePaymentTx!.id!), 'Gasto eliminado');
+
+  // Desvincular: conserva el gasto, solo limpia el vínculo al periódico. null (no
+  // undefined) porque updateTransaction descarta undefined; los lectores tratan
+  // recurringPaymentId nulo como "sin periódico".
+  const handleUnlinkPayment = () =>
+    runDelete(
+      () =>
+        // ponytail: cast vía unknown — el campo es string? en el tipo, pero null
+        // es el valor que limpia en Firestore y que los lectores leen como vacío.
+        updateTransaction(deletePaymentTx!.id!, {
+          recurringPaymentId: null,
+          recurringCycle: null,
+        } as unknown as Partial<Transaction>),
+      'Pago desmarcado'
+    );
+
+  // Ambos caminos estampan el ciclo actual → el pago aparece pagado sin depender
+  // de la fecha (ver cycleKey / recurringCycle).
+  const registerPaid = async (payment: RecurringPayment, accountId: string) => {
+    // ponytail: usa el writer canónico (mismo que el formulario) → saldos OK.
+    // Omite la detección de duplicados del formulario; añadir si genera dobles
+    // registros desde la tarjeta.
+    await addTransaction({
+      type: 'expense',
+      amount: payment.amount,
+      category: payment.category,
+      description: payment.name,
+      date: new Date(),
+      paid: true,
+      accountId,
+      recurringPaymentId: payment.id,
+      recurringCycle: cycleKey(payment, new Date()),
+    });
+  };
+
+  const linkExisting = async (payment: RecurringPayment, transactionId: string) => {
+    await updateTransaction(transactionId, {
+      recurringPaymentId: payment.id,
+      recurringCycle: cycleKey(payment, new Date()),
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -178,6 +251,8 @@ export const RecurringPaymentsView: React.FC = () => {
                     formatCurrency={displayAmount}
                     onEdit={() => openEditForm(payment)}
                     onDelete={() => confirmDelete(payment.id!)}
+                    onMarkPaid={() => setMarkPaidPayment(payment)}
+                    onDeletePayment={setDeletePaymentTx}
                   />
                 );
               })}
@@ -209,6 +284,61 @@ export const RecurringPaymentsView: React.FC = () => {
         message="El pago será eliminado pero las transacciones asociadas se mantendrán."
         onConfirm={handleDelete}
         onClose={cancelDelete}
+      />
+
+      <BaseModal
+        isOpen={!!deletePaymentTx}
+        onClose={() => !busyDelete && setDeletePaymentTx(null)}
+        title="Quitar este pago"
+        titleIcon={<AlertTriangle size={20} className="text-rose-600 dark:text-rose-400" />}
+        maxWidth="max-w-sm"
+      >
+        {deletePaymentTx && (
+          <>
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              Pago de {displayAmount(deletePaymentTx.amount)} del{' '}
+              {new Date(deletePaymentTx.date).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}.
+              El periódico volverá a por cobrar o vencido.
+            </p>
+            <div className="mt-5 space-y-3">
+              <button
+                onClick={handleDeletePayment}
+                disabled={busyDelete}
+                className="w-full text-left p-4 rounded-xl border-2 border-rose-200 dark:border-rose-800 bg-rose-50/50 dark:bg-rose-900/10 hover:border-rose-400 transition-colors disabled:opacity-60"
+              >
+                <span className="block font-semibold text-gray-900 dark:text-gray-100">Eliminar gasto completo</span>
+                <span className="block text-sm text-gray-500 dark:text-gray-400">Borra la transacción y revierte el saldo.</span>
+              </button>
+              <button
+                onClick={handleUnlinkPayment}
+                disabled={busyDelete}
+                className="w-full text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-purple-400 transition-colors disabled:opacity-60"
+              >
+                <span className="block font-semibold text-gray-900 dark:text-gray-100">Solo desmarcar este pago</span>
+                <span className="block text-sm text-gray-500 dark:text-gray-400">Conserva el gasto; solo lo desvincula del periódico.</span>
+              </button>
+              <button
+                onClick={() => setDeletePaymentTx(null)}
+                disabled={busyDelete}
+                className="w-full btn-cancel disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+            </div>
+          </>
+        )}
+      </BaseModal>
+
+      <MarkPaidModal
+        isOpen={!!markPaidPayment}
+        payment={markPaidPayment}
+        accounts={accounts}
+        transactions={transactions}
+        defaultAccountId={defaultAccount?.id}
+        formatCurrency={displayAmount}
+        onClose={() => setMarkPaidPayment(null)}
+        onRegister={registerPaid}
+        onLinkExisting={linkExisting}
       />
     </div>
   );

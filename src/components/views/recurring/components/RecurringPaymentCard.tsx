@@ -5,6 +5,7 @@ import {
   Edit2,
   Trash2,
   CheckCircle2,
+  Check,
   Clock,
   AlertTriangle,
   CalendarDays,
@@ -50,6 +51,8 @@ interface RecurringPaymentCardProps {
   formatCurrency: (amount: number) => string;
   onEdit: () => void;
   onDelete: () => void;
+  onMarkPaid: () => void;
+  onDeletePayment: (transaction: Transaction) => void;
 }
 
 /**
@@ -67,6 +70,8 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = memo(({
   formatCurrency,
   onEdit,
   onDelete,
+  onMarkPaid,
+  onDeletePayment,
 }) => {
   const { hideBalances } = useUIPreferences();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -209,6 +214,16 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = memo(({
           </button>
 
           <div className="flex gap-2">
+            {!isPaid && (
+              <button
+                onClick={onMarkPaid}
+                className="flex items-center gap-1.5 px-3 min-h-[36px] text-sm font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 rounded-lg transition-colors"
+                title="Marcar como pagado"
+              >
+                <Check size={16} />
+                Ya pagó
+              </button>
+            )}
             <button
               onClick={onEdit}
               className="flex items-center justify-center p-2 min-h-[36px] min-w-[36px] text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
@@ -229,7 +244,7 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = memo(({
 
       {/* Expanded history */}
       {isExpanded && (
-        <PaymentHistory history={history} formatCurrency={formatCurrency} />
+        <PaymentHistory history={history} formatCurrency={formatCurrency} onDeletePayment={onDeletePayment} />
       )}
     </div>
   );
@@ -241,11 +256,13 @@ RecurringPaymentCard.displayName = 'RecurringPaymentCard';
 interface PaymentHistoryProps {
   history: Transaction[];
   formatCurrency: (amount: number) => string;
+  onDeletePayment: (transaction: Transaction) => void;
 }
 
 const PaymentHistory: React.FC<PaymentHistoryProps> = memo(({
   history,
   formatCurrency,
+  onDeletePayment,
 }) => {
   const { hideBalances } = useUIPreferences();
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
@@ -262,7 +279,7 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = memo(({
           {history.map((t) => (
             <div
               key={t.id}
-              className="flex items-center justify-between text-sm bg-white dark:bg-gray-800 rounded-lg p-2"
+              className="flex items-center justify-between gap-2 text-sm bg-white dark:bg-gray-800 rounded-lg p-2"
             >
               <span className="text-gray-600 dark:text-gray-400">
                 {new Date(t.date).toLocaleDateString('es-CO', {
@@ -271,9 +288,19 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = memo(({
                   year: 'numeric',
                 })}
               </span>
-              <span className="font-medium text-gray-900 dark:text-gray-100">
-                {displayAmount(t.amount)}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-gray-900 dark:text-gray-100">
+                  {displayAmount(t.amount)}
+                </span>
+                <button
+                  onClick={() => onDeletePayment(t)}
+                  className="flex items-center justify-center p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
+                  title="Eliminar este pago"
+                  aria-label="Eliminar este pago"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
             </div>
           ))}
         </div>

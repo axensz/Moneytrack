@@ -5,6 +5,7 @@ import {
   getYearlyAnchorMonth,
   getNextDueDate,
   getCycleWindow,
+  cycleKey,
 } from '../../utils/recurringDates';
 import type { RecurringPayment } from '../../types/finance';
 
@@ -185,5 +186,24 @@ describe('recurringDates — pago anticipado y atrasado caen en el ciclo correct
     const { start, end } = getCycleWindow(p, refFeb);
     const pagoAtrasado = new Date(2025, 2, 2).getTime(); // 2 mar, antes del 5 mar
     expect(pagoAtrasado >= start.getTime() && pagoAtrasado < end.getTime()).toBe(true);
+  });
+});
+
+describe('recurringDates — cycleKey', () => {
+  const p = payment({ dueDay: 5, frequency: 'monthly' });
+
+  it('es estable dentro del mismo ciclo aunque la fecha cruce el borde de mes', () => {
+    // Ciclo de febrero = [5 feb, 5 mar): el 28 feb y el 2 mar pertenecen al mismo.
+    expect(cycleKey(p, new Date(2025, 1, 28))).toBe(cycleKey(p, new Date(2025, 2, 2)));
+  });
+
+  it('distingue ciclos contiguos', () => {
+    const feb = cycleKey(p, new Date(2025, 1, 15)); // ciclo [5 feb, 5 mar)
+    const ene = cycleKey(p, new Date(2025, 0, 15)); // ciclo [5 ene, 5 feb)
+    expect(feb).not.toBe(ene);
+  });
+
+  it('es la clave del inicio de la ventana (vencimiento que abrió el ciclo)', () => {
+    expect(cycleKey(p, new Date(2025, 1, 15))).toBe('2025-1-5'); // 5 feb
   });
 });

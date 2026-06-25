@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useRecurringUtils } from '../../hooks/recurring/useRecurringUtils';
+import { cycleKey } from '../../utils/recurringDates';
 import type { RecurringPayment, Transaction } from '../../types/finance';
 
 const payment = (o: Partial<RecurringPayment>): RecurringPayment => ({
@@ -71,6 +72,30 @@ describe('useRecurringUtils — vencidos', () => {
     const { result } = renderHook(() => useRecurringUtils([monthly, yearly], []));
     // 50.000 mensual + 1.200.000/12 = 50.000 + 100.000
     expect(result.current.stats.totalMonthlyAmount).toBe(150_000);
+  });
+
+  it('cuenta como pagado una tx con fecha FUERA de la ventana pero estampada con el ciclo actual', () => {
+    const p = payment({ id: 'pc1', dueDay: 10 });
+    // Hoy = 15 jun 2026 → ciclo actual [10 jun, 10 jul).
+    // La tx es de marzo (otra ventana) pero estampada al ciclo de junio.
+    const tx: Transaction = {
+      ...paidTx('pc1', new Date(2026, 2, 1)),
+      recurringCycle: cycleKey(p, new Date(2026, 5, 15)),
+    };
+    const { result } = renderHook(() => useRecurringUtils([p], [tx]));
+    expect(result.current.isPaidForMonth('pc1', new Date(2026, 5, 15))).toBe(true);
+    expect(result.current.isOverdue(p)).toBe(false);
+  });
+
+  it('la estampa manda: tx con fecha EN la ventana pero estampada a otro ciclo NO cuenta', () => {
+    const p = payment({ id: 'pc2', dueDay: 10 });
+    // Fecha 11 jun (dentro de [10 jun, 10 jul)) pero estampada al ciclo de mayo.
+    const tx: Transaction = {
+      ...paidTx('pc2', new Date(2026, 5, 11)),
+      recurringCycle: cycleKey(p, new Date(2026, 4, 15)),
+    };
+    const { result } = renderHook(() => useRecurringUtils([p], [tx]));
+    expect(result.current.isPaidForMonth('pc2', new Date(2026, 5, 15))).toBe(false);
   });
 
   it('Pendientes excluye anuales que vencen en otro mes (#3)', () => {

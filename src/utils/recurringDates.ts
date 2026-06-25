@@ -159,3 +159,21 @@ export const getCycleWindow = (
     end: dueThisMonth,
   };
 };
+
+/**
+ * Clave estable que identifica el CICLO de facturación que contiene refDate.
+ * Es el inicio de la ventana (`getCycleWindow().start`, el vencimiento que abrió
+ * el ciclo), serializado como `YYYY-M-D`. Estable: dos fechas del mismo ciclo
+ * —aunque crucen el borde de mes— dan la misma clave.
+ *
+ * Se estampa en `transaction.recurringCycle` cuando el usuario marca/vincula un
+ * pago desde la tarjeta, para fijar el ciclo sin depender de en qué ventana cae
+ * la fecha real del pago (pago anticipado/atrasado).
+ */
+export const cycleKey = (
+  payment: RecurringPayment,
+  refDate: Date = new Date()
+): string => {
+  const { start } = getCycleWindow(payment, refDate);
+  return `${start.getFullYear()}-${start.getMonth()}-${start.getDate()}`;
+};

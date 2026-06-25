@@ -17,6 +17,7 @@ import { logger } from '../utils/logger';
 import { TransactionValidator } from '../utils/validators';
 import { calculateInterest } from '../utils/interestCalculator';
 import { parseDateWithTime } from '../utils/formatters';
+import { cycleKey } from '../utils/recurringDates';
 import {
   SUCCESS_MESSAGES,
   ERROR_MESSAGES,
@@ -154,16 +155,15 @@ export function useAddTransaction({
           return false;
         }
 
-        // Si es un pago periódico con monto diferente, actualizar el monto base
-        if (newTransaction.recurringPaymentId) {
-          const recurringPayment = recurringPayments.find(
-            (p) => p.id === newTransaction.recurringPaymentId
-          );
-          if (recurringPayment && recurringPayment.amount !== amount) {
-            await updateRecurringPayment(newTransaction.recurringPaymentId, {
-              amount,
-            });
-          }
+        // Pago periódico elegido (si hay): se usa para actualizar el monto base
+        // y para estampar el ciclo (recurringCycle) al construir la transacción.
+        const recurringPayment = newTransaction.recurringPaymentId
+          ? recurringPayments.find((p) => p.id === newTransaction.recurringPaymentId)
+          : undefined;
+
+        // Si el monto difiere del base, actualizarlo.
+        if (recurringPayment && recurringPayment.amount !== amount) {
+          await updateRecurringPayment(recurringPayment.id!, { amount });
         }
 
         // Determinar categoría
@@ -190,6 +190,10 @@ export function useAddTransaction({
           accountId: newTransaction.accountId || defaultAccount?.id || '',
           toAccountId: newTransaction.toAccountId || undefined,
           recurringPaymentId: newTransaction.recurringPaymentId || undefined,
+          // Estampar el ciclo de la fecha del pago → isPaidForMonth lo atribuye a
+          // ese ciclo de forma explícita y estable (no depende de la ventana ni de
+          // que cambie hoy / el dueDay). Boundary cases se reajustan con re-vincular.
+          recurringCycle: recurringPayment ? cycleKey(recurringPayment, txDate) : undefined,
         };
 
         // Calcular intereses si es un gasto en TC con cuotas

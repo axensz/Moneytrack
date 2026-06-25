@@ -19,6 +19,11 @@ export interface Transaction {
 
   // 🆕 Asociación con pago periódico
   recurringPaymentId?: string; // ID del pago periódico asociado
+  // Ciclo que esta transacción salda explícitamente (clave estable de la ventana,
+  // ver cycleKey en recurringDates). Cuando está, manda sobre la detección por
+  // fecha: así "Ya pagó"/vincular desde la tarjeta marca el ciclo correcto aunque
+  // la fecha del pago caiga en otra ventana. Ausente → fallback por fecha.
+  recurringCycle?: string;
 
   // 🆕 Asociación con préstamo/deuda
   debtId?: string; // ID de la deuda asociada

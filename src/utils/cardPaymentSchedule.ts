@@ -2,8 +2,7 @@
  * Constructor PURO del calendario de pagos de tarjetas (extractos).
  * Proyecta cuotas mes a mes desde el historial COMPLETO de transacciones.
  */
-import type { Transaction } from '../types/finance';
-import type { Account, RecurringPayment } from '../types/finance';
+import type { Transaction, Account, RecurringPayment } from '../types/finance';
 import { cycleIndexOf, getCycleByIndex, type CreditCycle } from './creditCycles';
 import { roundMoney } from './formatters';
 import { getAccountReferenceIds } from './accountTransactions';
@@ -65,12 +64,14 @@ export function paidForCycle(
   const next = getCycleByIndex(cutoffDay, paymentDay, index + 1, now);
   let sum = 0;
   for (const p of payments) {
+    if (!p.paid) continue;
     const d = new Date(p.date);
     if (d > cyc.cycleEnd && d <= next.cycleEnd) sum += p.amount;
   }
   return roundMoney(sum);
 }
 
+/** Clasifica el estado de pago de un ciclo: projected (futuro) / paid / partial / pending. */
 export function cycleStatus(index: number, total: number, paid: number): CycleStatus {
   if (index > 0) return 'projected';
   if (paid >= total - 0.01) return 'paid';
@@ -117,6 +118,7 @@ const labelOf = (d: Date): string =>
   d.toLocaleDateString(APP_CONFIG.locale, { month: 'long', year: 'numeric' });
 
 function isCardCharge(tx: Transaction, refIds: Set<string>): boolean {
+  // Los pagos de TC (categoría 'Pago Crédito'/'Pago TC') quedan fuera vía CHARGE_EXCLUDED.
   return tx.type === 'expense' && refIds.has(tx.accountId) && !CHARGE_EXCLUDED.has(tx.category);
 }
 function isCardPayment(tx: Transaction, refIds: Set<string>): boolean {

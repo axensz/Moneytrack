@@ -41,7 +41,7 @@ describe('cycleIndexOf', () => {
   it('una fecha dentro del ciclo actual → 0', () => {
     expect(cycleIndexOf(CUTOFF, new Date(2026, 5, 20), NOW)).toBe(0); // 20 jun, post-corte → ciclo que cierra jul
   });
-  it('una compra de mayo (antes del corte de jun) → -1', () => {
+  it('una compra del 16 may (tras el corte del 15) → -1', () => {
     expect(cycleIndexOf(CUTOFF, new Date(2026, 4, 16), NOW)).toBe(-1);
   });
   it('una compra del 10 may (antes del corte del 15) → -2', () => {

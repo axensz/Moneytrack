@@ -67,6 +67,11 @@ describe('paidForCycle + cycleStatus', () => {
     expect(none).toBe(0);
   });
 
+  it('paidForCycle ignora pagos no pagados (paid:false)', () => {
+    const unpaid = { ...pay(new Date(2026, 6, 5), 100_000), paid: false };
+    expect(paidForCycle(CUT, PAY, -1, [unpaid], NOW2)).toBe(0);
+  });
+
   it('estado: futuro=projected, total pagado=paid, parcial=partial, cero=pending', () => {
     expect(cycleStatus(1, 100_000, 0)).toBe('projected');
     expect(cycleStatus(-1, 100_000, 100_000)).toBe('paid');

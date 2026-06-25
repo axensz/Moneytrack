@@ -4,6 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { Receipt, ChevronDown, ChevronUp } from 'lucide-react';
 import { BaseModal } from '@/components/modals/BaseModal';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
+import { roundMoney } from '@/utils/formatters';
 import type { MonthGroup, CardMonthPayment, CycleStatus } from '@/hooks/useCardPaymentSchedule';
 
 interface CardStatementsModalProps {
@@ -34,7 +35,7 @@ export function CardStatementsModal({ isOpen, onClose, schedule, formatCurrency 
     return schedule
       .map(g => {
         const cards = g.cards.filter(c => c.cardId === filter);
-        return { ...g, cards, total: cards.reduce((s, c) => s + c.statementTotal, 0) };
+        return { ...g, cards, total: roundMoney(cards.reduce((s, c) => s + c.statementTotal, 0)) };
       })
       .filter(g => g.cards.length > 0);
   }, [schedule, filter]);
@@ -102,7 +103,6 @@ function MonthPaymentRow({ group, formatCurrency }: { group: MonthGroup; formatC
         type="button"
         onClick={() => setOpen(o => !o)}
         aria-expanded={open}
-        aria-label={group.label}
         className="flex w-full items-center justify-between gap-3 p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded-xl"
       >
         <span className="flex items-center gap-2">
@@ -117,7 +117,7 @@ function MonthPaymentRow({ group, formatCurrency }: { group: MonthGroup; formatC
 
       {open && (
         <div className="space-y-2 border-t border-gray-100 px-3 pb-3 pt-2 dark:border-gray-700">
-          {group.cards.map((c, i) => <CardRow key={c.cardId + i} card={c} show={show} />)}
+          {group.cards.map(c => <CardRow key={c.cardId} card={c} show={show} />)}
         </div>
       )}
     </div>

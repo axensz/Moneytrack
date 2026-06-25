@@ -1,11 +1,14 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { MonthGroup } from '../../hooks/useCardPaymentSchedule';
 import { CardStatementsModal } from '../../components/views/accounts/components/CardStatementsModal';
 
+let mockHideBalances = false;
 vi.mock('@/contexts/UIPreferencesContext', () => ({
-  useUIPreferences: () => ({ hideBalances: false }),
+  useUIPreferences: () => ({ hideBalances: mockHideBalances }),
 }));
+
+afterEach(() => { mockHideBalances = false; });
 
 const cardRow = {
   cardId: 'tc', cardName: 'Visa', statementTotal: 100_000, paidAmount: 0, status: 'pending' as const,
@@ -44,5 +47,12 @@ describe('CardStatementsModal', () => {
   it('estado vacío cuando no hay meses con deuda', () => {
     render(<CardStatementsModal isOpen onClose={() => {}} schedule={[]} formatCurrency={fmt} />);
     expect(screen.getByText(/no tienes pagos de tarjeta/i)).toBeTruthy();
+  });
+
+  it('hideBalances: muestra •••••• en lugar de la moneda', () => {
+    mockHideBalances = true;
+    render(<CardStatementsModal isOpen onClose={() => {}} schedule={[monthGroup({ isCurrent: true })]} formatCurrency={fmt} />);
+    expect(screen.getAllByText('••••••').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/\$100\.000/)).toBeNull();
   });
 });

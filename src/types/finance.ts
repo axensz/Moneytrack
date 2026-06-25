@@ -67,6 +67,7 @@ export interface Debt {
   dueDate?: Date; // Fecha de vencimiento opcional
   createdAt?: Date;
   settledAt?: Date; // Fecha en que se saldó
+  forgivenReason?: 'unpaid' | 'gift' | 'other'; // Presente = deuda condonada (no pagada / regalo / otro)
 }
 
 // 🆕 PRESUPUESTOS

@@ -325,6 +325,21 @@ export function useDebts(
     });
   }, [debts, updateDebt]);
 
+  // Condonar una deuda: marcarla saldada con motivo, SIN mover dinero. El dinero
+  // ya se movió al prestar/recibir; condonar solo deja de esperarlo (no revierte
+  // saldos ni borra transacciones). Aplica a 'lent' y 'borrowed'.
+  const forgiveDebt = useCallback(async (
+    debtId: string,
+    reason: NonNullable<Debt['forgivenReason']>
+  ) => {
+    await updateDebt(debtId, {
+      remainingAmount: 0,
+      isSettled: true,
+      settledAt: new Date(),
+      forgivenReason: reason,
+    });
+  }, [updateDebt]);
+
   // Get transactions linked to a specific debt
   const getDebtTransactions = useCallback((debtId: string): Transaction[] => {
     return transactions.filter(t => t.debtId === debtId);
@@ -354,6 +369,7 @@ export function useDebts(
     deleteDebt,
     registerDebtPayment,
     modifyDebtBalance,
+    forgiveDebt,
     getDebtTransactions,
     stats,
   };

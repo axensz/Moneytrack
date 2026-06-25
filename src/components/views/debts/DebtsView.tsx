@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, HandCoins, Users, CheckCircle2, ArrowDownLeft, ArrowUpRight, Trash2, X, DollarSign, Edit, AlertTriangle } from 'lucide-react';
+import { Plus, HandCoins, Users, CheckCircle2, ArrowDownLeft, ArrowUpRight, Trash2, X, DollarSign, Edit, AlertTriangle, Ban } from 'lucide-react';
 import { useDebtsDomain, useAccountDomain } from '../../../hooks/useFinanceSelectors';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { formatCurrency, formatNumberForInput, unformatNumber, parseCurrency, formatDateForInput, parseDateFromInput, formatDate, formatRelativeTime } from '../../../utils/formatters';
@@ -9,6 +9,12 @@ import { ensureDate } from '../../../utils/dateUtils';
 import { showToast } from '../../../utils/toastHelpers';
 import { ConfirmDialog } from '../../modals/ConfirmDialog';
 import type { Debt } from '../../../types/finance';
+
+const FORGIVEN_LABELS: Record<NonNullable<Debt['forgivenReason']>, string> = {
+  unpaid: 'No pagada',
+  gift: 'Regalo',
+  other: 'Otro',
+};
 
 /**
  * Vista de préstamos y deudas
@@ -22,6 +28,7 @@ export const DebtsView: React.FC = () => {
     deleteDebt,
     registerDebtPayment,
     modifyDebtBalance,
+    forgiveDebt,
     getDebtTransactions,
     debtStats,
   } = useDebtsDomain();
@@ -33,6 +40,7 @@ export const DebtsView: React.FC = () => {
   const [showPaymentForm, setShowPaymentForm] = useState<string | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [showSettled, setShowSettled] = useState(false);
+  const [showForgive, setShowForgive] = useState<string | null>(null);
 
   // Balance modifier state
   const [showBalanceModifier, setShowBalanceModifier] = useState<string | null>(null);
@@ -116,6 +124,12 @@ export const DebtsView: React.FC = () => {
       const errorMessage = error instanceof Error ? error.message : 'Error al modificar el saldo';
       showToast.error(errorMessage);
     }
+  };
+
+  const handleForgive = async (debtId: string, reason: NonNullable<Debt['forgivenReason']>) => {
+    await forgiveDebt(debtId, reason);
+    showToast.success('Deuda condonada');
+    setShowForgive(null);
   };
 
   const handleDelete = (debt: Debt) => {
@@ -359,6 +373,9 @@ export const DebtsView: React.FC = () => {
                   modifierOperation={modifierOperation}
                   setModifierOperation={setModifierOperation}
                   onModifyBalance={handleModifyBalance}
+                  onForgive={handleForgive}
+                  showForgive={showForgive}
+                  setShowForgive={setShowForgive}
                 />
               ))}
             </div>
@@ -391,6 +408,9 @@ export const DebtsView: React.FC = () => {
                   modifierOperation={modifierOperation}
                   setModifierOperation={setModifierOperation}
                   onModifyBalance={handleModifyBalance}
+                  onForgive={handleForgive}
+                  showForgive={showForgive}
+                  setShowForgive={setShowForgive}
                 />
               ))}
             </div>
@@ -424,8 +444,17 @@ export const DebtsView: React.FC = () => {
                         {debt.personName}
                       </span>
                       <span className="text-xs text-gray-500 ml-2">{displayAmount(debt.originalAmount)}</span>
+                      {debt.forgivenReason && (
+                        <span className="text-xs text-amber-600 dark:text-amber-400 ml-2">
+                          Condonada · {FORGIVEN_LABELS[debt.forgivenReason]}
+                        </span>
+                      )}
                     </div>
-                    <CheckCircle2 size={16} className="text-green-500" />
+                    {debt.forgivenReason ? (
+                      <Ban size={16} className="text-amber-500" />
+                    ) : (
+                      <CheckCircle2 size={16} className="text-green-500" />
+                    )}
                   </div>
                 ))}
               </div>
@@ -474,6 +503,9 @@ interface DebtCardProps {
   modifierOperation: 'add' | 'subtract';
   setModifierOperation: (op: 'add' | 'subtract') => void;
   onModifyBalance: (id: string, operation: 'add' | 'subtract') => void;
+  onForgive: (id: string, reason: NonNullable<Debt['forgivenReason']>) => void;
+  showForgive: string | null;
+  setShowForgive: (id: string | null) => void;
 }
 
 const DebtCard: React.FC<DebtCardProps> = React.memo(({
@@ -492,6 +524,9 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
   modifierOperation,
   setModifierOperation,
   onModifyBalance,
+  onForgive,
+  showForgive,
+  setShowForgive,
 }) => {
   const progress = debt.originalAmount > 0
     ? Math.round(((debt.originalAmount - debt.remainingAmount) / debt.originalAmount) * 100)
@@ -602,6 +637,13 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
             <DollarSign size={16} />
           </button>
           <button
+            onClick={() => setShowForgive(showForgive === debt.id ? null : debt.id!)}
+            className="p-1.5 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/30 text-amber-600 dark:text-amber-400"
+            title="Condonar"
+          >
+            <Ban size={16} />
+          </button>
+          <button
             onClick={() => onDelete(debt)}
             className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 text-red-500"
             title="Eliminar"
@@ -679,6 +721,32 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
             </button>
             <button
               onClick={() => setShowBalanceModifier(null)}
+              className="p-2 text-gray-400 hover:text-gray-600"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Condonar: elige motivo. Marca la deuda saldada con motivo, sin mover dinero. */}
+      {showForgive === debt.id && (
+        <div className="mt-3">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+            Condonar deuda — el saldo pendiente se da por cerrado. Elige el motivo:
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {(['unpaid', 'gift', 'other'] as const).map((reason) => (
+              <button
+                key={reason}
+                onClick={() => onForgive(debt.id!, reason)}
+                className="flex-1 min-w-[88px] py-2 px-3 rounded-lg text-sm font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors"
+              >
+                {FORGIVEN_LABELS[reason]}
+              </button>
+            ))}
+            <button
+              onClick={() => setShowForgive(null)}
               className="p-2 text-gray-400 hover:text-gray-600"
             >
               <X size={16} />

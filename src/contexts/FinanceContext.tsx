@@ -127,6 +127,7 @@ export interface FinanceContextValue {
   deleteDebt: (id: string) => Promise<void>;
   registerDebtPayment: (debtId: string, amount: number) => Promise<void>;
   modifyDebtBalance: (debtId: string, amount: number, operation: 'add' | 'subtract') => Promise<void>;
+  forgiveDebt: (debtId: string, reason: 'unpaid' | 'gift' | 'other') => Promise<void>;
   getDebtTransactions: (debtId: string) => Transaction[];
   debtStats: {
     totalLent: number;
@@ -252,6 +253,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     deleteDebt,
     registerDebtPayment,
     modifyDebtBalance,
+    forgiveDebt,
     getDebtTransactions,
     stats: debtStats,
   } = useDebts(userId, transactions, userId ? firestoreData.debts : undefined, {
@@ -388,6 +390,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     deleteDebt,
     registerDebtPayment,
     modifyDebtBalance,
+    forgiveDebt,
     getDebtTransactions,
     debtStats,
 
@@ -421,7 +424,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     addCategory, deleteCategory,
     addRecurringPayment, updateRecurringPayment, deleteRecurringPayment,
     isPaidForMonth, getNextDueDate, getDaysUntilDue, getDaysOverdue, isOverdue, getPaymentHistory, recurringStats,
-    debts, addDebt, updateDebt, deleteDebt, registerDebtPayment, modifyDebtBalance,
+    debts, addDebt, updateDebt, deleteDebt, registerDebtPayment, modifyDebtBalance, forgiveDebt,
     getDebtTransactions, debtStats,
     budgets, addBudget, updateBudget, deleteBudget, budgetStatuses, budgetStats,
     savingsGoals, addGoal, updateGoal, deleteGoal, addSavings, goalStatuses, goalStats,

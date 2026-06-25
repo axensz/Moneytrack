@@ -55,8 +55,9 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
         // pintaba ENCIMA y recortaba el borde superior del panel (el menú del
         // engranaje no se recortaba por ser descendiente del header).
         <div className="fixed inset-0 z-[110] flex items-start justify-end p-4 pt-16">
+            {/* Backdrop transparente: sin tinte, solo captura el click-fuera para cerrar. */}
             <div
-                className="absolute inset-0 bg-black/30 -z-10 animate-in fade-in duration-200"
+                className="absolute inset-0 -z-10"
                 onClick={(e) => { e.stopPropagation(); onClose(); }}
             />
             <div

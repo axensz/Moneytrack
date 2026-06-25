@@ -84,8 +84,9 @@ export interface RecurringItem { name: string; amount: number; }
 export interface CardMonthPayment {
   cardId: string;
   cardName: string;
-  statementTotal: number;
-  paidAmount: number;
+  statementTotal: number;   // total facturado del ciclo
+  paidAmount: number;       // pagado en la ventana de pago
+  remaining: number;        // saldo pendiente = statementTotal - paidAmount (clamp >= 0)
   status: CycleStatus;
   installmentItems: InstallmentItem[];
   recurringItems: RecurringItem[];
@@ -97,7 +98,8 @@ export interface CardMonthPayment {
 export interface MonthGroup {
   monthKey: string;   // 'YYYY-MM' de la fecha de pago
   label: string;      // 'julio de 2026'
-  total: number;
+  total: number;      // total facturado del mes (Σ statementTotal)
+  remaining: number;  // saldo pendiente del mes (Σ remaining) — "lo que debes"
   isCurrent: boolean;
   isFuture: boolean;
   cards: CardMonthPayment[];
@@ -194,12 +196,14 @@ export function buildCardPaymentSchedule(
       const paid = index <= 0
         ? paidForCycle(card.cutoffDay!, card.paymentDay!, index, payments, now)
         : 0;
+      const remaining = roundMoney(Math.max(0, statementTotal - paid));
 
       const cardMonth: CardMonthPayment = {
         cardId: card.id!,
         cardName: card.name,
         statementTotal,
         paidAmount: paid,
+        remaining,
         status: cycleStatus(index, statementTotal, paid),
         installmentItems: stmt.items,
         recurringItems: rec.items,
@@ -213,11 +217,13 @@ export function buildCardPaymentSchedule(
         monthKey: key,
         label: labelOf(cycle.paymentDueDate),
         total: 0,
+        remaining: 0,
         isCurrent: key === currentKey,
         isFuture: key > currentKey,
         cards: [],
       };
       group.total = roundMoney(group.total + statementTotal);
+      group.remaining = roundMoney(group.remaining + remaining);
       group.cards.push(cardMonth);
       groups.set(key, group);
     }

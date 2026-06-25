@@ -35,7 +35,11 @@ export function CardStatementsModal({ isOpen, onClose, schedule, formatCurrency 
     return schedule
       .map(g => {
         const cards = g.cards.filter(c => c.cardId === filter);
-        return { ...g, cards, total: roundMoney(cards.reduce((s, c) => s + c.statementTotal, 0)) };
+        return {
+          ...g, cards,
+          total: roundMoney(cards.reduce((s, c) => s + c.statementTotal, 0)),
+          remaining: roundMoney(cards.reduce((s, c) => s + c.remaining, 0)),
+        };
       })
       .filter(g => g.cards.length > 0);
   }, [schedule, filter]);
@@ -112,7 +116,7 @@ function MonthPaymentRow({ group, formatCurrency }: { group: MonthGroup; formatC
             <span className="rounded-full bg-purple-600 px-2 py-0.5 text-xs font-medium text-white">Este mes</span>
           )}
         </span>
-        <span className="font-bold text-gray-900 dark:text-gray-100">{show(group.total)}</span>
+        <span className="font-bold text-gray-900 dark:text-gray-100">{show(group.remaining)}</span>
       </button>
 
       {open && (
@@ -133,7 +137,7 @@ function CardRow({ card, show }: { card: CardMonthPayment; show: (n: number) => 
           <span className="font-medium text-gray-900 dark:text-gray-100">{card.cardName}</span>
           <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${meta.cls}`}>{meta.label}</span>
         </span>
-        <span className="font-semibold text-gray-900 dark:text-gray-100">{show(card.statementTotal)}</span>
+        <span className="font-semibold text-gray-900 dark:text-gray-100">{show(card.remaining)}</span>
       </div>
 
       {card.status === 'partial' && (

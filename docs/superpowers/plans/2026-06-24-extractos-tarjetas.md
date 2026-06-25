@@ -290,12 +290,13 @@ export function cardStatementForCycle(
     const k = index - first; // offset 0-based de la cuota
     if (k < 0 || k >= n) continue;
     const amount = n > 1 ? (tx.monthlyInstallmentAmount ?? tx.amount / n) : tx.amount;
-    total += amount;
+    const rounded = roundMoney(amount);
+    total += rounded; // acumula el monto YA redondeado → total === Σ(items.amount)
     items.push({
       description: tx.description || 'Compra',
       cuota: k + 1,
       total: n,
-      amount: roundMoney(amount),
+      amount: rounded,
     });
   }
   return { total: roundMoney(total), items };
@@ -642,8 +643,13 @@ function computeFutureHorizon(
     const last = cycleIndexOf(cutoffDay, new Date(tx.date), now) + n - 1;
     if (last > maxIdx) maxIdx = last;
   }
-  const hasRecurring = recurringPayments.some(r => r.isActive && r.accountId && refIds.has(r.accountId));
-  if (hasRecurring && maxIdx < MIN_FUTURE_RECURRING) maxIdx = MIN_FUTURE_RECURRING;
+  // El piso por periódicos SOLO aplica si no hay cuotas vivas a futuro (tarjeta con
+  // solo periódicos). Si ya hay cuotas, el horizonte lo fija la última cuota;
+  // extenderlo metería meses solo-periódico de más.
+  if (maxIdx === 0) {
+    const hasRecurring = recurringPayments.some(r => r.isActive && r.accountId && refIds.has(r.accountId));
+    if (hasRecurring) maxIdx = MIN_FUTURE_RECURRING;
+  }
   return Math.min(maxIdx, MAX_FUTURE);
 }
 
@@ -775,28 +781,36 @@ vi.mock('@/contexts/UIPreferencesContext', () => ({
   useUIPreferences: () => ({ hideBalances: false }),
 }));
 
-const schedule: MonthGroup[] = [{
+const cardRow = {
+  cardId: 'tc', cardName: 'Visa', statementTotal: 100_000, paidAmount: 0, status: 'pending' as const,
+  installmentItems: [{ description: 'TV', cuota: 2, total: 12, amount: 100_000 }],
+  recurringItems: [],
+  cycleStart: new Date(2026, 5, 16), cycleEnd: new Date(2026, 6, 15), paymentDueDate: new Date(2026, 7, 5),
+};
+const monthGroup = (over: Partial<MonthGroup> = {}): MonthGroup => ({
   monthKey: '2026-07', label: 'julio de 2026', total: 100_000, isCurrent: true, isFuture: false,
-  cards: [{
-    cardId: 'tc', cardName: 'Visa', statementTotal: 100_000, paidAmount: 0, status: 'pending',
-    installmentItems: [{ description: 'TV', cuota: 2, total: 12, amount: 100_000 }],
-    recurringItems: [],
-    cycleStart: new Date(2026, 5, 16), cycleEnd: new Date(2026, 6, 15), paymentDueDate: new Date(2026, 7, 5),
-  }],
-}];
+  cards: [cardRow], ...over,
+});
 
 const fmt = (n: number) => `$${n.toLocaleString('es-CO')}`;
 
 describe('CardStatementsModal', () => {
   it('muestra el mes y el total', () => {
-    render(<CardStatementsModal isOpen onClose={() => {}} schedule={schedule} formatCurrency={fmt} />);
+    render(<CardStatementsModal isOpen onClose={() => {}} schedule={[monthGroup()]} formatCurrency={fmt} />);
     expect(screen.getByText(/julio de 2026/i)).toBeTruthy();
     expect(screen.getAllByText(/\$100\.000/).length).toBeGreaterThan(0);
   });
 
-  it('al expandir un mes muestra el desglose por tarjeta', () => {
-    render(<CardStatementsModal isOpen onClose={() => {}} schedule={schedule} formatCurrency={fmt} />);
-    fireEvent.click(screen.getByRole('button', { name: /julio de 2026/i }));
+  it('el mes actual arranca expandido (desglose visible sin click)', () => {
+    render(<CardStatementsModal isOpen onClose={() => {}} schedule={[monthGroup({ isCurrent: true })]} formatCurrency={fmt} />);
+    expect(screen.getByText('Visa')).toBeTruthy();
+    expect(screen.getByText(/cuota 2\/12/i)).toBeTruthy();
+  });
+
+  it('un mes no actual arranca colapsado y se expande al hacer click', () => {
+    render(<CardStatementsModal isOpen onClose={() => {}} schedule={[monthGroup({ monthKey: '2026-09', label: 'septiembre de 2026', isCurrent: false, isFuture: true })]} formatCurrency={fmt} />);
+    expect(screen.queryByText('Visa')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /septiembre de 2026/i }));
     expect(screen.getByText('Visa')).toBeTruthy();
     expect(screen.getByText(/cuota 2\/12/i)).toBeTruthy();
   });

@@ -140,6 +140,10 @@ function CardRow({ card, show }: { card: CardMonthPayment; show: (n: number) => 
         <span className="font-semibold text-gray-900 dark:text-gray-100">{show(card.remaining)}</span>
       </div>
 
+      <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+        Vence {card.paymentDueDate.toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })}
+      </p>
+
       {card.status === 'partial' && (
         <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
           Pagaste {show(card.paidAmount)} de {show(card.statementTotal)}

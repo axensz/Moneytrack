@@ -29,6 +29,15 @@ describe('buildCardPaymentSchedule', () => {
     expect([...keys].sort()).toEqual(keys);
   });
 
+  it('agrupa por el mes del CORTE (cycleEnd), no por la fecha de pago', () => {
+    // Compra 16 may, contado → su extracto cierra el 15 jun (index -1) y se paga el 5 jul.
+    // Debe caer en JUNIO (mes del corte), no en julio (mes de pago).
+    const groups = buildCardPaymentSchedule([card], [charge({ amount: 50_000, installments: 1 })], [], NOW);
+    expect(groups.length).toBe(1);
+    expect(groups[0].monthKey).toBe('2026-06');
+    expect(groups[0].label.toLowerCase()).toContain('junio');
+  });
+
   it('estado: cuota pasada pagada=paid, futura=projected', () => {
     const payment: Transaction = {
       id: 'p', type: 'transfer', amount: 100_000, category: 'Pago Crédito', description: '',

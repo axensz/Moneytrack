@@ -87,7 +87,7 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
 
 function MonthPaymentRow({ group, formatCurrency }: { group: MonthGroup; formatCurrency: (n: number) => string }) {
   const { hideBalances } = useUIPreferences();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(group.isCurrent);
   const show = (n: number) => (hideBalances ? '••••••' : formatCurrency(n));
 
   return (

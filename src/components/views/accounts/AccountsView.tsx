@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Wallet, CreditCard, Banknote } from 'lucide-react';
+import { Plus, Wallet, CreditCard, Banknote, Receipt } from 'lucide-react';
 import { BALANCE_ADJUSTMENT_CATEGORY } from '../../../config/constants';
 import { showToast } from '../../../utils/toastHelpers';
 import { useAccountDomain, useTransactionDomain, useRecurringDomain, useDebtsDomain, useFormatCurrency } from '../../../hooks/useFinanceSelectors';
@@ -15,6 +15,8 @@ import { CreditCardsConsolidatedSummary } from './components/CreditCardsConsolid
 import { AccountCard } from './components/AccountCard';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
 import { useAccountForm } from './hooks/useAccountForm';
+import { CardStatementsModal } from './components/CardStatementsModal';
+import { useCardPaymentSchedule } from '../../../hooks/useCardPaymentSchedule';
 
 const ACCOUNT_TYPES = [
   { value: 'savings' as const, label: 'Cuenta de Ahorros', icon: Wallet },
@@ -44,10 +46,12 @@ export const AccountsView: React.FC = () => {
     balancesReady,
     accountsLoading,
   } = useAccountDomain();
-  const { addTransaction } = useTransactionDomain();
+  const { addTransaction, balanceTransactions } = useTransactionDomain();
   const { recurringPayments } = useRecurringDomain();
   const { debts } = useDebtsDomain();
   const formatCurrency = useFormatCurrency();
+  const [showStatements, setShowStatements] = useState(false);
+  const paymentSchedule = useCardPaymentSchedule(accounts, balanceTransactions, recurringPayments);
   // Mapa memoizado del cupo usado por tarjeta para el resumen (evita llamar al
   // accesor por tarjeta en cada render). El cálculo correcto (historial
   // completo, no la ventana paginada) vive en el store vía getCreditUsed; aquí
@@ -367,19 +371,30 @@ export const AccountsView: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            // No crear antes de que cargue el snapshot: isFirst (accounts.length===0)
-            // marcaría una SEGUNDA cuenta por defecto al llegar las reales (#accounts-5).
-            if (accountsLoading) return;
-            accountForm.openCreateForm();
-          }}
-          disabled={accountsLoading}
-          className="btn-primary"
-        >
-          <Plus size={18} />
-          Nueva Cuenta
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {creditCards.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowStatements(true)}
+              className="flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2 text-sm font-medium text-purple-700 transition-colors hover:bg-purple-100 dark:border-purple-800 dark:bg-purple-900/20 dark:text-purple-300 dark:hover:bg-purple-900/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 min-h-[44px]"
+            >
+              <Receipt size={18} />
+              Extractos
+            </button>
+          )}
+
+          <button
+            onClick={() => {
+              if (accountsLoading) return;
+              accountForm.openCreateForm();
+            }}
+            disabled={accountsLoading}
+            className="btn-primary"
+          >
+            <Plus size={18} />
+            Nueva Cuenta
+          </button>
+        </div>
       </div>
 
       {/* Modales */}
@@ -440,6 +455,13 @@ export const AccountsView: React.FC = () => {
         totalUsed={creditCardSummary.totalUsed}
         totalAvailable={creditCardSummary.totalAvailable}
         usagePercentage={creditCardSummary.usagePercentage}
+        formatCurrency={formatCurrency}
+      />
+
+      <CardStatementsModal
+        isOpen={showStatements}
+        onClose={() => setShowStatements(false)}
+        schedule={paymentSchedule}
         formatCurrency={formatCurrency}
       />
 

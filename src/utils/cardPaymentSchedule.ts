@@ -3,7 +3,7 @@
  * Proyecta cuotas mes a mes desde el historial COMPLETO de transacciones.
  */
 import type { Transaction } from '../types/finance';
-import { cycleIndexOf } from './creditCycles';
+import { cycleIndexOf, getCycleByIndex } from './creditCycles';
 import { roundMoney } from './formatters';
 
 export interface InstallmentItem {
@@ -38,4 +38,38 @@ export function cardStatementForCycle(
     });
   }
   return { total: roundMoney(total), items };
+}
+
+export type CycleStatus = 'paid' | 'partial' | 'pending' | 'projected';
+
+/**
+ * Pagos a la tarjeta dentro de la ventana de pago del ciclo `index`:
+ * (cierre del ciclo, cierre del ciclo siguiente].
+ *
+ * // ponytail: heurística — los pagos no se etiquetan a un ciclo concreto; un
+ * // pago podría cubrir parte de otro. Suficiente para visualización.
+ * // Upgrade path: etiquetar pagos a su ciclo (como recurringCycle) si se necesita exactitud.
+ */
+export function paidForCycle(
+  cutoffDay: number,
+  paymentDay: number,
+  index: number,
+  payments: Transaction[],
+  now: Date,
+): number {
+  const cyc = getCycleByIndex(cutoffDay, paymentDay, index, now);
+  const next = getCycleByIndex(cutoffDay, paymentDay, index + 1, now);
+  let sum = 0;
+  for (const p of payments) {
+    const d = new Date(p.date);
+    if (d > cyc.cycleEnd && d <= next.cycleEnd) sum += p.amount;
+  }
+  return roundMoney(sum);
+}
+
+export function cycleStatus(index: number, total: number, paid: number): CycleStatus {
+  if (index > 0) return 'projected';
+  if (paid >= total - 0.01) return 'paid';
+  if (paid <= 0.01) return 'pending';
+  return 'partial';
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Transaction } from '../../types/finance';
-import { cardStatementForCycle } from '../../utils/cardPaymentSchedule';
+import { cardStatementForCycle, paidForCycle, cycleStatus } from '../../utils/cardPaymentSchedule';
 
 const NOW = new Date(2026, 5, 20); // 20 jun 2026; corte 15 → ciclo actual cierra jul (index 0)
 const CUTOFF = 15;
@@ -47,5 +47,30 @@ describe('cardStatementForCycle', () => {
     const r = cardStatementForCycle(CUTOFF, -1, charges, NOW);
     const sumItems = r.items.reduce((s, it) => s + it.amount, 0);
     expect(r.total).toBe(sumItems);
+  });
+});
+
+describe('paidForCycle + cycleStatus', () => {
+  const NOW2 = new Date(2026, 5, 20);
+  const CUT = 15, PAY = 5;
+  const pay = (date: Date, amount: number): Transaction => ({
+    id: 'p', type: 'transfer', amount, category: 'Pago Crédito', description: '',
+    date, paid: true, accountId: 'banco', toAccountId: 'tc',
+  } as Transaction);
+
+  it('cuenta pagos en la ventana (cierre, próximo cierre]', () => {
+    // ciclo -1 cierra 15 jun; ventana de pago = (15 jun, 15 jul]. Un pago el 5 jul cuenta.
+    const sum = paidForCycle(CUT, PAY, -1, [pay(new Date(2026, 6, 5), 100_000)], NOW2);
+    expect(sum).toBe(100_000);
+    // un pago el 10 jun (antes del corte del 15) cae en la ventana del ciclo -2, NO del -1.
+    const none = paidForCycle(CUT, PAY, -1, [pay(new Date(2026, 5, 10), 100_000)], NOW2);
+    expect(none).toBe(0);
+  });
+
+  it('estado: futuro=projected, total pagado=paid, parcial=partial, cero=pending', () => {
+    expect(cycleStatus(1, 100_000, 0)).toBe('projected');
+    expect(cycleStatus(-1, 100_000, 100_000)).toBe('paid');
+    expect(cycleStatus(-1, 100_000, 40_000)).toBe('partial');
+    expect(cycleStatus(-1, 100_000, 0)).toBe('pending');
   });
 });

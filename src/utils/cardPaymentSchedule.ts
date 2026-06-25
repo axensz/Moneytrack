@@ -28,12 +28,13 @@ export function cardStatementForCycle(
     const k = index - first; // offset 0-based de la cuota
     if (k < 0 || k >= n) continue;
     const amount = n > 1 ? (tx.monthlyInstallmentAmount ?? tx.amount / n) : tx.amount;
-    total += amount;
+    const rounded = roundMoney(amount);
+    total += rounded;
     items.push({
       description: tx.description || 'Compra',
       cuota: k + 1,
       total: n,
-      amount: roundMoney(amount),
+      amount: rounded,
     });
   }
   return { total: roundMoney(total), items };

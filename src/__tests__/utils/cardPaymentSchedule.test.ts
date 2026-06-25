@@ -37,4 +37,15 @@ describe('cardStatementForCycle', () => {
     const charges = [tx({ amount: 300_000, installments: 3 })];
     expect(cardStatementForCycle(CUTOFF, -1, charges, NOW).total).toBe(100_000);
   });
+
+  it('total === suma de items.amount con división no exacta (dos cargos mismo ciclo)', () => {
+    // 100.000 / 3 = 33.333,33… → dos cargos en el mismo ciclo (-1) no deben descuadrar.
+    const charges = [
+      tx({ id: 'a', amount: 100_000, installments: 3 }),
+      tx({ id: 'b', amount: 100_000, installments: 3 }),
+    ];
+    const r = cardStatementForCycle(CUTOFF, -1, charges, NOW);
+    const sumItems = r.items.reduce((s, it) => s + it.amount, 0);
+    expect(r.total).toBe(sumItems);
+  });
 });

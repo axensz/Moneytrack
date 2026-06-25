@@ -45,6 +45,23 @@ describe('buildCardPaymentSchedule', () => {
     expect(future.cards[0].status).toBe('projected');
   });
 
+  it('remaining = statementTotal - pagado (saldo pendiente en pago parcial)', () => {
+    const payment: Transaction = {
+      id: 'pp', type: 'transfer', amount: 100_000, category: 'Pago Crédito', description: '',
+      date: new Date(2026, 6, 5), paid: true, accountId: 'banco', toAccountId: 'tc',
+    } as Transaction;
+    const groups = buildCardPaymentSchedule(
+      [card],
+      [charge({ amount: 300_000, installments: 1 }), payment], // contado may → index -1, paga jul 5
+      [], NOW,
+    );
+    const g = groups.find(x => x.cards[0].status === 'partial')!;
+    expect(g.cards[0].statementTotal).toBe(300_000);
+    expect(g.cards[0].paidAmount).toBe(100_000);
+    expect(g.cards[0].remaining).toBe(200_000);
+    expect(g.remaining).toBe(200_000);
+  });
+
   it('periódico de la tarjeta se suma SOLO a meses futuros (no duplica el pasado)', () => {
     const rec: RecurringPayment = {
       id: 'r', name: 'Netflix', amount: 40_000, category: 'Entretenimiento',

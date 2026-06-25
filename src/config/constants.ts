@@ -163,43 +163,6 @@ export const SUCCESS_MESSAGES = {
   DATA_IMPORTED: 'Datos importados exitosamente'
 } as const;
 
-// Configuración de tipos de cuenta
-export const ACCOUNT_TYPES = [
-  { value: 'savings' as const, label: 'Cuenta de Ahorros' },
-  { value: 'credit' as const, label: 'Crédito' },
-  { value: 'cash' as const, label: 'Efectivo' }
-] as const;
-
-// Configuración de tipos de transacción
-export const TRANSACTION_TYPES = [
-  { value: 'expense' as const, label: 'Gasto' },
-  { value: 'income' as const, label: 'Ingreso' },
-  { value: 'transfer' as const, label: 'Transferencia' }
-] as const;
-
-// Límites de estadísticas
-export const STATS_CONFIG = {
-  monthlyDataLimit: 6, // Últimos 6 meses
-  categoryTopLimit: 10 // Top 10 categorías
-} as const;
-
-// Configuración de almacenamiento local
-export const STORAGE_KEYS = {
-  categories: 'financeCategories',
-  theme: 'theme'
-} as const;
-
-// Configuración de colecciones de Firestore
-export const FIRESTORE_COLLECTIONS = {
-  users: 'users',
-  transactions: 'transactions',
-  accounts: 'accounts',
-  categories: 'categories',
-  debts: 'debts',
-  budgets: 'budgets',
-  savingsGoals: 'savingsGoals',
-} as const;
-
 // Labels de UI (para internacionalización futura)
 export const UI_LABELS = {
   // Tipos de transacción
@@ -288,15 +251,3 @@ export const createInitialTransaction = () => ({
   hasInterest: false, // 🆕 Por defecto sin intereses
   installments: 1 // 🆕 Por defecto 1 cuota
 });
-
-// Estado inicial para nueva cuenta
-export const INITIAL_ACCOUNT = {
-  name: '',
-  type: 'savings' as const,
-  initialBalance: 0,
-  isDefault: false,
-  creditLimit: 0,
-  cutoffDay: 1,
-  paymentDay: 1,
-  interestRate: 0 // 🆕 Tasa E.A. por defecto
-};

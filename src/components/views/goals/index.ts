@@ -1,1 +1,0 @@
-export { GoalsView } from './GoalsView';

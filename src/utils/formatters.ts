@@ -310,16 +310,13 @@ export const generateId = (): string => {
 
 // Exportar funciones directas para compatibilidad
 export const formatCurrency = (amount: number): string => CurrencyFormatter.format(amount);
-export const formatCurrencyCompact = (amount: number): string => CurrencyFormatter.formatCompact(amount);
 
 export const formatDate = (date: Date | string): string => DateFormatter.formatDate(date);
-export const formatDateLong = (date: Date | string): string => DateFormatter.formatDateLong(date);
 export const formatDateForInput = (date?: Date): string => DateFormatter.formatDateForInput(date);
 export const parseDateFromInput = (dateString: string): Date => DateFormatter.parseDateFromInput(dateString);
 export const parseDateWithTime = (dateString: string, timeSource?: Date): Date => DateFormatter.parseDateWithTime(dateString, timeSource);
 export const formatMonthYear = (date: Date | string): string => DateFormatter.formatMonthYear(date);
 export const formatRelativeTime = (date: Date | string): string => DateFormatter.formatRelativeTime(date);
-export const getMonthName = (monthNumber: number): string => DateFormatter.getMonthName(monthNumber);
 
 export const formatNumberForInput = (value: string | number): string => NumberFormatter.formatForInput(value);
 export const unformatNumber = (value: string): string => NumberFormatter.unformat(value);
@@ -337,6 +334,3 @@ export const unformatNumber = (value: string): string => NumberFormatter.unforma
  */
 export const parseCurrency = (value: string): number =>
   parseFloat(NumberFormatter.unformat(value).replace(',', '.'));
-
-// Exportar clases para uso avanzado
-export { CurrencyFormatter, DateFormatter, NumberFormatter };

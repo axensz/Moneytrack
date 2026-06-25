@@ -26,10 +26,6 @@ export function setBatchImporting(value: boolean): void {
     }
 }
 
-export function isBatchImporting(): boolean {
-    return _isBatchImporting;
-}
-
 /**
  * Returns true if notifications should be suppressed for this transaction.
  * Checks: active batch flag, grace period after import, or ID in recent import set.
@@ -56,12 +52,4 @@ export function registerImportedIds(ids: string[]): void {
     setTimeout(() => {
         ids.forEach(id => _importedIds.delete(id));
     }, 60_000);
-}
-
-/**
- * Clear all imported IDs (e.g., on user logout)
- */
-export function clearImportedIds(): void {
-    _importedIds.clear();
-    _importFinishedAt = 0;
 }

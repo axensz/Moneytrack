@@ -14,14 +14,40 @@ export const viewport: Viewport = {
   themeColor: "#8b5cf6",
 };
 
+// URL absoluta del deploy (GitHub Pages bajo /Moneytrack). En dev basePath="" — no
+// importa: las meta solo las leen crawlers sobre el sitio desplegado.
+const siteUrl = `https://axensz.github.io${basePath}`;
+const ogTitle = "Control de Finanzas - MoneyTrack";
+const ogDescription = "Gestiona tus ingresos, gastos y cuentas de forma simple";
+// ponytail: og:image reusa el icono PWA 512² (cuadrado → twitter card "summary").
+// Para card grande (1.91:1) añadir public/og-image.png 1200x630 y apuntar aquí.
+const ogImage = `${siteUrl}/icons/icon-512x512.png`;
+
 export const metadata: Metadata = {
-  title: "Control de Finanzas - MoneyTrack",
-  description: "Gestiona tus ingresos, gastos y cuentas de forma simple",
+  metadataBase: new URL(siteUrl),
+  title: ogTitle,
+  description: ogDescription,
   manifest: `${basePath}/manifest.json`,
+  referrer: "strict-origin-when-cross-origin",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "MoneyTrack",
+  },
+  openGraph: {
+    type: "website",
+    siteName: "MoneyTrack",
+    title: ogTitle,
+    description: ogDescription,
+    url: `${siteUrl}/`,
+    locale: "es_ES",
+    images: [{ url: ogImage, width: 512, height: 512, alt: "MoneyTrack" }],
+  },
+  twitter: {
+    card: "summary",
+    title: ogTitle,
+    description: ogDescription,
+    images: [ogImage],
   },
 };
 

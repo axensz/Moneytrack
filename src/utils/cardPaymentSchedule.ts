@@ -5,6 +5,7 @@
 import type { Transaction, Account, RecurringPayment } from '../types/finance';
 import { cycleIndexOf, getCycleByIndex, type CreditCycle } from './creditCycles';
 import { roundMoney } from './formatters';
+import { ensureDate } from './dateUtils';
 import { getAccountReferenceIds } from './accountTransactions';
 import { getYearlyAnchorMonth } from './recurringDates';
 import { SPECIAL_CATEGORIES, APP_CONFIG } from '../config/constants';
@@ -26,7 +27,7 @@ export function cardStatementForCycle(
   const items: InstallmentItem[] = [];
   let total = 0;
   for (const tx of charges) {
-    const first = cycleIndexOf(cutoffDay, new Date(tx.date), now);
+    const first = cycleIndexOf(cutoffDay, ensureDate(tx.date), now);
     const n = tx.installments && tx.installments > 1 ? tx.installments : 1;
     const k = index - first; // offset 0-based de la cuota
     if (k < 0 || k >= n) continue;
@@ -65,7 +66,7 @@ export function paidForCycle(
   let sum = 0;
   for (const p of payments) {
     if (!p.paid) continue;
-    const d = new Date(p.date);
+    const d = ensureDate(p.date);
     if (d > cyc.cycleEnd && d <= next.cycleEnd) sum += p.amount;
   }
   return roundMoney(sum);
@@ -159,7 +160,7 @@ function computeFutureHorizon(
   let maxIdx = 0;
   for (const tx of charges) {
     const n = tx.installments && tx.installments > 1 ? tx.installments : 1;
-    const last = cycleIndexOf(cutoffDay, new Date(tx.date), now) + n - 1;
+    const last = cycleIndexOf(cutoffDay, ensureDate(tx.date), now) + n - 1;
     if (last > maxIdx) maxIdx = last;
   }
   // Si no hay cuotas futuras pero hay periódicos activos, proyecta al menos MIN_FUTURE_RECURRING.
@@ -212,10 +213,13 @@ export function buildCardPaymentSchedule(
         paymentDueDate: cycle.paymentDueDate,
       };
 
-      const key = monthKeyOf(cycle.paymentDueDate);
+      // Agrupar por el mes del CORTE (cycleEnd) = el extracto al que pertenece el
+      // cargo, no por la fecha de pago. Agrupar por pago corría las compras un mes
+      // hacia adelante (una compra de junio aparecía en julio/agosto).
+      const key = monthKeyOf(cycle.cycleEnd);
       const group = groups.get(key) ?? {
         monthKey: key,
-        label: labelOf(cycle.paymentDueDate),
+        label: labelOf(cycle.cycleEnd),
         total: 0,
         remaining: 0,
         isCurrent: key === currentKey,

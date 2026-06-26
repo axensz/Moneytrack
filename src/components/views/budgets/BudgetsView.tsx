@@ -119,7 +119,7 @@ export const BudgetsView: React.FC = () => {
             </p>
 
             {!showSetup ? (
-              <button onClick={() => setShowSetup(true)} className="mt-5 inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold rounded-xl shadow-lg shadow-purple-500/25 transition-all hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]">
+              <button onClick={() => setShowSetup(true)} className="mt-5 inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold rounded-xl shadow-lg shadow-purple-500/25 transition-[box-shadow,transform,background-color] hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]">
                 <Sparkles size={18} /> Iniciar plan
               </button>
             ) : (
@@ -225,7 +225,7 @@ export const BudgetsView: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full ${item.color} transition-all duration-700`} style={{ width: `${(item.value / item.max) * 100}%` }} />
+                        <div className={`h-full rounded-full ${item.color} transition-[width] duration-700`} style={{ width: `${(item.value / item.max) * 100}%` }} />
                       </div>
                       <span className="text-[11px] font-bold text-gray-700 dark:text-gray-300">{item.value}<span className="text-gray-400 font-normal">/{item.max}</span></span>
                     </div>
@@ -279,7 +279,7 @@ export const BudgetsView: React.FC = () => {
                     </div>
                     <div className="relative">
                       <div className={`w-full h-3 ${item.trackColor} rounded-full overflow-hidden`}>
-                        <div className={`h-full rounded-full ${item.warn && item.label !== 'Ahorro' ? 'bg-rose-500' : item.color} transition-all duration-700`}
+                        <div className={`h-full rounded-full ${item.warn && item.label !== 'Ahorro' ? 'bg-rose-500' : item.color} transition-[width] duration-700`}
                           style={{ width: `${normalizedWidth}%` }} />
                       </div>
                       <div className="absolute top-0 bottom-0 flex items-center" style={{ left: `${targetPosition}%` }}>
@@ -345,7 +345,7 @@ export const BudgetsView: React.FC = () => {
                       </span>
                       <div className="flex-1 h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                         <div
-                          className={`h-full rounded-full transition-all duration-500 ${isPositive ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                          className={`h-full rounded-full transition-[width] duration-500 ${isPositive ? 'bg-emerald-500' : 'bg-rose-500'}`}
                           style={{ width: `${barWidth}%` }}
                         />
                       </div>
@@ -487,7 +487,7 @@ export const BudgetsView: React.FC = () => {
               </div>
               <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                 <div
-                  className={`h-2 rounded-full transition-all duration-500 ${status === 'exceeded' ? 'bg-red-500' : status === 'warning' ? 'bg-amber-500' : 'bg-green-500'}`}
+                  className={`h-2 rounded-full transition-[width] duration-500 ${status === 'exceeded' ? 'bg-red-500' : status === 'warning' ? 'bg-amber-500' : 'bg-green-500'}`}
                   style={{ width: `${Math.min(100, percentage)}%` }}
                 />
               </div>

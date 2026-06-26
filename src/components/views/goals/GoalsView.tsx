@@ -113,7 +113,7 @@ export const GoalsView: React.FC = () => {
 
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/20 rounded-2xl p-4 sm:p-5 border-2 border-purple-200 dark:border-purple-700 shadow-lg hover:shadow-xl transition-all">
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/20 rounded-2xl p-4 sm:p-5 border-2 border-purple-200 dark:border-purple-700 shadow-lg hover:shadow-xl transition-shadow">
             <div className="flex items-center justify-between mb-2">
               <div className="p-2 bg-purple-200 dark:bg-purple-800 rounded-xl">
                 <Target className="text-purple-700 dark:text-purple-300" size={20} />
@@ -122,7 +122,7 @@ export const GoalsView: React.FC = () => {
             <p className="text-xs text-purple-700 dark:text-purple-400 font-medium mb-1">Metas activas</p>
             <p className="text-2xl sm:text-3xl font-bold text-purple-900 dark:text-purple-100">{goalStats.activeCount}</p>
           </div>
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 rounded-2xl p-4 sm:p-5 border-2 border-blue-200 dark:border-blue-700 shadow-lg hover:shadow-xl transition-all">
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 rounded-2xl p-4 sm:p-5 border-2 border-blue-200 dark:border-blue-700 shadow-lg hover:shadow-xl transition-shadow">
             <div className="flex items-center justify-between mb-2">
               <div className="p-2 bg-blue-200 dark:bg-blue-800 rounded-xl">
                 <Target className="text-blue-700 dark:text-blue-300" size={20} />
@@ -131,7 +131,7 @@ export const GoalsView: React.FC = () => {
             <p className="text-xs text-blue-700 dark:text-blue-400 font-medium mb-1">Objetivo total</p>
             <p className="text-xl sm:text-2xl font-bold text-blue-900 dark:text-blue-100">{displayAmount(goalStats.totalTarget)}</p>
           </div>
-          <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/20 rounded-2xl p-4 sm:p-5 border-2 border-green-200 dark:border-green-700 shadow-lg hover:shadow-xl transition-all">
+          <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/20 rounded-2xl p-4 sm:p-5 border-2 border-green-200 dark:border-green-700 shadow-lg hover:shadow-xl transition-shadow">
             <div className="flex items-center justify-between mb-2">
               <div className="p-2 bg-green-200 dark:bg-green-800 rounded-xl">
                 <CheckCircle2 className="text-green-700 dark:text-green-300" size={20} />
@@ -140,7 +140,7 @@ export const GoalsView: React.FC = () => {
             <p className="text-xs text-green-700 dark:text-green-400 font-medium mb-1">Ahorrado</p>
             <p className="text-xl sm:text-2xl font-bold text-green-900 dark:text-green-100">{displayAmount(goalStats.totalSaved)}</p>
           </div>
-          <div className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/30 dark:to-amber-800/20 rounded-2xl p-4 sm:p-5 border-2 border-amber-200 dark:border-amber-700 shadow-lg hover:shadow-xl transition-all">
+          <div className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/30 dark:to-amber-800/20 rounded-2xl p-4 sm:p-5 border-2 border-amber-200 dark:border-amber-700 shadow-lg hover:shadow-xl transition-shadow">
             <div className="flex items-center justify-between mb-2">
               <div className="p-2 bg-amber-200 dark:bg-amber-800 rounded-xl">
                 <Trophy className="text-amber-700 dark:text-amber-300" size={20} />
@@ -275,7 +275,7 @@ export const GoalsView: React.FC = () => {
                 {/* Progress bar */}
                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 mb-2">
                   <div
-                    className={`h-3 rounded-full transition-all duration-500 ${percentage >= 100 ? 'bg-green-500' : percentage >= 75 ? 'bg-blue-500' : 'bg-purple-500'
+                    className={`h-3 rounded-full transition-[width,background-color] duration-500 ${percentage >= 100 ? 'bg-green-500' : percentage >= 75 ? 'bg-blue-500' : 'bg-purple-500'
                       }`}
                     style={{ width: `${Math.min(100, percentage)}%` }}
                   />

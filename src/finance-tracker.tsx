@@ -425,7 +425,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
                 }
                 setShowMoreMenu(false);
               }}
-              className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 min-w-[56px] rounded-xl transition-all ${view === tab.key
+              className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 min-w-[56px] rounded-xl transition-[background-color,color,transform] ${view === tab.key
                 ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 scale-105'
                 : 'text-gray-500 dark:text-gray-400 active:scale-95 active:bg-gray-100 dark:active:bg-gray-800'
                 }`}
@@ -444,7 +444,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
                   setShowMoreMenu(true);
                 }
               }}
-              className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 min-w-[56px] rounded-xl transition-all ${(['recurring', 'budgets', 'debts'] as ViewType[]).includes(view)
+              className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 min-w-[56px] rounded-xl transition-[background-color,color,transform] ${(['recurring', 'budgets', 'debts'] as ViewType[]).includes(view)
                 ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 scale-105'
                 : showMoreMenu
                   ? 'text-purple-600 dark:text-purple-400'

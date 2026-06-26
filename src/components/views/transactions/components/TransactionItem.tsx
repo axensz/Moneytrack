@@ -86,7 +86,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
     const amountId = `${editId}-amount`;
     const dateId = `${editId}-date`;
     return (
-      <div className="border rounded-xl p-3.5 sm:p-4 transition-all bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+      <div className="border rounded-xl p-3.5 sm:p-4 transition-colors bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -181,7 +181,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
 
   return (
     <div
-      className={`border rounded-xl p-3.5 sm:p-4 transition-all bg-white dark:bg-gray-800 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md shadow-sm group ${isExpanded ? 'border-purple-300 dark:border-purple-600' : 'border-gray-200 dark:border-gray-700'} ${onToggleExpand ? 'cursor-pointer' : ''}`}
+      className={`border rounded-xl p-3.5 sm:p-4 transition-[box-shadow,border-color,background-color] bg-white dark:bg-gray-800 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md shadow-sm group ${isExpanded ? 'border-purple-300 dark:border-purple-600' : 'border-gray-200 dark:border-gray-700'} ${onToggleExpand ? 'cursor-pointer' : ''}`}
       onClick={onToggleExpand ? () => onToggleExpand(transaction.id!) : undefined}
     >
       <div className="flex items-start gap-3">

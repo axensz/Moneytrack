@@ -86,7 +86,7 @@ export function ImportUploadStep({
         onDrop={onDrop}
         onDragOver={e => e.preventDefault()}
         onClick={() => fileInputRef.current?.click()}
-        className="border-2 border-dashed border-purple-300 dark:border-purple-700 rounded-2xl p-5 sm:p-8 text-center cursor-pointer hover:border-purple-500 hover:bg-purple-50/50 dark:hover:bg-purple-900/10 transition-all"
+        className="border-2 border-dashed border-purple-300 dark:border-purple-700 rounded-2xl p-5 sm:p-8 text-center cursor-pointer hover:border-purple-500 hover:bg-purple-50/50 dark:hover:bg-purple-900/10 transition-colors"
       >
         {pdfParsing ? (
           <Loader2 size={32} className="mx-auto mb-3 text-purple-400 animate-spin" />

@@ -91,7 +91,7 @@ export const CreditCardsConsolidatedSummary: React.FC<CreditCardsConsolidatedSum
         </div>
         <div className="h-3 w-full overflow-hidden rounded-full bg-purple-100 dark:bg-purple-900/30">
           <div
-            className={`h-full transition-all ${isHighUsage
+            className={`h-full transition-[width] ${isHighUsage
               ? 'bg-gradient-to-r from-orange-500 to-rose-500'
               : 'bg-gradient-to-r from-purple-500 to-violet-500'
               }`}

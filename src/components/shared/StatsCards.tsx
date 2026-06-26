@@ -54,7 +54,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
         {/* Balance Card - Morado Premium */}
-        <div className="col-span-2 lg:col-span-1 p-3 sm:p-4 md:p-5 rounded-xl border-2 border-purple-200 bg-gradient-to-br from-purple-100 to-violet-100 dark:from-purple-900/30 dark:to-violet-900/30 dark:border-purple-700 shadow-lg hover:shadow-xl transition-all">
+        <div className="col-span-2 lg:col-span-1 p-3 sm:p-4 md:p-5 rounded-xl border-2 border-purple-200 bg-gradient-to-br from-purple-100 to-violet-100 dark:from-purple-900/30 dark:to-violet-900/30 dark:border-purple-700 shadow-lg hover:shadow-xl transition-[box-shadow,border-color,transform]">
           <div className="flex items-center justify-between mb-1.5 sm:mb-2">
             <span className="text-xs sm:text-sm font-medium text-purple-800 dark:text-purple-200">{balanceLabel}</span>
             <div className="p-1.5 sm:p-2 rounded-lg bg-purple-200 dark:bg-purple-800">
@@ -71,7 +71,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
         </div>
 
         {/* Ingresos Card */}
-        <div className="p-3 sm:p-4 md:p-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-md hover:shadow-lg transition-all">
+        <div className="p-3 sm:p-4 md:p-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-md hover:shadow-lg transition-[box-shadow,border-color,transform]">
           <div className="flex items-center justify-between mb-1.5 sm:mb-2">
             <span className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Ingresos <span className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500 font-normal">{periodLabel}</span></span>
             <div className="p-1.5 sm:p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
@@ -84,7 +84,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
         </div>
 
         {/* Gastos Card */}
-        <div className="p-3 sm:p-4 md:p-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-md hover:shadow-lg transition-all">
+        <div className="p-3 sm:p-4 md:p-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-md hover:shadow-lg transition-[box-shadow,border-color,transform]">
           <div className="flex items-center justify-between mb-1.5 sm:mb-2">
             <span className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Gastos <span className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500 font-normal">{periodLabel}</span></span>
             <div className="p-1.5 sm:p-2 rounded-lg bg-rose-100 dark:bg-rose-900/30">
@@ -97,7 +97,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
         </div>
 
         {/* Pendientes Card */}
-        <div className="col-span-2 lg:col-span-1 p-3 sm:p-4 md:p-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-md hover:shadow-lg transition-all">
+        <div className="col-span-2 lg:col-span-1 p-3 sm:p-4 md:p-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-md hover:shadow-lg transition-[box-shadow,border-color,transform]">
           <div className="flex items-center justify-between mb-1.5 sm:mb-2">
             <span
               className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 inline-flex items-center gap-1 cursor-help"

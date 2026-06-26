@@ -288,6 +288,34 @@ span {
   }
 }
 
+/* Press feedback universal (Emil regla #1: la UI "te escucha").
+   Solo en punteros finos; el scale anima con la curva/duración default ya
+   global. Excluye .btn-type (segmentado) para no romper su layout. */
+@media (hover: hover) and (pointer: fine) {
+
+  button:not(.btn-type):not(:disabled):active,
+  [role="tab"]:active,
+  a[role="button"]:active {
+    transform: scale(0.97);
+    /* La transición es propia del :active → el press anima suave en TODOS los
+       botones aunque su transición base no incluya transform (color-only). */
+    transition: transform 100ms var(--ease-out);
+  }
+}
+
+/* Accesibilidad: menos movimiento, no cero (WCAG / vestibular). */
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Animación shimmer para el header del chat */
 @keyframes shimmer {
   0% {
@@ -301,63 +329,6 @@ span {
 
 .animate-shimmer {
   animation: shimmer 3s infinite;
-}
-
-/* ─── Dropdown Viewport Containment ─────────────────── */
-
-/* Ensure dropdowns stay within viewport bounds */
-.dropdown-container {
-  position: relative;
-}
-
-.dropdown-menu {
-  position: absolute;
-  z-index: 50;
-  min-width: 200px;
-  max-width: calc(100vw - 2rem);
-  /* Prevent overflow on mobile */
-  max-height: 300px;
-  overflow-y: auto;
-  background-color: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-}
-
-/* Smart positioning: flip if near bottom of viewport */
-.dropdown-menu[data-position="bottom"] {
-  top: 100%;
-  margin-top: 0.5rem;
-}
-
-.dropdown-menu[data-position="top"] {
-  bottom: 100%;
-  margin-bottom: 0.5rem;
-}
-
-/* Align to right if near right edge */
-.dropdown-menu[data-align="right"] {
-  right: 0;
-}
-
-.dropdown-menu[data-align="left"] {
-  left: 0;
-}
-
-/* Mobile-specific dropdown styles */
-@media (max-width: 640px) {
-  .dropdown-menu {
-    max-width: calc(100vw - 1rem);
-    max-height: 50vh;
-    /* Limit height on mobile */
-  }
-
-  /* Full-width dropdowns on mobile for better touch targets */
-  .dropdown-menu-mobile-full {
-    left: 0.5rem;
-    right: 0.5rem;
-    width: calc(100vw - 1rem);
-  }
 }
 
 /* Animaciones de entrada mejoradas */
@@ -399,10 +370,18 @@ span {
 
 .animate-in {
   animation-fill-mode: both;
+  /* ANTES: sin duración → corría en 0s (modales aparecían de golpe). */
+  animation-duration: 200ms;
+  animation-timing-function: var(--ease-out);
 }
 
 .fade-in {
   animation-name: fadeIn;
+}
+
+/* Alias: BaseModal pedía zoom-in-95 y no existía (entrada rota). */
+.zoom-in-95 {
+  animation-name: zoom-in;
 }
 
 .slide-in-from-bottom-2 {
@@ -432,5 +411,42 @@ span {
 
   to {
     opacity: 1;
+  }
+}
+
+/* ── Salida (Emil: exit más rápido que enter, 150ms vs 200ms) ──────── */
+.animate-out {
+  animation-fill-mode: both;
+  animation-duration: 150ms;
+  animation-timing-function: var(--ease-out);
+}
+
+.fade-out {
+  animation-name: fadeOut;
+}
+
+.zoom-out-95 {
+  animation-name: zoom-out;
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes zoom-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(0.95);
   }
 }

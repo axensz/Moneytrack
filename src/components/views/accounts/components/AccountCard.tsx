@@ -90,7 +90,7 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
 
   const getCardClasses = () => {
-    const base = 'rounded-xl p-5 transition-all touch-none select-none relative overflow-hidden';
+    const base = 'rounded-xl p-5 transition-[box-shadow,border-color,transform,opacity,background-color] touch-none select-none relative overflow-hidden';
 
     if (isDragging) {
       return `${base} opacity-50 scale-95 shadow-2xl`;
@@ -343,7 +343,7 @@ const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
 
       <div className="w-full h-2.5 bg-purple-100 dark:bg-purple-900/30 rounded-full overflow-hidden">
         <div
-          className={`h-full transition-all ${isHighUsage
+          className={`h-full transition-[width,background-color] ${isHighUsage
             ? 'bg-gradient-to-r from-orange-500 to-rose-500'
             : 'bg-gradient-to-r from-purple-500 to-violet-500'
             }`}

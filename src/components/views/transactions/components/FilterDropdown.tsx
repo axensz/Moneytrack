@@ -80,7 +80,7 @@ export const FilterDropdown: React.FC<FilterDropdownProps> = ({
         <div
           role="listbox"
           aria-label={label}
-          className={`absolute top-full mt-1 z-[100] bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-2 min-w-[200px] max-w-[calc(100vw-2rem)] max-h-[350px] overflow-y-auto ${align === 'left' ? 'left-0' : 'right-0'
+          className={`absolute top-full mt-1 z-[100] bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-2 min-w-[200px] max-w-[calc(100vw-2rem)] max-h-[350px] overflow-y-auto animate-in fade-in zoom-in-95 ${align === 'left' ? 'left-0 origin-top-left' : 'right-0 origin-top-right'
           }`}>
           <div className="space-y-0.5">
             <button

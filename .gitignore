@@ -181,3 +181,5 @@ scripts/recategorize-*.mjs
 # ESLint cache
 .eslintcache
 
+# Added by code-review-graph
+.code-review-graph/

@@ -59,15 +59,15 @@ export function BaseModal({
         onClick={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}
         tabIndex={-1}
-        className={`bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full ${maxWidth} my-auto outline-none animate-in fade-in zoom-in-95 duration-200 ${className}`}
+        className={`bg-card rounded-2xl shadow-xl w-full ${maxWidth} my-auto outline-none animate-in fade-in zoom-in duration-300 ${className}`}
         style={{
           maxHeight: 'calc(100dvh - 2rem)',
         }}
       >
         <div className="overflow-y-auto" style={{ maxHeight: 'calc(100dvh - 2rem)' }}>
           {title && (
-            <div className="sticky top-0 z-10 flex justify-between items-center p-4 sm:p-6 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
-              <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <div className="sticky top-0 z-10 flex justify-between items-center p-4 sm:p-6 border-b border-border bg-card">
+              <h3 className="text-lg sm:text-xl font-bold text-foreground flex items-center gap-2">
                 {titleIcon}
                 {title}
               </h3>
@@ -75,7 +75,7 @@ export function BaseModal({
                 <button
                   onClick={onClose}
                   aria-label="Cerrar"
-                  className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 transition-colors p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                  className="text-muted-foreground hover:text-foreground transition-colors p-2 rounded-xl hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-primary min-w-[44px] min-h-[44px] flex items-center justify-center"
                 >
                   <X size={20} />
                 </button>

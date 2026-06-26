@@ -209,7 +209,7 @@
 
   .btn-secondary {
     @apply flex items-center justify-center gap-2 px-4 py-2.5 sm:px-5 sm:py-2.5 rounded-lg font-medium shadow-md hover:shadow-lg transition-all text-sm sm:text-base;
-    background-color: var(--primary);
+    background-color: var(--primary-solid);
     color: var(--primary-foreground);
     min-height: 44px;
     cursor: pointer;
@@ -229,7 +229,7 @@
 
   .btn-submit {
     @apply flex items-center justify-center px-4 py-2.5 sm:px-5 sm:py-2.5 rounded-lg font-medium transition-all shadow-md text-sm sm:text-base;
-    background-color: var(--primary);
+    background-color: var(--primary-solid);
     color: var(--primary-foreground);
     min-height: 44px;
     cursor: pointer;

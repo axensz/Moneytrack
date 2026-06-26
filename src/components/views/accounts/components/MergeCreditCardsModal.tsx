@@ -58,20 +58,20 @@ export const MergeCreditCardsModal: React.FC<MergeCreditCardsModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title="Unificar tarjetas de crédito"
-      titleIcon={<CreditCard size={22} className="text-purple-600 dark:text-purple-400" />}
+      titleIcon={<CreditCard size={22} className="text-primary" />}
       maxWidth="max-w-2xl"
       closeOnBackdrop={!isSubmitting}
       showCloseButton={!isSubmitting}
     >
       <div className="space-y-5">
-        <p className="text-sm text-gray-600 dark:text-gray-300">
+        <p className="text-sm text-muted-foreground">
           Las transacciones de la tarjeta origen se moverán a la tarjeta destino y luego se eliminará la tarjeta origen.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-900/40">
-            <span className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Tarjeta origen</span>
-            <p className="font-semibold text-gray-900 dark:text-gray-100 mt-1">
+          <div className="rounded-xl border border-border bg-muted/40 p-4">
+            <span className="text-xs text-muted-foreground">Tarjeta origen</span>
+            <p className="font-semibold text-foreground mt-1">
               {sourceCard?.name || 'Sin seleccionar'}
             </p>
           </div>
@@ -111,7 +111,7 @@ export const MergeCreditCardsModal: React.FC<MergeCreditCardsModalProps> = ({
               className="input-base"
               disabled={isSubmitting}
             />
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               Debe ser mayor que cero. Por defecto se sugiere el cupo combinado.
             </p>
           </div>
@@ -127,14 +127,14 @@ export const MergeCreditCardsModal: React.FC<MergeCreditCardsModalProps> = ({
               className="input-base"
               disabled={isSubmitting}
             />
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               Si difiere de la deuda calculada, se creará un ajuste automático en {targetCard?.name || 'la tarjeta destino'}.
             </p>
           </div>
         </div>
 
         {creditLimitBelowDebt && (
-          <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-200">
+          <div className="flex gap-3 rounded-xl border border-warning/30 bg-warning-muted p-4 text-warning">
             <AlertTriangle size={20} className="flex-shrink-0 mt-0.5" />
             <div className="text-sm">
               <p className="font-semibold">El nuevo cupo queda por debajo de la deuda usada.</p>
@@ -172,8 +172,8 @@ interface CalculatedValueProps {
 }
 
 const CalculatedValue: React.FC<CalculatedValueProps> = ({ label, value }) => (
-  <div className="rounded-xl border border-purple-100 bg-purple-50 p-4 dark:border-purple-900/50 dark:bg-purple-900/20">
-    <p className="text-xs text-purple-700 dark:text-purple-300">{label}</p>
-    <p className="text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">{value}</p>
+  <div className="rounded-xl border border-border bg-muted/40 p-4">
+    <p className="text-xs text-muted-foreground">{label}</p>
+    <p className="text-lg font-bold text-foreground mt-1">{value}</p>
   </div>
 );

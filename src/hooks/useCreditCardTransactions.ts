@@ -4,7 +4,7 @@
  * PROBLEMA:
  * El listener principal (useFirestoreSubscriptions) limita las transacciones en
  * memoria a las 500 más recientes (PAGE_SIZE). Los cálculos de tarjeta de crédito
- * que recorren ese array —estado de cuenta (useCreditCardStatement) e intereses
+ * que recorren ese array —estado de cuenta (useCardPaymentSchedule) e intereses
  * (useCreditCardInterests)— pierden las compras a CUOTAS de ciclos antiguos cuando
  * la compra original quedó fuera de esas 500. Resultado: cargos, cuotas e intereses
  * subreportados para usuarios con muchas transacciones.

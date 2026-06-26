@@ -25,15 +25,27 @@
   padding-top: env(safe-area-inset-top);
 }
 
-/* Focus visible mejorado para accesibilidad */
+/* Focus visible mejorado para accesibilidad. Usa el token de marca (--primary,
+   ya contextual light/dark) en vez de un purple hardcodeado, para que el anillo de
+   foco siga el rebrand desde theme.css. */
 *:focus-visible {
-  outline: 2px solid theme('colors.purple.500');
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
   border-radius: 4px;
 }
 
-.dark *:focus-visible {
-  outline-color: theme('colors.purple.400');
+/* Respeta prefers-reduced-motion: anula animaciones, transiciones y scroll
+   suave globalmente para usuarios que pidieron menos movimiento (a11y). */
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Custom scrollbar for transaction lists */

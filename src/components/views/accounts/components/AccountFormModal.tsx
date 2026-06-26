@@ -80,18 +80,18 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
     if (!adjustPreview || !editingAccount) return null;
     const isCredit = editingAccount.type === 'credit';
     return (
-      <div className="mt-2 text-xs rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 p-2 space-y-0.5">
+      <div className="mt-2 text-xs rounded-lg bg-muted/40 border border-border p-2 space-y-0.5">
         <div className="flex justify-between">
-          <span className="text-gray-500 dark:text-gray-400">{isCredit ? 'Deuda actual' : 'Saldo actual'}</span>
-          <span className="font-medium text-gray-700 dark:text-gray-200">{formatCurrency(adjustPreview.current)}</span>
+          <span className="text-muted-foreground">{isCredit ? 'Deuda actual' : 'Saldo actual'}</span>
+          <span className="font-medium text-foreground">{formatCurrency(adjustPreview.current)}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-500 dark:text-gray-400">Nuevo</span>
-          <span className="font-medium text-gray-700 dark:text-gray-200">{formatCurrency(adjustPreview.target)}</span>
+          <span className="text-muted-foreground">Nuevo</span>
+          <span className="font-medium text-foreground">{formatCurrency(adjustPreview.target)}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-500 dark:text-gray-400">Ajuste a crear</span>
-          <span className={`font-semibold ${adjustPreview.delta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+          <span className="text-muted-foreground">Ajuste a crear</span>
+          <span className={`font-semibold ${adjustPreview.delta >= 0 ? 'text-success' : 'text-destructive'}`}>
             {adjustPreview.delta >= 0 ? '+' : ''}{formatCurrency(adjustPreview.delta)}
           </span>
         </div>
@@ -122,7 +122,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
       onClose={onClose}
       closeOnBackdrop={false}
       title={editingAccount ? 'Editar Cuenta' : 'Nueva Cuenta'}
-      titleIcon={<Wallet size={20} className="text-purple-600 dark:text-purple-400" />}
+      titleIcon={<Wallet size={20} className="text-primary" />}
       maxWidth="max-w-2xl"
     >
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -170,7 +170,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                     placeholder="23,99"
                     className="input-base"
                   />
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     Opcional. Se usa para calcular intereses en cuotas.
                   </p>
                 </div>
@@ -193,7 +193,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                   }}
                   className="input-base"
                 />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Ingresa el nuevo saldo deseado. Se creará un ajuste automático.
                 </p>
                 {renderAdjustPreview()}
@@ -216,7 +216,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                   }}
                   className="input-base"
                 />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Ingresa el monto real que debes. Se creará un ajuste automático.
                 </p>
                 {renderAdjustPreview()}

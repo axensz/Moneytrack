@@ -92,7 +92,7 @@ export class SavingsAccountStrategy {
  * Una compra a cuotas ocupa el CUPO COMPLETO desde el momento de la compra
  * (igual que los bancos reservan el total contra el cupo disponible) y se libera
  * a medida que se registran pagos hacia la TC. El monto por cuota mensual NO se
- * usa aquí; eso pertenece al estado de cuenta del ciclo (useCreditCardStatement),
+ * usa aquí; eso pertenece al estado de cuenta del ciclo (useCardPaymentSchedule),
  * que responde una pregunta distinta: "cuánto debo pagar este mes".
  *
  * Esta regla mantiene consistencia con el valor persistido (account.usedCredit),

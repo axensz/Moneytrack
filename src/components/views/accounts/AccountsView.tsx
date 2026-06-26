@@ -1,16 +1,19 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Wallet, CreditCard, Banknote } from 'lucide-react';
+import { Plus, Wallet, CreditCard, Banknote, Receipt } from 'lucide-react';
 import { BALANCE_ADJUSTMENT_CATEGORY } from '../../../config/constants';
 import { showToast } from '../../../utils/toastHelpers';
 import { useAccountDomain, useTransactionDomain, useRecurringDomain, useDebtsDomain, useFormatCurrency } from '../../../hooks/useFinanceSelectors';
+import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import type { Account } from '../../../types/finance';
 import type { MergeCreditCardsParams } from '../../../hooks/useAccounts';
 
 import { AccountFormModal } from './components/AccountFormModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { MergeCreditCardsModal } from './components/MergeCreditCardsModal';
+import { CardStatementsModal } from './components/CardStatementsModal';
+import { ConfirmDialog } from '../../modals/ConfirmDialog';
 import { CreditCardsConsolidatedSummary } from './components/CreditCardsConsolidatedSummary';
 import { AccountCard } from './components/AccountCard';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
@@ -44,10 +47,11 @@ export const AccountsView: React.FC = () => {
     balancesReady,
     accountsLoading,
   } = useAccountDomain();
-  const { addTransaction } = useTransactionDomain();
+  const { addTransaction, balanceTransactions } = useTransactionDomain();
   const { recurringPayments } = useRecurringDomain();
   const { debts } = useDebtsDomain();
   const formatCurrency = useFormatCurrency();
+  const { hideBalances } = useUIPreferences();
   // Mapa memoizado del cupo usado por tarjeta para el resumen (evita llamar al
   // accesor por tarjeta en cada render). El cálculo correcto (historial
   // completo, no la ventana paginada) vive en el store vía getCreditUsed; aquí
@@ -112,6 +116,7 @@ export const AccountsView: React.FC = () => {
   });
 
   // Estados locales
+  const [showStatements, setShowStatements] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     accountId: string;
     name: string;
@@ -124,6 +129,10 @@ export const AccountsView: React.FC = () => {
   const [mergeCreditLimitInput, setMergeCreditLimitInput] = useState('');
   const [mergeDesiredDebtInput, setMergeDesiredDebtInput] = useState('');
   const [isMergingCreditCards, setIsMergingCreditCards] = useState(false);
+  // Confirmación cuando el nuevo cupo queda por debajo de la deuda: reemplaza el
+  // window.confirm nativo por ConfirmDialog (temático y accesible). El merge es una
+  // acción de dominio sensible, así que la barrera explícita se conserva.
+  const [showMergeWarning, setShowMergeWarning] = useState(false);
   // Guard de borrado en curso: el ref bloquea el doble clic en el mismo tick
   // (la acción es destructiva en cascada); el state deshabilita el botón (#accounts-8).
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
@@ -205,33 +214,16 @@ export const AccountsView: React.FC = () => {
     setMergeDesiredDebtInput('');
   };
 
-  const mergeCreditCards = async () => {
+  // Ejecuta la unificación atómica (migra transacciones, recurring y debts) y crea
+  // el ajuste de deuda si la deseada difiere de la combinada. Se invoca tras validar:
+  // directamente, o desde la confirmación de "cupo por debajo de la deuda".
+  const executeMerge = async () => {
     if (!mergeSourceCard?.id || !mergeTargetCard?.id) return;
 
     const newCreditLimit = parseCurrencyInput(mergeCreditLimitInput);
-    if (isNaN(newCreditLimit) || newCreditLimit <= 0) {
-      showToast.error('El nuevo cupo debe ser mayor que cero');
-      return;
-    }
-
     const desiredDebt = mergeDesiredDebtInput.trim() === ''
       ? mergeCombinedUsedDebt
       : parseCurrencyInput(mergeDesiredDebtInput);
-
-    if (isNaN(desiredDebt) || desiredDebt < 0) {
-      showToast.error('Ingresa una deuda real deseada válida (debe ser un número positivo)');
-      return;
-    }
-
-    const warningDebt = Math.max(mergeCombinedUsedDebt, desiredDebt);
-
-    if (newCreditLimit < warningDebt) {
-      const shouldContinue = window.confirm(
-        `El nuevo cupo (${formatCurrency(newCreditLimit)}) queda por debajo de la deuda usada (${formatCurrency(warningDebt)}). ¿Deseas continuar?`
-      );
-      if (!shouldContinue) return;
-    }
-
     const debtDifference = desiredDebt - mergeCombinedUsedDebt;
 
     try {
@@ -264,6 +256,7 @@ export const AccountsView: React.FC = () => {
       }
 
       showToast.success(`Tarjetas unificadas en ${mergeTargetCard.name}`);
+      setShowMergeWarning(false);
       setMergeSourceCard(null);
       setMergeTargetCardId('');
       setMergeCreditLimitInput('');
@@ -273,6 +266,34 @@ export const AccountsView: React.FC = () => {
     } finally {
       setIsMergingCreditCards(false);
     }
+  };
+
+  const mergeCreditCards = async () => {
+    if (!mergeSourceCard?.id || !mergeTargetCard?.id) return;
+
+    const newCreditLimit = parseCurrencyInput(mergeCreditLimitInput);
+    if (isNaN(newCreditLimit) || newCreditLimit <= 0) {
+      showToast.error('El nuevo cupo debe ser mayor que cero');
+      return;
+    }
+
+    const desiredDebt = mergeDesiredDebtInput.trim() === ''
+      ? mergeCombinedUsedDebt
+      : parseCurrencyInput(mergeDesiredDebtInput);
+
+    if (isNaN(desiredDebt) || desiredDebt < 0) {
+      showToast.error('Ingresa una deuda real deseada válida (debe ser un número positivo)');
+      return;
+    }
+
+    // Cupo por debajo de la deuda: pedir confirmación explícita (ConfirmDialog) en
+    // vez de continuar sin más. Antes era window.confirm.
+    if (newCreditLimit < Math.max(mergeCombinedUsedDebt, desiredDebt)) {
+      setShowMergeWarning(true);
+      return;
+    }
+
+    await executeMerge();
   };
 
   const getNextCutoffDate = (account: Account): Date | null => {
@@ -354,32 +375,52 @@ export const AccountsView: React.FC = () => {
     .filter((account) => account.type !== 'credit' || !account.bankAccountId)
     .sort((a, b) => (a.order || 0) - (b.order || 0));
 
+  // Montos para el aviso de "cupo por debajo de la deuda" (ConfirmDialog).
+  const mergeWarnNewLimit = parseCurrencyInput(mergeCreditLimitInput) || 0;
+  const mergeWarnDebt = Math.max(
+    mergeCombinedUsedDebt,
+    mergeDesiredDebtInput.trim() === '' ? mergeCombinedUsedDebt : parseCurrencyInput(mergeDesiredDebtInput) || 0,
+  );
+
   return (
     <div className="card">
       {/* Header con botón */}
       <div className="flex justify-between items-start mb-6 flex-wrap gap-4">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+          <h2 className="text-xl font-bold text-foreground">
             Cuentas
           </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             Administra tus cuentas bancarias y tarjetas de crédito
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            // No crear antes de que cargue el snapshot: isFirst (accounts.length===0)
-            // marcaría una SEGUNDA cuenta por defecto al llegar las reales (#accounts-5).
-            if (accountsLoading) return;
-            accountForm.openCreateForm();
-          }}
-          disabled={accountsLoading}
-          className="btn-primary"
-        >
-          <Plus size={18} />
-          Nueva Cuenta
-        </button>
+        <div className="flex items-center gap-2">
+          {creditCards.length > 0 && (
+            <button
+              onClick={() => setShowStatements(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium
+                bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+            >
+              <Receipt size={16} />
+              Extractos
+            </button>
+          )}
+
+          <button
+            onClick={() => {
+              // No crear antes de que cargue el snapshot: isFirst (accounts.length===0)
+              // marcaría una SEGUNDA cuenta por defecto al llegar las reales (#accounts-5).
+              if (accountsLoading) return;
+              accountForm.openCreateForm();
+            }}
+            disabled={accountsLoading}
+            className="btn-primary"
+          >
+            <Plus size={18} />
+            Nueva Cuenta
+          </button>
+        </div>
       </div>
 
       {/* Modales */}
@@ -464,7 +505,29 @@ export const AccountsView: React.FC = () => {
         onClose={closeMergeCreditCardsModal}
       />
 
+      <ConfirmDialog
+        isOpen={showMergeWarning}
+        variant="default"
+        title="Cupo por debajo de la deuda"
+        message={`El nuevo cupo (${formatCurrency(mergeWarnNewLimit)}) queda por debajo de la deuda usada (${formatCurrency(mergeWarnDebt)}). ¿Deseas continuar con la unificación?`}
+        confirmLabel="Continuar"
+        cancelLabel="Cancelar"
+        onConfirm={executeMerge}
+        onClose={() => setShowMergeWarning(false)}
+      />
+
+      <CardStatementsModal
+        isOpen={showStatements}
+        onClose={() => setShowStatements(false)}
+        accounts={creditCards}
+        transactions={balanceTransactions}
+        recurringPayments={recurringPayments}
+        formatCurrency={formatCurrency}
+        hideBalances={hideBalances}
+      />
+
       {/* Lista de cuentas */}
+      <h3 className="sr-only">Tus cuentas</h3>
       <div className="space-y-4">
         {mainAccounts.map((account, mainIndex) => {
           const balance = getAccountBalance(account.id!);
@@ -525,7 +588,7 @@ export const AccountsView: React.FC = () => {
               {/* Tarjetas asociadas */}
               {associatedCards.length > 0 && (
                 <div
-                  className={`ml-4 sm:ml-8 mt-3 space-y-3 border-l-2 border-purple-200 dark:border-purple-800 pl-4 transition-opacity duration-200 ${dragDrop.draggedAccountId === account.id ? 'opacity-50' : ''
+                  className={`ml-4 sm:ml-8 mt-3 space-y-3 border-l border-primary/20 pl-4 transition-opacity duration-200 ${dragDrop.draggedAccountId === account.id ? 'opacity-50' : ''
                     }`}
                 >
                   {associatedCards.map((card, cardIndex) => (

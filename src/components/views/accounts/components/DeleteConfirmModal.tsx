@@ -59,19 +59,19 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
         aria-modal="true"
         aria-labelledby="dcm-title"
         aria-describedby="dcm-desc"
-        className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md outline-none"
+        className="bg-card rounded-2xl shadow-xl w-full max-w-md outline-none"
       >
         <div className="p-6">
-          <h3 id="dcm-title" className="text-lg font-semibold text-rose-600 dark:text-rose-400 mb-4">
+          <h3 id="dcm-title" className="text-lg font-semibold text-destructive mb-4">
             ⚠️ Eliminar Cuenta
           </h3>
 
           {(transactionCount > 0 || recurringCount > 0 || debtCount > 0) && (
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mb-4">
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+            <div className="bg-warning-muted border border-warning/30 rounded-lg p-4 mb-4">
+              <p className="text-sm font-medium text-warning">
                 Al eliminar esta cuenta también se borrarán permanentemente:
               </p>
-              <ul className="text-sm text-amber-700 dark:text-amber-300 mt-1 list-disc list-inside space-y-0.5">
+              <ul className="text-sm text-warning mt-1 list-disc list-inside space-y-0.5">
                 {transactionCount > 0 && (
                   <li>{transactionCount} transacción{transactionCount !== 1 ? 'es' : ''} asociada{transactionCount !== 1 ? 's' : ''}</li>
                 )}
@@ -82,16 +82,16 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
                   <li>{debtCount} deuda{debtCount !== 1 ? 's' : ''}/préstamo{debtCount !== 1 ? 's' : ''}</li>
                 )}
               </ul>
-              <p className="text-sm text-amber-700 dark:text-amber-300 mt-2">
+              <p className="text-sm text-warning mt-2">
                 Se revertirá también el cupo usado de las tarjetas de crédito afectadas. Esta acción no se puede deshacer.
               </p>
             </div>
           )}
 
-          <p id="dcm-desc" className="text-gray-600 dark:text-gray-300 mb-2">
+          <p id="dcm-desc" className="text-muted-foreground mb-2">
             Para confirmar la eliminación, escribe el nombre de la cuenta:
           </p>
-          <p className="font-semibold text-lg text-gray-900 dark:text-white mb-4">
+          <p className="font-semibold text-lg text-foreground mb-4">
             {accountName}
           </p>
           <input
@@ -104,14 +104,14 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
           />
 
           {transactionCount > 0 && (
-            <label className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg mb-6 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+            <label className="flex items-start gap-3 p-3 bg-muted rounded-lg mb-6 cursor-pointer hover:bg-border transition-colors">
               <input
                 type="checkbox"
                 checked={confirmDeleteWithTransactions}
                 onChange={(e) => setConfirmDeleteWithTransactions(e.target.checked)}
-                className="mt-0.5 h-5 w-5 rounded border-gray-300 text-rose-600 focus:ring-rose-500 dark:border-gray-600 dark:bg-gray-700"
+                className="mt-0.5 h-5 w-5 rounded border-border text-destructive focus:ring-destructive dark:bg-input"
               />
-              <span className="text-sm text-gray-700 dark:text-gray-300 leading-tight">
+              <span className="text-sm text-foreground leading-tight">
                 Entiendo que al eliminar esta cuenta, también se eliminarán permanentemente
                 las <strong>{transactionCount} transacción{transactionCount !== 1 ? 'es' : ''}</strong>{' '}
                 asociada{transactionCount !== 1 ? 's' : ''}.

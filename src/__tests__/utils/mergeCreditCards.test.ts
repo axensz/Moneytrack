@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { mergeCreditCards } from '../../utils/mergeCreditCards';
 import { BalanceCalculator } from '../../utils/balanceCalculator';
 import { getCreditCardUsedCredit } from '../../utils/accountStrategies';
-import { useCreditCardStatement } from '../../hooks/useCreditCardStatement';
 import { useGlobalStats } from '../../hooks/useGlobalStats';
 import { useFilteredData } from '../../hooks/useFilteredData';
 import { useCreditCardInterests } from '../../components/views/stats/hooks/useCreditCardInterests';
@@ -127,15 +126,6 @@ describe('mergeCreditCards consumers', () => {
       // 300.000 (gasto) + 1.200.000 (cuotas) - 120.000 (transfer) - 50.000 (ingreso) = 1.330.000
       expect(getCreditCardUsedCredit(mergedCard, merged.transactions)).toBe(1_330_000);
 
-      const statement = renderHook(() => useCreditCardStatement(merged.accounts, merged.transactions)).result.current;
-      expect(statement).toHaveLength(1);
-      expect(statement[0].account.id).toBe(destinationCard.id);
-      expect(statement[0].totalCharges).toBe(520_000);
-      expect(statement[0].totalPayments).toBe(170_000);
-      expect(statement[0].cycleTransactions.map(transaction => transaction.id)).toEqual(
-        expect.arrayContaining(['normal-expense', 'payment-transfer', 'installment-purchase', 'manual-debt-adjustment'])
-      );
-
       const globalStats = renderHook(() => useGlobalStats(merged.transactions, merged.accounts)).result.current;
       expect(globalStats.pendingExpenses).toBe(1_330_000);
 
@@ -196,10 +186,6 @@ describe('mergeCreditCards consumers', () => {
       ];
 
       expect(getCreditCardUsedCredit(migratedDestination, staleTransactions)).toBe(200_000);
-
-      const statement = renderHook(() => useCreditCardStatement([bank, migratedDestination], staleTransactions)).result.current;
-      expect(statement[0].totalCharges).toBe(300_000);
-      expect(statement[0].totalPayments).toBe(100_000);
 
       const globalStats = renderHook(() => useGlobalStats(staleTransactions, [bank, migratedDestination])).result.current;
       expect(globalStats.pendingExpenses).toBe(200_000);

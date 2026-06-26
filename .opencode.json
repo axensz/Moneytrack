@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "code-review-graph": {
+      "command": "uvx",
+      "args": [
+        "code-review-graph",
+        "serve"
+      ],
+      "cwd": "C:\\Users\\camilo.guzman_pragma\\Desktop\\Moneytrack",
+      "type": "stdio",
+      "env": []
+    }
+  }
+}

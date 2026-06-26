@@ -17,6 +17,7 @@
 
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-solid: var(--primary-solid);
 
   --color-success: var(--success);
   --color-success-muted: var(--success-muted);

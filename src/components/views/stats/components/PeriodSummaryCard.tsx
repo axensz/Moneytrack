@@ -246,7 +246,7 @@ export const PeriodSummaryCard: React.FC<PeriodSummaryCardProps> = ({
                           </span>
                           <div className="flex-1 h-5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                             <div
-                              className="h-full bg-purple-500/70 dark:bg-purple-400/50 rounded-full transition-all"
+                              className="h-full bg-purple-500/70 dark:bg-purple-400/50 rounded-full transition-[width]"
                               style={{ width: `${pct}%` }}
                             />
                           </div>

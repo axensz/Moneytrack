@@ -83,7 +83,7 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = memo(({
   const CategoryIcon = CATEGORY_ICONS[payment.category] || CalendarDays;
 
   const getCardClasses = () => {
-    const base = 'border rounded-xl overflow-hidden transition-all';
+    const base = 'border rounded-xl overflow-hidden transition-colors';
 
     if (isPaid) {
       return `${base} border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/10`;

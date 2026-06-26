@@ -38,7 +38,7 @@ export const AITeaserButton: React.FC<AITeaserButtonProps> = ({ isLoggedIn, onAc
   return (
     <button
       onClick={onActivate}
-      className="fixed bottom-[88px] sm:bottom-6 right-4 sm:right-6 z-40 p-4 rounded-full bg-gradient-to-br from-purple-500/80 via-violet-500/80 to-purple-600/80 text-white shadow-lg hover:shadow-2xl hover:scale-110 hover:from-purple-600 hover:via-violet-600 hover:to-purple-700 transition-all duration-300 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2"
+      className="fixed bottom-[88px] sm:bottom-6 right-4 sm:right-6 z-40 p-4 rounded-full bg-gradient-to-br from-purple-500/80 via-violet-500/80 to-purple-600/80 text-white shadow-lg hover:shadow-2xl hover:scale-110 hover:from-purple-600 hover:via-violet-600 hover:to-purple-700 transition-[box-shadow,transform,background-color] duration-300 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2"
       title={label}
       aria-label={label}
     >

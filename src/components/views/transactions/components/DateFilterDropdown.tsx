@@ -132,7 +132,7 @@ export const DateFilterDropdown: React.FC<DateFilterDropdownProps> = ({
       </button>
 
       {showDatePicker && (
-        <div role="dialog" aria-label="Filtrar por fecha" className="absolute top-full right-0 mt-1 z-[100] bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-2 min-w-[240px] max-w-[calc(100vw-2rem)]">
+        <div role="dialog" aria-label="Filtrar por fecha" className="absolute top-full right-0 mt-1 z-[100] bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-2 min-w-[240px] max-w-[calc(100vw-2rem)] animate-in fade-in zoom-in-95 origin-top-right">
           {/* AI date input */}
           {isGeminiConfigured() && (
             <div className="mb-2 pb-2 border-b border-gray-200 dark:border-gray-700">

@@ -180,7 +180,7 @@ export function ImportTransactionsModal({ isOpen, onClose, onOpenAISettings }: I
               </div>
               <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-purple-500 rounded-full transition-all duration-300"
+                  className="h-full bg-purple-500 rounded-full transition-[width] duration-300"
                   style={{ width: `${progress}%` }}
                 />
               </div>

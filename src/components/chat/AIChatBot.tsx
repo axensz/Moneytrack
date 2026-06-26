@@ -269,7 +269,7 @@ const ActionCard: React.FC<{
         <button
           onClick={onConfirm}
           disabled={isExecuting}
-          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-700 text-white hover:from-emerald-700 hover:to-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md hover:scale-105 active:scale-95"
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-700 text-white hover:from-emerald-700 hover:to-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed transition-[box-shadow,transform,background-color] shadow-sm hover:shadow-md hover:scale-105 active:scale-95"
         >
           {isExecuting ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
           {isExecuting ? 'Ejecutando...' : 'Confirmar'}
@@ -277,7 +277,7 @@ const ActionCard: React.FC<{
         <button
           onClick={onReject}
           disabled={isExecuting}
-          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md hover:scale-105 active:scale-95"
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-[box-shadow,transform,background-color] shadow-sm hover:shadow-md hover:scale-105 active:scale-95"
         >
           <XCircle size={14} />
           Cancelar
@@ -534,7 +534,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-[88px] sm:bottom-6 right-4 sm:right-6 z-40 p-4 rounded-full bg-gradient-to-br from-purple-600 via-violet-600 to-purple-700 text-white shadow-lg hover:shadow-2xl hover:scale-110 transition-all duration-300 group animate-in fade-in zoom-in"
+        className="fixed bottom-[88px] sm:bottom-6 right-4 sm:right-6 z-40 p-4 rounded-full bg-gradient-to-br from-purple-600 via-violet-600 to-purple-700 text-white shadow-lg hover:shadow-2xl hover:scale-110 transition-[box-shadow,transform] duration-300 group animate-in fade-in zoom-in"
         title="Asistente financiero IA"
         aria-label="Abrir asistente de IA"
       >
@@ -572,7 +572,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
         <div className="flex items-center gap-1 relative z-10">
           <button
             onClick={handleClearChat}
-            className="p-2 hover:bg-white/20 backdrop-blur-sm rounded-lg transition-all hover:scale-110 active:scale-95"
+            className="p-2 hover:bg-white/20 backdrop-blur-sm rounded-lg transition-[background-color,transform] hover:scale-110 active:scale-95"
             title="Limpiar chat"
             aria-label="Limpiar conversación"
           >
@@ -580,7 +580,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
           </button>
           <button
             onClick={() => setIsOpen(false)}
-            className="p-2 hover:bg-white/20 backdrop-blur-sm rounded-lg transition-all hover:scale-110 active:scale-95"
+            className="p-2 hover:bg-white/20 backdrop-blur-sm rounded-lg transition-[background-color,transform] hover:scale-110 active:scale-95"
             aria-label="Cerrar chat"
           >
             <X size={18} className="drop-shadow-sm" />
@@ -672,7 +672,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
             <button
               key={s}
               onClick={() => handleSuggestion(s)}
-              className="text-xs px-3 py-1.5 rounded-full bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-900/30 text-purple-700 dark:text-purple-300 hover:from-purple-100 hover:to-purple-200 dark:hover:from-purple-900/40 dark:hover:to-purple-900/50 transition-all hover:scale-105 active:scale-95 border border-purple-200 dark:border-purple-800 shadow-sm"
+              className="text-xs px-3 py-1.5 rounded-full bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-900/30 text-purple-700 dark:text-purple-300 hover:from-purple-100 hover:to-purple-200 dark:hover:from-purple-900/40 dark:hover:to-purple-900/50 transition-[background-color,transform] hover:scale-105 active:scale-95 border border-purple-200 dark:border-purple-800 shadow-sm"
             >
               {s}
             </button>
@@ -700,12 +700,12 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
               onKeyDown={handleKeyDown}
               placeholder="Pregunta sobre tus finanzas..."
               disabled={isLoading}
-              className="flex-1 px-3 py-2.5 text-sm rounded-xl border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 disabled:opacity-50 transition-all shadow-sm"
+              className="flex-1 px-3 py-2.5 text-sm rounded-xl border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 disabled:opacity-50 transition-[border-color,box-shadow] shadow-sm"
             />
             <button
               onClick={handleSend}
               disabled={!input.trim() || isLoading}
-              className="p-2.5 rounded-xl bg-gradient-to-br from-purple-600 to-purple-700 text-white hover:from-purple-700 hover:to-purple-800 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
+              className="p-2.5 rounded-xl bg-gradient-to-br from-purple-600 to-purple-700 text-white hover:from-purple-700 hover:to-purple-800 transition-[box-shadow,transform,background-color] disabled:opacity-40 disabled:cursor-not-allowed shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
               aria-label="Enviar mensaje"
             >
               <Send size={16} />

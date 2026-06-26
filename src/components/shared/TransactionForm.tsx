@@ -354,7 +354,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
 
           {/* 🆕 Asociar a pago periódico - Destacado visualmente */}
           {newTransaction.type === 'expense' && recurringPayments.length > 0 && (
-            <div className={`mt-4 p-4 rounded-xl border-2 transition-all ${newTransaction.recurringPaymentId
+            <div className={`mt-4 p-4 rounded-xl border-2 transition-colors ${newTransaction.recurringPaymentId
               ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-700'
               : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 border-dashed'
               }`}>

@@ -170,7 +170,7 @@ export const DebtsView: React.FC = () => {
 
         {/* Stats Cards - Mejoradas */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 rounded-2xl p-4 sm:p-5 border-2 border-blue-200 dark:border-blue-700 shadow-lg hover:shadow-xl transition-all">
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 rounded-2xl p-4 sm:p-5 border-2 border-blue-200 dark:border-blue-700 shadow-lg hover:shadow-xl transition-[box-shadow]">
             <div className="flex items-center justify-between mb-2">
               <div className="p-2 bg-blue-200 dark:bg-blue-800 rounded-xl">
                 <ArrowUpRight className="text-blue-700 dark:text-blue-300" size={20} />
@@ -183,7 +183,7 @@ export const DebtsView: React.FC = () => {
             <p className="text-xl sm:text-2xl font-bold text-blue-900 dark:text-blue-100">{displayAmount(debtStats.totalLent)}</p>
           </div>
 
-          <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/30 dark:to-orange-800/20 rounded-2xl p-4 sm:p-5 border-2 border-orange-200 dark:border-orange-700 shadow-lg hover:shadow-xl transition-all">
+          <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/30 dark:to-orange-800/20 rounded-2xl p-4 sm:p-5 border-2 border-orange-200 dark:border-orange-700 shadow-lg hover:shadow-xl transition-[box-shadow]">
             <div className="flex items-center justify-between mb-2">
               <div className="p-2 bg-orange-200 dark:bg-orange-800 rounded-xl">
                 <ArrowDownLeft className="text-orange-700 dark:text-orange-300" size={20} />
@@ -196,7 +196,7 @@ export const DebtsView: React.FC = () => {
             <p className="text-xl sm:text-2xl font-bold text-orange-900 dark:text-orange-100">{displayAmount(debtStats.totalBorrowed)}</p>
           </div>
 
-          <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/20 rounded-2xl p-4 sm:p-5 border-2 border-green-200 dark:border-green-700 shadow-lg hover:shadow-xl transition-all">
+          <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/20 rounded-2xl p-4 sm:p-5 border-2 border-green-200 dark:border-green-700 shadow-lg hover:shadow-xl transition-[box-shadow]">
             <div className="flex items-center justify-between mb-2">
               <div className="p-2 bg-green-200 dark:bg-green-800 rounded-xl">
                 <CheckCircle2 className="text-green-700 dark:text-green-300" size={20} />
@@ -206,7 +206,7 @@ export const DebtsView: React.FC = () => {
             <p className="text-xl sm:text-2xl font-bold text-green-900 dark:text-green-100">{debtStats.settledCount}</p>
           </div>
 
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/20 rounded-2xl p-4 sm:p-5 border-2 border-purple-200 dark:border-purple-700 shadow-lg hover:shadow-xl transition-all">
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/20 rounded-2xl p-4 sm:p-5 border-2 border-purple-200 dark:border-purple-700 shadow-lg hover:shadow-xl transition-[box-shadow]">
             <div className="flex items-center justify-between mb-2">
               <div className="p-2 bg-purple-200 dark:bg-purple-800 rounded-xl">
                 <Users className="text-purple-700 dark:text-purple-300" size={20} />
@@ -229,7 +229,7 @@ export const DebtsView: React.FC = () => {
           </h3>
           <button
             onClick={() => setShowForm(!showForm)}
-            className="btn-submit text-sm flex items-center gap-2 shadow-lg hover:shadow-xl transition-all"
+            className="btn-submit text-sm flex items-center gap-2 shadow-lg hover:shadow-xl transition-[box-shadow]"
           >
             <Plus size={18} />
             <span className="hidden sm:inline">Nuevo</span>
@@ -242,7 +242,7 @@ export const DebtsView: React.FC = () => {
             <div className="flex gap-3 mb-4">
               <button
                 onClick={() => setFormData(f => ({ ...f, type: 'lent' }))}
-                className={`flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition-all shadow-md hover:shadow-lg ${formData.type === 'lent'
+                className={`flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition-[background-color,box-shadow,transform,color] shadow-md hover:shadow-lg ${formData.type === 'lent'
                   ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white ring-2 ring-blue-400 scale-105'
                   : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600'
                   }`}
@@ -252,7 +252,7 @@ export const DebtsView: React.FC = () => {
               </button>
               <button
                 onClick={() => setFormData(f => ({ ...f, type: 'borrowed' }))}
-                className={`flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition-all shadow-md hover:shadow-lg ${formData.type === 'borrowed'
+                className={`flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition-[background-color,box-shadow,transform,color] shadow-md hover:shadow-lg ${formData.type === 'borrowed'
                   ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white ring-2 ring-orange-400 scale-105'
                   : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600'
                   }`}
@@ -577,7 +577,7 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
               </div>
               <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
                 <div
-                  className={`bg-${colorClass}-500 h-1.5 rounded-full transition-all`}
+                  className={`bg-${colorClass}-500 h-1.5 rounded-full transition-[width]`}
                   style={{ width: `${progress}%` }}
                 />
               </div>
@@ -686,7 +686,7 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
           <div className="flex gap-2">
             <button
               onClick={() => setModifierOperation('add')}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${modifierOperation === 'add'
+              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${modifierOperation === 'add'
                 ? 'bg-green-500 text-white'
                 : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
                 }`}
@@ -695,7 +695,7 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
             </button>
             <button
               onClick={() => setModifierOperation('subtract')}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${modifierOperation === 'subtract'
+              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${modifierOperation === 'subtract'
                 ? 'bg-red-500 text-white'
                 : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
                 }`}

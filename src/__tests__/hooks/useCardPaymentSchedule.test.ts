@@ -54,6 +54,24 @@ describe('buildCardPaymentSchedule', () => {
     expect(future.cards[0].status).toBe('projected');
   });
 
+  it('expone projectedTotal y totalProjectedDebt en el ciclo en curso (index 0)', () => {
+    // Compra 16 may a 3 cuotas de 100k → cuotas en index -1, 0, 1.
+    const groups = buildCardPaymentSchedule(
+      [card],
+      [charge({ amount: 300_000, installments: 3, monthlyInstallmentAmount: 100_000 })],
+      [], NOW,
+    );
+    const all = groups.flatMap(g => g.cards);
+    // Solo el ciclo en curso (index 0) lleva projectedTotal/totalProjectedDebt.
+    const current = all.filter(c => c.projectedTotal !== undefined);
+    expect(current).toHaveLength(1);
+    expect(current[0].projectedTotal).toBe(100_000);     // cuota cargada en el ciclo en curso
+    expect(current[0].totalProjectedDebt).toBe(200_000); // index 0 (100k) + index 1 (100k)
+    // Los ciclos pasados no llevan estos campos.
+    const others = all.filter(c => c.projectedTotal === undefined);
+    expect(others.every(c => c.totalProjectedDebt === undefined)).toBe(true);
+  });
+
   it('remaining = statementTotal - pagado (saldo pendiente en pago parcial)', () => {
     const payment: Transaction = {
       id: 'pp', type: 'transfer', amount: 100_000, category: 'Pago Crédito', description: '',

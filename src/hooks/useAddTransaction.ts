@@ -16,7 +16,7 @@ import { showToast } from '../utils/toastHelpers';
 import { logger } from '../utils/logger';
 import { TransactionValidator } from '../utils/validators';
 import { calculateInterest } from '../utils/interestCalculator';
-import { parseDateWithTime } from '../utils/formatters';
+import { parseDateWithTime, parseCurrency } from '../utils/formatters';
 import { cycleKey } from '../utils/recurringDates';
 import {
   SUCCESS_MESSAGES,
@@ -141,8 +141,9 @@ export function useAddTransaction({
       }
 
       try {
-        // CurrencyInput gives us a plain numeric string (e.g. "88888" or "88888.5")
-        const amount = parseFloat(newTransaction.amount.toString());
+        // El input entrega formato es-CO ("88.888" o "88.888,5"); parseCurrency
+        // maneja la coma decimal sin perder centavos (parseFloat la truncaría).
+        const amount = parseCurrency(newTransaction.amount.toString());
 
         if (isNaN(amount)) {
           showToast.error('Monto inválido');

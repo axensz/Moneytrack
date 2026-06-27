@@ -9,7 +9,7 @@ import type {
   RecurringPayment,
   NewTransaction,
 } from '../../../../types/finance';
-import { parseDateFromInput, parseDateWithTime } from '../../../../utils/formatters';
+import { parseDateFromInput, parseDateWithTime, parseCurrency } from '../../../../utils/formatters';
 import { getDateRangeFromPreset, ensureDate } from '../../../../utils/dateUtils';
 import { findAccountForTransaction, transactionUsesAccount } from '../../../../utils/accountTransactions';
 import { TransactionValidator } from '../../../../utils/validators';
@@ -204,8 +204,9 @@ export const useTransactionsView = ({
 
   const handleSaveEdit = useCallback(
     async (id: string) => {
-      // CurrencyInput entrega un string numérico plano ("88888" o "88888.5").
-      const amount = parseFloat(editForm.amount);
+      // El input entrega formato es-CO ("88.888" o "88.888,5"); parseCurrency
+      // maneja la coma decimal sin perder centavos (parseFloat la truncaría).
+      const amount = parseCurrency(editForm.amount);
       const original = transactions.find((t) => t.id === id);
       const account = original ? accountsById.get(original.accountId) : undefined;
 

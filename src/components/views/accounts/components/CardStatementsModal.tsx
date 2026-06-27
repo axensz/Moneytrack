@@ -6,12 +6,15 @@ import { BaseModal } from '@/components/modals/BaseModal';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 import { roundMoney } from '@/utils/formatters';
 import type { MonthGroup, CardMonthPayment, CycleStatus } from '@/hooks/useCardPaymentSchedule';
+import { BalanceComparisonSection } from './BalanceComparisonSection';
 
 interface CardStatementsModalProps {
   isOpen: boolean;
   onClose: () => void;
   schedule: MonthGroup[];
   formatCurrency: (n: number) => string;
+  /** Saldo real (usedCredit persistido) por tarjeta, para la comparación de saldos. */
+  usedCreditByCard?: Record<string, number>;
 }
 
 const STATUS_META: Record<CycleStatus, { label: string; cls: string }> = {
@@ -21,7 +24,7 @@ const STATUS_META: Record<CycleStatus, { label: string; cls: string }> = {
   projected: { label: 'Proyectado', cls: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300' },
 };
 
-export function CardStatementsModal({ isOpen, onClose, schedule, formatCurrency }: CardStatementsModalProps) {
+export function CardStatementsModal({ isOpen, onClose, schedule, formatCurrency, usedCreditByCard }: CardStatementsModalProps) {
   const [filter, setFilter] = useState<'all' | string>('all');
 
   const cardOptions = useMemo(() => {
@@ -67,7 +70,7 @@ export function CardStatementsModal({ isOpen, onClose, schedule, formatCurrency 
         </p>
       ) : (
         <div className="space-y-2">
-          {view.map(g => <MonthPaymentRow key={g.monthKey} group={g} formatCurrency={formatCurrency} />)}
+          {view.map(g => <MonthPaymentRow key={g.monthKey} group={g} formatCurrency={formatCurrency} usedCreditByCard={usedCreditByCard} />)}
         </div>
       )}
     </BaseModal>
@@ -90,7 +93,7 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
   );
 }
 
-function MonthPaymentRow({ group, formatCurrency }: { group: MonthGroup; formatCurrency: (n: number) => string }) {
+function MonthPaymentRow({ group, formatCurrency, usedCreditByCard }: { group: MonthGroup; formatCurrency: (n: number) => string; usedCreditByCard?: Record<string, number> }) {
   const { hideBalances } = useUIPreferences();
   const [open, setOpen] = useState(group.isCurrent);
   const show = (n: number) => (hideBalances ? '••••••' : formatCurrency(n));
@@ -121,15 +124,34 @@ function MonthPaymentRow({ group, formatCurrency }: { group: MonthGroup; formatC
 
       {open && (
         <div className="space-y-2 border-t border-gray-100 px-3 pb-3 pt-2 dark:border-gray-700">
-          {group.cards.map(c => <CardRow key={c.cardId} card={c} show={show} />)}
+          {group.cards.map(c => (
+            <CardRow
+              key={c.cardId}
+              card={c}
+              show={show}
+              usedCredit={usedCreditByCard?.[c.cardId]}
+              formatCurrency={formatCurrency}
+              hideBalances={hideBalances}
+            />
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function CardRow({ card, show }: { card: CardMonthPayment; show: (n: number) => string }) {
+function CardRow({ card, show, usedCredit, formatCurrency, hideBalances }: {
+  card: CardMonthPayment;
+  show: (n: number) => string;
+  usedCredit?: number;
+  formatCurrency?: (n: number) => string;
+  hideBalances?: boolean;
+}) {
   const meta = STATUS_META[card.status];
+  // card.projectedTotal solo está en el ciclo en curso (index 0). Ese ciclo NO siempre
+  // cae en el grupo isCurrent (depende de si hoy es antes/después del corte), así que se
+  // gatea por projectedTotal, no por group.isCurrent.
+  const showComparison = card.projectedTotal != null && usedCredit != null && !!formatCurrency;
   return (
     <div className="rounded-lg bg-white/70 p-2.5 text-sm dark:bg-gray-800/60">
       <div className="flex items-center justify-between gap-2">
@@ -165,6 +187,18 @@ function CardRow({ card, show }: { card: CardMonthPayment; show: (n: number) => 
             </li>
           ))}
         </ul>
+      )}
+
+      {showComparison && (
+        <div className="mt-2">
+          <BalanceComparisonSection
+            usedCredit={usedCredit!}
+            projectedTotal={card.projectedTotal!}
+            totalProjectedDebt={card.totalProjectedDebt}
+            formatCurrency={formatCurrency!}
+            hideBalances={!!hideBalances}
+          />
+        </div>
       )}
     </div>
   );

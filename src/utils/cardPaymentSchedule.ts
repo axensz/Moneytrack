@@ -94,6 +94,12 @@ export interface CardMonthPayment {
   cycleStart: Date;
   cycleEnd: Date;
   paymentDueDate: Date;
+  /** Solo en el ciclo actual (index 0): total facturado del ciclo en curso. */
+  projectedTotal?: number;
+  /** Solo en el ciclo actual: deuda total proyectada = Σ statementTotal de ciclos
+   *  index >= 0 (actual + futuros). Se contrasta con el usedCredit real de la tarjeta
+   *  para resaltar las compras "sin registrar". */
+  totalProjectedDebt?: number;
 }
 
 export interface MonthGroup {
@@ -186,12 +192,22 @@ export function buildCardPaymentSchedule(
     const charges = transactions.filter(t => isCardCharge(t, refIds));
     const payments = transactions.filter(t => isCardPayment(t, refIds));
     const horizon = computeFutureHorizon(card.cutoffDay!, charges, refIds, recurringPayments, now);
+    // Comparación de saldos: deuda total proyectada (Σ statementTotal de ciclos index >= 0)
+    // y referencia al ciclo actual, para contrastar contra el usedCredit real de la tarjeta.
+    let totalProjectedDebt = 0;
+    let currentCycleEntry: CardMonthPayment | null = null;
 
     for (let index = -PAST_MONTHS; index <= horizon; index++) {
       const cycle = getCycleByIndex(card.cutoffDay!, card.paymentDay!, index, now);
       const stmt = cardStatementForCycle(card.cutoffDay!, index, charges, now);
       const rec = recurringForCycle(refIds, cycle, recurringPayments);
       const statementTotal = roundMoney(stmt.total + rec.total);
+      // Acumular ANTES del descarte: la deuda proyectada cuenta actual + futuros aunque
+      // un ciclo intermedio quede en 0.
+      if (index >= 0) totalProjectedDebt += statementTotal;
+      // ponytail: si el ciclo actual queda en 0 (sin cargos este mes) la tarjeta no aparece
+      // y no se muestra la comparación de saldos; cubre el caso común. Upgrade path: diferir
+      // e insertar el ciclo-0 vacío cuando la tarjeta tiene deuda (Req 3.3 del spec original).
       if (statementTotal <= 0) continue;
 
       const paid = index <= 0
@@ -211,7 +227,9 @@ export function buildCardPaymentSchedule(
         cycleStart: cycle.cycleStart,
         cycleEnd: cycle.cycleEnd,
         paymentDueDate: cycle.paymentDueDate,
+        ...(index === 0 && { projectedTotal: statementTotal }),
       };
+      if (index === 0) currentCycleEntry = cardMonth;
 
       // Agrupar por el mes del CORTE (cycleEnd) = el extracto al que pertenece el
       // cargo, no por la fecha de pago. Agrupar por pago corría las compras un mes
@@ -231,6 +249,9 @@ export function buildCardPaymentSchedule(
       group.cards.push(cardMonth);
       groups.set(key, group);
     }
+
+    // Colgar la deuda total proyectada en la entrada del ciclo actual (si existe).
+    if (currentCycleEntry) currentCycleEntry.totalProjectedDebt = roundMoney(totalProjectedDebt);
   }
 
   return Array.from(groups.values()).sort((a, b) => a.monthKey.localeCompare(b.monthKey));

@@ -169,6 +169,18 @@ export const AccountsView: React.FC = () => {
     if (!card?.id) return 0;
     return card.usedCredit != null ? Math.max(0, card.usedCredit) : getCreditUsed(card.id);
   };
+  // Saldo real (usedCredit autoritativo) por tarjeta para la comparación de saldos en
+  // extractos. Mismo criterio que el merge: usedCredit persistido, fallback a getCreditUsed
+  // solo para datos legacy (NO la ventana paginada como fuente de verdad).
+  const usedCreditByCard = useMemo(() => {
+    const map: Record<string, number> = {};
+    accounts.forEach((card) => {
+      if (card.type === 'credit' && card.id) {
+        map[card.id] = card.usedCredit != null ? Math.max(0, card.usedCredit) : getCreditUsed(card.id);
+      }
+    });
+    return map;
+  }, [accounts, getCreditUsed]);
   const mergeCombinedUsedDebt = usedDebtForMerge(mergeSourceCard) + usedDebtForMerge(mergeTargetCard);
   // Clamp a 0: si la deuda combinada supera el cupo, "disponible" es 0, no negativo (#accounts).
   const mergeCombinedAvailableCredit = Math.max(0, mergeCombinedCreditLimit - mergeCombinedUsedDebt);
@@ -463,6 +475,7 @@ export const AccountsView: React.FC = () => {
         onClose={() => setShowStatements(false)}
         schedule={paymentSchedule}
         formatCurrency={formatCurrency}
+        usedCreditByCard={usedCreditByCard}
       />
 
       <MergeCreditCardsModal

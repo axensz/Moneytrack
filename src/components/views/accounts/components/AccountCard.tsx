@@ -231,7 +231,10 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
 
         {/* Action buttons */}
         <div className="flex flex-wrap gap-2 mt-4">
-          <button onClick={onEdit} className="btn-edit">
+          <button
+            onClick={onEdit}
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/15 border border-primary/40 hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
             <Edit2 size={14} />
             Editar
           </button>
@@ -239,7 +242,7 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
           {isCredit && onMerge && (
             <button
               onClick={onMerge}
-              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/10 hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/15 border border-primary/40 hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               <Combine size={14} />
               Unificar
@@ -250,7 +253,7 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
             <>
               <button
                 onClick={onSetDefault}
-                className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/10 hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/15 border border-primary/40 hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 Marcar como principal
               </button>

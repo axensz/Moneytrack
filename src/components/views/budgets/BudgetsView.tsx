@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, PieChart, CheckCircle2, XCircle, Trash2, ToggleLeft, ToggleRight, Sparkles, TrendingUp, TrendingDown, Minus, Target, X, Shield, Clock, Zap, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, PieChart, CheckCircle2, XCircle, Trash2, ToggleLeft, ToggleRight, Sparkles, TrendingUp, TrendingDown, Minus, Target, X, Shield, Clock, Zap, ChevronDown, ChevronUp, AlertTriangle, PiggyBank, BarChart3, Home } from 'lucide-react';
 import { useBudgetsDomain, useCategoryDomain, useTransactionDomain } from '../../../hooks/useFinanceSelectors';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { useAuth } from '../../../hooks/useAuth';
@@ -86,46 +86,43 @@ export const BudgetsView: React.FC = () => {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'exceeded': return <XCircle size={16} className="text-red-500" />;
-      case 'warning': return <PieChart size={16} className="text-amber-500" />;
-      default: return <CheckCircle2 size={16} className="text-green-500" />;
+      case 'exceeded': return <XCircle size={16} className="text-destructive" />;
+      case 'warning': return <AlertTriangle size={16} className="text-warning" />;
+      default: return <CheckCircle2 size={16} className="text-success" />;
     }
   };
 
-  // Score helpers
-  const scoreColor = (s: number) => s >= 80 ? 'text-emerald-500' : s >= 60 ? 'text-blue-500' : s >= 40 ? 'text-amber-500' : 'text-rose-500';
-  const scoreBg = (s: number) => s >= 80 ? 'from-emerald-500/20 to-emerald-500/5' : s >= 60 ? 'from-blue-500/20 to-blue-500/5' : s >= 40 ? 'from-amber-500/20 to-amber-500/5' : 'from-rose-500/20 to-rose-500/5';
-  const scoreStroke = (s: number) => s >= 80 ? 'stroke-emerald-500' : s >= 60 ? 'stroke-blue-500' : s >= 40 ? 'stroke-amber-500' : 'stroke-rose-500';
-  const levelLabel = (l: string) => l === 'excelente' ? '🏆 Excelente' : l === 'bueno' ? '✅ Bueno' : l === 'regular' ? '⚠️ Regular' : '🚨 Crítico';
+  // Score helpers — el color codifica un estado real (calidad del score)
+  const scoreColor = (s: number) => s >= 80 ? 'text-success' : s >= 60 ? 'text-info' : s >= 40 ? 'text-warning' : 'text-destructive';
+  const scoreStroke = (s: number) => s >= 80 ? 'stroke-success' : s >= 60 ? 'stroke-info' : s >= 40 ? 'stroke-warning' : 'stroke-destructive';
+  const levelLabel = (l: string) => l === 'excelente' ? 'Excelente' : l === 'bueno' ? 'Bueno' : l === 'regular' ? 'Regular' : 'Crítico';
 
   const trendLabel = plan?.trend === 'improving' ? 'Mejorando' : plan?.trend === 'declining' ? 'Empeorando' : 'Estable';
   const TrendIcon = plan?.trend === 'improving' ? TrendingUp : plan?.trend === 'declining' ? TrendingDown : Minus;
-  const trendColor = plan?.trend === 'improving' ? 'text-emerald-500' : plan?.trend === 'declining' ? 'text-rose-500' : 'text-gray-400';
+  const trendColor = plan?.trend === 'improving' ? 'text-success' : plan?.trend === 'declining' ? 'text-destructive' : 'text-gray-400';
 
   return (
     <div className="space-y-4">
       {/* ===== PLAN FINANCIERO ===== */}
       {!planConfig ? (
-        <div className="card relative overflow-hidden">
-          {/* Background decorativo */}
-          <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 via-transparent to-indigo-500/5 pointer-events-none" />
-          <div className="relative text-center py-6">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500 to-indigo-600 shadow-xl shadow-purple-500/25">
-              <Target size={28} className="text-white" />
+        <div className="card">
+          <div className="text-center py-6">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
+              <Target size={28} className="text-primary" />
             </div>
-            <h2 className="text-2xl font-black text-gray-900 dark:text-gray-100">Plan Financiero</h2>
+            <h2 className="text-2xl font-black text-gray-900 dark:text-gray-100">Plan financiero</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-sm mx-auto leading-relaxed">
               Analiza tus hábitos, obtén un score personalizado y proyecta tu ahorro con IA
             </p>
 
             {!showSetup ? (
-              <button onClick={() => setShowSetup(true)} className="mt-5 inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold rounded-xl shadow-lg shadow-purple-500/25 transition-[box-shadow,transform,background-color] hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]">
+              <button onClick={() => setShowSetup(true)} className="btn-primary mt-5 mx-auto">
                 <Sparkles size={18} /> Iniciar plan
               </button>
             ) : (
-              <div className="mt-5 max-w-sm mx-auto space-y-3 text-left p-5 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl border border-purple-200/50 dark:border-purple-800/30">
+              <div className="mt-5 max-w-sm mx-auto space-y-3 text-left p-5 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-200 dark:border-gray-700">
                 <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400 justify-center mb-1">
-                  <Shield size={12} className="text-purple-500" />
+                  <Shield size={12} className="text-gray-400" />
                   Se guarda en tu cuenta para que persista entre sesiones.
                 </div>
                 <div>
@@ -158,18 +155,17 @@ export const BudgetsView: React.FC = () => {
       ) : plan ? (
         <>
           {/* ──── Score Card ──── */}
-          <div className="card relative overflow-hidden">
-            <div className={`absolute inset-0 bg-gradient-to-b ${scoreBg(plan.score.total)} pointer-events-none`} />
-            <div className="relative">
+          <div className="card">
+            <div>
               {/* Header */}
               <div className="flex items-center justify-between">
                 <button onClick={() => setPlanMinimized(!planMinimized)} className="flex items-center gap-2.5 group">
-                  <div className={`flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br ${plan.score.total >= 80 ? 'from-emerald-500 to-emerald-400' : plan.score.total >= 60 ? 'from-blue-500 to-blue-400' : plan.score.total >= 40 ? 'from-amber-500 to-amber-400' : 'from-rose-500 to-rose-400'} shadow-sm`}>
-                    <Sparkles size={14} className="text-white" />
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                    <Sparkles size={14} className="text-primary" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h2 className="text-lg font-black text-gray-900 dark:text-gray-100">Plan Financiero</h2>
+                      <h2 className="text-lg font-black text-gray-900 dark:text-gray-100">Plan financiero</h2>
                       <span className={`text-2xl font-black ${scoreColor(plan.score.total)}`}>{plan.score.total}</span>
                       <span className="text-xs text-gray-400">/100</span>
                       {planMinimized ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronUp size={16} className="text-gray-400" />}
@@ -181,7 +177,7 @@ export const BudgetsView: React.FC = () => {
                 </button>
                 <button
                   onClick={() => setShowCloseConfirm(true)}
-                  className="p-2 text-gray-400 hover:text-rose-500 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
+                  className="p-2 text-gray-400 hover:text-destructive rounded-xl hover:bg-destructive-muted transition-colors"
                   title="Cerrar plan"
                 >
                   <X size={18} />
@@ -210,27 +206,32 @@ export const BudgetsView: React.FC = () => {
                 <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">{levelLabel(plan.score.level)}</span>
               </div>
 
-              {/* Score breakdown — mini barras */}
+              {/* Score breakdown — mini barras (color de marca; estado en texto) */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
-                  { label: 'Ahorro', value: plan.score.breakdown.savingsRate, max: 30, color: 'bg-emerald-500', icon: '💰' },
-                  { label: 'Consistencia', value: plan.score.breakdown.consistency, max: 25, color: 'bg-blue-500', icon: '📊' },
-                  { label: 'Necesidades', value: plan.score.breakdown.needsRatio, max: 25, color: 'bg-purple-500', icon: '🏠' },
-                  { label: 'Control', value: plan.score.breakdown.debtControl, max: 20, color: 'bg-amber-500', icon: '🎯' },
-                ].map(item => (
+                  { label: 'Ahorro', value: plan.score.breakdown.savingsRate, max: 30, Icon: PiggyBank },
+                  { label: 'Consistencia', value: plan.score.breakdown.consistency, max: 25, Icon: BarChart3 },
+                  { label: 'Necesidades', value: plan.score.breakdown.needsRatio, max: 25, Icon: Home },
+                  { label: 'Control', value: plan.score.breakdown.debtControl, max: 20, Icon: Target },
+                ].map(item => {
+                  const ratio = item.max > 0 ? item.value / item.max : 0;
+                  const stateLabel = ratio >= 0.8 ? 'Bien' : ratio >= 0.5 ? 'Aceptable' : 'A mejorar';
+                  return (
                   <div key={item.label} className="p-2.5 rounded-xl bg-white/60 dark:bg-gray-800/40 border border-gray-100 dark:border-gray-700/50">
                     <div className="flex items-center gap-1.5 mb-1.5">
-                      <span className="text-xs">{item.icon}</span>
+                      <item.Icon size={12} className="text-gray-400" />
                       <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400">{item.label}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full ${item.color} transition-[width] duration-700`} style={{ width: `${(item.value / item.max) * 100}%` }} />
+                        <div className="h-full rounded-full bg-primary transition-[width] duration-700" style={{ width: `${ratio * 100}%` }} />
                       </div>
                       <span className="text-[11px] font-bold text-gray-700 dark:text-gray-300">{item.value}<span className="text-gray-400 font-normal">/{item.max}</span></span>
                     </div>
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 block">{stateLabel}</span>
                   </div>
-                ))}
+                  );
+                })}
               </div>
               </div>
               </>
@@ -248,21 +249,22 @@ export const BudgetsView: React.FC = () => {
             </div>
             <div className="space-y-5">
               {[
-                { label: 'Necesidades', pct: plan.rule503020.needsPct, target: 50, amount: plan.rule503020.needs, targetAmount: planConfig.declaredIncome * 0.5, emoji: '🏠', color: 'bg-blue-500', trackColor: 'bg-blue-100 dark:bg-blue-900/30', warn: plan.rule503020.needsPct > 55 },
-                { label: 'Gustos', pct: plan.rule503020.wantsPct, target: 30, amount: plan.rule503020.wants, targetAmount: planConfig.declaredIncome * 0.3, emoji: '✨', color: 'bg-purple-500', trackColor: 'bg-purple-100 dark:bg-purple-900/30', warn: plan.rule503020.wantsPct > 35 },
-                { label: 'Ahorro', pct: Math.max(0, plan.rule503020.savingsPct), target: 20, amount: Math.max(0, plan.rule503020.savings), targetAmount: planConfig.declaredIncome * 0.2, emoji: '💰', color: 'bg-emerald-500', trackColor: 'bg-emerald-100 dark:bg-emerald-900/30', warn: plan.rule503020.savingsPct < 10 },
+                { label: 'Necesidades', pct: plan.rule503020.needsPct, target: 50, amount: plan.rule503020.needs, targetAmount: planConfig.declaredIncome * 0.5, Icon: Home, warn: plan.rule503020.needsPct > 55 },
+                { label: 'Gustos', pct: plan.rule503020.wantsPct, target: 30, amount: plan.rule503020.wants, targetAmount: planConfig.declaredIncome * 0.3, Icon: Sparkles, warn: plan.rule503020.wantsPct > 35 },
+                { label: 'Ahorro', pct: Math.max(0, plan.rule503020.savingsPct), target: 20, amount: Math.max(0, plan.rule503020.savings), targetAmount: planConfig.declaredIncome * 0.2, Icon: PiggyBank, warn: plan.rule503020.savingsPct < 10 },
               ].map(item => {
-                const normalizedWidth = Math.min(100, (item.pct / (item.target * 1.5)) * 100);
-                const targetPosition = (1 / 1.5) * 100;
+                // Barra lineal 0-100%: el ancho ES el % del ingreso y la línea de
+                // objetivo cae en su posición real (target%), sin escalado engañoso.
+                const linearWidth = Math.min(100, Math.max(0, item.pct));
                 return (
                   <div key={item.label}>
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-base">{item.emoji}</span>
+                        <item.Icon size={16} className="text-gray-400" />
                         <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{item.label}</span>
                       </div>
                       <div className="flex items-baseline gap-1">
-                        <span className={`text-lg font-black ${item.warn ? 'text-rose-500' : scoreColor(plan.score.total)}`}>
+                        <span className={`text-lg font-black ${item.warn ? 'text-destructive' : 'text-gray-900 dark:text-gray-100'}`}>
                           {item.pct}%
                         </span>
                         <span className="text-xs text-gray-400">/ {item.target}%</span>
@@ -271,20 +273,24 @@ export const BudgetsView: React.FC = () => {
                     {/* Montos: real vs ideal */}
                     <div className="flex items-center justify-between text-[11px] mb-2 px-0.5">
                       <span className="text-gray-500 dark:text-gray-400">
-                        Usas <span className={`font-bold ${item.warn ? 'text-rose-600 dark:text-rose-400' : 'text-gray-700 dark:text-gray-300'}`}>{displayAmount(item.amount)}</span>
+                        Usas <span className={`font-bold ${item.warn ? 'text-destructive' : 'text-gray-700 dark:text-gray-300'}`}>{displayAmount(item.amount)}</span>
                       </span>
                       <span className="text-gray-400">
                         ideal <span className="font-bold text-gray-600 dark:text-gray-300">{displayAmount(item.targetAmount)}</span>
                       </span>
                     </div>
                     <div className="relative">
-                      <div className={`w-full h-3 ${item.trackColor} rounded-full overflow-hidden`}>
-                        <div className={`h-full rounded-full ${item.warn && item.label !== 'Ahorro' ? 'bg-rose-500' : item.color} transition-[width] duration-700`}
-                          style={{ width: `${normalizedWidth}%` }} />
+                      <div className="w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${item.warn ? 'bg-destructive' : 'bg-primary'} transition-[width] duration-700`}
+                          style={{ width: `${linearWidth}%` }} />
                       </div>
-                      <div className="absolute top-0 bottom-0 flex items-center" style={{ left: `${targetPosition}%` }}>
-                        <div className="w-0.5 h-5 -mt-1 bg-gray-400 dark:bg-gray-500 rounded-full opacity-50" />
+                      {/* Línea del objetivo, en su posición real y etiquetada */}
+                      <div className="absolute -top-0.5 bottom-0 flex flex-col items-center" style={{ left: `${item.target}%` }}>
+                        <div className="w-0.5 h-4 bg-gray-500 dark:bg-gray-400 rounded-full" />
                       </div>
+                    </div>
+                    <div className="mt-1 text-[10px] text-gray-400 text-right pr-0.5" style={{ marginRight: `${100 - item.target}%` }}>
+                      ideal {item.target}%
                     </div>
                   </div>
                 );
@@ -297,26 +303,22 @@ export const BudgetsView: React.FC = () => {
             <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-4">Proyección de ahorro</h3>
             <div className="grid grid-cols-3 gap-3 mb-4">
               {[
-                { months: 3, amount: plan.projection.in3Months, icon: <Clock size={14} />, gradient: 'from-emerald-500 to-emerald-600' },
-                { months: 6, amount: plan.projection.in6Months, icon: <TrendingUp size={14} />, gradient: 'from-blue-500 to-blue-600' },
-                { months: 12, amount: plan.projection.in12Months, icon: <Zap size={14} />, gradient: 'from-purple-500 to-indigo-600' },
+                { months: 3, amount: plan.projection.in3Months, icon: <Clock size={14} /> },
+                { months: 6, amount: plan.projection.in6Months, icon: <TrendingUp size={14} /> },
+                { months: 12, amount: plan.projection.in12Months, icon: <Zap size={14} /> },
               ].map(item => (
-                <div key={item.months} className="relative overflow-hidden rounded-2xl p-4 text-center">
-                  <div className={`absolute inset-0 bg-gradient-to-br ${item.gradient} opacity-10`} />
-                  <div className={`absolute inset-0 border border-current opacity-20 rounded-2xl ${item.months === 3 ? 'text-emerald-500' : item.months === 6 ? 'text-blue-500' : 'text-purple-500'}`} />
-                  <div className="relative">
-                    <div className={`mx-auto mb-2 flex h-7 w-7 items-center justify-center rounded-lg ${item.months === 3 ? 'text-emerald-500 bg-emerald-500/10' : item.months === 6 ? 'text-blue-500 bg-blue-500/10' : 'text-purple-500 bg-purple-500/10'}`}>
-                      {item.icon}
-                    </div>
-                    <p className="text-sm font-black text-gray-900 dark:text-gray-100">{displayAmount(item.amount)}</p>
-                    <p className="text-[10px] font-medium text-gray-500 mt-0.5">{item.months} meses</p>
+                <div key={item.months} className="rounded-xl p-4 text-center bg-gray-50 dark:bg-gray-800/50">
+                  <div className="mx-auto mb-2 flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 bg-gray-100 dark:bg-gray-700/50">
+                    {item.icon}
                   </div>
+                  <p className="text-sm font-black text-gray-900 dark:text-gray-100">{displayAmount(item.amount)}</p>
+                  <p className="text-[10px] font-medium text-gray-500 mt-0.5">{item.months} meses</p>
                 </div>
               ))}
             </div>
             {plan.projection.monthsToEmergencyFund !== null && (
-              <div className="flex items-center justify-center gap-2 p-3 rounded-xl bg-gradient-to-r from-emerald-50 to-blue-50 dark:from-emerald-900/10 dark:to-blue-900/10 border border-emerald-200/50 dark:border-emerald-800/30">
-                <Shield size={14} className="text-emerald-500" />
+              <div className="flex items-center justify-center gap-2 p-3 rounded-xl bg-info-muted border border-info/20">
+                <Shield size={14} className="text-info" />
                 <p className="text-xs text-gray-600 dark:text-gray-400">
                   Fondo de emergencia en <span className="font-bold text-gray-800 dark:text-gray-200">{plan.projection.monthsToEmergencyFund} meses</span>
                 </p>

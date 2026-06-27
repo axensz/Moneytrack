@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, Target, Trophy, Calendar, Trash2, DollarSign, X, Clock, CheckCircle2, Info } from 'lucide-react';
+import { Plus, Target, Trophy, Calendar, Trash2, DollarSign, X, Clock, CheckCircle2, Info, Lightbulb } from 'lucide-react';
 import { useGoalsDomain } from '../../../hooks/useFinanceSelectors';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { formatCurrency, formatNumberForInput, unformatNumber, parseCurrency } from '../../../utils/formatters';
@@ -94,7 +94,7 @@ export const GoalsView: React.FC = () => {
         {/* Header con descripción */}
         <div className="mb-6">
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-            Metas de Ahorro
+            Metas de ahorro
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Define y alcanza tus objetivos financieros
@@ -103,65 +103,57 @@ export const GoalsView: React.FC = () => {
               "Agregar ahorro" solo incrementa un contador; NO descuenta dinero de
               ninguna cuenta. Se divulga para evitar que el usuario crea que el
               dinero ahorrado dejó sus saldos (se contaría doble). */}
-          <div className="mt-3 flex items-start gap-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 px-3 py-2">
-            <Info size={14} className="mt-0.5 shrink-0 text-blue-500 dark:text-blue-400" aria-hidden="true" />
-            <p className="text-xs text-blue-700 dark:text-blue-300">
+          <div className="mt-3 flex items-start gap-2 rounded-lg bg-info-muted border border-info/20 px-3 py-2">
+            <Info size={14} className="mt-0.5 shrink-0 text-info" aria-hidden="true" />
+            <p className="text-xs text-info">
               Seguimiento manual — registrar un ahorro aquí <strong>no mueve dinero</strong> de tus cuentas ni afecta tus saldos.
             </p>
           </div>
         </div>
 
-        {/* Stats */}
+        {/* Stats - planas y neutras (las metas son seguimiento, no estado) */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/20 rounded-2xl p-4 sm:p-5 border-2 border-purple-200 dark:border-purple-700 shadow-lg hover:shadow-xl transition-shadow">
-            <div className="flex items-center justify-between mb-2">
-              <div className="p-2 bg-purple-200 dark:bg-purple-800 rounded-xl">
-                <Target className="text-purple-700 dark:text-purple-300" size={20} />
-              </div>
+          <div className="rounded-xl p-4 bg-gray-50 dark:bg-gray-800/50">
+            <div className="flex items-center gap-2 mb-2">
+              <Target className="text-gray-500 dark:text-gray-400" size={18} />
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Metas activas</span>
             </div>
-            <p className="text-xs text-purple-700 dark:text-purple-400 font-medium mb-1">Metas activas</p>
-            <p className="text-2xl sm:text-3xl font-bold text-purple-900 dark:text-purple-100">{goalStats.activeCount}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">{goalStats.activeCount}</p>
           </div>
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 rounded-2xl p-4 sm:p-5 border-2 border-blue-200 dark:border-blue-700 shadow-lg hover:shadow-xl transition-shadow">
-            <div className="flex items-center justify-between mb-2">
-              <div className="p-2 bg-blue-200 dark:bg-blue-800 rounded-xl">
-                <Target className="text-blue-700 dark:text-blue-300" size={20} />
-              </div>
+          <div className="rounded-xl p-4 bg-gray-50 dark:bg-gray-800/50">
+            <div className="flex items-center gap-2 mb-2">
+              <Target className="text-gray-500 dark:text-gray-400" size={18} />
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Objetivo total</span>
             </div>
-            <p className="text-xs text-blue-700 dark:text-blue-400 font-medium mb-1">Objetivo total</p>
-            <p className="text-xl sm:text-2xl font-bold text-blue-900 dark:text-blue-100">{displayAmount(goalStats.totalTarget)}</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">{displayAmount(goalStats.totalTarget)}</p>
           </div>
-          <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/20 rounded-2xl p-4 sm:p-5 border-2 border-green-200 dark:border-green-700 shadow-lg hover:shadow-xl transition-shadow">
-            <div className="flex items-center justify-between mb-2">
-              <div className="p-2 bg-green-200 dark:bg-green-800 rounded-xl">
-                <CheckCircle2 className="text-green-700 dark:text-green-300" size={20} />
-              </div>
+          <div className="rounded-xl p-4 bg-gray-50 dark:bg-gray-800/50">
+            <div className="flex items-center gap-2 mb-2">
+              <CheckCircle2 className="text-gray-500 dark:text-gray-400" size={18} />
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Ahorrado</span>
             </div>
-            <p className="text-xs text-green-700 dark:text-green-400 font-medium mb-1">Ahorrado</p>
-            <p className="text-xl sm:text-2xl font-bold text-green-900 dark:text-green-100">{displayAmount(goalStats.totalSaved)}</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">{displayAmount(goalStats.totalSaved)}</p>
           </div>
-          <div className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/30 dark:to-amber-800/20 rounded-2xl p-4 sm:p-5 border-2 border-amber-200 dark:border-amber-700 shadow-lg hover:shadow-xl transition-shadow">
-            <div className="flex items-center justify-between mb-2">
-              <div className="p-2 bg-amber-200 dark:bg-amber-800 rounded-xl">
-                <Trophy className="text-amber-700 dark:text-amber-300" size={20} />
-              </div>
+          <div className="rounded-xl p-4 bg-gray-50 dark:bg-gray-800/50">
+            <div className="flex items-center gap-2 mb-2">
+              <Trophy className="text-gray-500 dark:text-gray-400" size={18} />
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Completadas</span>
             </div>
-            <p className="text-xs text-amber-700 dark:text-amber-400 font-medium mb-1">Completadas</p>
-            <p className="text-2xl sm:text-3xl font-bold text-amber-900 dark:text-amber-100">{goalStats.completedCount}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">{goalStats.completedCount}</p>
           </div>
         </div>
 
         {/* Header con botón */}
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Mis Metas
+            Mis metas
           </h3>
           <button
             onClick={() => setShowForm(!showForm)}
-            className="btn-submit text-sm flex items-center gap-1.5"
+            className="btn-primary text-sm"
           >
             <Plus size={16} />
-            Nueva Meta
+            Nueva meta
           </button>
         </div>
 
@@ -199,7 +191,7 @@ export const GoalsView: React.FC = () => {
 
             <div className="flex gap-2">
               <button onClick={handleSubmit} className="btn-submit flex-1">
-                Crear Meta
+                Crear meta
               </button>
               <button onClick={() => setShowForm(false)} className="btn-cancel flex-1">
                 Cancelar
@@ -218,20 +210,20 @@ export const GoalsView: React.FC = () => {
               >
                 <div className="flex items-start justify-between mb-2">
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white">
                       {goal.name}
-                    </h3>
+                    </span>
                     {goal.targetDate && (
                       <div className="flex items-center gap-1 mt-0.5">
                         {isOverdue ? (
-                          <Clock size={12} className="text-red-500" />
+                          <Clock size={12} className="text-destructive" />
                         ) : (
                           <Calendar size={12} className="text-gray-400" />
                         )}
-                        <span className={`text-xs ${isOverdue ? 'text-red-500 font-medium' : 'text-gray-500'}`}>
+                        <span className={`text-xs ${isOverdue ? 'text-destructive font-medium' : 'text-gray-500'}`}>
                           {isOverdue
-                            ? `Vencida hace ${Math.abs(daysRemaining!)} días`
-                            : `${daysRemaining} días restantes`
+                            ? `Vencida hace ${Math.abs(daysRemaining!)} ${Math.abs(daysRemaining!) === 1 ? 'día' : 'días'}`
+                            : `${daysRemaining} ${daysRemaining === 1 ? 'día restante' : 'días restantes'}`
                           }
                         </span>
                       </div>
@@ -254,7 +246,7 @@ export const GoalsView: React.FC = () => {
                     </button>
                     <button
                       onClick={() => handleDelete(goal)}
-                      className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 text-red-500"
+                      className="p-1.5 rounded-lg hover:bg-destructive-muted text-destructive"
                       title="Eliminar"
                     >
                       <Trash2 size={14} />
@@ -264,7 +256,7 @@ export const GoalsView: React.FC = () => {
 
                 {/* Amounts */}
                 <div className="flex items-baseline gap-2 mb-2">
-                  <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
+                  <span className="text-lg font-bold text-gray-900 dark:text-gray-100">
                     {displayAmount(goal.currentAmount)}
                   </span>
                   <span className="text-xs text-gray-500">
@@ -272,23 +264,23 @@ export const GoalsView: React.FC = () => {
                   </span>
                 </div>
 
-                {/* Progress bar */}
+                {/* Progress bar — marca mientras avanza, éxito al completar */}
                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 mb-2">
                   <div
-                    className={`h-3 rounded-full transition-[width,background-color] duration-500 ${percentage >= 100 ? 'bg-green-500' : percentage >= 75 ? 'bg-blue-500' : 'bg-purple-500'
-                      }`}
+                    className={`h-3 rounded-full transition-[width,background-color] duration-500 ${percentage >= 100 ? 'bg-success' : 'bg-primary'}`}
                     style={{ width: `${Math.min(100, percentage)}%` }}
                   />
                 </div>
 
                 <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
-                  <span>{percentage}% completado</span>
+                  <span>{percentage >= 100 ? 'Completada' : `${Math.min(100, percentage)}% completado`}</span>
                   <span>Faltan {displayAmount(remaining)}</span>
                 </div>
 
                 {suggestedMonthly && (
-                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                    💡 Ahorra {displayAmount(suggestedMonthly)}/mes para alcanzar tu meta
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1.5">
+                    <Lightbulb size={12} className="text-gray-400 shrink-0" />
+                    Ahorra {displayAmount(suggestedMonthly)}/mes para alcanzar tu meta
                   </p>
                 )}
 
@@ -348,14 +340,14 @@ export const GoalsView: React.FC = () => {
             {showCompleted && (
               <div className="mt-2 space-y-2">
                 {completedGoals.map(({ goal }) => (
-                  <div key={goal.id} className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                  <div key={goal.id} className="flex items-center justify-between p-3 bg-success-muted rounded-lg">
                     <div className="flex items-center gap-2">
-                      <Trophy size={16} className="text-amber-500" />
+                      <Trophy size={16} className="text-warning" />
                       <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                         {goal.name}
                       </span>
                     </div>
-                    <span className="text-sm text-green-600 dark:text-green-400 font-medium">
+                    <span className="text-sm text-success font-medium">
                       {displayAmount(goal.targetAmount)}
                     </span>
                   </div>

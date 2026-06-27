@@ -161,59 +161,52 @@ export const DebtsView: React.FC = () => {
       <div className="card">
         <div className="mb-6">
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-            Préstamos y Deudas
+            Préstamos y deudas
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Controla el dinero que prestas y debes
           </p>
         </div>
 
-        {/* Stats Cards - Mejoradas */}
+        {/* Stats Cards - planas y neutras (color = estado, no decoración) */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 rounded-2xl p-4 sm:p-5 border-2 border-blue-200 dark:border-blue-700 shadow-lg hover:shadow-xl transition-[box-shadow]">
-            <div className="flex items-center justify-between mb-2">
-              <div className="p-2 bg-blue-200 dark:bg-blue-800 rounded-xl">
-                <ArrowUpRight className="text-blue-700 dark:text-blue-300" size={20} />
-              </div>
-              <span className="text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/50 px-2 py-1 rounded-full">
-                {debtStats.activeLentCount} activo{debtStats.activeLentCount !== 1 ? 's' : ''}
-              </span>
+          <div className="rounded-xl p-4 bg-gray-50 dark:bg-gray-800/50">
+            <div className="flex items-center gap-2 mb-2">
+              <ArrowUpRight className="text-gray-500 dark:text-gray-400" size={18} />
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Me deben</span>
             </div>
-            <p className="text-xs text-blue-700 dark:text-blue-400 font-medium mb-1">Me deben</p>
-            <p className="text-xl sm:text-2xl font-bold text-blue-900 dark:text-blue-100">{displayAmount(debtStats.totalLent)}</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">{displayAmount(debtStats.totalLent)}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              {debtStats.activeLentCount} activo{debtStats.activeLentCount !== 1 ? 's' : ''}
+            </p>
           </div>
 
-          <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/30 dark:to-orange-800/20 rounded-2xl p-4 sm:p-5 border-2 border-orange-200 dark:border-orange-700 shadow-lg hover:shadow-xl transition-[box-shadow]">
-            <div className="flex items-center justify-between mb-2">
-              <div className="p-2 bg-orange-200 dark:bg-orange-800 rounded-xl">
-                <ArrowDownLeft className="text-orange-700 dark:text-orange-300" size={20} />
-              </div>
-              <span className="text-xs font-medium text-orange-600 dark:text-orange-400 bg-orange-100 dark:bg-orange-900/50 px-2 py-1 rounded-full">
-                {debtStats.activeBorrowedCount} activo{debtStats.activeBorrowedCount !== 1 ? 's' : ''}
-              </span>
+          <div className="rounded-xl p-4 bg-gray-50 dark:bg-gray-800/50">
+            <div className="flex items-center gap-2 mb-2">
+              <ArrowDownLeft className="text-gray-500 dark:text-gray-400" size={18} />
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Debo</span>
             </div>
-            <p className="text-xs text-orange-700 dark:text-orange-400 font-medium mb-1">Debo</p>
-            <p className="text-xl sm:text-2xl font-bold text-orange-900 dark:text-orange-100">{displayAmount(debtStats.totalBorrowed)}</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">{displayAmount(debtStats.totalBorrowed)}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              {debtStats.activeBorrowedCount} activo{debtStats.activeBorrowedCount !== 1 ? 's' : ''}
+            </p>
           </div>
 
-          <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/20 rounded-2xl p-4 sm:p-5 border-2 border-green-200 dark:border-green-700 shadow-lg hover:shadow-xl transition-[box-shadow]">
-            <div className="flex items-center justify-between mb-2">
-              <div className="p-2 bg-green-200 dark:bg-green-800 rounded-xl">
-                <CheckCircle2 className="text-green-700 dark:text-green-300" size={20} />
-              </div>
+          <div className="rounded-xl p-4 bg-gray-50 dark:bg-gray-800/50">
+            <div className="flex items-center gap-2 mb-2">
+              <CheckCircle2 className="text-gray-500 dark:text-gray-400" size={18} />
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Saldados</span>
             </div>
-            <p className="text-xs text-green-700 dark:text-green-400 font-medium mb-1">Saldados</p>
-            <p className="text-xl sm:text-2xl font-bold text-green-900 dark:text-green-100">{debtStats.settledCount}</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">{debtStats.settledCount}</p>
           </div>
 
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/20 rounded-2xl p-4 sm:p-5 border-2 border-purple-200 dark:border-purple-700 shadow-lg hover:shadow-xl transition-[box-shadow]">
-            <div className="flex items-center justify-between mb-2">
-              <div className="p-2 bg-purple-200 dark:bg-purple-800 rounded-xl">
-                <Users className="text-purple-700 dark:text-purple-300" size={20} />
-              </div>
+          <div className="rounded-xl p-4 bg-gray-50 dark:bg-gray-800/50">
+            <div className="flex items-center gap-2 mb-2">
+              <Users className="text-gray-500 dark:text-gray-400" size={18} />
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Balance neto</span>
             </div>
-            <p className="text-xs text-purple-700 dark:text-purple-400 font-medium mb-1">Balance neto</p>
-            <p className={`text-xl sm:text-2xl font-bold ${debtStats.totalLent - debtStats.totalBorrowed >= 0 ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
+            {/* Único color por estado real: positivo = a tu favor, negativo = en contra */}
+            <p className={`text-xl sm:text-2xl font-bold ${debtStats.totalLent - debtStats.totalBorrowed >= 0 ? 'text-success' : 'text-destructive'}`}>
               {displayAmount(debtStats.totalLent - debtStats.totalBorrowed)}
             </p>
           </div>
@@ -225,11 +218,11 @@ export const DebtsView: React.FC = () => {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Gestionar Préstamos
+            Gestionar préstamos
           </h3>
           <button
             onClick={() => setShowForm(!showForm)}
-            className="btn-submit text-sm flex items-center gap-2 shadow-lg hover:shadow-xl transition-[box-shadow]"
+            className="btn-primary text-sm"
           >
             <Plus size={18} />
             <span className="hidden sm:inline">Nuevo</span>
@@ -350,10 +343,10 @@ export const DebtsView: React.FC = () => {
         {/* Active Debts - Lent */}
         {lentDebts.length > 0 && (
           <div className="mb-4">
-            <h3 className="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-2 flex items-center gap-1.5">
-              <ArrowUpRight size={14} />
+            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1.5">
+              <ArrowUpRight size={14} className="text-gray-400 dark:text-gray-500" />
               Me deben ({lentDebts.length})
-            </h3>
+            </h4>
             <div className="space-y-2">
               {lentDebts.map(debt => (
                 <DebtCard
@@ -385,10 +378,10 @@ export const DebtsView: React.FC = () => {
         {/* Active Debts - Borrowed */}
         {borrowedDebts.length > 0 && (
           <div className="mb-4">
-            <h3 className="text-sm font-semibold text-orange-700 dark:text-orange-400 mb-2 flex items-center gap-1.5">
-              <ArrowDownLeft size={14} />
+            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1.5">
+              <ArrowDownLeft size={14} className="text-gray-400 dark:text-gray-500" />
               Debo ({borrowedDebts.length})
-            </h3>
+            </h4>
             <div className="space-y-2">
               {borrowedDebts.map(debt => (
                 <DebtCard
@@ -445,15 +438,15 @@ export const DebtsView: React.FC = () => {
                       </span>
                       <span className="text-xs text-gray-500 ml-2">{displayAmount(debt.originalAmount)}</span>
                       {debt.forgivenReason && (
-                        <span className="text-xs text-amber-600 dark:text-amber-400 ml-2">
+                        <span className="text-xs text-warning ml-2">
                           Condonada · {FORGIVEN_LABELS[debt.forgivenReason]}
                         </span>
                       )}
                     </div>
                     {debt.forgivenReason ? (
-                      <Ban size={16} className="text-amber-500" />
+                      <Ban size={16} className="text-warning" />
                     ) : (
-                      <CheckCircle2 size={16} className="text-green-500" />
+                      <CheckCircle2 size={16} className="text-success" />
                     )}
                   </div>
                 ))}
@@ -533,7 +526,6 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
     : 0;
 
   const isLent = debt.type === 'lent';
-  const colorClass = isLent ? 'blue' : 'orange';
 
   // Antigüedad y vencimiento
   const lentSource = debt.lentDate ?? debt.createdAt;
@@ -558,7 +550,7 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
             )}
           </div>
           <div className="flex items-center gap-3 mt-1">
-            <span className={`text-lg font-bold text-${colorClass}-600 dark:text-${colorClass}-400`}>
+            <span className="text-lg font-bold text-gray-900 dark:text-gray-100">
               {formatCurrency(debt.remainingAmount)}
             </span>
             {debt.remainingAmount !== debt.originalAmount && (
@@ -577,7 +569,7 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
               </div>
               <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
                 <div
-                  className={`bg-${colorClass}-500 h-1.5 rounded-full transition-[width]`}
+                  className="bg-primary h-1.5 rounded-full transition-[width]"
                   style={{ width: `${progress}%` }}
                 />
               </div>
@@ -645,7 +637,7 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
           </button>
           <button
             onClick={() => onDelete(debt)}
-            className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 text-red-500"
+            className="p-1.5 rounded-lg hover:bg-destructive-muted text-destructive"
             title="Eliminar"
           >
             <Trash2 size={14} />

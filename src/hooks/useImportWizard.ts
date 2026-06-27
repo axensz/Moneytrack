@@ -157,7 +157,7 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
     setLearningRules,
   });
   const {
-    aiCategorizing, aiApplied, aiSuggestions,
+    aiCategorizing, aiApplied, aiSuggestions, aiNoSuggestions,
     aiSuggestionTransactionCount, aiSuggestionsByCategory,
     handleAICategorize: aiCategorize,
     handleApplyAISuggestions: aiApply,
@@ -312,6 +312,7 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
     aiCategorizing,
     aiApplied,
     aiSuggestions,
+    aiNoSuggestions,
     pdfParsing,
     pdfNeedsAI,
     fileInputRef,

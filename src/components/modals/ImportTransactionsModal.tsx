@@ -40,6 +40,7 @@ export function ImportTransactionsModal({ isOpen, onClose, onOpenAISettings }: I
     aiCategorizing,
     aiApplied,
     aiSuggestions,
+    aiNoSuggestions,
     pdfParsing,
     pdfNeedsAI,
     fileInputRef,
@@ -154,6 +155,7 @@ export function ImportTransactionsModal({ isOpen, onClose, onOpenAISettings }: I
               aiCategorizing={aiCategorizing}
               aiApplied={aiApplied}
               aiSuggestions={aiSuggestions}
+              aiNoSuggestions={aiNoSuggestions}
               aiSuggestionTransactionCount={aiSuggestionTransactionCount}
               aiSuggestionsByCategory={aiSuggestionsByCategory}
               aiUnavailableMessage={aiUnavailableMessage}

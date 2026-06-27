@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Smartphone, Zap, WifiOff, CheckCircle, X } from 'lucide-react';
+import { Wallet, Zap, WifiOff, CheckCircle, X } from 'lucide-react';
 import { BaseModal } from '../modals/BaseModal';
 
 /**
@@ -43,66 +43,66 @@ export function PWAWelcomeModal() {
                 {/* Header */}
                 <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center gap-3">
-                        <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-full">
-                            <Smartphone className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                        <div className="p-3 bg-primary/10 rounded-full">
+                            <Wallet className="w-6 h-6 text-primary" />
                         </div>
                         <div>
-                            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                            <h2 className="text-2xl font-bold text-foreground">
                                 ¡Bienvenido a MoneyTrack!
                             </h2>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                            <p className="text-sm text-muted-foreground">
                                 App instalada correctamente
                             </p>
                         </div>
                     </div>
                     <button
                         onClick={handleClose}
-                        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                        className="p-2 hover:bg-muted rounded-lg transition-colors"
                         aria-label="Cerrar"
                     >
-                        <X className="w-5 h-5 text-gray-500" />
+                        <X className="w-5 h-5 text-muted-foreground" />
                     </button>
                 </div>
 
                 {/* Features */}
                 <div className="space-y-4 mb-6">
-                    <div className="flex items-start gap-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
-                        <div className="p-2 bg-purple-200 dark:bg-purple-800 rounded-lg flex-shrink-0">
-                            <Zap className="w-5 h-5 text-purple-700 dark:text-purple-300" />
+                    <div className="flex items-start gap-4 p-4 bg-muted rounded-lg">
+                        <div className="p-2 bg-primary/10 rounded-lg flex-shrink-0">
+                            <Zap className="w-5 h-5 text-primary" />
                         </div>
                         <div className="flex-1">
-                            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">
+                            <h3 className="font-semibold text-foreground mb-1">
                                 Acceso rápido
                             </h3>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                            <p className="text-sm text-muted-foreground">
                                 Abre MoneyTrack directamente desde tu pantalla de inicio, como una app nativa.
                             </p>
                         </div>
                     </div>
 
-                    <div className="flex items-start gap-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                        <div className="p-2 bg-blue-200 dark:bg-blue-800 rounded-lg flex-shrink-0">
-                            <WifiOff className="w-5 h-5 text-blue-700 dark:text-blue-300" />
+                    <div className="flex items-start gap-4 p-4 bg-muted rounded-lg">
+                        <div className="p-2 bg-primary/10 rounded-lg flex-shrink-0">
+                            <WifiOff className="w-5 h-5 text-primary" />
                         </div>
                         <div className="flex-1">
-                            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">
+                            <h3 className="font-semibold text-foreground mb-1">
                                 Funciona sin conexión
                             </h3>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                            <p className="text-sm text-muted-foreground">
                                 Consulta tus datos financieros incluso sin internet. Los cambios se sincronizarán automáticamente.
                             </p>
                         </div>
                     </div>
 
-                    <div className="flex items-start gap-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                        <div className="p-2 bg-green-200 dark:bg-green-800 rounded-lg flex-shrink-0">
-                            <CheckCircle className="w-5 h-5 text-green-700 dark:text-green-300" />
+                    <div className="flex items-start gap-4 p-4 bg-muted rounded-lg">
+                        <div className="p-2 bg-primary/10 rounded-lg flex-shrink-0">
+                            <CheckCircle className="w-5 h-5 text-primary" />
                         </div>
                         <div className="flex-1">
-                            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">
+                            <h3 className="font-semibold text-foreground mb-1">
                                 Siempre actualizado
                             </h3>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                            <p className="text-sm text-muted-foreground">
                                 La app se actualiza automáticamente con las últimas mejoras y funciones.
                             </p>
                         </div>
@@ -112,7 +112,7 @@ export function PWAWelcomeModal() {
                 {/* Action Button */}
                 <button
                     onClick={handleClose}
-                    className="w-full px-6 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors"
+                    className="btn-primary w-full"
                 >
                     ¡Empezar a usar MoneyTrack!
                 </button>

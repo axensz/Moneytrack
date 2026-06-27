@@ -16,6 +16,7 @@ interface ImportReviewStepProps {
   aiCategorizing: boolean;
   aiApplied: boolean;
   aiSuggestions: AISuggestion[];
+  aiNoSuggestions: boolean;
   aiSuggestionTransactionCount: number;
   aiSuggestionsByCategory: { category: string; suggestions: AISuggestion[] }[];
   aiUnavailableMessage: string;
@@ -39,6 +40,7 @@ export function ImportReviewStep({
   aiCategorizing,
   aiApplied,
   aiSuggestions,
+  aiNoSuggestions,
   aiSuggestionTransactionCount,
   aiSuggestionsByCategory,
   aiUnavailableMessage,
@@ -67,7 +69,7 @@ export function ImportReviewStep({
             <button
               onClick={onAICategorize}
               disabled={aiCategorizing || includedCount === 0}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg hover:from-blue-600 hover:to-purple-600 transition-[background-color,opacity] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-primary-solid text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {aiCategorizing ? (
                 <><Loader2 size={12} className="animate-spin" /> Analizando...</>
@@ -79,7 +81,7 @@ export function ImportReviewStep({
           {!isAIAvailable() && onOpenAISettings && (
             <button
               onClick={onOpenAISettings}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-primary/40 text-primary bg-primary/10 rounded-lg hover:bg-primary/20 transition-colors"
               title={aiUnavailableMessage}
             >
               <Sparkles size={12} /> Activar IA para categorizar
@@ -122,9 +124,16 @@ export function ImportReviewStep({
       </div>
 
       {aiApplied && (
-        <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-xs text-blue-700 dark:text-blue-300">
+        <div className="flex items-center gap-2 p-2 bg-primary/10 rounded-lg text-xs text-primary">
           <Sparkles size={12} />
           Categorías actualizadas con IA. Revisa y ajusta si es necesario.
+        </div>
+      )}
+
+      {aiNoSuggestions && aiSuggestions.length === 0 && (
+        <div className="flex items-start gap-2 p-2 bg-muted rounded-lg text-xs text-muted-foreground">
+          <Sparkles size={12} className="text-primary mt-0.5 shrink-0" />
+          <span>La IA no encontró categorías con suficiente confianza. Revisa y ajusta las categorías manualmente.</span>
         </div>
       )}
 

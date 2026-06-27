@@ -19,17 +19,19 @@
   /* PRIMARY - Morado vibrante */
   --primary: #7c3aed;
   --primary-foreground: #ffffff;
+  /* Relleno sólido para botones/badges con texto blanco. En claro = --primary. */
+  --primary-solid: #7c3aed;
 
-  /* SUCCESS (Verde) */
-  --success: #059669;
+  /* SUCCESS (Verde) — fg oscurecido para WCAG AA (5.21:1 sobre muted) */
+  --success: #047857;
   --success-muted: #ecfdf5;
 
-  /* DESTRUCTIVE (Rojo) */
-  --destructive: #dc2626;
+  /* DESTRUCTIVE (Rojo) — fg oscurecido para WCAG AA (5.24:1 sobre muted) */
+  --destructive: #c81e1e;
   --destructive-muted: #fef2f2;
 
-  /* WARNING (Amarillo/Naranja) */
-  --warning: #d97706;
+  /* WARNING (Amarillo/Naranja) — fg oscurecido para WCAG AA (4.84:1 sobre muted) */
+  --warning: #b45309;
   --warning-muted: #fffbeb;
 
   /* INFO (Azul) */
@@ -83,22 +85,32 @@
   /* PRIMARY DARK */
   --primary: #8b5cf6;
   --primary-foreground: #ffffff;
+  /* Relleno sólido con texto blanco — más profundo en dark para WCAG AA
+     (blanco sobre #6d28d9 = 7.1:1; #8b5cf6 daba 4.23:1). NO se toca --primary,
+     que también sirve como texto/borde/foco sobre fondo oscuro. */
+  --primary-solid: #6d28d9;
+  /* Gradiente .btn-primary en dark: ambos stops ≥4.5:1 con blanco. */
+  --btn-primary-from: #6d28d9;
+  --btn-primary-to: #7c3aed;
+  --btn-primary-from-hover: #5b21b6;
+  --btn-primary-to-hover: #6d28d9;
+  --btn-submit-hover: #5b21b6;
 
-  /* SUCCESS DARK */
+  /* SUCCESS DARK — muted profundizado para WCAG AA (6.19:1 con fg) */
   --success: #10b981;
-  --success-muted: #064e3b;
+  --success-muted: #03291c;
 
-  /* DESTRUCTIVE DARK */
+  /* DESTRUCTIVE DARK — muted profundizado para WCAG AA (4.58:1 con fg) */
   --destructive: #ef4444;
-  --destructive-muted: #7f1d1d;
+  --destructive-muted: #3a0808;
 
-  /* WARNING DARK */
+  /* WARNING DARK — muted profundizado para WCAG AA (6.37:1 con fg) */
   --warning: #f59e0b;
-  --warning-muted: #78350f;
+  --warning-muted: #4a2308;
 
-  /* INFO DARK */
+  /* INFO DARK — muted profundizado para WCAG AA (4.81:1 con fg) */
   --info: #3b82f6;
-  --info-muted: #1e3a8a;
+  --info-muted: #0d1733;
 
   /* BALANCE DARK */
   --balance-accent: #581c87;

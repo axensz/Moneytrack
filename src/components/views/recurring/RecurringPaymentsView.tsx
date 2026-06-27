@@ -151,7 +151,7 @@ export const RecurringPaymentsView: React.FC = () => {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div>
             <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-              Pagos Periódicos
+              Pagos periódicos
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               Gestiona tus suscripciones y pagos recurrentes
@@ -172,9 +172,9 @@ export const RecurringPaymentsView: React.FC = () => {
         />
       </div>
 
-      {/* Alerta de pagos vencidos (rojo) */}
+      {/* Alerta de pagos vencidos (destructive) */}
       <UpcomingPaymentsAlert
-        tone="red"
+        tone="destructive"
         title="Pagos vencidos"
         payments={stats.overduePayments}
         getLabel={(p) => {
@@ -184,9 +184,9 @@ export const RecurringPaymentsView: React.FC = () => {
         formatCurrency={displayAmount}
       />
 
-      {/* Alerta de pagos próximos a vencer (ámbar) */}
+      {/* Alerta de pagos próximos a vencer (warning) */}
       <UpcomingPaymentsAlert
-        tone="amber"
+        tone="warning"
         title="Pagos próximos a vencer"
         payments={stats.upcomingPayments}
         getLabel={(p) => `vence en ${getDaysUntilDue(p)} días`}
@@ -195,17 +195,17 @@ export const RecurringPaymentsView: React.FC = () => {
 
       {/* Selector de vista */}
       <div className="flex justify-end">
-        <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 p-0.5 bg-white dark:bg-gray-800">
+        <div className="inline-flex rounded-lg border border-border p-0.5 bg-card">
           <button
             onClick={() => setViewMode('list')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${viewMode === 'list' ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${viewMode === 'list' ? 'bg-primary-solid text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
             aria-pressed={viewMode === 'list'}
           >
             <List size={16} /> Lista
           </button>
           <button
             onClick={() => setViewMode('calendar')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${viewMode === 'calendar' ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${viewMode === 'calendar' ? 'bg-primary-solid text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
             aria-pressed={viewMode === 'calendar'}
           >
             <CalendarDays size={16} /> Calendario
@@ -229,7 +229,7 @@ export const RecurringPaymentsView: React.FC = () => {
         /* Lista de pagos activos */
         <div className="card">
           <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">
-            Pagos Activos
+            Pagos activos
           </h3>
 
           {sortedPayments.length === 0 ? (
@@ -290,7 +290,7 @@ export const RecurringPaymentsView: React.FC = () => {
         isOpen={!!deletePaymentTx}
         onClose={() => !busyDelete && setDeletePaymentTx(null)}
         title="Quitar este pago"
-        titleIcon={<AlertTriangle size={20} className="text-rose-600 dark:text-rose-400" />}
+        titleIcon={<AlertTriangle size={20} className="text-destructive" />}
         maxWidth="max-w-sm"
       >
         {deletePaymentTx && (
@@ -304,15 +304,15 @@ export const RecurringPaymentsView: React.FC = () => {
               <button
                 onClick={handleDeletePayment}
                 disabled={busyDelete}
-                className="w-full text-left p-4 rounded-xl border-2 border-rose-200 dark:border-rose-800 bg-rose-50/50 dark:bg-rose-900/10 hover:border-rose-400 transition-colors disabled:opacity-60"
+                className="w-full text-left p-4 rounded-xl border-2 border-destructive bg-destructive-muted hover:border-destructive transition-colors disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
               >
                 <span className="block font-semibold text-gray-900 dark:text-gray-100">Eliminar gasto completo</span>
-                <span className="block text-sm text-gray-500 dark:text-gray-400">Borra la transacción y revierte el saldo.</span>
+                <span className="block text-sm text-muted-foreground">Borra la transacción y revierte el saldo.</span>
               </button>
               <button
                 onClick={handleUnlinkPayment}
                 disabled={busyDelete}
-                className="w-full text-left p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-purple-400 transition-colors disabled:opacity-60"
+                className="w-full text-left p-4 rounded-xl border-2 border-border hover:border-border-accent transition-colors disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <span className="block font-semibold text-gray-900 dark:text-gray-100">Solo desmarcar este pago</span>
                 <span className="block text-sm text-gray-500 dark:text-gray-400">Conserva el gasto; solo lo desvincula del periódico.</span>
@@ -346,12 +346,12 @@ export const RecurringPaymentsView: React.FC = () => {
 
 // Componente interno para estado vacío
 const EmptyState: React.FC<{ onCreateClick: () => void }> = ({ onCreateClick }) => (
-  <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+  <div className="text-center py-12 text-gray-500 dark:text-gray-400">
     <Repeat size={48} className="mx-auto mb-3 opacity-30" />
     <p>No tienes pagos periódicos configurados</p>
     <button
       onClick={onCreateClick}
-      className="mt-4 text-purple-600 dark:text-purple-400 hover:underline"
+      className="mt-4 text-primary hover:underline rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
     >
       Crear tu primer pago
     </button>

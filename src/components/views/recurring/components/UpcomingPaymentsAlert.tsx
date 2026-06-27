@@ -4,7 +4,7 @@ import React from 'react';
 import { AlertTriangle } from 'lucide-react';
 import type { RecurringPayment } from '../../../../types/finance';
 
-type AlertTone = 'amber' | 'red';
+type AlertTone = 'warning' | 'destructive';
 
 interface PaymentsAlertProps {
   payments: RecurringPayment[];
@@ -15,27 +15,27 @@ interface PaymentsAlertProps {
 }
 
 const TONE_STYLES: Record<AlertTone, { container: string; icon: string; title: string }> = {
-  amber: {
-    container: 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800',
-    icon: 'text-amber-600 dark:text-amber-400',
-    title: 'text-amber-800 dark:text-amber-200',
+  warning: {
+    container: 'bg-warning-muted border-warning',
+    icon: 'text-warning',
+    title: 'text-warning',
   },
-  red: {
-    container: 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800',
-    icon: 'text-rose-600 dark:text-rose-400',
-    title: 'text-rose-800 dark:text-rose-200',
+  destructive: {
+    container: 'bg-destructive-muted border-destructive',
+    icon: 'text-destructive',
+    title: 'text-destructive',
   },
 };
 
 /**
- * Alerta de pagos próximos a vencer (ámbar) o vencidos (rojo).
+ * Alerta de pagos próximos a vencer (warning) o vencidos (destructive).
  */
 export const UpcomingPaymentsAlert: React.FC<PaymentsAlertProps> = ({
   payments,
   title,
   getLabel,
   formatCurrency,
-  tone = 'amber',
+  tone = 'warning',
 }) => {
   if (payments.length === 0) return null;
 

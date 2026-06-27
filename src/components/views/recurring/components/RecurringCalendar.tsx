@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react';
 import type { RecurringPayment } from '../../../../types/finance';
+import { effectiveDueDay, getYearlyAnchorMonth } from '../../../../utils/recurringDates';
 
 interface RecurringCalendarProps {
   payments: RecurringPayment[]; // activos
@@ -40,7 +41,7 @@ export const RecurringCalendar: React.FC<RecurringCalendarProps> = ({
   getDaysOverdue,
   getDaysUntilDue,
 }) => {
-  const { cells, monthLabel, daysInMonth, todayDate, isCurrentMonth } = useMemo(() => {
+  const { cells, monthLabel, daysInMonth, todayDate, isCurrentMonth, otherMonth } = useMemo(() => {
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth();
@@ -55,10 +56,22 @@ export const RecurringCalendar: React.FC<RecurringCalendarProps> = ({
       return 'normal';
     };
 
-    // Agrupar pagos por día (capado al último día del mes)
+    // ¿El pago vence en ESTE mes? Mensual: siempre. Anual: solo si su mes ancla
+    // (getYearlyAnchorMonth, basado en createdAt) coincide con el mes en curso.
+    const isDueThisMonth = (p: RecurringPayment): boolean =>
+      p.frequency !== 'yearly' || getYearlyAnchorMonth(p, month) === month;
+
+    // Agrupar SOLO los pagos que vencen este mes, en su día efectivo (acotado al
+    // último día real del mes; el centinela "último día" cae también ahí). Los
+    // anuales de otros meses se segregan en una nota aparte (no se capean).
     const byDay = new Map<number, { payment: RecurringPayment; status: PaymentStatus }[]>();
+    const other: RecurringPayment[] = [];
     for (const p of payments) {
-      const day = Math.min(p.dueDay, days);
+      if (!isDueThisMonth(p)) {
+        other.push(p);
+        continue;
+      }
+      const day = effectiveDueDay(p.dueDay, year, month);
       if (!byDay.has(day)) byDay.set(day, []);
       byDay.get(day)!.push({ payment: p, status: statusOf(p) });
     }
@@ -75,16 +88,17 @@ export const RecurringCalendar: React.FC<RecurringCalendarProps> = ({
       daysInMonth: days,
       todayDate: now.getDate(),
       isCurrentMonth: true,
+      otherMonth: other,
     };
   }, [payments, isPaidForMonth, getDaysOverdue, getDaysUntilDue]);
 
   return (
     <div className="card">
-      <h3 className="text-lg font-semibold mb-1 text-gray-900 dark:text-gray-100 capitalize">
-        {monthLabel}
+      <h3 className="text-lg font-semibold mb-1 text-gray-900 dark:text-gray-100">
+        Vencimientos de <span className="capitalize">{monthLabel}</span>
       </h3>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-        Obligaciones del mes ({daysInMonth} días)
+      <p className="text-xs text-muted-foreground mb-4">
+        Solo los pagos que vencen este mes ({daysInMonth} días)
       </p>
 
       {/* Encabezado de días */}

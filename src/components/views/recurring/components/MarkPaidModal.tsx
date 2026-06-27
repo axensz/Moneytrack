@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { X, PlusCircle, Link2, ChevronLeft } from 'lucide-react';
+import { PlusCircle, Link2, ChevronLeft } from 'lucide-react';
 import { showToast } from '../../../../utils/toastHelpers';
 import { logger } from '../../../../utils/logger';
 import type { RecurringPayment, Account, Transaction } from '../../../../types/finance';
 import { cycleKey } from '../../../../utils/recurringDates';
+import { BaseModal } from '../../../modals/BaseModal';
 
 interface MarkPaidModalProps {
   isOpen: boolean;
@@ -72,8 +73,6 @@ export const MarkPaidModal: React.FC<MarkPaidModalProps> = ({
       .slice(0, 30);
   }, [transactions, payment]);
 
-  if (!isOpen || !payment) return null;
-
   const run = async (fn: () => Promise<void>, okMsg: string) => {
     if (busy) return;
     setBusy(true);
@@ -90,56 +89,47 @@ export const MarkPaidModal: React.FC<MarkPaidModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
-        {/* Header estático: nombre + precio del periódico, siempre visible al scrollear */}
-        <div className="flex justify-between items-center gap-2 p-5 border-b border-gray-100 dark:border-gray-700">
-          <div className="flex items-center gap-2 min-w-0">
-            {mode !== 'choose' && (
-              <button
-                onClick={() => setMode('choose')}
-                aria-label="Volver"
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1 rounded-lg flex-shrink-0"
-              >
-                <ChevronLeft size={20} />
-              </button>
-            )}
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate">
-              {payment.name} · {formatCurrency(payment.amount)}
-            </h3>
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="Cerrar"
-            className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors p-2 rounded-xl min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
-          >
-            <X size={20} />
-          </button>
-        </div>
-        <div className="p-6 overflow-y-auto">
+    <BaseModal
+      isOpen={isOpen && !!payment}
+      onClose={onClose}
+      title={payment ? `${payment.name} · ${formatCurrency(payment.amount)}` : undefined}
+      maxWidth="max-w-lg"
+    >
+      {payment && (
+        <div>
+          {/* Volver al paso de elección desde registrar/vincular */}
+          {mode !== 'choose' && (
+            <button
+              onClick={() => setMode('choose')}
+              className="flex items-center gap-1 -mt-1 mb-2 text-sm text-muted-foreground hover:text-foreground rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <ChevronLeft size={18} />
+              Volver
+            </button>
+          )}
 
           {/* ── Elegir acción ── */}
           {mode === 'choose' && (
             <div className="mt-5 space-y-3">
               <button
                 onClick={() => setMode('register')}
-                className="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-900/10 hover:border-purple-400 transition-colors text-left"
+                className="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-border-accent bg-primary/5 hover:border-primary transition-colors text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
-                <PlusCircle size={22} className="text-purple-600 flex-shrink-0" />
+                <PlusCircle size={22} className="text-primary flex-shrink-0" />
                 <span>
                   <span className="block font-semibold text-gray-900 dark:text-gray-100">Registrar pago ahora</span>
-                  <span className="block text-sm text-gray-500 dark:text-gray-400">Crea el gasto y lo marca pagado este ciclo</span>
+                  <span className="block text-sm text-muted-foreground">Crea el gasto y lo marca pagado este ciclo</span>
                 </span>
               </button>
 
               <button
                 onClick={() => setMode('link')}
-                className="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-gray-400 transition-colors text-left"
+                className="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-border hover:border-border-accent transition-colors text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
-                <Link2 size={22} className="text-gray-500 flex-shrink-0" />
+                <Link2 size={22} className="text-muted-foreground flex-shrink-0" />
                 <span>
                   <span className="block font-semibold text-gray-900 dark:text-gray-100">Vincular transacción existente</span>
-                  <span className="block text-sm text-gray-500 dark:text-gray-400">Ya lo pagaste: elige el gasto y se enlaza a este ciclo</span>
+                  <span className="block text-sm text-muted-foreground">Ya lo pagaste: elige el gasto y se enlaza a este ciclo</span>
                 </span>
               </button>
             </div>
@@ -149,7 +139,7 @@ export const MarkPaidModal: React.FC<MarkPaidModalProps> = ({
           {mode === 'register' && (
             <div className="mt-5 space-y-4">
               {accounts.length === 0 ? (
-                <p className="text-sm text-rose-600">Crea una cuenta primero para registrar el pago.</p>
+                <p className="text-sm text-destructive">Crea una cuenta primero para registrar el pago.</p>
               ) : (
                 <>
                   <div>
@@ -181,7 +171,7 @@ export const MarkPaidModal: React.FC<MarkPaidModalProps> = ({
           {mode === 'link' && (
             <div className="mt-5">
               {candidates.length === 0 ? (
-                <p className="text-sm text-gray-500 py-6 text-center">
+                <p className="text-sm text-muted-foreground py-6 text-center">
                   No hay gastos recientes sin pago periódico para vincular.
                 </p>
               ) : (
@@ -191,17 +181,17 @@ export const MarkPaidModal: React.FC<MarkPaidModalProps> = ({
                       key={t.id}
                       onClick={() => run(() => onLinkExisting(payment, t.id!), 'Transacción vinculada')}
                       disabled={busy}
-                      className="w-full flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-purple-400 hover:bg-purple-50/50 dark:hover:bg-purple-900/10 transition-colors text-left disabled:opacity-60"
+                      className="w-full flex items-center justify-between gap-3 p-3 rounded-lg border border-border hover:border-border-accent hover:bg-primary/5 transition-colors text-left disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     >
                       <span className="min-w-0">
                         <span className="block font-medium text-gray-900 dark:text-gray-100 truncate">
                           {t.description || t.category}
                         </span>
-                        <span className="block text-xs text-gray-500">
+                        <span className="block text-xs text-muted-foreground">
                           {new Date(t.date).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
                         </span>
                         {t.recurringPaymentId === payment.id && (
-                          <span className="block text-xs text-amber-600 dark:text-amber-400">
+                          <span className="block text-xs text-warning">
                             Ya registrada · se moverá a este ciclo
                           </span>
                         )}
@@ -216,7 +206,7 @@ export const MarkPaidModal: React.FC<MarkPaidModalProps> = ({
             </div>
           )}
         </div>
-      </div>
-    </div>
+      )}
+    </BaseModal>
   );
 };

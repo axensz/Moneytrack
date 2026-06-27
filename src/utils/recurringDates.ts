@@ -13,6 +13,16 @@
 
 import type { RecurringPayment } from '../types/finance';
 
+/**
+ * Centinela para "último día del mes". Se guarda como dueDay y, al acotarse con
+ * `effectiveDueDay` (Math.min con el último día real), siempre resuelve al último
+ * día de cualquier mes —28/29/30/31— sin lógica extra en las fechas.
+ */
+export const LAST_DAY_OF_MONTH = 99;
+
+/** ¿Este dueDay representa "último día del mes"? */
+export const isLastDayOfMonth = (dueDay: number): boolean => dueDay >= LAST_DAY_OF_MONTH;
+
 /** Último día real del mes objetivo (m: 0-11). Maneja meses cortos y bisiestos. */
 export const lastDayOfMonth = (y: number, m: number): number =>
   new Date(y, m + 1, 0).getDate();

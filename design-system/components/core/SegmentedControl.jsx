@@ -1,11 +1,14 @@
 import React from 'react';
+import { normalizeTone } from './Badge.jsx';
 
+// Vocabulario semántico canónico (success · destructive · warning · info · primary).
+// `normalizeTone` mapea alias viejos (danger/expense/income/pending) → canónico.
 const T = {
-  primary: { muted: 'var(--primary-muted)', text: 'var(--primary-text)', base: 'var(--primary)' },
-  success: { muted: 'var(--success-muted)', text: 'var(--success-text)', base: 'var(--success)' },
-  danger:  { muted: 'var(--destructive-muted)', text: 'var(--destructive-text)', base: 'var(--destructive)' },
-  warning: { muted: 'var(--warning-muted)', text: 'var(--warning-text)', base: 'var(--warning)' },
-  info:    { muted: 'var(--info-muted)', text: 'var(--info-text)', base: 'var(--info)' },
+  primary:     { muted: 'var(--primary-muted)', text: 'var(--primary-text)', base: 'var(--primary)' },
+  success:     { muted: 'var(--success-muted)', text: 'var(--success-text)', base: 'var(--success)' },
+  destructive: { muted: 'var(--destructive-muted)', text: 'var(--destructive-text)', base: 'var(--destructive)' },
+  warning:     { muted: 'var(--warning-muted)', text: 'var(--warning-text)', base: 'var(--warning)' },
+  info:        { muted: 'var(--info-muted)', text: 'var(--info-text)', base: 'var(--info)' },
 };
 
 /**
@@ -18,7 +21,7 @@ export function SegmentedControl({ options = [], value, onChange, tone = 'primar
     <div role="radiogroup" aria-label={ariaLabel} style={{ display: 'flex', gap: 8, width: fullWidth ? '100%' : 'auto' }}>
       {options.map((opt) => {
         const active = opt.value === value;
-        const c = T[opt.tone || tone] || T.primary;
+        const c = T[normalizeTone(opt.tone || tone)] || T.primary;
         return (
           <button
             key={opt.value}

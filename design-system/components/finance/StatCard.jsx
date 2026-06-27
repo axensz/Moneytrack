@@ -1,10 +1,23 @@
 import React from 'react';
 
+// Tonos del tile. `balance` es el héroe violeta; el resto son tarjetas blancas
+// con chip de icono teñido por estado. Las claves de dominio (income/expense/
+// pending) se mantienen, y se aceptan además los nombres semánticos canónicos
+// (success/destructive/warning) como alias hacia el mismo aspecto.
 const tones = {
-  balance: { iconBg: 'var(--primary)', iconColor: 'var(--primary-foreground)', valueColor: 'var(--balance-foreground)' },
-  income:  { iconBg: 'var(--surface-income)', iconColor: 'var(--success)', valueColor: 'var(--foreground)' },
-  expense: { iconBg: 'var(--surface-expense)', iconColor: 'var(--destructive)', valueColor: 'var(--foreground)' },
-  pending: { iconBg: 'var(--surface-pending)', iconColor: 'var(--warning)', valueColor: 'var(--foreground)' },
+  balance:  { iconBg: 'var(--primary)', iconColor: 'var(--primary-foreground)', valueColor: 'var(--balance-foreground)' },
+  income:   { iconBg: 'var(--surface-income)', iconColor: 'var(--success)', valueColor: 'var(--foreground)' },
+  expense:  { iconBg: 'var(--surface-expense)', iconColor: 'var(--destructive)', valueColor: 'var(--foreground)' },
+  pending:  { iconBg: 'var(--surface-pending)', iconColor: 'var(--warning)', valueColor: 'var(--foreground)' },
+};
+
+// Alias semánticos canónicos → claves de dominio del StatCard.
+const STAT_TONE_ALIASES = {
+  primary: 'balance',
+  success: 'income',
+  destructive: 'expense',
+  danger: 'expense',
+  warning: 'pending',
 };
 
 /**
@@ -13,8 +26,9 @@ const tones = {
  * tinted icon chip. Renders the figure with tabular numerals.
  */
 export function StatCard({ tone = 'income', label, period, value, icon: Icon }) {
-  const t = tones[tone] || tones.income;
-  const isBalance = tone === 'balance';
+  const key = tones[tone] ? tone : (STAT_TONE_ALIASES[tone] || 'income');
+  const t = tones[key];
+  const isBalance = key === 'balance';
   return (
     <div
       style={{

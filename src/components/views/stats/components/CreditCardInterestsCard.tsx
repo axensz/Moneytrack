@@ -46,7 +46,6 @@ export const CreditCardInterestsCard: React.FC<CreditCardInterestsCardProps> = (
       {hasInterests ? (
         <InterestsTable
           interests={creditCardInterests}
-          totals={totals}
           formatCurrency={formatCurrency}
         />
       ) : (
@@ -68,8 +67,11 @@ const Header: React.FC = () => (
         Resumen de intereses generados
       </p>
     </div>
-    <div className="p-2 bg-rose-100 dark:bg-rose-900/30 rounded-lg">
-      <Percent size={20} className="text-rose-600 dark:text-rose-400" />
+    {/* Glifo de sección = MARCA (violet), coherente con el icono CreditCard de
+        las filas y con las cabeceras de los demás gráficos. El color de ESTADO
+        (rojo/rose) queda para las cifras de coste, no para el icono. */}
+    <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+      <Percent size={20} className="text-purple-600 dark:text-purple-400" aria-hidden="true" />
     </div>
   </div>
 );
@@ -141,16 +143,21 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ label, value, variant }) => {
 
 interface InterestsTableProps {
   interests: CreditCardInterest[];
-  totals: InterestTotals;
   formatCurrency: (amount: number) => string;
 }
 
 const InterestsTable: React.FC<InterestsTableProps> = ({
   interests,
-  totals,
   formatCurrency,
 }) => (
-  <div className="overflow-x-auto">
+  // Sombra interior a la derecha que insinúa scroll horizontal en móvil.
+  <div
+    className="overflow-x-auto"
+    style={{
+      maskImage: 'linear-gradient(to right, #000 calc(100% - 16px), transparent)',
+      WebkitMaskImage: 'linear-gradient(to right, #000 calc(100% - 16px), transparent)',
+    }}
+  >
     <table className="w-full text-sm">
       <thead>
         <tr className="border-b border-gray-200 dark:border-gray-700">
@@ -176,23 +183,7 @@ const InterestsTable: React.FC<InterestsTableProps> = ({
           <InterestRow key={card.id} card={card} formatCurrency={formatCurrency} />
         ))}
       </tbody>
-      {interests.length > 1 && (
-        <tfoot>
-          <tr className="bg-gray-50 dark:bg-gray-800/50 font-semibold">
-            <td className="py-3 px-4 text-gray-900 dark:text-gray-100">Total</td>
-            <td className="py-3 px-4"></td>
-            <td className="py-3 px-4 text-right text-rose-600 dark:text-rose-400">
-              {formatCurrency(totals.monthly)}
-            </td>
-            <td className="py-3 px-4 text-right text-rose-600 dark:text-rose-400">
-              {formatCurrency(totals.yearly)}
-            </td>
-            <td className="py-3 px-4 text-right text-gray-900 dark:text-gray-100">
-              {formatCurrency(totals.total)}
-            </td>
-          </tr>
-        </tfoot>
-      )}
+      {/* Sin tfoot de totales: SummaryGrid (arriba) ya muestra mensual/anual/total. */}
     </table>
   </div>
 );
@@ -206,7 +197,7 @@ const InterestRow: React.FC<InterestRowProps> = ({ card, formatCurrency }) => (
   <tr className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
     <td className="py-3 px-4">
       <div className="flex items-center gap-2">
-        <CreditCard size={16} className="text-purple-500" />
+        <CreditCard size={16} className="text-purple-600 dark:text-purple-400" aria-hidden="true" />
         <span className="font-medium text-gray-900 dark:text-gray-100">
           {card.name}
         </span>

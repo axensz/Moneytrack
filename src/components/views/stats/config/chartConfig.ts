@@ -3,23 +3,39 @@
  * Single source of truth para estilos, colores y configuraciones
  */
 
-// Paleta de colores para categorías (tonos morados)
+// Rampa violeta (la marca) para las porciones del pastel. Saltos de luminancia
+// perceptibles entre pasos para que las categorías se distingan; el último tono
+// (gris muted) queda reservado por convención para la categoría agregada "Otros".
+// Solo se usan los primeros 5 + "Otros" (ver MAX_PIE_SLICES en CategoryPieChart).
 export const CHART_COLORS = [
-  '#8b5cf6', '#a78bfa', '#c4b5fd', '#d8b4fe', 
-  '#e9d5ff', '#f3e8ff', '#7c3aed', '#6d28d9'
+  '#6d28d9', // violet-700
+  '#8b5cf6', // violet-500
+  '#a78bfa', // violet-400
+  '#c4b5fd', // violet-300
+  '#ddd6fe', // violet-200
+  '#9ca3af', // gris muted → "Otros"
 ] as const;
 
-// Colores semánticos para tipos de datos
+// Colores semánticos por ESTADO. Se referencian como CSS vars para adaptarse a
+// claro/oscuro automáticamente: ingreso = verde (--success), gasto = rojo
+// (--destructive). Recharts las pasa tal cual a los atributos SVG stroke/fill.
 export const SEMANTIC_COLORS = {
-  income: '#8b5cf6',      // Morado - Ingresos
-  expense: '#f43f5e',     // Rosa/Rojo - Gastos
-  interest: '#f59e0b',    // Ámbar - Intereses
-  pending: '#eab308',     // Amarillo - Pendiente
+  income: 'var(--success)',       // Verde - Ingresos
+  expense: 'var(--destructive)',  // Rojo - Gastos
+  interest: 'var(--warning)',     // Ámbar - Intereses
+  pending: 'var(--warning)',      // Ámbar - Pendiente
 } as const;
 
-// Configuración común de ejes
+// Patrón de trazo para reforzar la distinción ingresos/gastos sin depender solo
+// del color (a11y): ingresos línea continua, gastos discontinua.
+export const SERIES_DASH = {
+  income: undefined,      // continua
+  expense: '6 4',         // discontinua
+} as const;
+
+// Configuración común de ejes (tokens: ejes en muted-foreground)
 export const AXIS_CONFIG = {
-  stroke: '#9ca3af',
+  stroke: 'var(--muted-foreground)',
   style: { fontSize: '11px' },
   tick: { fontSize: 11 },
 } as const;

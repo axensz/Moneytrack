@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 
 interface TooltipPayload {
   color: string;
@@ -14,8 +14,9 @@ interface ChartTooltipProps {
 }
 
 /**
- * Tooltip reutilizable para todos los gráficos de Recharts
- * Estilo consistente con glassmorphism y bordes morados
+ * Tooltip reutilizable para todos los gráficos de Recharts.
+ * Usa los tokens del tema (--card / --foreground / --border / --shadow-lg) para
+ * funcionar igual en claro y oscuro; sin glassmorphism ni hex fijos.
  */
 export const ChartTooltip: React.FC<ChartTooltipProps> = ({
   active,
@@ -28,8 +29,16 @@ export const ChartTooltip: React.FC<ChartTooltipProps> = ({
   }
 
   return (
-    <div className="bg-white/95 backdrop-blur-sm border border-purple-200 rounded-lg p-3 shadow-lg">
-      {label && <p className="text-sm font-semibold text-gray-900 mb-2">{label}</p>}
+    <div
+      className="rounded-lg p-3"
+      style={{
+        background: 'var(--card)',
+        color: 'var(--foreground)',
+        border: '1px solid var(--border)',
+        boxShadow: 'var(--shadow-lg)',
+      }}
+    >
+      {label && <p className="text-sm font-semibold mb-2">{label}</p>}
       {payload.map((entry, index) => (
         <p key={entry.name ?? index} className="text-sm" style={{ color: entry.color }}>
           {/* Recharts puede pasar value undefined/NaN en un punto sin dato de una
@@ -43,7 +52,9 @@ export const ChartTooltip: React.FC<ChartTooltipProps> = ({
 
 /**
  * HOC para crear un tooltip con formatCurrency pre-configurado
- * Evita pasar formatCurrency como prop en cada gráfico
+ * Evita pasar formatCurrency como prop en cada gráfico.
+ * Memoizar el resultado en el llamador con useChartTooltip evita recrear el
+ * componente en cada render (y que Recharts lo remonte).
  */
 export const createChartTooltip = (formatCurrency: (amount: number) => string) => {
   const TooltipWithFormat: React.FC<Omit<ChartTooltipProps, 'formatCurrency'>> = (props) => (
@@ -52,3 +63,9 @@ export const createChartTooltip = (formatCurrency: (amount: number) => string) =
   TooltipWithFormat.displayName = 'ChartTooltipWithFormat';
   return TooltipWithFormat;
 };
+
+/**
+ * Hook que memoiza createChartTooltip por formatCurrency.
+ */
+export const useChartTooltip = (formatCurrency: (amount: number) => string) =>
+  useMemo(() => createChartTooltip(formatCurrency), [formatCurrency]);

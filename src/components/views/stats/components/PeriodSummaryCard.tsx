@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Search, Calendar, Tag, Wallet, TrendingUp, TrendingDown, ArrowRightLeft } from 'lucide-react';
+import { Search, Calendar, Tag, Wallet, TrendingUp, TrendingDown, ArrowRightLeft, ChevronDown } from 'lucide-react';
 import type { Transaction, Account } from '../../../../types/finance';
 import { TRANSFER_CATEGORY, SPECIAL_CATEGORIES } from '../../../../config/constants';
 import { formatCurrency } from '../../../../utils/formatters';
@@ -110,15 +110,23 @@ export const PeriodSummaryCard: React.FC<PeriodSummaryCardProps> = ({
           Consulta por Periodo
         </h3>
         <button
+          type="button"
           onClick={() => setIsExpanded(!isExpanded)}
-          className="text-sm text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 font-medium"
+          aria-expanded={isExpanded}
+          aria-controls="period-summary-body"
+          className="flex items-center gap-1 text-sm text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 font-medium rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 px-1"
         >
-          {isExpanded ? 'Ocultar' : 'Consultar por periodo'}
+          {isExpanded ? 'Ocultar' : 'Mostrar'}
+          <ChevronDown
+            size={16}
+            className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+            aria-hidden="true"
+          />
         </button>
       </div>
 
       {isExpanded && (
-        <>
+        <div id="period-summary-body">
           {/* Query filters */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
             <div>
@@ -215,15 +223,17 @@ export const PeriodSummaryCard: React.FC<PeriodSummaryCardProps> = ({
                   </p>
                   <p className="text-lg font-bold text-rose-700 dark:text-rose-300">{displayAmount(summary.expenses)}</p>
                 </div>
-                <div className={`p-3 rounded-xl text-center ${summary.net >= 0
-                  ? 'bg-blue-50 dark:bg-blue-900/20'
-                  : 'bg-amber-50 dark:bg-amber-900/20'
-                  }`}>
+                <div
+                  className="p-3 rounded-xl text-center"
+                  style={{
+                    backgroundColor: summary.net >= 0 ? 'var(--success-muted)' : 'var(--destructive-muted)',
+                  }}
+                >
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Neto</p>
-                  <p className={`text-lg font-bold ${summary.net >= 0
-                    ? 'text-blue-700 dark:text-blue-300'
-                    : 'text-amber-700 dark:text-amber-300'
-                    }`}>
+                  <p
+                    className="text-lg font-bold"
+                    style={{ color: summary.net >= 0 ? 'var(--success)' : 'var(--destructive)' }}
+                  >
                     {summary.net >= 0 ? '+' : ''}{displayAmount(summary.net)}
                   </p>
                 </div>
@@ -265,7 +275,7 @@ export const PeriodSummaryCard: React.FC<PeriodSummaryCardProps> = ({
               Selecciona un rango de fechas para consultar
             </p>
           )}
-        </>
+        </div>
       )}
     </div>
   );

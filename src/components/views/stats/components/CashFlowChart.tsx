@@ -12,7 +12,8 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { createChartTooltip } from './shared/ChartTooltip';
+import { useChartTooltip } from './shared/ChartTooltip';
+import { ChartCard, ChartDataTable } from './shared/ChartCard';
 import {
   AXIS_CONFIG,
   Y_AXIS_CONFIG,
@@ -22,6 +23,7 @@ import {
   LINE_CONFIG,
   CHART_HEIGHTS,
   SEMANTIC_COLORS,
+  SERIES_DASH,
 } from '../config/chartConfig';
 
 interface MonthlyDataPoint {
@@ -44,32 +46,28 @@ export const CashFlowChart: React.FC<CashFlowChartProps> = ({
   data,
   formatCurrency,
 }) => {
-  const CustomTooltip = createChartTooltip(formatCurrency);
+  const CustomTooltip = useChartTooltip(formatCurrency);
   const hasData = data.some((d) => d.ingresos > 0 || d.gastos > 0);
 
-  return (
-    <div className="card">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Flujo de Caja
-          </h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Últimos 6 meses
-          </p>
-        </div>
-        <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-          <Activity size={20} className="text-purple-600 dark:text-purple-400" />
-        </div>
-      </div>
+  const totalIngresos = data.reduce((s, d) => s + d.ingresos, 0);
+  const totalGastos = data.reduce((s, d) => s + d.gastos, 0);
+  const chartLabel = `Flujo de caja de los últimos 6 meses. Ingresos totales ${formatCurrency(totalIngresos)}, gastos totales ${formatCurrency(totalGastos)}.`;
 
+  return (
+    <ChartCard title="Flujo de Caja" subtitle="Últimos 6 meses" icon={Activity}>
       {!hasData ? (
         <div className="text-center py-12 text-gray-400 dark:text-gray-500" role="status">
-          <Activity size={48} className="mx-auto mb-3 opacity-30" />
+          <Activity size={48} className="mx-auto mb-3 opacity-30" aria-hidden="true" />
           <p className="text-sm">No hay movimientos en los últimos 6 meses</p>
         </div>
       ) : (
-      <ResponsiveContainer width="100%" height={CHART_HEIGHTS.large}>
+      <>
+      <ResponsiveContainer
+        width="100%"
+        height={CHART_HEIGHTS.large}
+        role="img"
+        aria-label={chartLabel}
+      >
         <AreaChart data={data} margin={CHART_MARGINS}>
           <defs>
             <linearGradient id={GRADIENT_CONFIG.income.id} x1="0" y1="0" x2="0" y2="1">
@@ -97,18 +95,19 @@ export const CashFlowChart: React.FC<CashFlowChartProps> = ({
               />
             </linearGradient>
           </defs>
-          
-          <CartesianGrid strokeDasharray="3 3" stroke="#f3e8ff" />
+
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
           <XAxis dataKey="month" {...AXIS_CONFIG} />
           <YAxis {...Y_AXIS_CONFIG} />
           <Tooltip content={<CustomTooltip />} />
           <Legend {...LEGEND_CONFIG} wrapperStyle={{ paddingTop: '20px', fontSize: '12px' }} />
-          
+
           <Area
             type="monotone"
             dataKey="ingresos"
             stroke={SEMANTIC_COLORS.income}
             strokeWidth={LINE_CONFIG.strokeWidth}
+            strokeDasharray={SERIES_DASH.income}
             fillOpacity={1}
             fill={`url(#${GRADIENT_CONFIG.income.id})`}
             name="Ingresos"
@@ -118,13 +117,21 @@ export const CashFlowChart: React.FC<CashFlowChartProps> = ({
             dataKey="gastos"
             stroke={SEMANTIC_COLORS.expense}
             strokeWidth={LINE_CONFIG.strokeWidth}
+            strokeDasharray={SERIES_DASH.expense}
             fillOpacity={1}
             fill={`url(#${GRADIENT_CONFIG.expense.id})`}
             name="Gastos"
           />
         </AreaChart>
       </ResponsiveContainer>
+      <ChartDataTable
+        caption="Flujo de caja: ingresos y gastos por mes (últimos 6 meses)"
+        periodLabel="Mes"
+        rows={data.map((d) => ({ label: d.month, ingresos: d.ingresos, gastos: d.gastos }))}
+        formatCurrency={formatCurrency}
+      />
+      </>
       )}
-    </div>
+    </ChartCard>
   );
 };

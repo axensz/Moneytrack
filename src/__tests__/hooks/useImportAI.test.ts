@@ -13,7 +13,13 @@ vi.mock('../../utils/aiCategorizer', () => ({
   categorizeWithAI: vi.fn().mockResolvedValue([]),
 }));
 
+// Mock toast: el hook avisa por toast cuando la IA falla (no fallo silencioso).
+vi.mock('react-hot-toast', () => ({
+  default: { error: vi.fn(), success: vi.fn() },
+}));
+
 import { categorizeWithAI } from '../../utils/aiCategorizer';
+import toast from 'react-hot-toast';
 
 const mockedCategorizeWithAI = vi.mocked(categorizeWithAI);
 
@@ -61,6 +67,7 @@ describe('useImportAI', () => {
       expect(result.current.aiCategorizing).toBe(false);
       expect(result.current.aiApplied).toBe(false);
       expect(result.current.aiSuggestions).toEqual([]);
+      expect(result.current.aiNoSuggestions).toBe(false);
       expect(result.current.aiSuggestionTransactionCount).toBe(0);
       expect(result.current.aiSuggestionsByCategory).toEqual([]);
     });
@@ -226,8 +233,8 @@ describe('useImportAI', () => {
     });
   });
 
-  describe('handleAICategorize — fallo silencioso (Req 2.5)', () => {
-    it('fallo de IA deja sugerencias vacías y aiCategorizing en false', async () => {
+  describe('handleAICategorize — fallo NO silencioso (Req 2.5)', () => {
+    it('fallo de IA deja sugerencias vacías, aiCategorizing en false y avisa por toast', async () => {
       mockedCategorizeWithAI.mockRejectedValueOnce(new Error('Network error'));
       const { hook } = setupHook();
       const rows = [makeRow()];
@@ -238,6 +245,43 @@ describe('useImportAI', () => {
 
       expect(hook.result.current.aiSuggestions).toEqual([]);
       expect(hook.result.current.aiCategorizing).toBe(false);
+      // Nunca fallar en silencio: el usuario recibe un toast destructivo.
+      expect(toast.error).toHaveBeenCalledTimes(1);
+      // Un fallo NO es lo mismo que "sin sugerencias": no debe activar el aviso vacío.
+      expect(hook.result.current.aiNoSuggestions).toBe(false);
+    });
+  });
+
+  describe('handleAICategorize — estado vacío (sin sugerencias aplicables)', () => {
+    it('éxito sin resultados aplicables activa aiNoSuggestions y no muestra toast de error', async () => {
+      mockedCategorizeWithAI.mockResolvedValueOnce([
+        { index: 0, category: 'Alimentación', confidence: 0.5 }, // bajo umbral
+      ]);
+      const { hook } = setupHook();
+      const rows = [makeRow()];
+
+      await act(async () => {
+        await hook.result.current.handleAICategorize(rows);
+      });
+
+      expect(hook.result.current.aiSuggestions).toEqual([]);
+      expect(hook.result.current.aiNoSuggestions).toBe(true);
+      expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it('éxito con sugerencias aplicables deja aiNoSuggestions en false', async () => {
+      mockedCategorizeWithAI.mockResolvedValueOnce([
+        { index: 0, category: 'Alimentación', confidence: 0.9 },
+      ]);
+      const { hook } = setupHook();
+      const rows = [makeRow()];
+
+      await act(async () => {
+        await hook.result.current.handleAICategorize(rows);
+      });
+
+      expect(hook.result.current.aiSuggestions).toHaveLength(1);
+      expect(hook.result.current.aiNoSuggestions).toBe(false);
     });
   });
 

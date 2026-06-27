@@ -16,6 +16,7 @@ interface DateFilterDropdownProps {
   setCustomEndDate: (date: string) => void;
   showDatePicker: boolean;
   setShowDatePicker: (show: boolean) => void;
+  align?: 'left' | 'right';
 }
 
 async function parseDateWithAI(query: string): Promise<{ startDate: string; endDate: string } | null> {
@@ -57,6 +58,7 @@ export const DateFilterDropdown: React.FC<DateFilterDropdownProps> = ({
   setCustomEndDate,
   showDatePicker,
   setShowDatePicker,
+  align = 'left',
 }) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [aiQuery, setAiQuery] = useState('');
@@ -103,8 +105,11 @@ export const DateFilterDropdown: React.FC<DateFilterDropdownProps> = ({
     }
   };
 
-  const currentLabel =
-    DATE_PRESETS.find((p) => p.value === dateRangePreset)?.label || 'Fecha';
+  // Copy unificado: "Fecha" en reposo (preset 'all'), si no la etiqueta del preset.
+  const isActive = dateRangePreset !== 'all';
+  const currentLabel = isActive
+    ? DATE_PRESETS.find((p) => p.value === dateRangePreset)?.label || 'Fecha'
+    : 'Fecha';
 
   return (
     <div
@@ -121,21 +126,21 @@ export const DateFilterDropdown: React.FC<DateFilterDropdownProps> = ({
         onClick={() => setShowDatePicker(!showDatePicker)}
         aria-haspopup="dialog"
         aria-expanded={showDatePicker}
-        className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${dateRangePreset !== 'all'
-          ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
-          : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600'
+        className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${isActive
+          ? 'bg-[var(--balance-accent)] text-[var(--balance-accent-foreground)]'
+          : 'bg-card text-foreground border border-[var(--border)]'
           }`}
       >
         <Calendar size={16} />
-        <span className="truncate max-w-[50px] sm:max-w-[80px]">{currentLabel === 'Todo el tiempo' ? 'Fecha' : currentLabel}</span>
+        <span className="truncate max-w-[50px] sm:max-w-[80px]">{currentLabel}</span>
         <ChevronDown size={14} className="flex-shrink-0" />
       </button>
 
       {showDatePicker && (
-        <div role="dialog" aria-label="Filtrar por fecha" className="absolute top-full right-0 mt-1 z-[100] bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-2 min-w-[240px] max-w-[calc(100vw-2rem)] animate-in fade-in zoom-in-95 origin-top-right">
+        <div role="dialog" aria-label="Filtrar por fecha" className={`absolute top-full mt-1 z-[100] bg-card rounded-xl shadow-xl border border-[var(--border)] p-2 min-w-[240px] max-w-[calc(100vw-2rem)] animate-in fade-in zoom-in-95 ${align === 'left' ? 'left-0 origin-top-left' : 'right-0 origin-top-right'}`}>
           {/* AI date input */}
           {isGeminiConfigured() && (
-            <div className="mb-2 pb-2 border-b border-gray-200 dark:border-gray-700">
+            <div className="mb-2 pb-2 border-b border-[var(--border)]">
               <div className="flex gap-1.5">
                 <input
                   type="text"
@@ -143,19 +148,19 @@ export const DateFilterDropdown: React.FC<DateFilterDropdownProps> = ({
                   onChange={(e) => setAiQuery(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleAIDateParse()}
                   placeholder="Ej: desde el lunes pasado hasta hoy"
-                  className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+                  className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--input)] text-foreground placeholder-[var(--muted-foreground)]"
                   disabled={aiLoading}
                 />
                 <button
                   onClick={handleAIDateParse}
                   disabled={aiLoading || !aiQuery.trim()}
-                  className="flex items-center justify-center px-2 py-1.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                  className="flex items-center justify-center px-2 py-1.5 rounded-lg bg-primary-solid text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50 transition-opacity"
                   title="Interpretar con IA"
                 >
                   {aiLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                 </button>
               </div>
-              {aiError && <p className="text-[10px] text-rose-500 mt-1">{aiError}</p>}
+              {aiError && <p className="text-[10px] text-destructive mt-1">{aiError}</p>}
             </div>
           )}
 
@@ -168,8 +173,8 @@ export const DateFilterDropdown: React.FC<DateFilterDropdownProps> = ({
                   if (preset.value !== 'custom') setShowDatePicker(false);
                 }}
                 className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${dateRangePreset === preset.value
-                  ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
-                  : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                  ? 'bg-[var(--balance-accent)] text-[var(--balance-accent-foreground)]'
+                  : 'hover:bg-[var(--muted)] text-foreground'
                   }`}
               >
                 {preset.label}
@@ -179,28 +184,28 @@ export const DateFilterDropdown: React.FC<DateFilterDropdownProps> = ({
 
           {/* Campos de fecha personalizada */}
           {dateRangePreset === 'custom' && (
-            <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 space-y-2">
+            <div className="mt-2 pt-2 border-t border-[var(--border)] space-y-2">
               <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Desde</label>
+                <label className="text-xs text-muted-foreground mb-1 block">Desde</label>
                 <input
                   type="date"
                   value={customStartDate}
                   onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  className="w-full px-2 py-1.5 text-sm rounded-lg border border-[var(--border)] bg-[var(--input)] text-foreground"
                 />
               </div>
               <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Hasta</label>
+                <label className="text-xs text-muted-foreground mb-1 block">Hasta</label>
                 <input
                   type="date"
                   value={customEndDate}
                   onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  className="w-full px-2 py-1.5 text-sm rounded-lg border border-[var(--border)] bg-[var(--input)] text-foreground"
                 />
               </div>
               <button
                 onClick={() => setShowDatePicker(false)}
-                className="w-full py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium"
+                className="w-full py-2 text-sm bg-primary-solid text-[var(--primary-foreground)] rounded-lg hover:opacity-90 font-medium transition-opacity"
               >
                 Aplicar
               </button>

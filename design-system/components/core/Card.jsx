@@ -25,12 +25,25 @@ const variants = {
 
 /**
  * Card — the base surface for everything in MoneyTrack.
- * rounded-lg, 20px padding, soft md shadow. The `stat` variant lifts on hover;
+ * rounded-lg, 20px padding, soft md shadow. The `stat` variant lifts on hover/focus;
  * `balance` is the violet-gradient hero used for the headline money figure.
  */
 export function Card({ variant = 'default', children, style = {}, className = '', ...props }) {
-  const v = variants[variant] || variants.default;
   const isStat = variant === 'stat';
+  // El realce hover/foco del `stat` vive en CSS (.mt-card-stat:hover/:focus-within),
+  // no en handlers JS de ratón: así responde a teclado y táctil, no solo al puntero.
+  if (isStat) {
+    return (
+      <div
+        className={`mt-card-stat${className ? ' ' + className : ''}`}
+        style={{ color: 'var(--card-foreground)', ...style }}
+        {...props}
+      >
+        {children}
+      </div>
+    );
+  }
+  const v = variants[variant] || variants.default;
   return (
     <div
       className={className}
@@ -38,20 +51,10 @@ export function Card({ variant = 'default', children, style = {}, className = ''
         borderRadius: 'var(--radius-lg)',
         padding: 'var(--space-5)',
         color: 'var(--card-foreground)',
-        transition: isStat
-          ? 'box-shadow 0.3s, border-color 0.3s'
-          : 'background-color 0.3s, color 0.3s',
+        transition: 'background-color 0.3s, color 0.3s',
         ...v,
         ...style,
       }}
-      onMouseEnter={isStat ? (e) => {
-        e.currentTarget.style.boxShadow = 'var(--shadow-lg)';
-        e.currentTarget.style.borderColor = 'var(--border-accent)';
-      } : undefined}
-      onMouseLeave={isStat ? (e) => {
-        e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-        e.currentTarget.style.borderColor = 'var(--border)';
-      } : undefined}
       {...props}
     >
       {children}

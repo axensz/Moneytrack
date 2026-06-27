@@ -3,10 +3,18 @@
 import React, { useEffect, useRef } from 'react';
 import { ChevronDown } from 'lucide-react';
 
+type Option = { value: string; label: string };
+
 interface FilterDropdownProps {
   label: string;
   value: string;
-  options: { value: string; label: string }[];
+  options: Option[];
+  /**
+   * Si se provee, las opciones se renderizan agrupadas con cabecera por sección
+   * (p. ej. Gastos / Ingresos / Otros). `options` sigue usándose para resolver
+   * la etiqueta seleccionada en el botón. Cuando no se pasa, la lista es plana.
+   */
+  optionGroups?: { label: string; options: Option[] }[];
   onChange: (value: string) => void;
   isOpen: boolean;
   onToggle: () => void;
@@ -19,6 +27,7 @@ export const FilterDropdown: React.FC<FilterDropdownProps> = ({
   label,
   value,
   options,
+  optionGroups,
   onChange,
   isOpen,
   onToggle,
@@ -48,6 +57,25 @@ export const FilterDropdown: React.FC<FilterDropdownProps> = ({
   // Is active if value is not 'all'
   const isActive = value !== 'all';
 
+  const renderOption = (option: Option) => (
+    <button
+      key={option.value}
+      role="option"
+      aria-selected={value === option.value}
+      onClick={() => {
+        onChange(option.value);
+        onClose();
+      }}
+      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors truncate ${value === option.value
+        ? 'bg-[var(--balance-accent)] text-[var(--balance-accent-foreground)]'
+        : 'hover:bg-[var(--muted)] text-foreground'
+        }`}
+      title={option.label}
+    >
+      {option.label}
+    </button>
+  );
+
   return (
     <div
       className="relative"
@@ -64,8 +92,8 @@ export const FilterDropdown: React.FC<FilterDropdownProps> = ({
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         className={`flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-shrink-0 ${isActive
-          ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
-          : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600'
+          ? 'bg-[var(--balance-accent)] text-[var(--balance-accent-foreground)]'
+          : 'bg-card text-foreground border border-[var(--border)]'
           }`}
         title={isActive ? selectedLabel : undefined}
       >
@@ -80,7 +108,7 @@ export const FilterDropdown: React.FC<FilterDropdownProps> = ({
         <div
           role="listbox"
           aria-label={label}
-          className={`absolute top-full mt-1 z-[100] bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-2 min-w-[200px] max-w-[calc(100vw-2rem)] max-h-[350px] overflow-y-auto animate-in fade-in zoom-in-95 ${align === 'left' ? 'left-0 origin-top-left' : 'right-0 origin-top-right'
+          className={`absolute top-full mt-1 z-[100] bg-card rounded-xl shadow-xl border border-[var(--border)] p-2 min-w-[200px] max-w-[calc(100vw-2rem)] max-h-[350px] overflow-y-auto animate-in fade-in zoom-in-95 ${align === 'left' ? 'left-0 origin-top-left' : 'right-0 origin-top-right'
           }`}>
           <div className="space-y-0.5">
             <button
@@ -91,30 +119,24 @@ export const FilterDropdown: React.FC<FilterDropdownProps> = ({
                 onClose();
               }}
               className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors truncate ${value === 'all'
-                ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
-                : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                ? 'bg-[var(--balance-accent)] text-[var(--balance-accent-foreground)]'
+                : 'hover:bg-[var(--muted)] text-foreground'
                 }`}
             >
               {label} (Todos)
             </button>
-            {options.map((option) => (
-              <button
-                key={option.value}
-                role="option"
-                aria-selected={value === option.value}
-                onClick={() => {
-                  onChange(option.value);
-                  onClose();
-                }}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors truncate ${value === option.value
-                  ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
-                  : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
-                  }`}
-                title={option.label}
-              >
-                {option.label}
-              </button>
-            ))}
+            {optionGroups
+              ? optionGroups
+                  .filter((group) => group.options.length > 0)
+                  .map((group) => (
+                    <div key={group.label} role="group" aria-label={group.label}>
+                      <p className="px-3 pt-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                        {group.label}
+                      </p>
+                      {group.options.map((option) => renderOption(option))}
+                    </div>
+                  ))
+              : options.map((option) => renderOption(option))}
           </div>
         </div>
       )}

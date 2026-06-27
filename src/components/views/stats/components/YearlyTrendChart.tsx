@@ -12,7 +12,8 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { createChartTooltip } from './shared/ChartTooltip';
+import { useChartTooltip } from './shared/ChartTooltip';
+import { ChartCard, ChartDataTable } from './shared/ChartCard';
 import {
   AXIS_CONFIG,
   Y_AXIS_CONFIG,
@@ -21,6 +22,7 @@ import {
   LINE_CONFIG,
   CHART_HEIGHTS,
   SEMANTIC_COLORS,
+  SERIES_DASH,
 } from '../config/chartConfig';
 
 interface YearlyDataPoint {
@@ -42,34 +44,30 @@ export const YearlyTrendChart: React.FC<YearlyTrendChartProps> = ({
   data,
   formatCurrency,
 }) => {
-  const CustomTooltip = createChartTooltip(formatCurrency);
+  const CustomTooltip = useChartTooltip(formatCurrency);
   const hasData = data.some((d) => d.ingresos > 0 || d.gastos > 0);
 
-  return (
-    <div className="card">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Tendencia Anual
-          </h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Resumen por año
-          </p>
-        </div>
-        <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-          <TrendingUp size={20} className="text-purple-600 dark:text-purple-400" />
-        </div>
-      </div>
+  const totalIngresos = data.reduce((s, d) => s + d.ingresos, 0);
+  const totalGastos = data.reduce((s, d) => s + d.gastos, 0);
+  const chartLabel = `Tendencia anual de ingresos y gastos. Ingresos totales ${formatCurrency(totalIngresos)}, gastos totales ${formatCurrency(totalGastos)}.`;
 
+  return (
+    <ChartCard title="Tendencia Anual" subtitle="Resumen por año" icon={TrendingUp}>
       {!hasData ? (
         <div className="text-center py-12 text-gray-400 dark:text-gray-500" role="status">
-          <TrendingUp size={48} className="mx-auto mb-3 opacity-30" />
+          <TrendingUp size={48} className="mx-auto mb-3 opacity-30" aria-hidden="true" />
           <p className="text-sm">Aún no hay datos por año</p>
         </div>
       ) : (
-      <ResponsiveContainer width="100%" height={CHART_HEIGHTS.medium}>
+      <>
+      <ResponsiveContainer
+        width="100%"
+        height={CHART_HEIGHTS.medium}
+        role="img"
+        aria-label={chartLabel}
+      >
         <LineChart data={data} margin={CHART_MARGINS}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f3e8ff" />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
           <XAxis dataKey="año" {...AXIS_CONFIG} />
           <YAxis {...Y_AXIS_CONFIG} />
           <Tooltip content={<CustomTooltip />} />
@@ -79,6 +77,7 @@ export const YearlyTrendChart: React.FC<YearlyTrendChartProps> = ({
             dataKey="ingresos"
             stroke={SEMANTIC_COLORS.income}
             strokeWidth={3}
+            strokeDasharray={SERIES_DASH.income}
             dot={{ fill: SEMANTIC_COLORS.income, r: LINE_CONFIG.dotRadius }}
             name="Ingresos"
           />
@@ -87,12 +86,20 @@ export const YearlyTrendChart: React.FC<YearlyTrendChartProps> = ({
             dataKey="gastos"
             stroke={SEMANTIC_COLORS.expense}
             strokeWidth={3}
+            strokeDasharray={SERIES_DASH.expense}
             dot={{ fill: SEMANTIC_COLORS.expense, r: LINE_CONFIG.dotRadius }}
             name="Gastos"
           />
         </LineChart>
       </ResponsiveContainer>
+      <ChartDataTable
+        caption="Tendencia anual: ingresos y gastos por año"
+        periodLabel="Año"
+        rows={data.map((d) => ({ label: d.año, ingresos: d.ingresos, gastos: d.gastos }))}
+        formatCurrency={formatCurrency}
+      />
+      </>
       )}
-    </div>
+    </ChartCard>
   );
 };

@@ -38,11 +38,11 @@ export const AITeaserButton: React.FC<AITeaserButtonProps> = ({ isLoggedIn, onAc
   return (
     <button
       onClick={onActivate}
-      className="fixed bottom-[88px] sm:bottom-6 right-4 sm:right-6 z-40 p-4 rounded-full bg-gradient-to-br from-purple-500/80 via-violet-500/80 to-purple-600/80 text-white shadow-lg hover:shadow-2xl hover:scale-110 hover:from-purple-600 hover:via-violet-600 hover:to-purple-700 transition-[box-shadow,transform,background-color] duration-300 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2"
+      className="fixed bottom-[88px] sm:bottom-6 right-4 sm:right-6 z-40 p-4 rounded-full bg-primary-solid text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-[box-shadow,transform] duration-200 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
       title={label}
       aria-label={label}
     >
-      <Sparkles size={24} className="group-hover:rotate-12 transition-transform duration-300" />
+      <Sparkles size={24} className="transition-transform duration-200 group-hover:scale-105" />
       {/* Badge de "activar": + si hay sesión, login si es invitado */}
       <span className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-br from-amber-400 to-amber-500 rounded-full flex items-center justify-center shadow-md">
         {isLoggedIn ? (

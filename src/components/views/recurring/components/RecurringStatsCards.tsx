@@ -43,7 +43,7 @@ export const RecurringStatsCards: React.FC<RecurringStatsProps> = ({
       />
       <StatCard
         icon={TrendingUp}
-        label="Total/Mes"
+        label="Total mensual"
         value={formatCurrency(totalMonthlyAmount)}
         colorScheme="blue"
         isLargeText={false}

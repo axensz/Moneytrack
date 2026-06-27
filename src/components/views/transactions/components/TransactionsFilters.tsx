@@ -66,6 +66,12 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
   const [activeDropdown, setActiveDropdown] = useState<'none' | 'account' | 'category'>('none');
   const isDisabled = accounts.length === 0;
 
+  // Receta única de botón secundario: Importar y Exportar comparten estilo y se
+  // diferencian solo por su icono. El relleno violeta de marca queda reservado a
+  // la acción primaria ("Nueva"). Color neutro = acción de soporte, no de estado.
+  const secondaryBtn =
+    'flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium border border-[var(--border)] text-foreground bg-card hover:bg-[var(--muted)] rounded-lg transition-colors min-h-[44px]';
+
   const handleOpenAccount = () => {
     setActiveDropdown(activeDropdown === 'account' ? 'none' : 'account');
     setShowDatePicker(false);
@@ -95,8 +101,8 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
             onClick={() => setShowForm(!showForm)}
             disabled={isDisabled}
             className={`btn-primary flex-1 sm:flex-none ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-            title={isDisabled ? 'Crea una cuenta primero' : 'Crear transaccion'}
-            aria-label="Crear nueva transaccion"
+            title={isDisabled ? 'Crea una cuenta primero' : 'Crear transacción'}
+            aria-label="Crear nueva transacción"
           >
             <PlusCircle size={18} aria-hidden="true" />
             Nueva
@@ -106,7 +112,7 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
             <button
               onClick={onImport}
               disabled={isDisabled}
-              className={`flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium border border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg transition-colors min-h-[44px] ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              className={`${secondaryBtn} ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               title="Importar desde extracto bancario"
               aria-label="Importar transacciones"
             >
@@ -119,7 +125,7 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
             <button
               onClick={onExport}
               disabled={exportDisabled}
-              className={`flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors min-h-[44px] ${exportDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              className={`${secondaryBtn} ${exportDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               title={exportDisabled ? 'No hay transacciones para exportar' : 'Exportar a CSV las transacciones filtradas'}
               aria-label="Exportar transacciones a CSV"
             >
@@ -131,21 +137,21 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
 
         <div className="relative flex-1 min-w-0">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Search size={16} className="text-gray-400" aria-hidden="true" />
+            <Search size={16} className="text-muted-foreground" aria-hidden="true" />
           </div>
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar descripcion, cuenta, categoria o monto"
-            className="w-full pl-9 pr-9 py-2.5 min-h-[44px] border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 text-sm"
-            aria-label="Buscar transacciones por descripcion, cuenta, categoria o monto"
+            placeholder="Buscar descripción, cuenta, categoría o monto"
+            className="w-full pl-9 pr-9 py-2.5 min-h-[44px] border border-[var(--border)] rounded-lg bg-[var(--input)] text-foreground placeholder-[var(--muted-foreground)] focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm transition-[border-color,box-shadow]"
+            aria-label="Buscar transacciones por descripción, cuenta, categoría o monto"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-              aria-label="Limpiar busqueda"
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted-foreground hover:text-foreground"
+              aria-label="Limpiar búsqueda"
             >
               <X size={16} />
             </button>
@@ -167,12 +173,17 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
         />
 
         <FilterDropdown
-          label="Categoria"
+          label="Categoría"
           value={filterCategory}
           options={[...new Set([...categories.expense, ...categories.income, ...SPECIAL_FILTER_CATEGORIES])].map((cat) => ({
             value: cat,
             label: cat,
           }))}
+          optionGroups={[
+            { label: 'Gastos', options: categories.expense.map((cat) => ({ value: cat, label: cat })) },
+            { label: 'Ingresos', options: categories.income.map((cat) => ({ value: cat, label: cat })) },
+            { label: 'Otros', options: SPECIAL_FILTER_CATEGORIES.map((cat) => ({ value: cat, label: cat })) },
+          ]}
           onChange={setFilterCategory}
           isOpen={activeDropdown === 'category'}
           onToggle={handleOpenCategory}
@@ -190,12 +201,13 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
           setCustomEndDate={setCustomEndDate}
           showDatePicker={showDatePicker}
           setShowDatePicker={handleOpenDate}
+          align="left"
         />
 
         {isMetadataFiltersActive && (
           <button
             onClick={handleClearFilters}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors min-h-[44px]"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-destructive hover:bg-[var(--destructive-muted)] transition-colors min-h-[44px]"
             aria-label="Limpiar todos los filtros"
           >
             <FilterX size={16} aria-hidden="true" />

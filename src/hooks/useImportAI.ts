@@ -10,6 +10,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
+import toast from 'react-hot-toast';
 import { categorizeWithAI } from '../utils/aiCategorizer';
 import {
   groupImportRowsByPattern,
@@ -46,6 +47,9 @@ export interface UseImportAIReturn {
   aiCategorizing: boolean;
   aiApplied: boolean;
   aiSuggestions: AISuggestion[];
+  /** true tras un análisis exitoso que no produjo sugerencias aplicables
+   * (ninguna categoría con confianza suficiente). La UI muestra un aviso. */
+  aiNoSuggestions: boolean;
   aiSuggestionTransactionCount: number;
   aiSuggestionsByCategory: { category: string; suggestions: AISuggestion[] }[];
   handleAICategorize: (rows: ImportRow[]) => Promise<void>;
@@ -64,12 +68,14 @@ export function useImportAI({
   const [aiCategorizing, setAiCategorizing] = useState(false);
   const [aiApplied, setAiApplied] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
+  const [aiNoSuggestions, setAiNoSuggestions] = useState(false);
 
   // ─── handleAICategorize ─────────────────────────────────────────────────
 
   const handleAICategorize = useCallback(async (rows: ImportRow[]) => {
     if (aiCategorizing || rows.length === 0) return;
     setAiCategorizing(true);
+    setAiNoSuggestions(false);
     try {
       // 1. Filtrar filas elegibles: incluidas, no transferencia, sin categoría
       //    de archivo, categoría "Otros", y no categoría especial.
@@ -125,8 +131,16 @@ export function useImportAI({
         );
 
       setAiSuggestions(suggestions);
-    } catch {
-      // Fallo silencioso — las filas quedan con categorización por keyword.
+      // Éxito sin sugerencias aplicables: la IA no encontró categorías con
+      // confianza suficiente. Exponemos un estado vacío para que la UI lo avise.
+      setAiNoSuggestions(suggestions.length === 0);
+    } catch (error) {
+      // Nunca fallar en silencio: las filas quedan con su categorización por
+      // keyword, pero el usuario debe saber que la IA no respondió.
+      console.error('[useImportAI] Falló la categorización con IA:', error);
+      setAiSuggestions([]);
+      setAiNoSuggestions(false);
+      toast.error('No pudimos contactar a la IA. Revisa tu conexión o tu API key.');
     } finally {
       setAiCategorizing(false);
     }
@@ -182,6 +196,7 @@ export function useImportAI({
 
   const handleDiscardAISuggestions = useCallback(() => {
     setAiSuggestions([]);
+    setAiNoSuggestions(false);
   }, []);
 
   // ─── Computed values ───────────────────────────────────────────────────
@@ -211,6 +226,7 @@ export function useImportAI({
     aiCategorizing,
     aiApplied,
     aiSuggestions,
+    aiNoSuggestions,
     aiSuggestionTransactionCount,
     aiSuggestionsByCategory,
     handleAICategorize,

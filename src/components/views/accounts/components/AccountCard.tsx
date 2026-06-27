@@ -250,9 +250,9 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
             <>
               <button
                 onClick={onSetDefault}
-                className="flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] bg-primary-solid text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/10 hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
-                Principal
+                Marcar como principal
               </button>
               <button
                 onClick={onDelete}
@@ -316,13 +316,13 @@ const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
         <div>
           <span className="text-muted-foreground">Corte: </span>
           <span className="font-medium text-foreground">
-            {nextCutoff?.toLocaleDateString('es-CO')}
+            {nextCutoff ? nextCutoff.toLocaleDateString('es-CO') : 'Sin definir'}
           </span>
         </div>
         <div>
           <span className="text-muted-foreground">Pago: </span>
           <span className="font-medium text-foreground">
-            {nextPayment?.toLocaleDateString('es-CO')}
+            {nextPayment ? nextPayment.toLocaleDateString('es-CO') : 'Sin definir'}
           </span>
         </div>
         {interestRate && interestRate > 0 && (

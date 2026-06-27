@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
+import toast from 'react-hot-toast';
 import type {
   Transaction,
   FilterValue,
@@ -134,6 +135,23 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     setImportEverOpened(true);
     setShowImport(true);
   };
+
+  // P2: "Cargar más" puede fallar (red/IndexedDB). Sin canal de error propio en
+  // la capa de datos, envolvemos la llamada para no dejar un spinner perpetuo:
+  // mostramos un toast y un bloque de reintento accesible en la lista. No toca
+  // lógica de dominio; solo el feedback de la vista.
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const handleLoadMore = useCallback(async () => {
+    if (!loadMoreTransactions) return;
+    setLoadMoreError(null);
+    try {
+      await loadMoreTransactions();
+    } catch {
+      const message = 'No se pudieron cargar más transacciones. Revisa tu conexión e intenta de nuevo.';
+      setLoadMoreError(message);
+      toast.error(message);
+    }
+  }, [loadMoreTransactions]);
   const selectedAccount = useMemo(
     () => accounts.find((account) => account.id === filterAccount),
     [accounts, filterAccount]
@@ -194,13 +212,13 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
       {/* Título con contador */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+          <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
             Transacciones
-            <span className="text-xs font-medium text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/40 px-2 py-0.5 rounded-full">
+            <span className="text-xs font-medium text-[var(--balance-accent-foreground)] bg-[var(--balance-accent)] px-2 py-0.5 rounded-full">
               {filteredTransactions.length}
             </span>
           </h3>
-          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+          <p className="mt-0.5 text-xs text-muted-foreground">
             {activeFilterSummary || 'Todo el tiempo'} · {transactions.length} cargadas
           </p>
         </div>
@@ -215,7 +233,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           onClearFilters={handleClearFilters}
           hasMoreTransactions={hasMoreTransactions}
           loadingMoreTransactions={loadingMoreTransactions}
-          onLoadMore={loadMoreTransactions}
+          onLoadMore={handleLoadMore}
           onAddTransaction={accounts.length > 0 ? () => setShowForm(true) : undefined}
         />
       ) : (
@@ -236,8 +254,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           setEditForm={setEditForm}
           hasMoreTransactions={hasMoreTransactions}
           loadingMoreTransactions={loadingMoreTransactions}
-          loadMoreTransactions={loadMoreTransactions}
+          loadMoreTransactions={handleLoadMore}
           hasActiveFilters={isMetadataFiltersActive}
+          error={loadMoreError}
+          onRetry={handleLoadMore}
         />
       )}
     </div>

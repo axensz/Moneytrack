@@ -18,10 +18,10 @@ interface CardStatementsModalProps {
 }
 
 const STATUS_META: Record<CycleStatus, { label: string; cls: string }> = {
-  paid: { label: 'Pagado', cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
-  partial: { label: 'Parcial', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
-  pending: { label: 'Pendiente', cls: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' },
-  projected: { label: 'Proyectado', cls: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300' },
+  paid: { label: 'Pagado', cls: 'bg-success-muted text-success' },
+  partial: { label: 'Parcial', cls: 'bg-warning-muted text-warning' },
+  pending: { label: 'Pendiente', cls: 'bg-destructive-muted text-destructive' },
+  projected: { label: 'Proyectado', cls: 'bg-primary/10 text-primary' },
 };
 
 export function CardStatementsModal({ isOpen, onClose, schedule, formatCurrency, usedCreditByCard }: CardStatementsModalProps) {
@@ -52,7 +52,7 @@ export function CardStatementsModal({ isOpen, onClose, schedule, formatCurrency,
       isOpen={isOpen}
       onClose={onClose}
       title="Extractos de tarjetas"
-      titleIcon={<Receipt size={20} className="text-purple-600 dark:text-purple-400" />}
+      titleIcon={<Receipt size={20} className="text-primary" />}
       maxWidth="max-w-lg"
     >
       {cardOptions.length > 1 && (
@@ -65,9 +65,14 @@ export function CardStatementsModal({ isOpen, onClose, schedule, formatCurrency,
       )}
 
       {view.length === 0 ? (
-        <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-          No tienes pagos de tarjeta pendientes.
-        </p>
+        <div className="flex flex-col items-center gap-3 py-10 text-center">
+          <div className="rounded-full bg-success-muted p-3 text-success">
+            <Receipt size={24} />
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Todo al día: no tienes pagos de tarjeta pendientes.
+          </p>
+        </div>
       ) : (
         <div className="space-y-2">
           {view.map(g => <MonthPaymentRow key={g.monthKey} group={g} formatCurrency={formatCurrency} usedCreditByCard={usedCreditByCard} />)}
@@ -82,10 +87,10 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full px-3 py-1 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 ${
+      className={`rounded-full px-3 py-1 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
         active
-          ? 'bg-purple-600 text-white'
-          : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+          ? 'bg-primary-solid text-primary-foreground'
+          : 'bg-muted text-muted-foreground hover:bg-border'
       }`}
     >
       {children}
@@ -102,28 +107,28 @@ function MonthPaymentRow({ group, formatCurrency, usedCreditByCard }: { group: M
     <div
       className={`rounded-xl border ${
         group.isCurrent
-          ? 'border-purple-300 bg-purple-50 dark:border-purple-700 dark:bg-purple-900/20'
-          : 'border-gray-200 dark:border-gray-700'
+          ? 'border-border-accent bg-primary/5'
+          : 'border-border'
       }`}
     >
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded-xl"
+        className="flex w-full items-center justify-between gap-3 p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-xl"
       >
         <span className="flex items-center gap-2">
-          {open ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
-          <span className="font-semibold capitalize text-gray-900 dark:text-gray-100">{group.label}</span>
+          {open ? <ChevronUp size={16} className="text-muted-foreground" /> : <ChevronDown size={16} className="text-muted-foreground" />}
+          <span className="font-semibold capitalize text-foreground">{group.label}</span>
           {group.isCurrent && (
-            <span className="rounded-full bg-purple-600 px-2 py-0.5 text-xs font-medium text-white">Este mes</span>
+            <span className="rounded-full bg-primary-solid px-2 py-0.5 text-xs font-medium text-primary-foreground">Este mes</span>
           )}
         </span>
-        <span className="font-bold text-gray-900 dark:text-gray-100">{show(group.remaining)}</span>
+        <span className="font-bold text-foreground">{show(group.remaining)}</span>
       </button>
 
       {open && (
-        <div className="space-y-2 border-t border-gray-100 px-3 pb-3 pt-2 dark:border-gray-700">
+        <div className="space-y-2 border-t border-border px-3 pb-3 pt-2">
           {group.cards.map(c => (
             <CardRow
               key={c.cardId}
@@ -153,27 +158,27 @@ function CardRow({ card, show, usedCredit, formatCurrency, hideBalances }: {
   // gatea por projectedTotal, no por group.isCurrent.
   const showComparison = card.projectedTotal != null && usedCredit != null && !!formatCurrency;
   return (
-    <div className="rounded-lg bg-white/70 p-2.5 text-sm dark:bg-gray-800/60">
+    <div className="rounded-lg bg-card p-2.5 text-sm">
       <div className="flex items-center justify-between gap-2">
         <span className="flex items-center gap-2">
-          <span className="font-medium text-gray-900 dark:text-gray-100">{card.cardName}</span>
+          <span className="font-medium text-foreground">{card.cardName}</span>
           <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${meta.cls}`}>{meta.label}</span>
         </span>
-        <span className="font-semibold text-gray-900 dark:text-gray-100">{show(card.remaining)}</span>
+        <span className="font-semibold text-foreground">{show(card.remaining)}</span>
       </div>
 
-      <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+      <p className="mt-0.5 text-xs text-muted-foreground">
         Vence {card.paymentDueDate.toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })}
       </p>
 
       {card.status === 'partial' && (
-        <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+        <p className="mt-1 text-xs text-warning">
           Pagaste {show(card.paidAmount)} de {show(card.statementTotal)}
         </p>
       )}
 
       {(card.installmentItems.length > 0 || card.recurringItems.length > 0) && (
-        <ul className="mt-1.5 space-y-0.5 text-xs text-gray-500 dark:text-gray-400">
+        <ul className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
           {card.installmentItems.map((it, i) => (
             <li key={'i' + i} className="flex justify-between gap-2">
               <span className="truncate">{it.description} · cuota {it.cuota}/{it.total}</span>

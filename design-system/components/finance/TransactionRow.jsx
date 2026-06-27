@@ -1,10 +1,12 @@
 import React from 'react';
 import { Badge } from '../core/Badge.jsx';
 
+// `sign` se antepone a la cantidad SIN espacio (income/expense). En transfer no
+// hay signo +/−: la flecha "→" es del icono/ruta, no un prefijo del número.
 const typeMeta = {
   income:   { sign: '+', color: 'var(--success-text)',     chipBg: 'var(--surface-income)',   chipColor: 'var(--success)' },
   expense:  { sign: '−', color: 'var(--destructive-text)', chipBg: 'var(--surface-expense)',  chipColor: 'var(--destructive)' },
-  transfer: { sign: '→', color: 'var(--info-text)',        chipBg: 'var(--surface-transfer)', chipColor: 'var(--primary)' },
+  transfer: { sign: '',  color: 'var(--info-text)',        chipBg: 'var(--surface-transfer)', chipColor: 'var(--primary)' },
 };
 
 /**
@@ -61,15 +63,15 @@ export function TransactionRow({
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
           <div style={{ minWidth: 0 }}>
-            <p style={{ margin: 0, fontWeight: 'var(--weight-semibold)', color: 'var(--foreground)', fontSize: 'var(--text-base)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <p title={typeof description === 'string' ? description : undefined} style={{ margin: 0, fontWeight: 'var(--weight-semibold)', color: 'var(--foreground)', fontSize: 'var(--text-base)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {description}
             </p>
-            <p style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <p title={typeof account === 'string' ? account : undefined} style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: 'var(--muted-foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {account}
             </p>
           </div>
           <span style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-lg)', color: m.color, whiteSpace: 'nowrap', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
-            {m.sign} {amount}
+            {m.sign}{amount}
           </span>
         </div>
 

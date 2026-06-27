@@ -33,7 +33,7 @@ export const HelpSectionBudgets: React.FC = () => (
                <li className="flex gap-2"><span className="font-bold text-purple-600">2.</span> Define el límite mensual en pesos</li>
                <li className="flex gap-2"><span className="font-bold text-purple-600">3.</span> El sistema empieza a rastrear tus gastos automáticamente</li>
             </ol>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
                Solo puedes crear un presupuesto por categoría. Las categorías ya presupuestadas no aparecen en la lista.
             </p>
          </div>
@@ -69,19 +69,19 @@ export const HelpSectionBudgets: React.FC = () => (
             </p>
             <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
                <li className="flex items-start gap-2">
-                  <span className="text-gray-500">•</span>
+                  <span className="text-muted-foreground">•</span>
                   <span><strong>Barra de progreso</strong> con color según el estado (verde → ámbar → rojo)</span>
                </li>
                <li className="flex items-start gap-2">
-                  <span className="text-gray-500">•</span>
+                  <span className="text-muted-foreground">•</span>
                   <span><strong>Gastado / Límite</strong> en formato de moneda</span>
                </li>
                <li className="flex items-start gap-2">
-                  <span className="text-gray-500">•</span>
+                  <span className="text-muted-foreground">•</span>
                   <span><strong>Porcentaje</strong> de uso del presupuesto</span>
                </li>
                <li className="flex items-start gap-2">
-                  <span className="text-gray-500">•</span>
+                  <span className="text-muted-foreground">•</span>
                   <span><strong>Restante</strong> o <strong>excedido</strong> según corresponda</span>
                </li>
             </ul>

@@ -31,15 +31,15 @@ export const HelpSectionGoals: React.FC = () => (
             <div className="grid grid-cols-2 gap-2 text-sm">
                <div className="p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg">
                   <span className="font-medium text-gray-900 dark:text-gray-100">Nombre:</span>
-                  <span className="text-gray-500 ml-1">Vacaciones, Auto...</span>
+                  <span className="text-muted-foreground ml-1">Vacaciones, Auto...</span>
                </div>
                <div className="p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg">
                   <span className="font-medium text-gray-900 dark:text-gray-100">Objetivo:</span>
-                  <span className="text-gray-500 ml-1">Monto a alcanzar</span>
+                  <span className="text-muted-foreground ml-1">Monto a alcanzar</span>
                </div>
                <div className="p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg col-span-2">
                   <span className="font-medium text-gray-900 dark:text-gray-100">Fecha límite:</span>
-                  <span className="text-gray-500 ml-1">Opcional — si la pones, se calcula el ahorro mensual sugerido</span>
+                  <span className="text-muted-foreground ml-1">Opcional — si la pones, se calcula el ahorro mensual sugerido</span>
                </div>
             </div>
          </div>

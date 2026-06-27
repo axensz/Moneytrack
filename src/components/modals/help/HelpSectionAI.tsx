@@ -68,28 +68,28 @@ export const HelpSectionAI: React.FC = () => (
                  <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">+</span>
                  <div>
                     <p className="font-medium text-gray-900 dark:text-gray-100">Agregar transacciones</p>
-                    <p className="text-sm text-gray-500">Escribe: <em>"Gasté 35mil en almuerzo"</em> y lo registra por ti.</p>
+                    <p className="text-sm text-muted-foreground">Escribe: <em>"Gasté 35mil en almuerzo"</em> y lo registra por ti.</p>
                  </div>
               </div>
               <div className="flex gap-3">
                  <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">↻</span>
                  <div>
                     <p className="font-medium text-gray-900 dark:text-gray-100">Recategorizar transacciones</p>
-                    <p className="text-sm text-gray-500">Pídele: <em>"Recategoriza mis transacciones de comida"</em></p>
+                    <p className="text-sm text-muted-foreground">Pídele: <em>"Recategoriza mis transacciones de comida"</em></p>
                  </div>
               </div>
               <div className="flex gap-3">
                  <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">📋</span>
                  <div>
                     <p className="font-medium text-gray-900 dark:text-gray-100">Recategorización masiva</p>
-                    <p className="text-sm text-gray-500">Puede recategorizar varias transacciones a la vez automáticamente.</p>
+                    <p className="text-sm text-muted-foreground">Puede recategorizar varias transacciones a la vez automáticamente.</p>
                  </div>
               </div>
               <div className="flex gap-3">
                  <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">🏷️</span>
                  <div>
                     <p className="font-medium text-gray-900 dark:text-gray-100">Crear categorías</p>
-                    <p className="text-sm text-gray-500">Si una recategorización necesita una categoría nueva, la crea automáticamente.</p>
+                    <p className="text-sm text-muted-foreground">Si una recategorización necesita una categoría nueva, la crea automáticamente.</p>
                  </div>
               </div>
            </div>

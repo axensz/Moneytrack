@@ -56,7 +56,7 @@ export const FinancialPlanAI: React.FC<Props> = ({ plan, config }) => {
         </button>
       </div>
       {loading ? (
-        <div className="flex items-center gap-2 py-4 justify-center text-sm text-gray-500">
+        <div className="flex items-center gap-2 py-4 justify-center text-sm text-muted-foreground">
           <Loader2 size={16} className="animate-spin" /> Analizando tus finanzas...
         </div>
       ) : (

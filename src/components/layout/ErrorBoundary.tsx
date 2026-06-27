@@ -106,7 +106,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
           <div className="flex gap-3 justify-center mt-6">
             <button
               onClick={this.handleRetry}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               <RefreshCw className="w-4 h-4" />
               Reintentar

@@ -88,7 +88,7 @@ export function GeminiKeyModal({ isOpen, onClose }: GeminiKeyModalProps) {
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               placeholder="AIza..."
-              className="w-full px-3 py-2.5 pr-11 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="w-full px-3 py-2.5 pr-11 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary"
             />
             <button
               type="button"
@@ -136,7 +136,7 @@ export function GeminiKeyModal({ isOpen, onClose }: GeminiKeyModalProps) {
             type="checkbox"
             checked={hasConsent}
             onChange={(e) => handleToggleConsent(e.target.checked)}
-            className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+            className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-gray-300 text-purple-600 focus:ring-primary"
           />
           <span className="text-sm text-gray-700 dark:text-gray-300">
             Autorizo el envío de las descripciones, montos y PDF de mis movimientos a Google Gemini

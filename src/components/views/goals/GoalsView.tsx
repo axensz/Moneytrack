@@ -220,7 +220,7 @@ export const GoalsView: React.FC = () => {
                         ) : (
                           <Calendar size={12} className="text-gray-400" />
                         )}
-                        <span className={`text-xs ${isOverdue ? 'text-destructive font-medium' : 'text-gray-500'}`}>
+                        <span className={`text-xs ${isOverdue ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
                           {isOverdue
                             ? `Vencida hace ${Math.abs(daysRemaining!)} ${Math.abs(daysRemaining!) === 1 ? 'día' : 'días'}`
                             : `${daysRemaining} ${daysRemaining === 1 ? 'día restante' : 'días restantes'}`
@@ -259,7 +259,7 @@ export const GoalsView: React.FC = () => {
                   <span className="text-lg font-bold text-gray-900 dark:text-gray-100">
                     {displayAmount(goal.currentAmount)}
                   </span>
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-muted-foreground">
                     de {displayAmount(goal.targetAmount)}
                   </span>
                 </div>
@@ -311,7 +311,7 @@ export const GoalsView: React.FC = () => {
                   </div>
                 )}
                 {showAddSavings === goal.id && (
-                  <p className="mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+                  <p className="mt-1.5 text-[11px] text-muted-foreground">
                     Solo actualiza el progreso de la meta; no descuenta de tus cuentas.
                   </p>
                 )}

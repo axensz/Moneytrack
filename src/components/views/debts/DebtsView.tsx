@@ -294,7 +294,7 @@ export const DebtsView: React.FC = () => {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Vencimiento <span className="text-gray-400 font-normal">(opcional)</span>
+                  Vencimiento <span className="text-muted-foreground font-normal">(opcional)</span>
                 </label>
                 <input
                   type="date"
@@ -436,7 +436,7 @@ export const DebtsView: React.FC = () => {
                       <span className="text-sm font-medium text-gray-700 dark:text-gray-300 line-through">
                         {debt.personName}
                       </span>
-                      <span className="text-xs text-gray-500 ml-2">{displayAmount(debt.originalAmount)}</span>
+                      <span className="text-xs text-muted-foreground ml-2">{displayAmount(debt.originalAmount)}</span>
                       {debt.forgivenReason && (
                         <span className="text-xs text-warning ml-2">
                           Condonada · {FORGIVEN_LABELS[debt.forgivenReason]}
@@ -554,7 +554,7 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
               {formatCurrency(debt.remainingAmount)}
             </span>
             {debt.remainingAmount !== debt.originalAmount && (
-              <span className="text-xs text-gray-400 line-through">
+              <span className="text-xs text-muted-foreground line-through">
                 {formatCurrency(debt.originalAmount)}
               </span>
             )}
@@ -563,7 +563,7 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
           {/* Progress bar */}
           {progress > 0 && (
             <div className="mt-2">
-              <div className="flex justify-between text-xs text-gray-500 mb-1">
+              <div className="flex justify-between text-xs text-muted-foreground mb-1">
                 <span>{progress}% pagado</span>
                 <span>Faltan {formatCurrency(debt.remainingAmount)}</span>
               </div>

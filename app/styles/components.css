@@ -168,7 +168,7 @@
   }
 
   .btn-type-inactive:hover {
-    background-color: #eeede9;
+    background-color: var(--btn-type-hover);
     border-color: var(--border-accent);
   }
 

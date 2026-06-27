@@ -34,7 +34,7 @@ export const InactivePaymentsList: React.FC<InactivePaymentsListProps> = ({
               <span className="font-medium text-gray-600 dark:text-gray-400">
                 {payment.name}
               </span>
-              <span className="ml-2 text-sm text-gray-400">
+              <span className="ml-2 text-sm text-muted-foreground">
                 {formatCurrency(payment.amount)}
               </span>
             </div>

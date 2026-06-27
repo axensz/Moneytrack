@@ -28,11 +28,23 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
 
   return (
     <div
-      className={`fixed inset-0 bg-background flex items-center justify-center z-50 transition-opacity duration-500 ${
+      // Splash: base casi-neutra (charcoal con un matiz violet) y un bloom
+      // violet suave desde el centro. La marca se siente como luz, no como un
+      // bloque morado plano (regla anti-slop: base neutra + un solo acento).
+      className={`fixed inset-0 overflow-hidden bg-[#f6f5fb] dark:bg-[#100d18] flex items-center justify-center z-50 transition-opacity duration-500 ${
         fadeOut ? 'opacity-0' : 'opacity-100'
       }`}
     >
-      <div className="text-center">
+      {/* Bloom violet ambiental: florece tras el logo y se desvanece al borde. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            'radial-gradient(120% 85% at 50% 42%, color-mix(in srgb, var(--primary) 16%, transparent), transparent 60%)',
+        }}
+      />
+      <div className="relative z-10 text-center">
         {/* Logo principal con resplandor */}
         <div className="relative mb-6 inline-block animate-scale-in">
           {/* Resplandor de fondo — marca (violet) por defecto; ámbar al cerrar

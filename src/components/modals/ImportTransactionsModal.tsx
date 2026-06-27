@@ -103,7 +103,7 @@ export function ImportTransactionsModal({ isOpen, onClose, onOpenAISettings }: I
             onClick={handleClose}
             className="p-2 hover:bg-white/70 dark:hover:bg-gray-700 rounded-xl transition-colors"
           >
-            <X size={18} className="text-gray-500" />
+            <X size={18} className="text-muted-foreground" />
           </button>
         </div>
 

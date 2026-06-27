@@ -97,7 +97,7 @@ export function BaseModal({
                 <button
                   onClick={onClose}
                   aria-label="Cerrar"
-                  className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 transition-colors p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                  className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 transition-colors p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary min-w-[44px] min-h-[44px] flex items-center justify-center"
                 >
                   <X size={20} />
                 </button>

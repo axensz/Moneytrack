@@ -62,7 +62,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
             />
             <div
                 data-notification-center
-                className="relative w-[calc(100vw-2rem)] sm:w-[420px] max-h-[calc(100vh-6rem)] bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200/50 dark:border-gray-700/50 flex flex-col animate-in fade-in zoom-in duration-200"
+                className="relative w-[calc(100vw-2rem)] sm:w-[420px] max-h-[calc(100vh-6rem)] bg-card text-card-foreground rounded-2xl shadow-2xl border border-border flex flex-col animate-in fade-in zoom-in duration-200"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}

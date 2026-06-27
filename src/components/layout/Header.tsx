@@ -174,7 +174,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 ref={settingsButtonRef}
                 onClick={() => setShowSettingsMenu(!showSettingsMenu)}
-                className="relative p-2 sm:p-2.5 text-muted-foreground hover:text-primary active:bg-muted rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="header-icon"
                 aria-label={
                   pendingSettingsCount > 0
                     ? `Abrir menú de configuración (${pendingSettingsCount} pendiente${pendingSettingsCount !== 1 ? 's' : ''})`
@@ -263,10 +263,10 @@ export const Header: React.FC<HeaderProps> = ({
             {user && (
               <button
                 onClick={onLogout}
-                className="p-2 sm:p-2.5 text-muted-foreground hover:text-destructive active:bg-muted rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="header-icon hover:text-destructive"
                 aria-label="Cerrar sesión"
               >
-                <LogOut size={18} aria-hidden="true" />
+                <LogOut size={20} aria-hidden="true" />
               </button>
             )}
           </div>

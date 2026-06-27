@@ -265,6 +265,30 @@
     @apply opacity-50 cursor-not-allowed;
   }
 
+  /* ─── Header icon buttons ─────────────────────────────
+     Receta ÚNICA para los iconos del header (tema, notificaciones,
+     configuración, salir). Estilo "bare": sin relleno; el hover tiñe el icono
+     con el violet de marca; foco con anillo. Icono de 20px que HEREDA el color
+     (no le pongas clase de color al <svg>). Para variar el hover (p. ej. salir
+     en destructive) añade una utilidad hover:text-* al botón. */
+  .header-icon {
+    @apply relative p-2 sm:p-2.5 rounded-lg text-muted-foreground transition-colors;
+    cursor: pointer;
+  }
+
+  .header-icon:hover {
+    color: var(--primary);
+  }
+
+  .header-icon:active {
+    background-color: var(--muted);
+  }
+
+  .header-icon:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--primary);
+  }
+
   /* Ensure adequate spacing between adjacent buttons */
   .btn-primary+.btn-primary,
   .btn-primary+.btn-secondary,

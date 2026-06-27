@@ -213,13 +213,14 @@ export function NotificationBell({ isOpen, onToggle }: NotificationBellProps) {
     return (
         <button
             onClick={onToggle}
-            className="p-2 sm:p-2.5 text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 active:bg-gray-100 dark:active:bg-gray-800 rounded-lg transition-colors"
+            className="header-icon"
             aria-label="Notificaciones"
             aria-expanded={isOpen}
+            aria-haspopup="dialog"
         >
-            <Bell size={20} className="text-gray-600 dark:text-gray-400" aria-hidden="true" />
+            <Bell size={20} aria-hidden="true" />
             {unreadCount > 0 && (
-                <span className="absolute top-1 right-1 w-4 h-4 bg-red-600 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-bold leading-none text-white bg-destructive rounded-full ring-2 ring-card">
                     {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
             )}

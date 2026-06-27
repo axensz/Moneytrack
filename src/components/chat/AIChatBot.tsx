@@ -131,7 +131,7 @@ const TokenBadge: React.FC<{ tokenUsage: TokenUsage }> = ({ tokenUsage }) => {
     <div className="mt-2 select-none">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="inline-flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 transition-colors px-2 py-1 rounded-md hover:bg-purple-50 dark:hover:bg-purple-900/20"
+        className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-purple-600 dark:hover:text-purple-400 transition-colors px-2 py-1 rounded-md hover:bg-purple-50 dark:hover:bg-purple-900/20"
         aria-label="Ver uso de tokens"
       >
         <Info size={12} />

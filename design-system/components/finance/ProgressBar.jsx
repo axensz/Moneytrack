@@ -45,7 +45,7 @@ export function ProgressBar({
         aria-label={fillLabel}
         style={{ width: '100%', height, background: 'var(--surface-transfer)', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}
       >
-        <div style={{ height: '100%', width: `${pct * 100}%`, background: fill, borderRadius: 'var(--radius-full)', transition: 'width 0.3s cubic-bezier(0,0,0.2,1)' }} />
+        <div style={{ height: '100%', width: '100%', transformOrigin: 'left', transform: `scaleX(${pct})`, background: fill, borderRadius: 'var(--radius-full)', transition: 'transform 0.3s cubic-bezier(0,0,0.2,1)' }} />
       </div>
     </div>
   );

@@ -236,7 +236,7 @@ export const DebtsView: React.FC = () => {
               <button
                 onClick={() => setFormData(f => ({ ...f, type: 'lent' }))}
                 className={`flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition-[background-color,box-shadow,transform,color] shadow-md hover:shadow-lg ${formData.type === 'lent'
-                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white ring-2 ring-blue-400 scale-105'
+                  ? 'bg-primary-solid text-white ring-2 ring-primary scale-105'
                   : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600'
                   }`}
               >
@@ -246,7 +246,7 @@ export const DebtsView: React.FC = () => {
               <button
                 onClick={() => setFormData(f => ({ ...f, type: 'borrowed' }))}
                 className={`flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition-[background-color,box-shadow,transform,color] shadow-md hover:shadow-lg ${formData.type === 'borrowed'
-                  ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white ring-2 ring-orange-400 scale-105'
+                  ? 'bg-primary-solid text-white ring-2 ring-primary scale-105'
                   : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600'
                   }`}
               >

@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, memo, useState, useCallback } from 'react';
-import CurrencyInput from 'react-currency-input-field';
 import { Repeat, Zap, AlertTriangle } from 'lucide-react';
 import { BaseModal } from '@/components/modals/BaseModal';
 import { UI_LABELS, TRANSFER_CATEGORY } from '@/config/constants';
-import { formatCurrency, formatDate } from '@/utils/formatters';
+import { formatCurrency, formatDate, formatNumberForInput, unformatNumber, parseCurrency } from '@/utils/formatters';
 import { getCreditCardUsedCredit } from '@/utils/accountStrategies';
 import { INSTALLMENT_OPTIONS, calculateInterest } from '@/utils/interestCalculator';
 import { detectDuplicates, type DuplicateMatch } from '@/utils/duplicateDetector';
@@ -52,7 +51,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
     const installments = Number(newTransaction.installments) || 1;
     if (installments <= 1) return null;
 
-    const principal = parseFloat(String(newTransaction.amount));
+    const principal = parseCurrency(String(newTransaction.amount));
     if (!principal || principal <= 0) return null;
 
     const annualRate = selectedAccount?.interestRate || 0;
@@ -181,18 +180,16 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
 
             <div>
               <label htmlFor="tx-form-amount" className="label-base">Monto</label>
-              <CurrencyInput
+              <input
                 id="tx-form-amount"
-                intlConfig={{ locale: 'es-CO', currency: 'COP' }}
-                decimalsLimit={2}
-                allowNegativeValue={false}
-                value={newTransaction.amount}
-                onValueChange={(value) => {
-                  setNewTransaction({ ...newTransaction, amount: value || '' });
-                }}
+                type="text"
+                inputMode="decimal"
+                value={formatNumberForInput(newTransaction.amount)}
+                onChange={(e) =>
+                  setNewTransaction({ ...newTransaction, amount: unformatNumber(e.target.value) })
+                }
                 placeholder="0"
                 className="input-base"
-                disableAbbreviations
               />
               {isCreditCard && newTransaction.type === 'income' && creditUsed > 0 && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">

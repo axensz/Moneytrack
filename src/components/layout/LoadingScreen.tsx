@@ -28,7 +28,9 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
 
   return (
     <div
-      className={`fixed inset-0 bg-background flex items-center justify-center z-50 transition-opacity duration-500 ${
+      // Fondo violet de marca (splash). En oscuro usa #1e1b4b — el mismo
+      // background_color del manifest PWA — para un arranque sin parpadeo.
+      className={`fixed inset-0 bg-[#f5f3ff] dark:bg-[#1e1b4b] flex items-center justify-center z-50 transition-opacity duration-500 ${
         fadeOut ? 'opacity-0' : 'opacity-100'
       }`}
     >

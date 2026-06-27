@@ -65,6 +65,8 @@
   --btn-primary-to-hover: #7c3aed;
   --btn-submit-hover: #6d28d9;
   --btn-cancel-hover: #e5e4e0;
+  /* Hover de .btn-type-inactive (selector segmentado). En claro = gris cálido. */
+  --btn-type-hover: #eeede9;
   --btn-danger: #dc2626;
   --btn-danger-hover: #b91c1c;
 }
@@ -95,6 +97,11 @@
   --btn-primary-from-hover: #5b21b6;
   --btn-primary-to-hover: #6d28d9;
   --btn-submit-hover: #5b21b6;
+  /* Hovers neutros en dark: sin estos overrides heredarían el gris CLARO de
+     :root (#e5e4e0 / #eeede9) y .btn-cancel/.btn-type-inactive saltaban a un
+     color claro estando en modo oscuro. Un escalón por encima de --muted. */
+  --btn-cancel-hover: #374151;
+  --btn-type-hover: #374151;
 
   /* SUCCESS DARK — muted profundizado para WCAG AA (6.19:1 con fg) */
   --success: #10b981;

@@ -36,22 +36,22 @@ export const HelpSectionDebts: React.FC = () => (
             <div className="grid grid-cols-2 gap-2 text-sm">
                <div className="p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg">
                   <span className="font-medium text-gray-900 dark:text-gray-100">Tipo:</span>
-                  <span className="text-gray-500 ml-1">Me deben / Yo debo</span>
+                  <span className="text-muted-foreground ml-1">Me deben / Yo debo</span>
                </div>
                <div className="p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg">
                   <span className="font-medium text-gray-900 dark:text-gray-100">Persona:</span>
-                  <span className="text-gray-500 ml-1">Nombre</span>
+                  <span className="text-muted-foreground ml-1">Nombre</span>
                </div>
                <div className="p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg">
                   <span className="font-medium text-gray-900 dark:text-gray-100">Monto:</span>
-                  <span className="text-gray-500 ml-1">Cantidad prestada</span>
+                  <span className="text-muted-foreground ml-1">Cantidad prestada</span>
                </div>
                <div className="p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg">
                   <span className="font-medium text-gray-900 dark:text-gray-100">Cuenta:</span>
-                  <span className="text-gray-500 ml-1">Desde cuál cuenta</span>
+                  <span className="text-muted-foreground ml-1">Desde cuál cuenta</span>
                </div>
             </div>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
                Opcional: Descripción o motivo del préstamo.
             </p>
          </div>
@@ -73,21 +73,21 @@ export const HelpSectionDebts: React.FC = () => (
                <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">1</span>
                <div>
                   <p className="font-medium text-gray-900 dark:text-gray-100">Abre la tarjeta del préstamo</p>
-                  <p className="text-sm text-gray-500">Verás el monto original y el saldo pendiente.</p>
+                  <p className="text-sm text-muted-foreground">Verás el monto original y el saldo pendiente.</p>
                </div>
             </div>
             <div className="flex gap-3">
                <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">2</span>
                <div>
                   <p className="font-medium text-gray-900 dark:text-gray-100">Ingresa el monto del pago</p>
-                  <p className="text-sm text-gray-500">Puede ser parcial o el total pendiente.</p>
+                  <p className="text-sm text-muted-foreground">Puede ser parcial o el total pendiente.</p>
                </div>
             </div>
             <div className="flex gap-3">
                <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">3</span>
                <div>
                   <p className="font-medium text-gray-900 dark:text-gray-100">Se actualiza automáticamente</p>
-                  <p className="text-sm text-gray-500">El saldo pendiente se reduce. Si llega a $0, se marca como saldado.</p>
+                  <p className="text-sm text-muted-foreground">El saldo pendiente se reduce. Si llega a $0, se marca como saldado.</p>
                </div>
             </div>
          </div>

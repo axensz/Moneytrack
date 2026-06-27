@@ -21,7 +21,7 @@ export const HelpSectionStats: React.FC = () => (
                     <h5 className="font-semibold text-gray-900 dark:text-gray-100">Flujo de Caja Mensual</h5>
                  </div>
               </div>
-              <p className="text-sm text-gray-500 ml-11">
+              <p className="text-sm text-muted-foreground ml-11">
                  Barras comparativas de ingresos vs gastos por mes. Incluye línea de tendencia del balance neto. Muestra los últimos 6 meses.
               </p>
            </div>
@@ -35,7 +35,7 @@ export const HelpSectionStats: React.FC = () => (
                     <h5 className="font-semibold text-gray-900 dark:text-gray-100">Distribución por Categoría</h5>
                  </div>
               </div>
-              <p className="text-sm text-gray-500 ml-11">
+              <p className="text-sm text-muted-foreground ml-11">
                  Gráfico circular que muestra en qué categorías gastas más. Incluye porcentajes y leyenda detallada.
               </p>
            </div>
@@ -49,7 +49,7 @@ export const HelpSectionStats: React.FC = () => (
                     <h5 className="font-semibold text-gray-900 dark:text-gray-100">Comparativa Mensual</h5>
                  </div>
               </div>
-              <p className="text-sm text-gray-500 ml-11">
+              <p className="text-sm text-muted-foreground ml-11">
                  Compara el mes actual con el anterior. Muestra cambios porcentuales en ingresos, gastos y balance.
               </p>
            </div>
@@ -63,7 +63,7 @@ export const HelpSectionStats: React.FC = () => (
                     <h5 className="font-semibold text-gray-900 dark:text-gray-100">Tendencia Anual</h5>
                  </div>
               </div>
-              <p className="text-sm text-gray-500 ml-11">
+              <p className="text-sm text-muted-foreground ml-11">
                  Gráfico de área con la evolución año a año. Útil para ver el crecimiento o decrecimiento financiero a largo plazo.
               </p>
            </div>
@@ -132,13 +132,13 @@ export const HelpSectionStats: React.FC = () => (
         <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
            <Eye className="w-8 h-8 text-purple-600 mb-3" />
            <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Modo Discreto</h4>
-           <p className="text-sm text-gray-500">Usa el botón del ojo en las tarjetas superiores para ocultar los saldos cuando estés en público.</p>
+           <p className="text-sm text-muted-foreground">Usa el botón del ojo en las tarjetas superiores para ocultar los saldos cuando estés en público.</p>
         </div>
 
         <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
            <Settings className="w-8 h-8 text-gray-600 mb-3" />
            <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Tema Claro/Oscuro</h4>
-           <p className="text-sm text-gray-500">Cambia entre tema claro y oscuro desde el botón en la esquina superior. Se adapta a tu preferencia del sistema.</p>
+           <p className="text-sm text-muted-foreground">Cambia entre tema claro y oscuro desde el botón en la esquina superior. Se adapta a tu preferencia del sistema.</p>
         </div>
      </div>
   </div>

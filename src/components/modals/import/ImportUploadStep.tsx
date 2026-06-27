@@ -59,7 +59,7 @@ export function ImportUploadStep({
           <select
             value={selectedAccountId}
             onChange={e => onAccountChange(e.target.value)}
-            className="w-full pl-3 pr-8 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="w-full pl-3 pr-8 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="">Selecciona una cuenta</option>
             {nonCreditAccounts.length > 0 && (
@@ -96,7 +96,7 @@ export function ImportUploadStep({
         {pdfParsing ? (
           <div className="text-center">
             <p className="text-sm font-semibold text-purple-700 dark:text-purple-300">Analizando PDF con IA...</p>
-            <p className="text-xs text-gray-400 mt-1">Gemini está extrayendo las transacciones</p>
+            <p className="text-xs text-muted-foreground mt-1">Gemini está extrayendo las transacciones</p>
           </div>
         ) : fileName ? (
           <p className="text-sm font-semibold text-purple-700 dark:text-purple-300">{fileName}</p>
@@ -105,10 +105,10 @@ export function ImportUploadStep({
             <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
               Arrastra tu extracto aquí o haz clic para seleccionar
             </p>
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               CSV · Excel (.xlsx) · PDF con IA
             </p>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               Bancolombia, Davivienda, BBVA, Nequi y más
             </p>
           </>

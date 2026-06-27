@@ -88,7 +88,7 @@ export function ImportReviewStep({
             </button>
           )}
         </div>
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-muted-foreground">
           {includedCount} seleccionadas
           {rows.filter(r => r.isDuplicate).length > 0 && (
             <span className="text-amber-600 dark:text-amber-400">
@@ -112,7 +112,7 @@ export function ImportReviewStep({
               return { ...r, date: d };
             }));
           }}
-          className="text-xs px-2 py-1 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-purple-500"
+          className="text-xs px-2 py-1 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-primary"
           defaultValue=""
         >
           <option value="" disabled>Cambiar todas a...</option>
@@ -120,7 +120,7 @@ export function ImportReviewStep({
           <option value="2025">2025</option>
           <option value="2026">2026</option>
         </select>
-        <span className="text-[10px] text-gray-400">o edita individual</span>
+        <span className="text-[10px] text-muted-foreground">o edita individual</span>
       </div>
 
       {aiApplied && (
@@ -191,7 +191,7 @@ export function ImportReviewStep({
                         }
                       }}
                       disabled={!row.include}
-                      className="text-xs px-1.5 py-1 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-purple-500 w-[120px]"
+                      className="text-xs px-1.5 py-1 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-primary w-[120px]"
                     />
                   </td>
 
@@ -211,7 +211,7 @@ export function ImportReviewStep({
                       <select
                         value={row.category}
                         onChange={e => onCategoryChange(i, e.target.value)}
-                        className="text-xs pl-2 pr-6 py-1 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 appearance-none focus:outline-none focus:ring-1 focus:ring-purple-500 w-full"
+                        className="text-xs pl-2 pr-6 py-1 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 appearance-none focus:outline-none focus:ring-1 focus:ring-primary w-full"
                         disabled={!row.include}
                       >
                         {availableCategoryOptions.map(c => (
@@ -319,13 +319,13 @@ export function ImportReviewStep({
                       }
                     }}
                     disabled={!row.include}
-                    className="text-xs px-1.5 py-1 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-purple-500 w-[112px] flex-shrink-0"
+                    className="text-xs px-1.5 py-1 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-primary w-[112px] flex-shrink-0"
                   />
                   <div className="flex-1 relative min-w-0">
                     <select
                       value={row.category}
                       onChange={e => onCategoryChange(i, e.target.value)}
-                      className="text-xs pl-2 pr-6 py-1 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 appearance-none focus:outline-none focus:ring-1 focus:ring-purple-500 w-full"
+                      className="text-xs pl-2 pr-6 py-1 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 appearance-none focus:outline-none focus:ring-1 focus:ring-primary w-full"
                       disabled={!row.include}
                     >
                       {availableCategoryOptions.map(c => (

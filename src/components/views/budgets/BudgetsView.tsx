@@ -99,7 +99,7 @@ export const BudgetsView: React.FC = () => {
 
   const trendLabel = plan?.trend === 'improving' ? 'Mejorando' : plan?.trend === 'declining' ? 'Empeorando' : 'Estable';
   const TrendIcon = plan?.trend === 'improving' ? TrendingUp : plan?.trend === 'declining' ? TrendingDown : Minus;
-  const trendColor = plan?.trend === 'improving' ? 'text-success' : plan?.trend === 'declining' ? 'text-destructive' : 'text-gray-400';
+  const trendColor = plan?.trend === 'improving' ? 'text-success' : plan?.trend === 'declining' ? 'text-destructive' : 'text-muted-foreground';
 
   return (
     <div className="space-y-4">
@@ -167,7 +167,7 @@ export const BudgetsView: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <h2 className="text-lg font-black text-gray-900 dark:text-gray-100">Plan financiero</h2>
                       <span className={`text-2xl font-black ${scoreColor(plan.score.total)}`}>{plan.score.total}</span>
-                      <span className="text-xs text-gray-400">/100</span>
+                      <span className="text-xs text-muted-foreground">/100</span>
                       {planMinimized ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronUp size={16} className="text-gray-400" />}
                     </div>
                     <div className={`flex items-center gap-1.5 text-[11px] font-medium ${trendColor}`}>
@@ -200,7 +200,7 @@ export const BudgetsView: React.FC = () => {
                   </svg>
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
                     <span className={`text-4xl font-black leading-none ${scoreColor(plan.score.total)}`}>{plan.score.total}</span>
-                    <span className="text-[11px] text-gray-400 font-medium mt-0.5">de 100</span>
+                    <span className="text-[11px] text-muted-foreground font-medium mt-0.5">de 100</span>
                   </div>
                 </div>
                 <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">{levelLabel(plan.score.level)}</span>
@@ -226,9 +226,9 @@ export const BudgetsView: React.FC = () => {
                       <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                         <div className="h-full rounded-full bg-primary transition-[width] duration-700" style={{ width: `${ratio * 100}%` }} />
                       </div>
-                      <span className="text-[11px] font-bold text-gray-700 dark:text-gray-300">{item.value}<span className="text-gray-400 font-normal">/{item.max}</span></span>
+                      <span className="text-[11px] font-bold text-gray-700 dark:text-gray-300">{item.value}<span className="text-muted-foreground font-normal">/{item.max}</span></span>
                     </div>
-                    <span className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 block">{stateLabel}</span>
+                    <span className="text-[10px] text-muted-foreground mt-1 block">{stateLabel}</span>
                   </div>
                   );
                 })}
@@ -245,7 +245,7 @@ export const BudgetsView: React.FC = () => {
           <div className="card">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">Distribución mensual</h3>
-              <span className="text-[10px] text-gray-400 font-medium">de {displayAmount(planConfig.declaredIncome)}</span>
+              <span className="text-[10px] text-muted-foreground font-medium">de {displayAmount(planConfig.declaredIncome)}</span>
             </div>
             <div className="space-y-5">
               {[
@@ -267,7 +267,7 @@ export const BudgetsView: React.FC = () => {
                         <span className={`text-lg font-black ${item.warn ? 'text-destructive' : 'text-gray-900 dark:text-gray-100'}`}>
                           {item.pct}%
                         </span>
-                        <span className="text-xs text-gray-400">/ {item.target}%</span>
+                        <span className="text-xs text-muted-foreground">/ {item.target}%</span>
                       </div>
                     </div>
                     {/* Montos: real vs ideal */}
@@ -275,7 +275,7 @@ export const BudgetsView: React.FC = () => {
                       <span className="text-gray-500 dark:text-gray-400">
                         Usas <span className={`font-bold ${item.warn ? 'text-destructive' : 'text-gray-700 dark:text-gray-300'}`}>{displayAmount(item.amount)}</span>
                       </span>
-                      <span className="text-gray-400">
+                      <span className="text-muted-foreground">
                         ideal <span className="font-bold text-gray-600 dark:text-gray-300">{displayAmount(item.targetAmount)}</span>
                       </span>
                     </div>
@@ -289,7 +289,7 @@ export const BudgetsView: React.FC = () => {
                         <div className="w-0.5 h-4 bg-gray-500 dark:bg-gray-400 rounded-full" />
                       </div>
                     </div>
-                    <div className="mt-1 text-[10px] text-gray-400 text-right pr-0.5" style={{ marginRight: `${100 - item.target}%` }}>
+                    <div className="mt-1 text-[10px] text-muted-foreground text-right pr-0.5" style={{ marginRight: `${100 - item.target}%` }}>
                       ideal {item.target}%
                     </div>
                   </div>
@@ -312,7 +312,7 @@ export const BudgetsView: React.FC = () => {
                     {item.icon}
                   </div>
                   <p className="text-sm font-black text-gray-900 dark:text-gray-100">{displayAmount(item.amount)}</p>
-                  <p className="text-[10px] font-medium text-gray-500 mt-0.5">{item.months} meses</p>
+                  <p className="text-[10px] font-medium text-muted-foreground mt-0.5">{item.months} meses</p>
                 </div>
               ))}
             </div>
@@ -331,7 +331,7 @@ export const BudgetsView: React.FC = () => {
             <div className="card">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">Histórico</h3>
-                <span className="text-[11px] text-gray-400 font-medium">
+                <span className="text-[11px] text-muted-foreground font-medium">
                   Prom: {plan.avgMonthlySavings >= 0 ? '+' : ''}{displayAmount(plan.avgMonthlySavings)}/mes
                 </span>
               </div>
@@ -382,7 +382,7 @@ export const BudgetsView: React.FC = () => {
         </>
       ) : (
         <div className="card text-center py-8">
-          <p className="text-sm text-gray-500">No hay suficientes datos desde {planConfig.startMonth} para generar el plan.</p>
+          <p className="text-sm text-muted-foreground">No hay suficientes datos desde {planConfig.startMonth} para generar el plan.</p>
           <button onClick={() => setShowCloseConfirm(true)} className="text-xs text-purple-600 mt-2 hover:underline">Reconfigurar</button>
         </div>
       )}
@@ -416,8 +416,8 @@ export const BudgetsView: React.FC = () => {
               <p className="text-[10px] text-green-600 dark:text-green-400">Gastado</p>
             </div>
             <div className={`p-2.5 rounded-xl ${budgetStats.exceeded > 0 ? 'bg-red-50 dark:bg-red-900/20' : 'bg-gray-50 dark:bg-gray-800/50'}`}>
-              <p className={`text-lg font-bold ${budgetStats.exceeded > 0 ? 'text-red-700 dark:text-red-300' : 'text-gray-500'}`}>{budgetStats.exceeded}</p>
-              <p className="text-[10px] text-gray-500">Excedidos</p>
+              <p className={`text-lg font-bold ${budgetStats.exceeded > 0 ? 'text-red-700 dark:text-red-300' : 'text-muted-foreground'}`}>{budgetStats.exceeded}</p>
+              <p className="text-[10px] text-muted-foreground">Excedidos</p>
             </div>
           </div>
         )}
@@ -495,7 +495,7 @@ export const BudgetsView: React.FC = () => {
               </div>
               <div className="flex justify-between mt-1">
                 <span className={`text-xs font-medium ${status === 'exceeded' ? 'text-red-600' : status === 'warning' ? 'text-amber-600' : 'text-green-600'}`}>{percentage}%</span>
-                <span className="text-xs text-gray-500">Límite: {displayAmount(budget.monthlyLimit)}</span>
+                <span className="text-xs text-muted-foreground">Límite: {displayAmount(budget.monthlyLimit)}</span>
               </div>
             </div>
           ))}

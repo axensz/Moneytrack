@@ -5,7 +5,7 @@ export const HelpSectionAccounts: React.FC = () => (
   <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 fade-in">
    <div className="prose dark:prose-invert max-w-none">
       <h3 className="text-xl font-semibold mb-2">Gestión de Cuentas</h3>
-      <p className="text-gray-500">Administra todas tus fuentes de dinero en un solo lugar.</p>
+      <p className="text-muted-foreground">Administra todas tus fuentes de dinero en un solo lugar.</p>
    </div>
 
     {/* Tipos de cuenta */}
@@ -18,8 +18,8 @@ export const HelpSectionAccounts: React.FC = () => (
              </div>
              <div>
                 <p className="font-semibold text-gray-900 dark:text-gray-100">Ahorros / Débito</p>
-                <p className="text-sm text-gray-500 mb-2">Cuentas bancarias donde el dinero se descuenta inmediatamente.</p>
-                <p className="text-xs text-gray-400">Campos: Nombre, saldo inicial</p>
+                <p className="text-sm text-muted-foreground mb-2">Cuentas bancarias donde el dinero se descuenta inmediatamente.</p>
+                <p className="text-xs text-muted-foreground">Campos: Nombre, saldo inicial</p>
              </div>
            </div>
 
@@ -29,8 +29,8 @@ export const HelpSectionAccounts: React.FC = () => (
              </div>
              <div>
                 <p className="font-semibold text-gray-900 dark:text-gray-100">Efectivo</p>
-                <p className="text-sm text-gray-500 mb-2">Dinero físico que manejas fuera del banco.</p>
-                <p className="text-xs text-gray-400">Campos: Nombre, saldo inicial</p>
+                <p className="text-sm text-muted-foreground mb-2">Dinero físico que manejas fuera del banco.</p>
+                <p className="text-xs text-muted-foreground">Campos: Nombre, saldo inicial</p>
              </div>
            </div>
 
@@ -40,8 +40,8 @@ export const HelpSectionAccounts: React.FC = () => (
              </div>
              <div>
                 <p className="font-semibold text-gray-900 dark:text-gray-100">Tarjeta de Crédito</p>
-                <p className="text-sm text-gray-500 mb-2">Maneja cupo, fechas de corte/pago y calcula intereses por cuotas.</p>
-                <p className="text-xs text-gray-400">Campos: Cupo, día corte, día pago, tasa E.A., cuenta asociada</p>
+                <p className="text-sm text-muted-foreground mb-2">Maneja cupo, fechas de corte/pago y calcula intereses por cuotas.</p>
+                <p className="text-xs text-muted-foreground">Campos: Cupo, día corte, día pago, tasa E.A., cuenta asociada</p>
              </div>
            </div>
         </div>
@@ -66,7 +66,7 @@ export const HelpSectionAccounts: React.FC = () => (
                 </div>
                 <div>
                    <strong className="block text-gray-900 dark:text-gray-100">Computador</strong>
-                   <span className="text-gray-500">Clic y arrastra desde el icono de las 3 líneas.</span>
+                   <span className="text-muted-foreground">Clic y arrastra desde el icono de las 3 líneas.</span>
                 </div>
              </div>
              <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-900/50">
@@ -75,7 +75,7 @@ export const HelpSectionAccounts: React.FC = () => (
                 </div>
                 <div>
                    <strong className="block text-gray-900 dark:text-gray-100">Móvil</strong>
-                   <span className="text-gray-500">Mantén presionado un momento y luego arrastra.</span>
+                   <span className="text-muted-foreground">Mantén presionado un momento y luego arrastra.</span>
                 </div>
              </div>
           </div>

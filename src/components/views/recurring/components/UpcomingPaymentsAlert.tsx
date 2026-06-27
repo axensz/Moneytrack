@@ -59,7 +59,7 @@ export const UpcomingPaymentsAlert: React.FC<PaymentsAlertProps> = ({
               <span className="font-medium text-gray-900 dark:text-gray-100">
                 {payment.name}
               </span>
-              <span className="ml-2 text-sm text-gray-500">
+              <span className="ml-2 text-sm text-muted-foreground">
                 {getLabel(payment)}
               </span>
             </div>

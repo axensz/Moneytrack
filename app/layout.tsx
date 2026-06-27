@@ -12,6 +12,10 @@ export const viewport: Viewport = {
   maximumScale: 5,
   userScalable: true,
   themeColor: "#8b5cf6",
+  // Permite que la PWA use toda la pantalla en dispositivos con notch. Requisito
+  // para que env(safe-area-inset-*) aporte: el safe-area-bottom de la nav inferior
+  // y el safe-area-top del header solo surten efecto con viewport-fit=cover.
+  viewportFit: "cover",
 };
 
 // URL absoluta del deploy (GitHub Pages bajo /Moneytrack). En dev basePath="" — no

@@ -25,15 +25,14 @@
   padding-top: env(safe-area-inset-top);
 }
 
-/* Focus visible mejorado para accesibilidad */
+/* Focus visible mejorado para accesibilidad.
+   Usa --primary (violet de marca, cambia solo entre claro/oscuro) → un único
+   anillo de foco consistente con .header-icon y los ring-primary de Tailwind.
+   Antes: purple.500/400 (#a855f7) era off-brand y duplicaba el indicador. */
 *:focus-visible {
-  outline: 2px solid theme('colors.purple.500');
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
   border-radius: 4px;
-}
-
-.dark *:focus-visible {
-  outline-color: theme('colors.purple.400');
 }
 
 /* Custom scrollbar for transaction lists */

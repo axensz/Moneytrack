@@ -268,7 +268,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
           </div>
 
           <div className="mt-4">
-            <label htmlFor="tx-form-description" className="label-base">Descripción <span className="text-gray-400 font-normal">(opcional)</span></label>
+            <label htmlFor="tx-form-description" className="label-base">Descripción <span className="text-muted-foreground font-normal">(opcional)</span></label>
             <input
               id="tx-form-description"
               type="text"

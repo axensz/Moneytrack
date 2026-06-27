@@ -258,7 +258,7 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Puedes pagar desde cualquier cuenta al registrar el gasto
               </p>
             </div>

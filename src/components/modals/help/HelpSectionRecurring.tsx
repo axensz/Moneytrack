@@ -38,22 +38,22 @@ export const HelpSectionRecurring: React.FC = () => (
             <div className="grid grid-cols-2 gap-2 text-sm">
                <div className="p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg">
                   <span className="font-medium text-gray-900 dark:text-gray-100">Nombre:</span>
-                  <span className="text-gray-500 ml-1">Netflix, Arriendo...</span>
+                  <span className="text-muted-foreground ml-1">Netflix, Arriendo...</span>
                </div>
                <div className="p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg">
                   <span className="font-medium text-gray-900 dark:text-gray-100">Monto:</span>
-                  <span className="text-gray-500 ml-1">Valor esperado</span>
+                  <span className="text-muted-foreground ml-1">Valor esperado</span>
                </div>
                <div className="p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg">
                   <span className="font-medium text-gray-900 dark:text-gray-100">Día:</span>
-                  <span className="text-gray-500 ml-1">Del 1 al 31</span>
+                  <span className="text-muted-foreground ml-1">Del 1 al 31</span>
                </div>
                <div className="p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg">
                   <span className="font-medium text-gray-900 dark:text-gray-100">Frecuencia:</span>
-                  <span className="text-gray-500 ml-1">Mensual/Anual</span>
+                  <span className="text-muted-foreground ml-1">Mensual/Anual</span>
                </div>
             </div>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
                Opcional: Categoría, cuenta preferida y notas adicionales.
             </p>
          </div>
@@ -69,28 +69,28 @@ export const HelpSectionRecurring: React.FC = () => (
                <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">1</span>
                <div>
                   <p className="font-medium text-gray-900 dark:text-gray-100">Crea el pago periódico</p>
-                  <p className="text-sm text-gray-500">Configura nombre, monto, día y frecuencia.</p>
+                  <p className="text-sm text-muted-foreground">Configura nombre, monto, día y frecuencia.</p>
                </div>
             </div>
             <div className="flex gap-3">
                <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">2</span>
                <div>
                   <p className="font-medium text-gray-900 dark:text-gray-100">Recibe alertas de vencimiento</p>
-                  <p className="text-sm text-gray-500">Verás los próximos a vencer en la parte superior.</p>
+                  <p className="text-sm text-muted-foreground">Verás los próximos a vencer en la parte superior.</p>
                </div>
             </div>
             <div className="flex gap-3">
                <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">3</span>
                <div>
                   <p className="font-medium text-gray-900 dark:text-gray-100">Registra el pago</p>
-                  <p className="text-sm text-gray-500">Crea un gasto y selecciona el pago periódico asociado.</p>
+                  <p className="text-sm text-muted-foreground">Crea un gasto y selecciona el pago periódico asociado.</p>
                </div>
             </div>
             <div className="flex gap-3">
                <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">4</span>
                <div>
                   <p className="font-medium text-gray-900 dark:text-gray-100">Se marca automáticamente</p>
-                  <p className="text-sm text-gray-500">El sistema detecta que ya pagaste este período.</p>
+                  <p className="text-sm text-muted-foreground">El sistema detecta que ya pagaste este período.</p>
                </div>
             </div>
          </div>
@@ -109,9 +109,9 @@ export const HelpSectionRecurring: React.FC = () => (
             <p className="text-xs text-amber-600 dark:text-amber-400">Vence en 7 días o menos</p>
          </div>
          <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 text-center">
-            <Clock size={24} className="mx-auto mb-1 text-gray-500" />
+            <Clock size={24} className="mx-auto mb-1 text-muted-foreground" />
             <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Pendiente</p>
-            <p className="text-xs text-gray-500">Aún no has pagado</p>
+            <p className="text-xs text-muted-foreground">Aún no has pagado</p>
          </div>
       </div>
 

@@ -2,7 +2,7 @@
 
 import React, { memo } from 'react';
 import CurrencyInput from 'react-currency-input-field';
-import { ArrowRightLeft, Check, ChevronDown, Clock, CreditCard, Edit2, Repeat, X } from 'lucide-react';
+import { ArrowDownLeft, ArrowRightLeft, ArrowUpRight, Check, ChevronDown, Clock, Edit2, Repeat, X } from 'lucide-react';
 import type { Transaction, Account, Categories } from '../../../../types/finance';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 import { ensureDate } from '../../../../utils/dateUtils';
@@ -53,14 +53,17 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
   const { hideBalances } = useUIPreferences();
 
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
-  const amountPrefix =
-    transaction.type === 'income' ? '+' : transaction.type === 'expense' ? '-' : '->';
-  const amountClass =
-    transaction.type === 'income'
-      ? 'text-emerald-600 dark:text-emerald-400'
-      : transaction.type === 'expense'
-        ? 'text-rose-600 dark:text-rose-400'
-        : 'text-blue-600 dark:text-blue-400';
+
+  // Trío centralizado por tipo: {prefijo, color de estado, icono}. El color es
+  // ESTADO (success/destructive/info), no marca; el tipo se reconoce además por
+  // su icono propio (ingreso ↙ / gasto ↗ / transferencia ⇄).
+  const typeConfig = {
+    income: { prefix: '+', amountClass: 'text-success', Icon: ArrowDownLeft, badgeClass: 'bg-success-muted text-success' },
+    expense: { prefix: '-', amountClass: 'text-destructive', Icon: ArrowUpRight, badgeClass: 'bg-destructive-muted text-destructive' },
+    transfer: { prefix: '→', amountClass: 'text-info', Icon: ArrowRightLeft, badgeClass: 'bg-info-muted text-info' },
+  }[transaction.type] ?? { prefix: '', amountClass: 'text-foreground', Icon: ArrowRightLeft, badgeClass: 'bg-muted text-muted-foreground' };
+  const amountPrefix = typeConfig.prefix;
+  const amountClass = typeConfig.amountClass;
   const accountRoute =
     transaction.type === 'transfer'
       ? `${account?.name || 'Cuenta origen'} -> ${destinationAccount?.name || 'Cuenta destino'}`
@@ -86,12 +89,12 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
     const amountId = `${editId}-amount`;
     const dateId = `${editId}-date`;
     return (
-      <div className="border rounded-xl p-3.5 sm:p-4 transition-colors bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+      <div className="card border rounded-xl p-3.5 sm:p-4">
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label htmlFor={descId} className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">
-                Descripcion
+              <label htmlFor={descId} className="label-base">
+                Descripción
               </label>
               <input
                 id={descId}
@@ -101,12 +104,12 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
                   onEditFormChange({ ...editForm, description: e.target.value })
                 }
                 placeholder="(opcional)"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                className="input-base"
               />
             </div>
             <div>
-              <label htmlFor={categoryId} className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">
-                Categoria
+              <label htmlFor={categoryId} className="label-base">
+                Categoría
               </label>
               <select
                 id={categoryId}
@@ -114,7 +117,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
                 onChange={(e) =>
                   onEditFormChange({ ...editForm, category: e.target.value })
                 }
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                className="input-base"
               >
                 {visibleCategories.map(cat => (
                   <option key={cat} value={cat}>{cat}</option>
@@ -124,7 +127,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label htmlFor={amountId} className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">
+              <label htmlFor={amountId} className="label-base">
                 Monto
               </label>
               <CurrencyInput
@@ -141,11 +144,11 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
                 }
                 placeholder="0"
                 disableAbbreviations
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                className="input-base"
               />
             </div>
             <div>
-              <label htmlFor={dateId} className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">
+              <label htmlFor={dateId} className="label-base">
                 Fecha
               </label>
               <input
@@ -155,7 +158,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
                 onChange={(e) =>
                   onEditFormChange({ ...editForm, date: e.target.value })
                 }
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                className="input-base"
               />
             </div>
           </div>
@@ -181,21 +184,29 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
 
   return (
     <div
-      className={`border rounded-xl p-3.5 sm:p-4 transition-[box-shadow,border-color,background-color] bg-white dark:bg-gray-800 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md shadow-sm group ${isExpanded ? 'border-purple-300 dark:border-purple-600' : 'border-gray-200 dark:border-gray-700'} ${onToggleExpand ? 'cursor-pointer' : ''}`}
+      className={`border rounded-xl p-3.5 sm:p-4 transition-[box-shadow,border-color,background-color] bg-card hover:bg-[var(--muted)] hover:border-[var(--border-accent)] hover:shadow-md shadow-sm group ${isExpanded ? 'border-[var(--border-accent)]' : 'border-[var(--border)]'} ${onToggleExpand ? 'cursor-pointer' : ''}`}
       onClick={onToggleExpand ? () => onToggleExpand(transaction.id!) : undefined}
+      role={onToggleExpand ? 'button' : undefined}
+      tabIndex={onToggleExpand ? 0 : undefined}
+      aria-expanded={onToggleExpand ? isExpanded : undefined}
+      onKeyDown={
+        onToggleExpand
+          ? (e) => {
+              if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                e.preventDefault();
+                onToggleExpand(transaction.id!);
+              }
+            }
+          : undefined
+      }
     >
       <div className="flex items-start gap-3">
-        {/* Icon */}
+        {/* Icon — color = estado, icono = tipo */}
         <div
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${transaction.type === 'income'
-            ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300'
-            : transaction.type === 'expense'
-              ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300'
-              : 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300'
-            }`}
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${typeConfig.badgeClass}`}
           aria-hidden="true"
         >
-          {transaction.type === 'transfer' ? <ArrowRightLeft size={18} /> : <CreditCard size={18} />}
+          <typeConfig.Icon size={18} />
         </div>
 
         {/* Content */}
@@ -203,12 +214,12 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <p
-                className="font-semibold text-gray-900 dark:text-gray-100 truncate text-base"
+                className="font-semibold text-foreground truncate text-base"
                 title={transaction.description || transaction.category}
               >
                 {transaction.description || transaction.category}
               </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate" title={accountRoute}>
+              <p className="text-xs text-muted-foreground mt-0.5 truncate" title={accountRoute}>
                 {accountRoute}
               </p>
             </div>
@@ -220,30 +231,30 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
           {/* Info row */}
           <div className="flex items-center justify-between mt-2">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+              <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-muted text-muted-foreground">
                 {transaction.category}
               </span>
-              <span className="text-[11px] text-gray-500 dark:text-gray-400">
+              <span className="text-[11px] text-muted-foreground">
                 {dateLabel}
               </span>
               {!transaction.paid && (
-                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-medium rounded-md bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-medium rounded-md bg-[var(--warning-muted)] text-[var(--warning)]">
                   <Clock size={10} />
                   Pendiente
                 </span>
               )}
               {account?.type === 'credit' && transaction.installments && transaction.installments > 1 && (
-                <span className="inline-flex items-center px-1.5 py-0.5 text-[11px] font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-md">
+                <span className="inline-flex items-center px-1.5 py-0.5 text-[11px] font-medium bg-[var(--balance-accent)] text-[var(--balance-accent-foreground)] rounded-md">
                   {transaction.installments} cuotas
                 </span>
               )}
               {transaction.hasInterest && (
-                <span className="inline-flex items-center px-1.5 py-0.5 text-[11px] font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-md">
+                <span className="inline-flex items-center px-1.5 py-0.5 text-[11px] font-medium bg-[var(--warning-muted)] text-[var(--warning)] rounded-md">
                   Con interés
                 </span>
               )}
               {recurringPaymentName && (
-                <span className="inline-flex items-center px-1.5 py-0.5 text-[11px] font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-md">
+                <span className="inline-flex items-center px-1.5 py-0.5 text-[11px] font-medium bg-[var(--balance-accent)] text-[var(--balance-accent-foreground)] rounded-md">
                   ↻ {recurringPaymentName}
                 </span>
               )}
@@ -254,17 +265,17 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
               <div className="flex gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
                 <button
                   onClick={(e) => { e.stopPropagation(); onEdit(transaction); }}
-                  className="flex items-center justify-center p-1.5 min-h-[44px] min-w-[44px] text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                  className="flex items-center justify-center p-1.5 min-h-[44px] min-w-[44px] text-muted-foreground hover:text-primary hover:bg-[var(--muted)] rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   title="Editar"
-                  aria-label="Editar transaccion"
+                  aria-label="Editar transacción"
                 >
                   <Edit2 size={15} />
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); onDelete(transaction); }}
-                  className="flex items-center justify-center p-1.5 min-h-[44px] min-w-[44px] text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                  className="flex items-center justify-center p-1.5 min-h-[44px] min-w-[44px] text-muted-foreground hover:text-destructive hover:bg-[var(--destructive-muted)] rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   title="Eliminar"
-                  aria-label="Eliminar transaccion"
+                  aria-label="Eliminar transacción"
                 >
                   <X size={15} />
                 </button>
@@ -275,11 +286,11 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
                   onClick={(e) => { e.stopPropagation(); onToggleExpand(transaction.id!); }}
                   aria-expanded={isExpanded}
                   aria-label={isExpanded ? 'Contraer detalle' : 'Expandir detalle'}
-                  className="flex items-center justify-center p-1.5 min-h-[44px] min-w-[44px] text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                  className="flex items-center justify-center p-1.5 min-h-[44px] min-w-[44px] text-muted-foreground hover:text-primary rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   <ChevronDown
                     size={16}
-                    className={`text-gray-400 dark:text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                    className={`text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                     aria-hidden="true"
                   />
                 </button>
@@ -291,42 +302,42 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
 
       {/* Detalle de solo lectura (expandible) */}
       {isExpanded && (
-        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 space-y-3" onClick={(e) => e.stopPropagation()}>
+        <div className="mt-3 pt-3 border-t border-[var(--border)] space-y-3" onClick={(e) => e.stopPropagation()}>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Tipo</dt>
-              <dd className="text-gray-900 dark:text-gray-100">{typeLabel}</dd>
+              <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">Tipo</dt>
+              <dd className="text-foreground">{typeLabel}</dd>
             </div>
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Monto</dt>
+              <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">Monto</dt>
               <dd className={`font-semibold ${amountClass}`}>{amountPrefix} {displayAmount(transaction.amount)}</dd>
             </div>
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-gray-400 dark:text-gray-500">{isTransfer ? 'Cuentas' : 'Cuenta'}</dt>
-              <dd className="text-gray-900 dark:text-gray-100 break-words">{accountRoute}</dd>
+              <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">{isTransfer ? 'Cuentas' : 'Cuenta'}</dt>
+              <dd className="text-foreground break-words">{accountRoute}</dd>
             </div>
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Categoría</dt>
-              <dd className="text-gray-900 dark:text-gray-100 break-words">{transaction.category}</dd>
+              <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">Categoría</dt>
+              <dd className="text-foreground break-words">{transaction.category}</dd>
             </div>
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Fecha</dt>
-              <dd className="text-gray-900 dark:text-gray-100">{dateLabel}</dd>
+              <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">Fecha</dt>
+              <dd className="text-foreground">{dateLabel}</dd>
             </div>
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Estado</dt>
-              <dd className="text-gray-900 dark:text-gray-100">{transaction.paid ? 'Pagada' : 'Pendiente'}</dd>
+              <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">Estado</dt>
+              <dd className="text-foreground">{transaction.paid ? 'Pagada' : 'Pendiente'}</dd>
             </div>
             {transaction.description && (
               <div className="col-span-2">
-                <dt className="text-[11px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Descripción</dt>
-                <dd className="text-gray-900 dark:text-gray-100 break-words">{transaction.description}</dd>
+                <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">Descripción</dt>
+                <dd className="text-foreground break-words">{transaction.description}</dd>
               </div>
             )}
             {createdAtDate && (
               <div className="col-span-2">
-                <dt className="text-[11px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Registrada</dt>
-                <dd className="text-gray-500 dark:text-gray-400 text-xs">
+                <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">Registrada</dt>
+                <dd className="text-muted-foreground text-xs">
                   {createdAtDate.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </dd>
               </div>
@@ -335,25 +346,25 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
 
           {/* Plan de cuotas */}
           {transaction.installments && transaction.installments > 1 && (
-            <div className="rounded-lg bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800/50 p-2.5">
-              <p className="text-[11px] uppercase tracking-wider text-purple-500 dark:text-purple-300 mb-1">Plan de cuotas</p>
-              <p className="text-sm font-semibold text-purple-900 dark:text-purple-100">
+            <div className="rounded-lg bg-[var(--balance-accent)] border border-[var(--border-accent)] p-2.5">
+              <p className="text-[11px] uppercase tracking-wider text-[var(--balance-accent-foreground)] mb-1">Plan de cuotas</p>
+              <p className="text-sm font-semibold text-[var(--balance-foreground)]">
                 {transaction.installments} cuotas{transaction.monthlyInstallmentAmount ? ` · ${displayAmount(transaction.monthlyInstallmentAmount)}/mes` : ''}
               </p>
               {transaction.hasInterest && transaction.totalInterestAmount ? (
-                <p className="text-xs text-purple-800 dark:text-purple-200 mt-0.5">
+                <p className="text-xs text-[var(--balance-foreground)] mt-0.5">
                   Interés total {displayAmount(transaction.totalInterestAmount)} · Total {displayAmount(installmentTotal)}
                   {transaction.interestRate ? ` · E.A. ${transaction.interestRate}%` : ''}
                 </p>
               ) : (
-                <p className="text-xs text-purple-800 dark:text-purple-200 mt-0.5">Sin intereses</p>
+                <p className="text-xs text-[var(--balance-foreground)] mt-0.5">Sin intereses</p>
               )}
             </div>
           )}
 
           {/* Moneda extranjera */}
           {transaction.originalAmount && transaction.originalCurrency && (
-            <div className="text-xs text-gray-500 dark:text-gray-400">
+            <div className="text-xs text-muted-foreground">
               Original: {transaction.originalAmount.toLocaleString('es-CO')} {transaction.originalCurrency}
               {transaction.exchangeRate ? ` · TRM ${transaction.exchangeRate.toLocaleString('es-CO')}` : ''}
             </div>
@@ -361,7 +372,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
 
           {/* Pago periódico vinculado */}
           {recurringPaymentName && (
-            <div className="flex items-center gap-1.5 text-xs text-purple-700 dark:text-purple-300">
+            <div className="flex items-center gap-1.5 text-xs text-primary">
               <Repeat size={13} />
               Pago periódico: {recurringPaymentName}
             </div>
@@ -370,7 +381,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
           <div className="flex justify-end">
             <button
               onClick={(e) => { e.stopPropagation(); onEdit(transaction); }}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary bg-[var(--muted)] rounded-lg hover:bg-[var(--balance-accent)] transition-colors"
             >
               <Edit2 size={14} />
               Editar

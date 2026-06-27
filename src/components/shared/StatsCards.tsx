@@ -42,7 +42,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
       <div className="flex justify-end mb-2 sm:mb-3">
         <button
           onClick={() => setHideBalances(!hideBalances)}
-          className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+          className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           title={hideBalances ? 'Mostrar valores' : 'Ocultar valores'}
           aria-pressed={hideBalances}
           aria-label={hideBalances ? 'Mostrar valores' : 'Ocultar valores'}
@@ -53,17 +53,17 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
-        {/* Balance Card - Morado Premium */}
-        <div className="col-span-2 lg:col-span-1 p-3 sm:p-4 md:p-5 rounded-xl border-2 border-purple-200 bg-gradient-to-br from-purple-100 to-violet-100 dark:from-purple-900/30 dark:to-violet-900/30 dark:border-purple-700 shadow-lg hover:shadow-xl transition-[box-shadow,border-color,transform]">
+        {/* Balance Card - Morado Premium (reusa .card-balance, no duplica el degradado) */}
+        <div className="card-balance col-span-2 lg:col-span-1 hover:shadow-lg">
           <div className="flex items-center justify-between mb-1.5 sm:mb-2">
-            <span className="text-xs sm:text-sm font-medium text-purple-800 dark:text-purple-200">{balanceLabel}</span>
-            <div className="p-1.5 sm:p-2 rounded-lg bg-purple-200 dark:bg-purple-800">
-              <Wallet size={16} className="sm:w-[18px] sm:h-[18px] text-purple-700 dark:text-purple-300" />
+            <span className="text-xs sm:text-sm font-medium text-balance-foreground">{balanceLabel}</span>
+            <div className="p-1.5 sm:p-2 rounded-lg bg-balance-accent">
+              <Wallet size={16} className="sm:w-[18px] sm:h-[18px] text-balance-value" />
             </div>
           </div>
-          <div className="text-lg sm:text-xl lg:text-2xl font-bold text-purple-900 dark:text-purple-100 break-words">
+          <div className="text-lg sm:text-xl lg:text-2xl font-bold text-balance-value break-words">
             {balanceSettling ? (
-              <BalanceSettling className="text-purple-400 dark:text-purple-500" />
+              <BalanceSettling className="text-balance-accent-foreground" />
             ) : (
               displayValue(totalBalance)
             )}

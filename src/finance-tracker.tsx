@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
-import { Activity, BarChart3, Wallet, Repeat, HandCoins, PieChart, Target, MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal } from 'lucide-react';
 import { Header } from './components/layout/Header';
-import { TabNavigation } from './components/layout/TabNavigation';
+import { TabNavigation, NAV_TABS } from './components/layout/TabNavigation';
 import { LoadingScreen } from './components/layout/LoadingScreen';
 import { FirestoreErrorBanner } from './components/layout/FirestoreErrorBanner';
 import { ErrorBoundary } from './components/layout/ErrorBoundary';
@@ -33,6 +33,7 @@ import { UIPreferencesProvider } from './contexts/UIPreferencesContext';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useViewRouting } from './hooks/useViewRouting';
+import { useDismissable } from './hooks/useDismissable';
 import { installGlobalErrorHandlers } from './lib/errorReporter';
 import { TOAST_CONFIG, createInitialTransaction } from './config/constants';
 import { DATE_PRESETS } from './utils/dateUtils';
@@ -69,11 +70,21 @@ const GoalsView = lazy(() =>
   import('./components/views/goals/GoalsView').then(m => ({ default: m.GoalsView }))
 );
 
+// Barra inferior móvil: subconjunto curado de pestañas (orden propio) + un menú
+// "Más" con el resto. Las etiquetas/iconos salen de NAV_TABS para no divergir de
+// la barra de escritorio (misma palabra por vista en ambas).
+const MOBILE_PRIMARY_KEYS: ViewType[] = ['transactions', 'accounts', 'goals', 'stats'];
+const MOBILE_MORE_KEYS: ViewType[] = ['recurring', 'debts', 'budgets'];
+const tabsFor = (keys: ViewType[]) =>
+  keys.map((key) => NAV_TABS.find((t) => t.key === key)!).filter(Boolean);
+const MOBILE_PRIMARY_TABS = tabsFor(MOBILE_PRIMARY_KEYS);
+const MOBILE_MORE_TABS = tabsFor(MOBILE_MORE_KEYS);
+
 const ViewFallback = () => (
   <div className="space-y-4 animate-pulse">
-    <div className="h-24 bg-gray-200 dark:bg-gray-700 rounded-xl" />
-    <div className="h-16 bg-gray-200 dark:bg-gray-700 rounded-xl" />
-    <div className="h-16 bg-gray-200 dark:bg-gray-700 rounded-xl" />
+    <div className="h-24 bg-muted rounded-xl" />
+    <div className="h-16 bg-muted rounded-xl" />
+    <div className="h-16 bg-muted rounded-xl" />
   </div>
 );
 
@@ -177,6 +188,9 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const newTransactionRef = useRef<NewTransaction>({ ...createInitialTransaction() });
+  // Menú "Más" (móvil): refs para cierre unificado y restauración de foco.
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -272,6 +286,23 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
 
   useKeyboardShortcuts(shortcuts, { enabled: true, announceShortcuts: true });
 
+  // Menú "Más" (móvil): cierre unificado (clic fuera + Escape, con restauración
+  // de foco al disparador) — mismo patrón que el menú de Configuración y el
+  // panel de Notificaciones en Header.
+  const closeMoreMenu = useCallback(() => setShowMoreMenu(false), []);
+  useDismissable({
+    isOpen: showMoreMenu,
+    onClose: closeMoreMenu,
+    ref: moreMenuRef,
+    triggerRef: moreButtonRef,
+  });
+  // Al abrir, enfocar el primer ítem del menú (WCAG 2.4.3 — foco gestionado).
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    const first = moreMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]');
+    first?.focus();
+  }, [showMoreMenu]);
+
   // C-FIX (paginación + saldos): la validación de "Saldo insuficiente" de
   // useAddTransaction deriva el saldo sumando transacciones; debe usar el
   // historial completo (balanceTransactions), no la ventana paginada de 500.
@@ -365,32 +396,38 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
       {/* Install PWA Banner (mobile only) */}
       <InstallPrompt variant="banner" />
 
-      {/* Overlay para cerrar menú "Más" - FUERA del nav para cubrir toda la pantalla */}
+      {/* Overlay para cerrar menú "Más" - FUERA del nav para cubrir toda la
+          pantalla. El cierre por clic/Escape lo gestiona useDismissable; este
+          overlay aporta el "scrim" táctil que captura el toque en móvil. */}
       {showMoreMenu && (
-        <div className="sm:hidden fixed inset-0 z-[60]" onClick={() => setShowMoreMenu(false)} onTouchStart={() => setShowMoreMenu(false)} />
+        <div className="sm:hidden fixed inset-0 z-[60]" aria-hidden="true" onClick={closeMoreMenu} onTouchStart={closeMoreMenu} />
       )}
 
-      {/* Popover de "Más" - posicionado fixed para evitar conflictos de z-index */}
+      {/* Popover de "Más" - posicionado fixed para evitar conflictos de z-index.
+          --shell-nav-h ata el offset del popover a la altura de la barra inferior. */}
       {showMoreMenu && (
-        <div className="sm:hidden fixed bottom-[72px] right-3 z-[70] bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden min-w-[170px] animate-in slide-in-from-bottom-2 duration-150 fade-in">
-          {[
-            { key: 'recurring' as ViewType, label: 'Periódicos', icon: Repeat },
-            { key: 'debts' as ViewType, label: 'Préstamos', icon: HandCoins },
-            { key: 'budgets' as ViewType, label: 'Presupuestos', icon: PieChart },
-          ].map(tab => (
+        <div
+          ref={moreMenuRef}
+          role="menu"
+          aria-label="Más secciones"
+          className="sm:hidden fixed right-3 z-[70] bg-card text-card-foreground rounded-xl shadow-xl border border-border overflow-hidden min-w-[var(--shell-more-menu-w,170px)] animate-in slide-in-from-bottom-2 duration-150 fade-in [bottom:var(--shell-nav-h,72px)]"
+        >
+          {MOBILE_MORE_TABS.map(tab => (
             <button
               key={tab.key}
+              role="menuitem"
               onClick={() => {
                 scrollContainerRef.current?.scrollTo({ top: 0 });
                 setView(tab.key);
-                setShowMoreMenu(false);
+                closeMoreMenu();
+                moreButtonRef.current?.focus();
               }}
-              className={`flex items-center gap-3 w-full px-4 py-3 text-sm font-medium transition-colors ${view === tab.key
-                ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30'
-                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 active:bg-gray-100 dark:active:bg-gray-700'
+              className={`flex items-center gap-3 w-full px-4 py-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${view === tab.key
+                ? 'text-primary bg-muted'
+                : 'text-foreground hover:bg-muted active:bg-muted'
                 }`}
             >
-              <tab.icon size={18} />
+              <tab.icon size={18} aria-hidden="true" />
               <span>{tab.label}</span>
             </button>
           ))}
@@ -399,17 +436,12 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
 
       {/* Mobile Bottom Navigation - Fixed at bottom, FUERA del contenedor scrollable */}
       <nav
-        className="sm:hidden fixed bottom-0 left-0 right-0 z-[100] bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 shadow-lg safe-area-bottom"
+        className="sm:hidden fixed bottom-0 left-0 right-0 z-[100] bg-card/95 backdrop-blur-md border-t border-border shadow-lg safe-area-bottom"
         aria-label="Navegación principal"
         role="navigation"
       >
         <div className="flex justify-around items-center px-2 py-1.5 pb-2" role="tablist">
-          {[
-            { key: 'transactions' as ViewType, label: 'Inicio', icon: Activity },
-            { key: 'accounts' as ViewType, label: 'Cuentas', icon: Wallet },
-            { key: 'goals' as ViewType, label: 'Metas', icon: Target },
-            { key: 'stats' as ViewType, label: 'Stats', icon: BarChart3 },
-          ].map(tab => (
+          {MOBILE_PRIMARY_TABS.map(tab => (
             <button
               key={tab.key}
               id={`tab-${tab.key}-mobile`}
@@ -426,8 +458,8 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
                 setShowMoreMenu(false);
               }}
               className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 min-w-[56px] rounded-xl transition-[background-color,color,transform] ${view === tab.key
-                ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 scale-105'
-                : 'text-gray-500 dark:text-gray-400 active:scale-95 active:bg-gray-100 dark:active:bg-gray-800'
+                ? 'text-primary bg-muted scale-105'
+                : 'text-muted-foreground active:scale-95 active:bg-muted'
                 }`}
             >
               <tab.icon size={20} strokeWidth={view === tab.key ? 2.5 : 2} aria-hidden="true" />
@@ -437,22 +469,25 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
           {/* Botón "Más" */}
           <div className="relative">
             <button
+              ref={moreButtonRef}
               onClick={() => {
-                if (showMoreMenu || (['recurring', 'budgets', 'debts'] as ViewType[]).includes(view)) {
-                  setShowMoreMenu(false);
+                if (showMoreMenu || MOBILE_MORE_KEYS.includes(view)) {
+                  closeMoreMenu();
                 } else {
                   setShowMoreMenu(true);
                 }
               }}
-              className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 min-w-[56px] rounded-xl transition-[background-color,color,transform] ${(['recurring', 'budgets', 'debts'] as ViewType[]).includes(view)
-                ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 scale-105'
+              className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 min-w-[56px] rounded-xl transition-[background-color,color,transform] ${MOBILE_MORE_KEYS.includes(view)
+                ? 'text-primary bg-muted scale-105'
                 : showMoreMenu
-                  ? 'text-purple-600 dark:text-purple-400'
-                  : 'text-gray-500 dark:text-gray-400 active:scale-95 active:bg-gray-100 dark:active:bg-gray-800'
+                  ? 'text-primary'
+                  : 'text-muted-foreground active:scale-95 active:bg-muted'
                 }`}
-              aria-pressed={showMoreMenu}
+              aria-haspopup="menu"
+              aria-expanded={showMoreMenu}
+              aria-label="Más secciones"
             >
-              <MoreHorizontal size={20} strokeWidth={(['recurring', 'budgets', 'debts'] as ViewType[]).includes(view) ? 2.5 : 2} aria-hidden="true" />
+              <MoreHorizontal size={20} strokeWidth={MOBILE_MORE_KEYS.includes(view) ? 2.5 : 2} aria-hidden="true" />
               <span className="text-[10px] font-semibold leading-tight">Más</span>
             </button>
           </div>

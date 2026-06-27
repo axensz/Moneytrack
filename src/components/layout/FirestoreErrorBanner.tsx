@@ -34,21 +34,21 @@ export const FirestoreErrorBanner: React.FC<FirestoreErrorBannerProps> = ({ erro
 
     return (
         <div className="mx-auto max-w-lg mt-6 mb-4" role="alert">
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-5">
+            <div className="bg-destructive-muted border border-destructive/40 rounded-xl p-5">
                 <div className="flex items-start gap-3">
                     <div className="flex-shrink-0 mt-0.5">
-                        <Icon className="h-5 w-5 text-red-500 dark:text-red-400" />
+                        <Icon className="h-5 w-5 text-destructive" />
                     </div>
                     <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-semibold text-red-800 dark:text-red-300">
+                        <h3 className="text-sm font-semibold text-destructive">
                             {title}
                         </h3>
-                        <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                        <p className="mt-1 text-sm text-destructive">
                             {description}
                         </p>
                         <button
                             onClick={onRetry}
-                            className="mt-3 inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600 rounded-lg transition-colors"
+                            className="mt-3 inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-destructive hover:opacity-90 rounded-lg transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2"
                         >
                             <RefreshCw size={14} />
                             Reintentar

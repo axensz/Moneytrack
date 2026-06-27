@@ -28,10 +28,10 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
 
   return (
     <div
-      // Splash: base casi-neutra (charcoal con un matiz violet) y un bloom
-      // violet suave desde el centro. La marca se siente como luz, no como un
-      // bloque morado plano (regla anti-slop: base neutra + un solo acento).
-      className={`fixed inset-0 overflow-hidden bg-[#f6f5fb] dark:bg-[#100d18] flex items-center justify-center z-50 transition-opacity duration-500 ${
+      // Splash: usa el MISMO fondo de la app (--background) para que body,
+      // loadscreen y app compartan color y no haya parpadeo negro al arrancar.
+      // La marca se siente como luz: un bloom violet que florece desde el centro.
+      className={`fixed inset-0 overflow-hidden bg-background flex items-center justify-center z-50 transition-opacity duration-500 ${
         fadeOut ? 'opacity-0' : 'opacity-100'
       }`}
     >
@@ -41,7 +41,7 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            'radial-gradient(120% 85% at 50% 42%, color-mix(in srgb, var(--primary) 16%, transparent), transparent 60%)',
+            'radial-gradient(120% 85% at 50% 42%, color-mix(in srgb, var(--primary) 22%, transparent), transparent 60%)',
         }}
       />
       <div className="relative z-10 text-center">

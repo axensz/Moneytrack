@@ -12,7 +12,8 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { createChartTooltip } from './shared/ChartTooltip';
+import { useChartTooltip } from './shared/ChartTooltip';
+import { ChartCard, ChartDataTable } from './shared/ChartCard';
 import {
   AXIS_CONFIG,
   Y_AXIS_CONFIG,
@@ -34,6 +35,8 @@ interface MonthlyComparisonChartProps {
   formatCurrency: (amount: number) => string;
 }
 
+const GASTOS_PATTERN_ID = 'patternGastosBars';
+
 /**
  * Gráfico de Comparación Mensual
  * Barras agrupadas para comparar ingresos vs gastos por mes
@@ -42,37 +45,45 @@ export const MonthlyComparisonChart: React.FC<MonthlyComparisonChartProps> = ({
   data,
   formatCurrency,
 }) => {
-  const CustomTooltip = createChartTooltip(formatCurrency);
+  const CustomTooltip = useChartTooltip(formatCurrency);
   const hasData = data.some((d) => d.ingresos > 0 || d.gastos > 0);
 
-  return (
-    <div className="card">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Comparación Mensual
-          </h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Últimos 6 meses
-          </p>
-        </div>
-        <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-          <BarChart3 size={20} className="text-purple-600 dark:text-purple-400" />
-        </div>
-      </div>
+  const totalIngresos = data.reduce((s, d) => s + d.ingresos, 0);
+  const totalGastos = data.reduce((s, d) => s + d.gastos, 0);
+  const chartLabel = `Comparación mensual de ingresos y gastos en los últimos 6 meses. Ingresos totales ${formatCurrency(totalIngresos)}, gastos totales ${formatCurrency(totalGastos)}.`;
 
+  return (
+    <ChartCard title="Comparación Mensual" subtitle="Últimos 6 meses" icon={BarChart3}>
       {!hasData ? (
         <div className="text-center py-12 text-gray-400 dark:text-gray-500" role="status">
-          <BarChart3 size={48} className="mx-auto mb-3 opacity-30" />
+          <BarChart3 size={48} className="mx-auto mb-3 opacity-30" aria-hidden="true" />
           <p className="text-sm">No hay movimientos en los últimos 6 meses</p>
         </div>
       ) : (
-      <ResponsiveContainer width="100%" height={CHART_HEIGHTS.medium}>
+      <>
+      <div role="img" aria-label={chartLabel}>
+      <ResponsiveContainer
+        width="100%"
+        height={CHART_HEIGHTS.medium}
+      >
         <BarChart data={data} margin={CHART_MARGINS}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f3e8ff" />
+          <defs>
+            {/* Trama diagonal para reforzar "gastos" por forma, no solo color. */}
+            <pattern
+              id={GASTOS_PATTERN_ID}
+              patternUnits="userSpaceOnUse"
+              width="6"
+              height="6"
+              patternTransform="rotate(45)"
+            >
+              <rect width="6" height="6" fill={SEMANTIC_COLORS.expense} />
+              <line x1="0" y1="0" x2="0" y2="6" stroke="var(--card)" strokeWidth="2" strokeOpacity="0.45" />
+            </pattern>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
           <XAxis dataKey="month" {...AXIS_CONFIG} />
           <YAxis {...Y_AXIS_CONFIG} />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--muted)', fillOpacity: 0.4 }} />
           <Legend {...LEGEND_CONFIG} />
           <Bar
             dataKey="ingresos"
@@ -82,13 +93,21 @@ export const MonthlyComparisonChart: React.FC<MonthlyComparisonChartProps> = ({
           />
           <Bar
             dataKey="gastos"
-            fill={SEMANTIC_COLORS.expense}
+            fill={`url(#${GASTOS_PATTERN_ID})`}
             name="Gastos"
             radius={BAR_CONFIG.radius}
           />
         </BarChart>
       </ResponsiveContainer>
+      </div>
+      <ChartDataTable
+        caption="Comparación mensual: ingresos y gastos por mes (últimos 6 meses)"
+        periodLabel="Mes"
+        rows={data.map((d) => ({ label: d.month, ingresos: d.ingresos, gastos: d.gastos }))}
+        formatCurrency={formatCurrency}
+      />
+      </>
       )}
-    </div>
+    </ChartCard>
   );
 };

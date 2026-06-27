@@ -19,21 +19,59 @@ export function Modal({
   hideClose = false,
 }) {
   const dialogRef = React.useRef(null);
+  const previousFocusRef = React.useRef(null);
+  const backdropDown = React.useRef(false);
 
   React.useEffect(() => {
     if (!open) return;
+    // Guarda el foco previo para restaurarlo al cerrar/desmontar (WCAG 2.4.3).
+    previousFocusRef.current = document.activeElement;
     const onKey = (e) => { if (e.key === 'Escape' && onClose) onClose(); };
     document.addEventListener('keydown', onKey);
     const t = setTimeout(() => dialogRef.current && dialogRef.current.focus(), 0);
-    return () => { document.removeEventListener('keydown', onKey); clearTimeout(t); };
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      clearTimeout(t);
+      // Devuelve el foco a quien lo tenía antes de abrir el modal.
+      if (previousFocusRef.current && previousFocusRef.current.focus) {
+        previousFocusRef.current.focus();
+      }
+    };
   }, [open, onClose]);
+
+  // Focus trap: Tab / Shift+Tab ciclan dentro del diálogo (WCAG 2.1.2).
+  const onDialogKeyDown = React.useCallback((e) => {
+    if (e.key !== 'Tab' || !dialogRef.current) return;
+    const focusable = dialogRef.current.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) { last.focus(); e.preventDefault(); }
+    } else {
+      if (document.activeElement === last) { first.focus(); e.preventDefault(); }
+    }
+  }, []);
 
   if (!open) return null;
   const titleId = title ? 'mt-modal-title' : undefined;
 
+  // Cerrar al hacer clic en el backdrop SOLO si el gesto empezó y terminó en él
+  // (mousedown+mouseup sobre el overlay): así una selección de texto que termina
+  // fuera del diálogo no lo cierra por accidente.
+  const handleBackdropMouseDown = (e) => { backdropDown.current = e.target === e.currentTarget; };
+  const handleBackdropMouseUp = (e) => {
+    if (backdropDown.current && e.target === e.currentTarget && onClose) onClose();
+    backdropDown.current = false;
+  };
+
   return (
     <div
-      onClick={onClose}
+      data-mt-modal
+      onMouseDown={handleBackdropMouseDown}
+      onMouseUp={handleBackdropMouseUp}
       style={{
         position: contained ? 'absolute' : 'fixed',
         inset: 0,
@@ -48,11 +86,13 @@ export function Modal({
     >
       <div
         ref={dialogRef}
+        data-mt-modal
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        onClick={(e) => e.stopPropagation()}
+        onKeyDown={onDialogKeyDown}
+        onMouseDown={(e) => e.stopPropagation()}
         style={{
           width: `min(${width}px, 100%)`,
           maxHeight: '90%',

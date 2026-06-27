@@ -5,6 +5,7 @@ import { LogIn, LogOut, User as UserIcon, Settings, HelpCircle, Tag, Bell, Spark
 import { ThemeToggle } from '../theme/ThemeToggle';
 import { NotificationBell, NotificationCenter } from '../notifications/NotificationCenter';
 import { InstallPrompt } from '../pwa/InstallPrompt';
+import { useDismissable } from '../../hooks/useDismissable';
 import type { User } from 'firebase/auth';
 
 interface HeaderProps {
@@ -84,70 +85,36 @@ export const Header: React.FC<HeaderProps> = ({
     }
   }, [setShowSettingsMenu]);
 
-  // Cerrar menú de configuración al hacer clic fuera
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (settingsMenuRef.current && !settingsMenuRef.current.contains(event.target as Node)) {
-        setShowSettingsMenu(false);
-      }
-    };
+  // Cierre unificado (clic fuera + Escape, con foco devuelto al disparador) —
+  // mismo patrón que el menú "Más" móvil. Reemplaza los dos efectos manuales
+  // de click-outside que vivían aquí.
+  const closeSettingsMenu = useCallback(() => setShowSettingsMenu(false), [setShowSettingsMenu]);
+  useDismissable({
+    isOpen: showSettingsMenu,
+    onClose: closeSettingsMenu,
+    ref: settingsMenuRef,
+    triggerRef: settingsButtonRef,
+  });
 
-    if (showSettingsMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showSettingsMenu, setShowSettingsMenu]);
-
-  // Cerrar notificaciones al hacer clic fuera
-  // NOTA: NotificationCenter maneja su propio cierre via backdrop
-  // Este efecto solo maneja el botón de campana
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      // Solo cerrar si el clic es en el botón de notificaciones o fuera de él
-      // El NotificationCenter (portal) maneja su propio cierre
-      const target = event.target as Node;
-
-      // Si el clic es dentro del ref de notificaciones (el botón), no hacer nada
-      if (notificationsRef.current && notificationsRef.current.contains(target)) {
-        return;
-      }
-
-      // Si el clic es dentro del portal del NotificationCenter, no cerrar
-      // El portal se renderiza en document.body, así que verificamos si el target
-      // está dentro de un elemento con clase que identifica el NotificationCenter
-      const notificationPanel = document.querySelector('[data-notification-center]');
-      if (notificationPanel && notificationPanel.contains(target)) {
-        return;
-      }
-
-      // Si llegamos aquí, el clic fue fuera de todo, cerrar
-      setShowNotifications(false);
-    };
-
-    if (showNotifications) {
-      // Usar un pequeño delay para evitar que el clic que abre el modal lo cierre inmediatamente
-      const timeoutId = setTimeout(() => {
-        document.addEventListener('mousedown', handleClickOutside);
-      }, 100);
-
-      return () => {
-        clearTimeout(timeoutId);
-        document.removeEventListener('mousedown', handleClickOutside);
-      };
-    }
-  }, [showNotifications, setShowNotifications]);
+  // Notificaciones: el panel se renderiza en un portal (NotificationCenter), por
+  // eso se ignora ese subárbol con ignoreSelectors para no cerrarlo al pulsar
+  // dentro. ESC ahora también cierra (antes no lo hacía).
+  const closeNotifications = useCallback(() => setShowNotifications(false), [setShowNotifications]);
+  useDismissable({
+    isOpen: showNotifications,
+    onClose: closeNotifications,
+    ref: notificationsRef,
+    ignoreSelectors: ['[data-notification-center]'],
+  });
 
   return (
-    <header className="w-full py-2 sm:py-3 bg-white/90 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200/80 dark:border-gray-800 z-[100] shadow-sm shrink-0">
+    <header className="w-full py-2 sm:py-3 bg-card/90 backdrop-blur-md border-b border-border z-[100] shadow-sm shrink-0">
       <div className="px-3 sm:px-4 md:px-6 lg:px-8">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2 sm:gap-3 flex-1">
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold">
-              <span className="text-purple-600 dark:text-purple-400">Money</span>
-              <span className="text-gray-800 dark:text-gray-100">Track</span>
+              <span className="text-primary">Money</span>
+              <span className="text-foreground">Track</span>
             </h1>
           </div>
 
@@ -163,21 +130,21 @@ export const Header: React.FC<HeaderProps> = ({
                     src={user.photoURL}
                     alt=""
                     aria-hidden="true"
-                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-purple-200 dark:border-purple-700"
+                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-border-accent"
                   />
                 ) : (
-                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400" aria-hidden="true">
+                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-balance-accent flex items-center justify-center text-primary" aria-hidden="true">
                     <UserIcon size={18} />
                   </div>
                 )}
-                <span className="hidden md:inline text-sm font-medium text-gray-900 dark:text-gray-100 max-w-24 truncate">
+                <span className="hidden md:inline text-sm font-medium text-foreground max-w-24 truncate">
                   {user.displayName?.split(' ')[0] || 'Usuario'}
                 </span>
               </div>
             ) : (
               <button
                 onClick={() => setIsAuthModalOpen(true)}
-                className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg text-sm font-medium active:opacity-80 transition-opacity"
+                className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-foreground text-background rounded-lg text-sm font-medium active:opacity-80 transition-opacity"
                 aria-label="Iniciar sesión"
               >
                 <LogIn size={16} className="sm:w-[18px] sm:h-[18px]" aria-hidden="true" />
@@ -186,7 +153,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* Divisor */}
-            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600"></div>
+            <div className="h-6 w-px bg-border"></div>
 
             {/* Theme Toggle */}
             <ThemeToggle />
@@ -207,7 +174,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 ref={settingsButtonRef}
                 onClick={() => setShowSettingsMenu(!showSettingsMenu)}
-                className="relative p-2 sm:p-2.5 text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 active:bg-gray-100 dark:active:bg-gray-800 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                className="header-icon"
                 aria-label={
                   pendingSettingsCount > 0
                     ? `Abrir menú de configuración (${pendingSettingsCount} pendiente${pendingSettingsCount !== 1 ? 's' : ''})`
@@ -219,7 +186,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <Settings size={20} aria-hidden="true" />
                 {pendingSettingsCount > 0 && (
                   <span
-                    className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-bold leading-none text-white bg-rose-500 rounded-full ring-2 ring-white dark:ring-gray-900"
+                    className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-bold leading-none text-white bg-destructive rounded-full ring-2 ring-card"
                     aria-hidden="true"
                   >
                     {pendingSettingsCount}
@@ -230,7 +197,7 @@ export const Header: React.FC<HeaderProps> = ({
               {/* Menú desplegable */}
               {showSettingsMenu && (
                 <div
-                  className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50 animate-in fade-in zoom-in duration-200"
+                  className="absolute right-0 mt-2 w-48 bg-card text-card-foreground rounded-lg shadow-lg border border-border py-1 z-50 animate-in fade-in zoom-in duration-200"
                   role="menu"
                   aria-label="Opciones de configuración"
                   onKeyDown={handleMenuKeyDown}
@@ -240,7 +207,7 @@ export const Header: React.FC<HeaderProps> = ({
                       onOpenCategories();
                       setShowSettingsMenu(false);
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
                     role="menuitem"
                   >
                     <Tag size={18} aria-hidden="true" />
@@ -264,14 +231,14 @@ export const Header: React.FC<HeaderProps> = ({
                       onOpenAISettings();
                       setShowSettingsMenu(false);
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
                     role="menuitem"
                   >
                     <Sparkles size={18} aria-hidden="true" />
                     <span>Asistente IA</span>
                     {aiAuthPending && (
                       <span
-                        className="ml-auto w-2 h-2 rounded-full bg-rose-500"
+                        className="ml-auto w-2 h-2 rounded-full bg-destructive"
                         title="Autorización de IA pendiente"
                         aria-label="Autorización de IA pendiente"
                       />
@@ -282,7 +249,7 @@ export const Header: React.FC<HeaderProps> = ({
                       onOpenHelp();
                       setShowSettingsMenu(false);
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
                     role="menuitem"
                   >
                     <HelpCircle size={18} aria-hidden="true" />
@@ -296,10 +263,10 @@ export const Header: React.FC<HeaderProps> = ({
             {user && (
               <button
                 onClick={onLogout}
-                className="p-2 sm:p-2.5 text-gray-500 hover:text-rose-600 dark:hover:text-rose-400 active:bg-gray-100 dark:active:bg-gray-800 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                className="header-icon hover:text-destructive"
                 aria-label="Cerrar sesión"
               >
-                <LogOut size={18} aria-hidden="true" />
+                <LogOut size={20} aria-hidden="true" />
               </button>
             )}
           </div>

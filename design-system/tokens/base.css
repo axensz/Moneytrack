@@ -51,7 +51,10 @@ h3 { font-size: var(--text-xl); line-height: var(--leading-normal); font-weight:
   box-shadow: var(--shadow-md);
   transition: all var(--duration-base) var(--ease-out);
 }
-.mt-card-stat:hover {
+/* :focus-within → el realce también responde a teclado/foco interno, no solo al
+   hover de ratón (paridad táctil/teclado). */
+.mt-card-stat:hover,
+.mt-card-stat:focus-within {
   box-shadow: var(--shadow-lg);
   border-color: var(--border-accent);
 }

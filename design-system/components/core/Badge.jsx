@@ -1,6 +1,28 @@
 import React from 'react';
 
-const TONES = ['primary', 'success', 'danger', 'warning', 'info', 'neutral'];
+// Vocabulario semántico canónico, compartido por Badge / SegmentedControl / StatCard:
+// success · destructive · warning · info · primary · neutral.
+// Alias retrocompatibles para consumidores que aún pasan los nombres viejos.
+const TONE_ALIASES = {
+  danger: 'destructive',
+  expense: 'destructive',
+  income: 'success',
+  pending: 'warning',
+};
+// La clase CSS .mt-badge-* sigue usando "danger"; mapeamos al hablar con el CSS.
+const BADGE_CLASS = {
+  primary: 'primary',
+  success: 'success',
+  destructive: 'danger',
+  warning: 'warning',
+  info: 'info',
+  neutral: 'neutral',
+};
+
+/** Normaliza cualquier alias de tono al nombre semántico canónico. */
+export function normalizeTone(tone) {
+  return TONE_ALIASES[tone] || tone;
+}
 
 /**
  * Badge — small status pill for transaction states, categories and counts.
@@ -9,7 +31,8 @@ const TONES = ['primary', 'success', 'danger', 'warning', 'info', 'neutral'];
  * inline category tag.
  */
 export function Badge({ tone = 'neutral', square = false, icon: Icon, children, className = '', ...props }) {
-  const t = TONES.includes(tone) ? tone : 'neutral';
+  const canonical = normalizeTone(tone);
+  const t = BADGE_CLASS[canonical] || 'neutral';
   const classes = [
     'mt-badge',
     `mt-badge-${t}`,

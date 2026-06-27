@@ -60,8 +60,8 @@ describe('TransactionItem a11y / máscara', () => {
   it('asocia cada label de edición inline con su input vía htmlFor/id único', () => {
     renderItem({ isEditing: true });
     // getByLabelText falla si el label no está asociado correctamente.
-    const desc = screen.getByLabelText('Descripcion');
-    const cat = screen.getByLabelText('Categoria');
+    const desc = screen.getByLabelText('Descripción');
+    const cat = screen.getByLabelText('Categoría');
     const date = screen.getByLabelText('Fecha');
     expect(desc).toHaveAttribute('id', 'tx-edit-abc123-description');
     expect(cat).toHaveAttribute('id', 'tx-edit-abc123-category');
@@ -70,13 +70,13 @@ describe('TransactionItem a11y / máscara', () => {
 
   it('los botones de acción cumplen el touch target mínimo de 44px y tienen foco visible', () => {
     renderItem();
-    const editBtn = screen.getByLabelText('Editar transaccion');
-    const delBtn = screen.getByLabelText('Eliminar transaccion');
+    const editBtn = screen.getByLabelText('Editar transacción');
+    const delBtn = screen.getByLabelText('Eliminar transacción');
     for (const btn of [editBtn, delBtn]) {
       expect(btn.className).toContain('min-h-[44px]');
       expect(btn.className).toContain('min-w-[44px]');
       expect(btn.className).toContain('focus-visible:ring-2');
-      expect(btn.className).toContain('focus-visible:ring-purple-500');
+      expect(btn.className).toContain('focus-visible:ring-primary');
     }
   });
 
@@ -156,9 +156,9 @@ describe('TransactionItem a11y / máscara', () => {
       />
     );
 
-    fireEvent.click(screen.getByLabelText('Editar transaccion'));
+    fireEvent.click(screen.getByLabelText('Editar transacción'));
     expect(onEdit).toHaveBeenCalledWith(baseTx);
-    fireEvent.click(screen.getByLabelText('Eliminar transaccion'));
+    fireEvent.click(screen.getByLabelText('Eliminar transacción'));
     expect(onDelete).toHaveBeenCalledWith(baseTx);
     fireEvent.click(screen.getByRole('button', { name: 'Expandir detalle' }));
     expect(onToggleExpand).toHaveBeenCalledWith(baseTx.id);

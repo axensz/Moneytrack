@@ -51,7 +51,7 @@ export const FinancialPlanAI: React.FC<Props> = ({ plan, config }) => {
           <Sparkles size={16} className="text-purple-500" />
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Consejos IA</h3>
         </div>
-        <button onClick={fetchAdvice} disabled={loading} className="p-1.5 text-gray-400 hover:text-purple-600 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors disabled:opacity-50">
+        <button onClick={fetchAdvice} disabled={loading} className="p-1.5 text-muted-foreground hover:text-purple-600 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors disabled:opacity-50">
           {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
         </button>
       </div>

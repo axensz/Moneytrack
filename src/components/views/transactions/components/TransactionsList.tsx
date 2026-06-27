@@ -167,17 +167,17 @@ export function TransactionsList({
                 <div
                     role="alert"
                     aria-live="assertive"
-                    className="flex flex-col items-center gap-3 rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 p-4 text-center"
+                    className="flex flex-col items-center gap-3 rounded-xl border border-[var(--destructive)] bg-[var(--destructive-muted)] p-4 text-center"
                 >
-                    <AlertTriangle size={24} className="text-rose-600 dark:text-rose-400" aria-hidden="true" />
-                    <p className="text-sm font-medium text-rose-800 dark:text-rose-200">
+                    <AlertTriangle size={24} className="text-destructive" aria-hidden="true" />
+                    <p className="text-sm font-medium text-destructive">
                         {error}
                     </p>
                     {onRetry && (
                         <button
                             type="button"
                             onClick={onRetry}
-                            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-rose-700 dark:text-rose-300 bg-rose-100 dark:bg-rose-900/40 rounded-lg hover:bg-rose-200 dark:hover:bg-rose-900/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-destructive bg-[var(--destructive-muted)] border border-[var(--destructive)] rounded-lg hover:bg-[var(--card)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                         >
                             Reintentar
                         </button>
@@ -189,7 +189,7 @@ export function TransactionsList({
                     <React.Fragment key={item.key}>
                         {item.showDateHeader && (
                             <div className="pt-4 pb-1.5 first:pt-0">
-                                <span className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-500">
+                                <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                                     {item.headerLabel}
                                 </span>
                             </div>
@@ -235,30 +235,30 @@ export function TransactionsList({
             })}
             {hasMore && (
                 <div ref={sentinelRef} className="flex justify-center py-3">
-                    <span className="text-xs text-gray-400">Cargando mas...</span>
+                    <span className="text-xs text-muted-foreground">Cargando más…</span>
                 </div>
             )}
             {!hasMore && hasMoreTransactions && (
                 <div className="flex flex-col items-center gap-2 py-4">
                     {hasActiveFilters && (
-                        <p className="max-w-sm text-center text-xs text-gray-500 dark:text-gray-400">
-                            La busqueda y los filtros aplican sobre las transacciones cargadas. Carga mas antiguas si esperas resultados anteriores.
+                        <p className="max-w-sm text-center text-xs text-muted-foreground">
+                            La búsqueda y los filtros aplican sobre las transacciones cargadas. Carga más antiguas si esperas resultados anteriores.
                         </p>
                     )}
                     <button
                         onClick={loadMoreTransactions}
                         disabled={loadingMoreTransactions}
-                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50"
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary bg-[var(--muted)] rounded-lg hover:bg-[var(--balance-accent)] transition-colors disabled:opacity-50"
                     >
                         {loadingMoreTransactions ? (
                             <>
                                 <Loader2 size={16} className="animate-spin" />
-                                Cargando transacciones antiguas...
+                                Cargando transacciones antiguas…
                             </>
                         ) : (
                             <>
                                 <ChevronDown size={16} />
-                                Cargar transacciones mas antiguas
+                                Cargar transacciones más antiguas
                             </>
                         )}
                     </button>

@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import type { RecurringPayment, Account, Transaction } from '../../../../types/finance';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
+import { isLastDayOfMonth } from '../../../../utils/recurringDates';
 
 // Mapeo de categorías a iconos mejorados
 const CATEGORY_ICONS: Record<string, React.ElementType> = {
@@ -128,7 +129,7 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = memo(({
       );
     }
 
-    return <Clock size={18} className="text-gray-400 flex-shrink-0" />;
+    return <Clock size={18} className="text-muted-foreground flex-shrink-0" />;
   };
 
   const getDueText = () => {
@@ -136,6 +137,14 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = memo(({
     if (daysUntilDue === 1) return '(Mañana)';
     return `(en ${daysUntilDue} días)`;
   };
+
+  // Distintivo textual para "próximo a vencer": no depender solo del color ámbar.
+  const isSoon = !isPaid && !isPaymentOverdue && daysUntilDue <= 3;
+  const soonChipText =
+    daysUntilDue <= 0 ? 'Vence hoy' : daysUntilDue === 1 ? 'Vence mañana' : `Vence en ${daysUntilDue} días`;
+
+  // Día de vencimiento legible (centinela "último día" → texto explícito).
+  const dueDayLabel = isLastDayOfMonth(payment.dueDay) ? 'Último día' : `Día ${payment.dueDay}`;
 
   return (
     <div className={getCardClasses()}>
@@ -152,12 +161,18 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = memo(({
                 <CategoryIcon size={12} />
                 {payment.category}
               </span>
+              {isSoon && (
+                <span className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-warning-muted text-warning">
+                  <Clock size={12} />
+                  {soonChipText}
+                </span>
+              )}
             </div>
 
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
               <span className="flex items-center gap-1">
                 <CalendarDays size={14} />
-                Día {payment.dueDay} •{' '}
+                {dueDayLabel} •{' '}
                 {payment.frequency === 'monthly' ? 'Mensual' : 'Anual'}
               </span>
               {account && <span>{account.name}</span>}
@@ -166,15 +181,15 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = memo(({
             {!isPaid && (
               <p className="text-sm mt-2">
                 {isPaymentOverdue ? (
-                  <span className="text-rose-600 dark:text-rose-400 font-semibold">
-                    Venció hace {daysOverdue} {daysOverdue === 1 ? 'día' : 'días'} · día {payment.dueDay}
+                  <span className="text-destructive font-semibold">
+                    Venció hace {daysOverdue} {daysOverdue === 1 ? 'día' : 'días'} · {dueDayLabel.toLowerCase()}
                   </span>
                 ) : (
                   <span
                     className={
                       daysUntilDue <= 3
-                        ? 'text-amber-600 dark:text-amber-400 font-medium'
-                        : 'text-gray-500'
+                        ? 'text-warning font-medium'
+                        : 'text-muted-foreground'
                     }
                   >
                     Próximo:{' '}
@@ -195,8 +210,9 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = memo(({
               {displayAmount(payment.amount)}
             </p>
             {isPaid && (
-              <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                ✓ Pagado este mes
+              <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                <Check size={12} className="flex-shrink-0" />
+                Pagado este mes
               </span>
             )}
           </div>
@@ -206,7 +222,7 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = memo(({
         <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100 dark:border-gray-700">
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="text-sm text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors min-h-[36px]"
+            className="text-sm text-muted-foreground hover:text-primary flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-primary/10 transition-colors min-h-[36px] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <History size={14} />
             Historial
@@ -226,14 +242,14 @@ export const RecurringPaymentCard: React.FC<RecurringPaymentCardProps> = memo(({
             )}
             <button
               onClick={onEdit}
-              className="flex items-center justify-center p-2 min-h-[36px] min-w-[36px] text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
+              className="flex items-center justify-center p-2 min-h-[36px] min-w-[36px] text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               title="Editar"
             >
               <Edit2 size={16} />
             </button>
             <button
               onClick={onDelete}
-              className="flex items-center justify-center p-2 min-h-[36px] min-w-[36px] text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
+              className="flex items-center justify-center p-2 min-h-[36px] min-w-[36px] text-muted-foreground hover:text-destructive hover:bg-destructive-muted rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
               title="Eliminar"
             >
               <Trash2 size={16} />
@@ -273,7 +289,7 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = memo(({
         Últimos pagos
       </h5>
       {history.length === 0 ? (
-        <p className="text-sm text-gray-400">Sin historial de pagos</p>
+        <p className="text-sm text-muted-foreground">Sin historial de pagos</p>
       ) : (
         <div className="space-y-2">
           {history.map((t) => (
@@ -281,7 +297,7 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = memo(({
               key={t.id}
               className="flex items-center justify-between gap-2 text-sm bg-white dark:bg-gray-800 rounded-lg p-2"
             >
-              <span className="text-gray-600 dark:text-gray-400">
+              <span className="text-muted-foreground">
                 {new Date(t.date).toLocaleDateString('es-CO', {
                   day: 'numeric',
                   month: 'short',
@@ -294,7 +310,7 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = memo(({
                 </span>
                 <button
                   onClick={() => onDeletePayment(t)}
-                  className="flex items-center justify-center p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
+                  className="flex items-center justify-center p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive-muted rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
                   title="Eliminar este pago"
                   aria-label="Eliminar este pago"
                 >

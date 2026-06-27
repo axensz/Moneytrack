@@ -30,19 +30,24 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
                 role="dialog"
                 aria-modal="true"
                 aria-label="Configuración de Notificaciones"
-                className="relative w-full max-w-3xl max-h-[90vh] bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden outline-none"
+                className="relative w-full max-w-3xl max-h-[90vh] rounded-xl shadow-2xl overflow-hidden outline-none"
+                style={{ background: 'var(--card)', color: 'var(--card-foreground)' }}
             >
                 {/* Header */}
-                <div className="sticky top-0 z-10 flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                <div
+                    className="sticky top-0 z-10 flex items-center justify-between p-6 border-b"
+                    style={{ borderColor: 'var(--border)', background: 'var(--card)' }}
+                >
+                    <h2 className="text-2xl font-bold" style={{ color: 'var(--foreground)' }}>
                         Configuración de Notificaciones
                     </h2>
                     <button
                         onClick={onClose}
-                        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                        className="p-2 rounded-lg transition-colors hover:bg-[var(--muted)]"
                         aria-label="Cerrar"
+                        style={{ color: 'var(--muted-foreground)' }}
                     >
-                        <X className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                        <X className="w-5 h-5" />
                     </button>
                 </div>
 

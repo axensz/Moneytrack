@@ -158,7 +158,11 @@ export const MergeCreditCardsModal: React.FC<MergeCreditCardsModalProps> = ({
             className="btn-primary"
             disabled={isSubmitting || !sourceCard || !targetCardId}
           >
-            {isSubmitting ? 'Unificando...' : 'Unificar tarjetas'}
+            {isSubmitting
+              ? 'Unificando…'
+              : creditLimitBelowDebt
+                ? 'Unificar de todas formas'
+                : 'Unificar tarjetas'}
           </button>
         </div>
       </div>

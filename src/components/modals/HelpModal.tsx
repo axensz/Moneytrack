@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Wallet, TrendingUp, Repeat, BarChart3, PieChart, Bot, HandCoins, Target } from 'lucide-react';
+import { Wallet, TrendingUp, Repeat, BarChart3, PieChart, Bot, HandCoins, Target, Keyboard } from 'lucide-react';
 import { BaseModal } from './BaseModal';
 import { HelpSectionBasics } from './help/HelpSectionBasics';
 import { HelpSectionAccounts } from './help/HelpSectionAccounts';
@@ -17,19 +17,19 @@ interface HelpModalProps {
 }
 
 export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'basics' | 'accounts' | 'transactions' | 'recurring' | 'debts' | 'budgets' | 'goals' | 'stats' | 'ai'>('basics');
+  const [activeTab, setActiveTab] = useState<'basics' | 'accounts' | 'transactions' | 'recurring' | 'debts' | 'budgets' | 'goals' | 'stats' | 'ai' | 'shortcuts'>('basics');
 
   return (
     <BaseModal
       isOpen={isOpen}
       onClose={onClose}
       title="Manual de Usuario"
-      titleIcon={<Wallet size={24} className="text-purple-600" />}
+      titleIcon={<Wallet size={24} className="text-primary" />}
       maxWidth="max-w-3xl"
       className="h-[85vh] sm:h-[600px] flex flex-col"
     >
         {/* Tabs */}
-        <div className="border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 shrink-0">
+        <div className="border-b border-border bg-muted/50 shrink-0">
           <div className="flex gap-1 sm:gap-2 p-2 sm:p-3 overflow-x-auto no-scrollbar scroll-smooth">
             {[
               { id: 'basics', label: 'Inicio', shortLabel: 'Inicio', icon: null },
@@ -41,15 +41,16 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
               { id: 'goals', label: 'Metas', shortLabel: 'Metas', icon: Target },
               { id: 'stats', label: 'Estadísticas', shortLabel: 'Stats', icon: BarChart3 },
               { id: 'ai', label: 'Asistente IA', shortLabel: 'IA', icon: Bot },
+              { id: 'shortcuts', label: 'Atajos', shortLabel: 'Atajos', icon: Keyboard },
             ].map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as typeof activeTab)}
                 className={`
-                  flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200 whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-purple-500
+                  flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200 whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]
                   ${activeTab === tab.id
-                    ? 'bg-white dark:bg-gray-700 text-purple-700 dark:text-purple-300 shadow-sm ring-1 ring-gray-200 dark:ring-gray-600'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 hover:text-gray-900 dark:hover:text-gray-200 active:scale-[0.98]'
+                    ? 'bg-card text-primary shadow-sm ring-1 ring-border'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground active:scale-[0.98]'
                   }
                 `}
               >

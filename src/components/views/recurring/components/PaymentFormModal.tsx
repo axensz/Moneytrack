@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { X } from 'lucide-react';
 import { useConfirmDiscard } from '../../../../hooks/useConfirmDiscard';
 import { showToast } from '../../../../utils/toastHelpers';
 import { logger } from '../../../../utils/logger';
 import type { RecurringPayment, Account } from '../../../../types/finance';
 import { formatNumberForInput } from '../../../../utils/formatters';
+import { BaseModal } from '../../../modals/BaseModal';
+import { LAST_DAY_OF_MONTH } from '../../../../utils/recurringDates';
 
 interface PaymentFormModalProps {
   isOpen: boolean;
@@ -139,27 +140,14 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              {editingPayment ? 'Editar Pago Periódico' : 'Nuevo Pago Periódico'}
-            </h3>
-            {/* S14: aria-label + tap target mínimo 44px */}
-            <button
-              onClick={() => guardedClose(onClose)}
-              aria-label="Cerrar"
-              className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors p-2 rounded-xl min-w-[44px] min-h-[44px] flex items-center justify-center"
-            >
-              <X size={20} />
-            </button>
-          </div>
-
-          <div className="space-y-4">
+    <BaseModal
+      isOpen={isOpen}
+      onClose={() => guardedClose(onClose)}
+      title={editingPayment ? 'Editar pago periódico' : 'Nuevo pago periódico'}
+      maxWidth="max-w-lg"
+    >
+      <div className="space-y-4">
             {/* Nombre */}
             <div>
               <label htmlFor="pf-name" className="label-base">Nombre *</label>
@@ -228,6 +216,7 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
                       Día {day}
                     </option>
                   ))}
+                  <option value={LAST_DAY_OF_MONTH}>Último día</option>
                 </select>
               </div>
 
@@ -310,8 +299,6 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
               Cancelar
             </button>
           </div>
-        </div>
-      </div>
-    </div>
+    </BaseModal>
   );
 };

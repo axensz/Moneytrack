@@ -13,7 +13,7 @@ export function ThemeToggle() {
   }, []);
 
   if (!mounted) {
-    return <div className="w-9 h-9 p-2 rounded-lg bg-gray-200 dark:bg-gray-700 opacity-50" />;
+    return <div className="w-9 h-9 sm:w-10 sm:h-10" aria-hidden="true" />;
   }
 
   const toggleTheme = () => {
@@ -23,13 +23,13 @@ export function ThemeToggle() {
   return (
     <button
       onClick={toggleTheme}
-      className="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+      className="header-icon"
       aria-label="Cambiar tema"
     >
       {resolvedTheme === 'light' ? (
-        <Moon className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+        <Moon className="w-5 h-5" />
       ) : (
-        <Sun className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+        <Sun className="w-5 h-5" />
       )}
     </button>
   );

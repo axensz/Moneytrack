@@ -239,15 +239,10 @@ export const AccountsView: React.FC = () => {
       return;
     }
 
-    const warningDebt = Math.max(mergeCombinedUsedDebt, desiredDebt);
-
-    if (newCreditLimit < warningDebt) {
-      const shouldContinue = window.confirm(
-        `El nuevo cupo (${formatCurrency(newCreditLimit)}) queda por debajo de la deuda usada (${formatCurrency(warningDebt)}). ¿Deseas continuar?`
-      );
-      if (!shouldContinue) return;
-    }
-
+    // Nota: si el nuevo cupo queda por debajo de la deuda, NO se bloquea con un
+    // confirm nativo. El modal ya muestra un banner de advertencia inline y el
+    // botón pasa a "Unificar de todas formas" (MergeCreditCardsModal), así el
+    // usuario confirma de forma explícita y consistente con el resto de la UI.
     const debtDifference = desiredDebt - mergeCombinedUsedDebt;
 
     try {
@@ -375,10 +370,10 @@ export const AccountsView: React.FC = () => {
       {/* Header con botón */}
       <div className="flex justify-between items-start mb-6 flex-wrap gap-4">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+          <h2 className="text-xl font-bold text-foreground">
             Cuentas
           </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             Administra tus cuentas bancarias y tarjetas de crédito
           </p>
         </div>
@@ -388,7 +383,7 @@ export const AccountsView: React.FC = () => {
             <button
               type="button"
               onClick={() => setShowStatements(true)}
-              className="flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2 text-sm font-medium text-purple-700 transition-colors hover:bg-purple-100 dark:border-purple-800 dark:bg-purple-900/20 dark:text-purple-300 dark:hover:bg-purple-900/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 min-h-[44px]"
+              className="flex items-center gap-2 rounded-lg border border-border-accent bg-primary/10 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary min-h-[44px]"
             >
               <Receipt size={18} />
               Extractos
@@ -412,6 +407,7 @@ export const AccountsView: React.FC = () => {
       {/* Modales */}
       <AccountFormModal
         isOpen={accountForm.showAccountForm}
+        isSubmitting={accountForm.isSubmitting}
         editingAccount={accountForm.editingAccount}
         newAccount={accountForm.newAccount}
         balanceAdjustment={accountForm.balanceAdjustment}
@@ -500,6 +496,19 @@ export const AccountsView: React.FC = () => {
       />
 
       {/* Lista de cuentas */}
+      {mainAccounts.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 py-12 text-center">
+          <div className="rounded-full bg-primary/10 p-3 text-primary">
+            <Wallet size={28} />
+          </div>
+          <div>
+            <p className="font-semibold text-foreground">Aún no tienes cuentas</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Crea tu primera cuenta para empezar a llevar el control de tu dinero.
+            </p>
+          </div>
+        </div>
+      ) : (
       <div className="space-y-4">
         {mainAccounts.map((account, mainIndex) => {
           const balance = getAccountBalance(account.id!);
@@ -560,7 +569,7 @@ export const AccountsView: React.FC = () => {
               {/* Tarjetas asociadas */}
               {associatedCards.length > 0 && (
                 <div
-                  className={`ml-4 sm:ml-8 mt-3 space-y-3 border-l-2 border-purple-200 dark:border-purple-800 pl-4 transition-opacity duration-200 ${dragDrop.draggedAccountId === account.id ? 'opacity-50' : ''
+                  className={`ml-4 sm:ml-8 mt-3 space-y-3 border-l-2 border-border-accent pl-4 transition-opacity duration-200 ${dragDrop.draggedAccountId === account.id ? 'opacity-50' : ''
                     }`}
                 >
                   {associatedCards.map((card, cardIndex) => (
@@ -615,6 +624,7 @@ export const AccountsView: React.FC = () => {
           );
         })}
       </div>
+      )}
     </div>
   );
 };

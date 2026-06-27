@@ -97,25 +97,19 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
     }
 
     if (isDragOver) {
-      return `${base} border-2 border-purple-500 shadow-lg scale-102 bg-purple-50 dark:bg-purple-900/30`;
+      return `${base} border-2 border-primary shadow-lg scale-102 bg-primary/5`;
     }
 
     if (isAssociated) {
-      return `${base} border border-purple-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md ${account.isDefault ? 'ring-2 ring-purple-400' : ''
+      return `${base} border border-border bg-primary/5 hover:border-border-accent hover:shadow-md ${account.isDefault ? 'ring-2 ring-primary' : ''
         }`;
     }
 
     if (account.isDefault) {
-      return `${base} border-2 ${isCredit
-        ? 'border-purple-500 bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20'
-        : 'border-emerald-500 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20'
-        } shadow-md`;
+      return `${base} border-2 border-primary bg-primary/5 shadow-md`;
     }
 
-    return `${base} border ${isCredit
-      ? 'border-purple-100 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600'
-      : 'border-emerald-100 dark:border-gray-700 hover:border-emerald-300 dark:hover:border-emerald-600'
-      } bg-white dark:bg-gray-800 hover:shadow-md`;
+    return `${base} border border-border bg-card hover:border-border-accent hover:shadow-md`;
   };
 
   return (
@@ -137,20 +131,14 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
         zIndex: isDragging ? 50 : undefined,
       }}
     >
-      {/* Accent Bar */}
-      <div
-        className={`absolute left-0 top-0 bottom-0 w-1.5 ${isCredit ? 'bg-purple-500' : 'bg-emerald-500'
-          }`}
-      />
-
-      <div className="pl-2">
+      <div>
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 sm:gap-4">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
               <GripVertical
                 size={isAssociated ? 16 : 20}
-                className="text-gray-400 cursor-grab active:cursor-grabbing flex-shrink-0"
+                className="text-muted-foreground cursor-grab active:cursor-grabbing flex-shrink-0"
                 aria-hidden="true"
               />
               {(onMoveUp || onMoveDown) && (
@@ -160,7 +148,7 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
                     onClick={onMoveUp}
                     disabled={!canMoveUp}
                     aria-label={`Mover ${account.name} hacia arriba`}
-                    className="flex items-center justify-center h-5 w-6 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                    className="flex items-center justify-center h-5 w-6 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     <ChevronUp size={14} aria-hidden="true" />
                   </button>
@@ -169,38 +157,28 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
                     onClick={onMoveDown}
                     disabled={!canMoveDown}
                     aria-label={`Mover ${account.name} hacia abajo`}
-                    className="flex items-center justify-center h-5 w-6 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                    className="flex items-center justify-center h-5 w-6 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     <ChevronDown size={14} aria-hidden="true" />
                   </button>
                 </div>
               )}
-              <div
-                className={`p-1.5 rounded-lg flex-shrink-0 ${isCredit
-                  ? 'bg-purple-100 dark:bg-purple-900/40'
-                  : 'bg-emerald-100 dark:bg-emerald-900/40'
-                  }`}
-              >
+              <div className="p-1.5 rounded-lg flex-shrink-0 bg-primary/10">
                 {accountTypeInfo &&
                   React.createElement(accountTypeInfo.icon, {
                     size: isAssociated ? 16 : 18,
-                    className: isCredit
-                      ? 'text-purple-600 dark:text-purple-400'
-                      : 'text-emerald-600 dark:text-emerald-400',
+                    className: 'text-primary',
                   })}
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h4
-                  className={`font-semibold text-gray-900 dark:text-gray-100 ${isAssociated ? 'text-sm sm:text-base' : ''
+                  className={`font-semibold text-foreground ${isAssociated ? 'text-sm sm:text-base' : ''
                     }`}
                 >
                   {account.name}
                 </h4>
                 {account.isDefault && (
-                  <span
-                    className={`text-xs text-white px-2 py-0.5 rounded-full font-medium ${isCredit ? 'bg-purple-600' : 'bg-emerald-600'
-                      }`}
-                  >
+                  <span className="text-xs text-primary-foreground px-2 py-0.5 rounded-full font-medium bg-primary-solid">
                     Principal
                   </span>
                 )}
@@ -208,16 +186,11 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
             </div>
 
             {/* Type badge */}
-            <span
-              className={`inline-flex items-center text-xs px-2 py-0.5 rounded-full font-medium ${isCredit
-                ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
-                : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
-                }`}
-            >
+            <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-full font-medium bg-primary/10 text-primary">
               {accountTypeInfo?.label}
             </span>
             {parentAccountName && (
-              <span className="ml-2 text-xs text-purple-600 dark:text-purple-400">
+              <span className="ml-2 text-xs text-primary">
                 • {parentAccountName}
               </span>
             )}
@@ -226,22 +199,16 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
           {/* Balance */}
           <div className="text-left sm:text-right">
             <div
-              className={`text-xl sm:text-2xl font-bold ${isCredit
-                ? balance >= 0
-                  ? 'text-purple-600 dark:text-purple-400'
-                  : 'text-rose-600'
-                : balance >= 0
-                  ? 'text-emerald-600 dark:text-emerald-400'
-                  : 'text-rose-600'
+              className={`text-xl sm:text-2xl font-bold ${balance < 0 ? 'text-destructive' : 'text-success'
                 }`}
             >
               {isCredit && (
-                <div className="text-xs font-normal text-gray-500 dark:text-gray-400 mb-1">
+                <div className="text-xs font-normal text-muted-foreground mb-1">
                   Disponible
                 </div>
               )}
               {!isCredit && balanceSettling ? (
-                <BalanceSettling className="text-base font-medium text-gray-400 dark:text-gray-500" />
+                <BalanceSettling className="text-base font-medium text-muted-foreground" />
               ) : (
                 displayAmount(balance)
               )}
@@ -272,7 +239,7 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
           {isCredit && onMerge && (
             <button
               onClick={onMerge}
-              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-purple-700 bg-purple-50 hover:bg-purple-100 dark:text-purple-300 dark:bg-purple-900/20 dark:hover:bg-purple-900/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/10 hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               <Combine size={14} />
               Unificar
@@ -283,16 +250,13 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
             <>
               <button
                 onClick={onSetDefault}
-                className={`flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 ${isCredit
-                  ? 'bg-purple-600 hover:bg-purple-700'
-                  : 'bg-emerald-600 hover:bg-emerald-700'
-                  }`}
+                className="flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] bg-primary-solid text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 Principal
               </button>
               <button
                 onClick={onDelete}
-                className="flex items-center justify-center p-2 min-h-[44px] min-w-[44px] text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                className="flex items-center justify-center p-2 min-h-[44px] min-w-[44px] text-muted-foreground hover:text-destructive hover:bg-destructive-muted rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <Trash2 size={16} />
               </button>
@@ -335,39 +299,36 @@ const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
   return (
     <div className="mt-4">
       <div className={`flex justify-between ${isAssociated ? 'text-xs sm:text-sm' : 'text-sm'} mb-1.5`}>
-        <span className="text-gray-600 dark:text-gray-400">Cupo utilizado</span>
-        <span className="font-medium text-gray-900 dark:text-gray-100">
+        <span className="text-muted-foreground">Cupo utilizado</span>
+        <span className="font-medium text-foreground">
           {displayAmount(creditUsed)} / {displayAmount(creditLimit)}
         </span>
       </div>
 
-      <div className="w-full h-2.5 bg-purple-100 dark:bg-purple-900/30 rounded-full overflow-hidden">
+      <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden">
         <div
-          className={`h-full transition-[width,background-color] ${isHighUsage
-            ? 'bg-gradient-to-r from-orange-500 to-rose-500'
-            : 'bg-gradient-to-r from-purple-500 to-violet-500'
-            }`}
+          className={`h-full transition-[width,background-color] ${isHighUsage ? 'bg-warning' : 'bg-primary'}`}
           style={{ width: `${usagePercentage}%` }}
         />
       </div>
 
       <div className={`flex flex-wrap gap-x-4 gap-y-1 mt-3 ${isAssociated ? 'text-xs sm:text-sm' : 'text-sm'}`}>
         <div>
-          <span className="text-gray-500 dark:text-gray-400">Corte: </span>
-          <span className="font-medium text-gray-900 dark:text-gray-100">
+          <span className="text-muted-foreground">Corte: </span>
+          <span className="font-medium text-foreground">
             {nextCutoff?.toLocaleDateString('es-CO')}
           </span>
         </div>
         <div>
-          <span className="text-gray-500 dark:text-gray-400">Pago: </span>
-          <span className="font-medium text-gray-900 dark:text-gray-100">
+          <span className="text-muted-foreground">Pago: </span>
+          <span className="font-medium text-foreground">
             {nextPayment?.toLocaleDateString('es-CO')}
           </span>
         </div>
         {interestRate && interestRate > 0 && (
           <div>
-            <span className="text-gray-500 dark:text-gray-400">Tasa E.A.: </span>
-            <span className="font-medium text-purple-600 dark:text-purple-400">
+            <span className="text-muted-foreground">Tasa E.A.: </span>
+            <span className="font-medium text-foreground">
               {interestRate.toFixed(2).replace('.', ',')}%
             </span>
           </div>

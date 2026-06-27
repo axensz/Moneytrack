@@ -60,11 +60,10 @@ export const YearlyTrendChart: React.FC<YearlyTrendChartProps> = ({
         </div>
       ) : (
       <>
+      <div role="img" aria-label={chartLabel}>
       <ResponsiveContainer
         width="100%"
         height={CHART_HEIGHTS.medium}
-        role="img"
-        aria-label={chartLabel}
       >
         <LineChart data={data} margin={CHART_MARGINS}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -92,6 +91,7 @@ export const YearlyTrendChart: React.FC<YearlyTrendChartProps> = ({
           />
         </LineChart>
       </ResponsiveContainer>
+      </div>
       <ChartDataTable
         caption="Tendencia anual: ingresos y gastos por año"
         periodLabel="Año"

@@ -62,11 +62,10 @@ export const CashFlowChart: React.FC<CashFlowChartProps> = ({
         </div>
       ) : (
       <>
+      <div role="img" aria-label={chartLabel}>
       <ResponsiveContainer
         width="100%"
         height={CHART_HEIGHTS.large}
-        role="img"
-        aria-label={chartLabel}
       >
         <AreaChart data={data} margin={CHART_MARGINS}>
           <defs>
@@ -124,6 +123,7 @@ export const CashFlowChart: React.FC<CashFlowChartProps> = ({
           />
         </AreaChart>
       </ResponsiveContainer>
+      </div>
       <ChartDataTable
         caption="Flujo de caja: ingresos y gastos por mes (últimos 6 meses)"
         periodLabel="Mes"

@@ -61,11 +61,10 @@ export const MonthlyComparisonChart: React.FC<MonthlyComparisonChartProps> = ({
         </div>
       ) : (
       <>
+      <div role="img" aria-label={chartLabel}>
       <ResponsiveContainer
         width="100%"
         height={CHART_HEIGHTS.medium}
-        role="img"
-        aria-label={chartLabel}
       >
         <BarChart data={data} margin={CHART_MARGINS}>
           <defs>
@@ -100,6 +99,7 @@ export const MonthlyComparisonChart: React.FC<MonthlyComparisonChartProps> = ({
           />
         </BarChart>
       </ResponsiveContainer>
+      </div>
       <ChartDataTable
         caption="Comparación mensual: ingresos y gastos por mes (últimos 6 meses)"
         periodLabel="Mes"

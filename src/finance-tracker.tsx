@@ -289,7 +289,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   // Menú "Más" (móvil): cierre unificado (clic fuera + Escape, con restauración
   // de foco al disparador) — mismo patrón que el menú de Configuración y el
   // panel de Notificaciones en Header.
-  const closeMoreMenu = useCallback(() => setShowMoreMenu(false), []);
+  const closeMoreMenu = useCallback(() => setShowMoreMenu(false), [setShowMoreMenu]);
   useDismissable({
     isOpen: showMoreMenu,
     onClose: closeMoreMenu,

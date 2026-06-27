@@ -59,13 +59,11 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
     <ChartCard title="Gastos por Categoría" subtitle="Distribución actual" icon={PieChartIcon}>
       {hasData ? (
         <>
-          <div className="flex justify-center">
+          <div className="flex justify-center" role="img" aria-label={chartLabel}>
             <ResponsiveContainer
               width="100%"
               height={CHART_HEIGHTS.small}
               className="max-w-[300px] mx-auto"
-              role="img"
-              aria-label={chartLabel}
             >
               <PieChart>
                 <Pie

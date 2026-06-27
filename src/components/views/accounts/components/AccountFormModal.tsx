@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Wallet } from 'lucide-react';
 import { BaseModal } from '../../../modals/BaseModal';
 import type { Account, NewAccount } from '../../../../types/finance';
@@ -12,6 +12,8 @@ interface AccountType {
 
 interface AccountFormModalProps {
   isOpen: boolean;
+  /** Guardado en curso: deshabilita el submit y muestra "Guardando…" (anti doble-submit). */
+  isSubmitting?: boolean;
   editingAccount: Account | null;
   newAccount: NewAccount;
   balanceAdjustment: string;
@@ -39,6 +41,7 @@ interface AccountFormModalProps {
  */
 export const AccountFormModal: React.FC<AccountFormModalProps> = ({
   isOpen,
+  isSubmitting = false,
   editingAccount,
   newAccount,
   balanceAdjustment,
@@ -60,7 +63,24 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
   getAccountBalance,
   getCreditUsed,
 }) => {
+  // Validación inline del nombre: el toast por sí solo no anuncia el campo
+  // inválido para lectores de pantalla ni lo marca visualmente. Se activa al
+  // primer intento de guardar (submitAttempted), no en cada tecla.
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+
   if (!isOpen) return null;
+
+  const nameInvalid = submitAttempted && !newAccount.name.trim();
+
+  const handleSubmit = () => {
+    setSubmitAttempted(true);
+    onSubmit();
+  };
+
+  // Clamp 1..31 para día de corte/pago: parseInt sobre un input vacío o no
+  // numérico daba NaN, que luego se enmascaraba con ||1/||10. Acotar aquí evita
+  // valores fuera de rango y NaN en el estado.
+  const clampDay = (value: string) => Math.min(31, Math.max(1, parseInt(value, 10) || 1));
 
   // Preview en vivo del ajuste: usa EXACTAMENTE el mismo parseo y la misma fuente
   // de saldo/deuda que handleSubmit, para que el usuario vea el saldo actual, el
@@ -136,7 +156,14 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                 onChange={(e) => setNewAccount({ ...newAccount, name: e.target.value })}
                 placeholder="Ej: Banco"
                 className="input-base"
+                aria-invalid={nameInvalid}
+                aria-describedby={nameInvalid ? 'af-name-error' : undefined}
               />
+              {nameInvalid && (
+                <p id="af-name-error" className="text-xs text-destructive mt-1">
+                  El nombre de la cuenta no puede estar vacío.
+                </p>
+              )}
             </div>
 
             {/* Campos para EDICIÓN de tarjeta de crédito */}
@@ -329,7 +356,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                         max="31"
                         value={newAccount.cutoffDay}
                         onChange={(e) =>
-                          setNewAccount({ ...newAccount, cutoffDay: parseInt(e.target.value) })
+                          setNewAccount({ ...newAccount, cutoffDay: clampDay(e.target.value) })
                         }
                         className="input-base"
                       />
@@ -344,7 +371,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                         max="31"
                         value={newAccount.paymentDay}
                         onChange={(e) =>
-                          setNewAccount({ ...newAccount, paymentDay: parseInt(e.target.value) })
+                          setNewAccount({ ...newAccount, paymentDay: clampDay(e.target.value) })
                         }
                         className="input-base"
                       />
@@ -356,10 +383,14 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
           </div>
 
           <div className="flex gap-3 mt-6">
-            <button onClick={onSubmit} className="btn-submit">
-              {editingAccount ? 'Actualizar' : 'Crear'}
+            <button
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+              className="btn-submit disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? 'Guardando…' : editingAccount ? 'Actualizar' : 'Crear'}
             </button>
-            <button onClick={onClose} className="btn-cancel">
+            <button onClick={onClose} disabled={isSubmitting} className="btn-cancel disabled:opacity-50 disabled:cursor-not-allowed">
               Cancelar
             </button>
           </div>

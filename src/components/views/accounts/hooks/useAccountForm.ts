@@ -34,6 +34,8 @@ interface UseAccountFormProps {
 
 interface UseAccountFormReturn {
   showAccountForm: boolean;
+  /** Guardado en curso: deshabilita el submit y muestra "Guardando…" (anti doble-submit en UI). */
+  isSubmitting: boolean;
   editingAccount: Account | null;
   newAccount: NewAccount;
   balanceAdjustment: string;
@@ -75,7 +77,9 @@ export function useAccountForm({
   // Evita el doble submit: un doble clic en "Actualizar" creaba DOS transacciones
   // de ajuste de saldo/deuda (el closeForm de la rama editar corre después de los
   // await). Un ref es síncrono → bloquea la segunda entrada en el mismo tick (#accounts-2).
+  // El estado paralelo solo alimenta la UI (botón deshabilitado + "Guardando…").
   const submittingRef = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const resetForm = useCallback(() => {
     setNewAccount(INITIAL_ACCOUNT);
@@ -126,6 +130,7 @@ export function useAccountForm({
   const handleSubmit = useCallback(async () => {
     if (submittingRef.current) return; // re-entrada (doble clic) → no-op
     submittingRef.current = true;
+    setIsSubmitting(true);
     try {
     if (!newAccount.name.trim()) {
       showToast.error(ERROR_MESSAGES.EMPTY_ACCOUNT_NAME);
@@ -270,6 +275,7 @@ export function useAccountForm({
     }
     } finally {
       submittingRef.current = false;
+      setIsSubmitting(false);
     }
   }, [
     newAccount,
@@ -287,6 +293,7 @@ export function useAccountForm({
 
   return {
     showAccountForm,
+    isSubmitting,
     editingAccount,
     newAccount,
     balanceAdjustment,

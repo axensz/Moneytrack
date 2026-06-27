@@ -19,6 +19,7 @@ export interface ImportRow {
   type: 'income' | 'expense' | 'transfer';
   category: string;
   categorySource?: 'file' | 'rules';
+  suggestedCategory?: string; // categoría sugerida por el parser, antes de aprender/usuario
   accountId: string;
   toAccountId?: string;
   include: boolean;    // si el usuario la marcó para importar

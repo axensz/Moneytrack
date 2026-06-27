@@ -1,36 +1,35 @@
 'use client';
 
 /**
- * useImportWizard — estado + lógica del wizard de importación de extractos
- * (Q-godfiles). Extraído de ImportTransactionsModal (god-file de 1230 LOC) para
- * que el componente quede como capa de presentación delgada y la lógica sea
- * testeable de forma aislada.
+ * useImportWizard — orquestador delgado del wizard de importación de extractos.
  *
- * NO toca el commit de dinero: la escritura atómica a Firestore vive en
- * `useImportTransactions` (writeBatch + increment(usedCredit)), que este hook
- * solo orquesta. Parsers, dedup, aprendizaje y categorización IA se reutilizan
- * de sus utilidades existentes.
+ * Compone los hooks granulares `useImportParsing`, `useImportAI` y `useImportDedup`
+ * con un pipeline explícito: parse → route → dedup → setState.
+ *
+ * La interfaz pública NO cambia: `ImportTransactionsModal` lo consume igual.
+ *
+ * La escritura atómica a Firestore sigue en `useImportTransactions`.
  */
 
 import { useState, useRef, useCallback, useMemo } from 'react';
 import { useGeminiKey } from '../contexts/GeminiKeyContext';
 import { useAuth } from './useAuth';
 import { useImportTransactions, type ImportRow } from './useImportTransactions';
+import { useImportParsing } from './useImportParsing';
+import { useImportAI } from './useImportAI';
+import { useImportDedup } from './useImportDedup';
 import { useLocalStorage } from './useLocalStorage';
-import { isInternalTransferDescription, parseCSV } from '../utils/csvParser';
-import { transferImportKey } from '../utils/importDuplicates';
-import { parseXLSX } from '../utils/xlsxParser';
-import { parsePDF } from '../utils/pdfParser';
-import { categorizeWithAI } from '../utils/aiCategorizer';
+import { isInternalTransferDescription } from '../utils/csvParser';
 import {
   findLearnedCategory,
-  groupImportRowsByPattern,
   upsertImportLearningRule,
   type ImportLearningRule,
 } from '../utils/importLearning';
-import { CREDIT_PAYMENT_CATEGORY, DEFAULT_CATEGORIES, SPECIAL_CATEGORIES } from '../config/constants';
+import { CREDIT_PAYMENT_CATEGORY, DEFAULT_CATEGORIES } from '../config/constants';
 import type { Account, Categories, Transaction } from '../types/finance';
-import type { WizardStep, ImportParseStats, AISuggestion } from '../types/import';
+import type { WizardStep, AISuggestion } from '../types/import';
+
+// ─── Constants ──────────────────────────────────────────────────────────────
 
 const FALLBACK_CATEGORIES = [
   ...new Set([...DEFAULT_CATEGORIES.expense, ...DEFAULT_CATEGORIES.income, CREDIT_PAYMENT_CATEGORY]),
@@ -38,13 +37,71 @@ const FALLBACK_CATEGORIES = [
 
 const categoryCollator = new Intl.Collator('es-CO', { sensitivity: 'base' });
 
-const normalizeCategory = (category: string) =>
-  category.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+// ─── Pure function: inferTransferRoute ──────────────────────────────────────
 
-const isOtherCategory = (category: string) => normalizeCategory(category) === 'otros';
+/**
+ * Determina accountId y toAccountId según si la fila es una transferencia interna.
+ * Si es transferencia y hay una sola tarjeta de crédito vinculada, la ruta es
+ * baseAccount → creditCard. Si la base es credit con bankAccountId, invierte la ruta.
+ */
+export function inferTransferRoute(
+  baseAccountId: string,
+  isInternalTransfer: boolean,
+  accounts: Account[]
+): { accountId: string; toAccountId?: string } {
+  if (!isInternalTransfer) return { accountId: baseAccountId };
 
-const isSpecialCategory = (category: string) =>
-  SPECIAL_CATEGORIES.adjustmentCategories.some(item => normalizeCategory(item) === normalizeCategory(category));
+  const selectedAccount = accounts.find(account => account.id === baseAccountId);
+  if (selectedAccount?.type === 'credit' && selectedAccount.id) {
+    const linkedSourceId = selectedAccount.bankAccountId && accounts.some(account => account.id === selectedAccount.bankAccountId)
+      ? selectedAccount.bankAccountId
+      : undefined;
+
+    return linkedSourceId
+      ? { accountId: linkedSourceId, toAccountId: selectedAccount.id }
+      : { accountId: baseAccountId };
+  }
+
+  const linkedCreditAccounts = accounts.filter(account =>
+    account.type === 'credit' &&
+    account.bankAccountId === baseAccountId &&
+    account.id
+  );
+
+  return linkedCreditAccounts.length === 1
+    ? { accountId: baseAccountId, toAccountId: linkedCreditAccounts[0].id }
+    : { accountId: baseAccountId };
+}
+
+// ─── Pure function: routeRows ───────────────────────────────────────────────
+
+/**
+ * Función pura que asigna accountId, toAccountId y categoría aprendida a cada fila.
+ * Se ejecuta después del parse y antes del dedup en el pipeline.
+ */
+export function routeRows(
+  rows: ImportRow[],
+  baseAccountId: string,
+  learningRules: ImportLearningRule[],
+  accounts: Account[],
+  categoryOptions: string[]
+): ImportRow[] {
+  return rows.map(row => {
+    const isTransfer = row.type === 'transfer' || isInternalTransferDescription(row.description);
+    const { accountId, toAccountId } = inferTransferRoute(baseAccountId, isTransfer, accounts);
+    const learnedCategory = row.categorySource === 'file'
+      ? null
+      : findLearnedCategory(row.description, learningRules, categoryOptions);
+    return {
+      ...row,
+      accountId,
+      toAccountId,
+      category: learnedCategory ?? row.suggestedCategory ?? row.category,
+    };
+  });
+}
+
+// ─── Hook interface ─────────────────────────────────────────────────────────
 
 export interface UseImportWizardArgs {
   accounts: Account[];
@@ -53,10 +110,10 @@ export interface UseImportWizardArgs {
   onClose: () => void;
 }
 
+// ─── Hook implementation ────────────────────────────────────────────────────
+
 export function useImportWizard({ accounts, existingTransactions, categories, onClose }: UseImportWizardArgs) {
   const { isConfigured: aiKeyConfigured, hasConsent: aiHasConsent } = useGeminiKey();
-  // Motivo por el que la IA no está disponible (para mensajes precisos):
-  // 'no-key' = falta API key · 'no-consent' = hay key pero falta autorizar.
   const aiReason: 'no-key' | 'no-consent' | null =
     !aiKeyConfigured ? 'no-key' : !aiHasConsent ? 'no-consent' : null;
   const aiUnavailableMessage =
@@ -71,15 +128,6 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
   const [step, setStep] = useState<WizardStep>('upload');
   const [rows, setRows] = useState<ImportRow[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState('');
-  const [parseError, setParseError] = useState('');
-  const [fileName, setFileName] = useState('');
-  const [parseStats, setParseStats] = useState<ImportParseStats | null>(null);
-  const [aiCategorizing, setAiCategorizing] = useState(false);
-  const [aiApplied, setAiApplied] = useState(false);
-  const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
-  const [pdfParsing, setPdfParsing] = useState(false);
-  const [pdfNeedsAI, setPdfNeedsAI] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const nonCreditAccounts = accounts.filter(a => a.type !== 'credit');
   const creditAccounts = accounts.filter(a => a.type === 'credit');
@@ -94,201 +142,80 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
       : [...FALLBACK_CATEGORIES].sort(categoryCollator.compare),
     [categoryOptions]
   );
-  const inferTransferRoute = useCallback((baseAccountId: string, isInternalTransfer: boolean): { accountId: string; toAccountId?: string } => {
-    if (!isInternalTransfer) return { accountId: baseAccountId };
 
-    const selectedAccount = accounts.find(account => account.id === baseAccountId);
-    if (selectedAccount?.type === 'credit' && selectedAccount.id) {
-      const linkedSourceId = selectedAccount.bankAccountId && accounts.some(account => account.id === selectedAccount.bankAccountId)
-        ? selectedAccount.bankAccountId
-        : undefined;
+  // ─── Delegate to sub-hooks ──────────────────────────────────────────────
 
-      return linkedSourceId
-        ? { accountId: linkedSourceId, toAccountId: selectedAccount.id }
-        : { accountId: baseAccountId };
-    }
+  const parsing = useImportParsing({ categories, aiReason });
+  const {
+    fileName, parseError, parseStats: parsingStats, pdfParsing, pdfNeedsAI,
+    fileInputRef, parseFile, resetParsing,
+  } = parsing;
 
-    const linkedCreditAccounts = accounts.filter(account =>
-      account.type === 'credit' &&
-      account.bankAccountId === baseAccountId &&
-      account.id
-    );
+  const ai = useImportAI({
+    availableCategoryOptions,
+    learningRules,
+    setLearningRules,
+  });
+  const {
+    aiCategorizing, aiApplied, aiSuggestions,
+    aiSuggestionTransactionCount, aiSuggestionsByCategory,
+    handleAICategorize: aiCategorize,
+    handleApplyAISuggestions: aiApply,
+    handleSuggestionCategoryChange,
+    handleDiscardAISuggestions,
+  } = ai;
 
-    return linkedCreditAccounts.length === 1
-      ? { accountId: baseAccountId, toAccountId: linkedCreditAccounts[0].id }
-      : { accountId: baseAccountId };
-  }, [accounts]);
+  const dedup = useImportDedup({ existingTransactions });
+  const { markDuplicates } = dedup;
 
-  // Detección de duplicados (todo en memoria, cero reads). Recibe filas ya ruteadas
-  // y la cuenta destino; devuelve las filas con isDuplicate/include recalculados.
-  // Reutilizable: se corre al cargar el archivo Y al cambiar la cuenta destino, para
-  // que el dedup nunca quede evaluado contra una cuenta distinta de la elegida.
-  const markDuplicates = useCallback((mappedRows: ImportRow[], accountId: string): ImportRow[] => {
-    const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-    const descKey = (description: string) =>
-      description.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 20);
-    const txKey = (type: string, date: Date, amount: number, description: string) =>
-      `${type}|${dayKey(date)}|${amount.toFixed(2)}|${descKey(description)}`;
-    const txDate = (value: unknown) => {
-      if (value instanceof Date) return value;
-      if (value && typeof (value as { toDate?: () => Date }).toDate === 'function') {
-        return (value as { toDate: () => Date }).toDate();
-      }
-      return new Date(value as string | number);
-    };
+  // ─── Parse stats: merge with dedup counts ─────────────────────────────
 
-    const existingAccountKeys = new Set<string>();
-    const existingInternalTransferKeys = new Set<string>();
-    existingTransactions.forEach(tx => {
-      const d = txDate(tx.date);
-      if (isNaN(d.getTime())) return;
+  const parseStats = useMemo(() => {
+    if (!parsingStats) return null;
+    const duplicateCount = rows.filter(r => r.isDuplicate).length;
+    return { ...parsingStats, duplicates: duplicateCount };
+  }, [parsingStats, rows]);
 
-      if (tx.accountId === accountId) {
-        existingAccountKeys.add(txKey(tx.type, d, tx.amount, tx.description));
-      }
-      // Huella de transferencia/pago SIN descripción (el texto difiere entre bancos):
-      // solo desde tx que SON transferencia/pago, no desde toda tx. Antes se poblaba
-      // con TODA tx, así que un gasto normal de igual monto+día marcaba como duplicada
-      // una transferencia real y la omitía (F7/#10).
-      if (tx.type === 'transfer' || isInternalTransferDescription(tx.description)) {
-        existingInternalTransferKeys.add(transferImportKey(d, tx.amount));
-      }
-    });
-
-    const seenInFile = new Set<string>();
-    return mappedRows.map(r => {
-      const isInternalTransfer = r.type === 'transfer' || isInternalTransferDescription(r.description);
-      const key = isInternalTransfer
-        ? transferImportKey(r.date, r.amount)
-        : txKey(r.type, r.date, r.amount, r.description);
-
-      const duplicateInDB = isInternalTransfer
-        ? existingInternalTransferKeys.has(key)
-        : existingAccountKeys.has(key);
-      const duplicateInFile = seenInFile.has(key);
-      if (!duplicateInFile) seenInFile.add(key);
-
-      const isDuplicate = duplicateInDB || duplicateInFile;
-      return {
-        ...r,
-        // No incluir por defecto duplicados, transferencias ni montos en moneda
-        // extranjera sin TRM (no se pueden convertir a COP de forma segura).
-        include: !isDuplicate && !isInternalTransfer && !r.needsExchangeRate,
-        isDuplicate,
-      };
-    });
-  }, [existingTransactions]);
+  // ─── Pipeline handlers ────────────────────────────────────────────────
 
   const handleClose = useCallback(() => {
     setStep('upload');
     setRows([]);
     setSelectedAccountId('');
-    setParseError('');
-    setFileName('');
-    setParseStats(null);
-    setAiApplied(false);
-    setAiSuggestions([]);
-    setPdfParsing(false);
-    setPdfNeedsAI(false);
+    resetParsing();
     reset();
     onClose();
-  }, [onClose, reset]);
+  }, [onClose, reset, resetParsing]);
 
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setParseError('');
-    setFileName(file.name);
-    setAiSuggestions([]);
-    setAiApplied(false);
-    setPdfNeedsAI(false);
+    // 1. PARSE
+    const parsedRows = await parseFile(file);
+    if (parsedRows.length === 0) return;
 
-    const name = file.name.toLowerCase();
-    const isXLSX = name.endsWith('.xlsx') || name.endsWith('.xls');
-    const isPDF = name.endsWith('.pdf');
-
-    const applyResult = (result: ReturnType<typeof parseCSV>) => {
-      if (result.rows.length === 0) {
-        setParseError(
-          result.errors.length > 0
-            ? result.errors.join('. ')
-            : 'No se encontraron transacciones válidas. Verifica que el archivo tenga columnas de fecha, descripción y monto.'
-        );
-        return;
-      }
-
-      const accountId = selectedAccountId || nonCreditAccounts[0]?.id || accounts[0]?.id || '';
-      if (!selectedAccountId && accountId) {
-        setSelectedAccountId(accountId);
-      }
-
-      // Rutea cada fila (cuenta destino + categoría aprendida); el dedup se calcula
-      // aparte con markDuplicates para poder recomputarlo al cambiar de cuenta.
-      const routed = result.rows.map(r => {
-        const isInternalTransfer = r.type === 'transfer' || isInternalTransferDescription(r.description);
-        const transferRoute = inferTransferRoute(accountId, isInternalTransfer);
-        const learnedCategory = r.categorySource === 'file'
-          ? null
-          : findLearnedCategory(r.description, learningRules, availableCategoryOptions);
-        return {
-          ...r,
-          category: learnedCategory ?? r.suggestedCategory,
-          accountId: transferRoute.accountId,
-          toAccountId: transferRoute.toAccountId,
-          include: true,
-          isDuplicate: false,
-        };
-      });
-
-      const mapped = markDuplicates(routed, accountId);
-      const duplicateCount = mapped.filter(r => r.isDuplicate).length;
-      const needsRateCount = mapped.filter(r => r.needsExchangeRate).length;
-      setParseStats({ total: result.rows.length, skipped: result.skippedRows, duplicates: duplicateCount, needsRate: needsRateCount });
-      setRows(mapped);
-    };
-
-    if (isPDF) {
-      // El PDF se procesa con IA: si no está disponible, mostramos un bloque
-      // con CTA en vez de dejar al usuario sin salida con un error técnico.
-      if (aiReason) {
-        setPdfNeedsAI(true);
-        setFileName('');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-        const buffer = ev.target?.result as ArrayBuffer;
-        setPdfParsing(true);
-        const result = await parsePDF(buffer);
-        setPdfParsing(false);
-        applyResult(result);
-      };
-      reader.readAsArrayBuffer(file);
-    } else if (isXLSX) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const buffer = ev.target?.result as ArrayBuffer;
-        applyResult(parseXLSX(buffer, categories));
-      };
-      reader.readAsArrayBuffer(file);
-    } else {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const text = ev.target?.result as string;
-        applyResult(parseCSV(text, categories));
-      };
-      reader.readAsText(file, 'UTF-8');
+    // Resolve account
+    const accountId = selectedAccountId || nonCreditAccounts[0]?.id || accounts[0]?.id || '';
+    if (!selectedAccountId && accountId) {
+      setSelectedAccountId(accountId);
     }
+
+    // 2. ROUTE
+    const routed = routeRows(parsedRows, accountId, learningRules, accounts, availableCategoryOptions);
+
+    // 3. DEDUP
+    const deduped = markDuplicates(routed, accountId);
+
+    // 4. STATE
+    setRows(deduped);
   }, [
     selectedAccountId,
     accounts,
     nonCreditAccounts,
-    categories,
-    inferTransferRoute,
     learningRules,
     availableCategoryOptions,
-    aiReason,
+    parseFile,
     markDuplicates,
   ]);
 
@@ -296,30 +223,22 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
     e.preventDefault();
     const file = e.dataTransfer.files[0];
     if (!file) return;
-    // Reusar la lógica del input
     const dt = new DataTransfer();
     dt.items.add(file);
     if (fileInputRef.current) {
       fileInputRef.current.files = dt.files;
       fileInputRef.current.dispatchEvent(new Event('change', { bubbles: true }));
     }
-  }, []);
+  }, [fileInputRef]);
 
+  // handleAccountChange: re-executes route + dedup without re-parsing
   const handleAccountChange = useCallback((accountId: string) => {
     setSelectedAccountId(accountId);
     setRows(prev => {
-      // Re-rutea a la nueva cuenta y RECALCULA duplicados contra ella: si no, el
-      // dedup quedaba evaluado contra la cuenta anterior y podía re-importar en la
-      // nueva (o marcar falsos duplicados de la previa). Recalcular resetea include
-      // según el dedup; el cambio de cuenta ocurre antes de la revisión manual.
-      const rerouted = prev.map(r => {
-        const isInternalTransfer = r.type === 'transfer' || isInternalTransferDescription(r.description);
-        const transferRoute = inferTransferRoute(accountId, isInternalTransfer);
-        return { ...r, accountId: transferRoute.accountId, toAccountId: transferRoute.toAccountId };
-      });
+      const rerouted = routeRows(prev, accountId, learningRules, accounts, availableCategoryOptions);
       return markDuplicates(rerouted, accountId);
     });
-  }, [inferTransferRoute, markDuplicates]);
+  }, [learningRules, accounts, availableCategoryOptions, markDuplicates]);
 
   const handleToggleRow = useCallback((index: number) => {
     setRows(prev => prev.map((r, i) => i === index ? { ...r, include: !r.include } : r));
@@ -333,13 +252,6 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
     const row = rows[index];
     if (row && row.category !== category) {
       setLearningRules(prev => upsertImportLearningRule(prev, row.description, category));
-      setAiSuggestions(prev => prev
-        .map(suggestion => ({
-          ...suggestion,
-          indexes: suggestion.indexes.filter(rowIndex => rowIndex !== index),
-        }))
-        .filter(suggestion => suggestion.indexes.length > 0)
-      );
     }
     setRows(prev => prev.map((r, i) => i === index ? { ...r, category } : r));
   }, [rows, setLearningRules]);
@@ -347,10 +259,10 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
   const handleTypeChange = useCallback((index: number, type: 'income' | 'expense' | 'transfer') => {
     setRows(prev => prev.map((r, i) => {
       if (i !== index) return r;
-      const transferRoute = inferTransferRoute(r.accountId, type === 'transfer');
-      return { ...r, type, accountId: transferRoute.accountId, toAccountId: transferRoute.toAccountId };
+      const { accountId, toAccountId } = inferTransferRoute(r.accountId, type === 'transfer', accounts);
+      return { ...r, type, accountId, toAccountId };
     }));
-  }, [inferTransferRoute]);
+  }, [accounts]);
 
   const handleDateChange = useCallback((index: number, date: Date) => {
     setRows(prev => prev.map((r, idx) => idx === index ? { ...r, date } : r));
@@ -367,9 +279,6 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
 
   const importingRef = useRef(false);
   const handleImport = useCallback(async () => {
-    // Guard SÍNCRONO contra doble clic: el botón solo se deshabilita cuando
-    // status='importing' propaga al re-render, pero un segundo clic en el mismo
-    // tick dispararía un import completo duplicado. El ref bloquea de inmediato.
     if (importingRef.current) return;
     importingRef.current = true;
     try {
@@ -380,110 +289,17 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
     }
   }, [importTransactions, rows]);
 
+  // AI handlers — delegate to useImportAI, but wire into local rows state
   const handleAICategorize = useCallback(async () => {
-    if (aiCategorizing || rows.length === 0) return;
-    setAiCategorizing(true);
-    try {
-      const rowsForAI = rows
-        .map((row, index) => ({ row, index }))
-        .filter((item): item is { row: ImportRow & { type: 'income' | 'expense' }; index: number } =>
-          item.row.include &&
-          item.row.type !== 'transfer' &&
-          item.row.categorySource !== 'file' &&
-          isOtherCategory(item.row.category) &&
-          !isSpecialCategory(item.row.category)
-        );
-
-      const groups = groupImportRowsByPattern(rowsForAI);
-      const toAnalyze = groups.map((group, index) => ({
-        index,
-        description: `${group.pattern}: ${group.sample.description}`,
-        amount: group.sample.amount,
-        type: group.sample.type,
-        currentCategory: group.sample.category,
-      }));
-
-      const results = await categorizeWithAI(toAnalyze);
-      const applicableResults = results.filter(r => r.confidence >= 0.75 && !isOtherCategory(r.category));
-      const suggestions = applicableResults
-        .map((result): AISuggestion | null => {
-          const group = groups[result.index];
-          if (!group) return null;
-
-          return {
-            id: `${group.pattern}-${result.category}`,
-            pattern: group.pattern,
-            category: result.category,
-            confidence: result.confidence,
-            indexes: group.indexes,
-            sampleDescription: group.sample.description,
-            sampleAmount: group.sample.amount,
-          };
-        })
-        .filter((suggestion): suggestion is AISuggestion => suggestion !== null)
-        .sort((a, b) => categoryCollator.compare(a.category, b.category) || categoryCollator.compare(a.pattern, b.pattern));
-
-      setAiSuggestions(suggestions);
-    } catch {
-      // silently fail — categories stay as keyword-based
-    } finally {
-      setAiCategorizing(false);
-    }
-  }, [aiCategorizing, rows]);
-
-  const handleSuggestionCategoryChange = useCallback((suggestionId: string, category: string) => {
-    setAiSuggestions(prev => prev.map(suggestion =>
-      suggestion.id === suggestionId ? { ...suggestion, category } : suggestion
-    ));
-  }, []);
-
-  const handleDiscardAISuggestions = useCallback(() => {
-    setAiSuggestions([]);
-  }, []);
+    await aiCategorize(rows);
+  }, [aiCategorize, rows]);
 
   const handleApplyAISuggestions = useCallback(() => {
-    if (aiSuggestions.length === 0) return;
-
-    setRows(prev => {
-      const updated = [...prev];
-      aiSuggestions.forEach(suggestion => {
-        suggestion.indexes.forEach(rowIndex => {
-          if (updated[rowIndex]) {
-            updated[rowIndex] = { ...updated[rowIndex], category: suggestion.category };
-          }
-        });
-      });
-      return updated;
-    });
-
-    setLearningRules(prev => aiSuggestions.reduce(
-      (acc, suggestion) => upsertImportLearningRule(acc, suggestion.sampleDescription, suggestion.category),
-      prev
-    ));
-    setAiSuggestions([]);
-    setAiApplied(true);
-  }, [aiSuggestions, setLearningRules]);
+    const updatedRows = aiApply(rows);
+    setRows(updatedRows);
+  }, [aiApply, rows]);
 
   const includedCount = rows.filter(r => r.include).length;
-  const aiSuggestionTransactionCount = useMemo(
-    () => new Set(aiSuggestions.flatMap(suggestion => suggestion.indexes)).size,
-    [aiSuggestions]
-  );
-  const aiSuggestionsByCategory = useMemo(() => {
-    const grouped = new Map<string, AISuggestion[]>();
-    aiSuggestions.forEach(suggestion => {
-      const current = grouped.get(suggestion.category) ?? [];
-      current.push(suggestion);
-      grouped.set(suggestion.category, current);
-    });
-
-    return [...grouped.entries()]
-      .sort(([a], [b]) => categoryCollator.compare(a, b))
-      .map(([category, suggestions]) => ({
-        category,
-        suggestions: suggestions.sort((a, b) => categoryCollator.compare(a.pattern, b.pattern)),
-      }));
-  }, [aiSuggestions]);
 
   return {
     // estado

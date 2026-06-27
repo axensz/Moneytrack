@@ -170,7 +170,7 @@ export const DebtsView: React.FC = () => {
 
         {/* Stats Cards - planas y neutras (color = estado, no decoración) */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="rounded-xl p-4 bg-gray-50 dark:bg-gray-800/50">
+          <div className="card-stat">
             <div className="flex items-center gap-2 mb-2">
               <ArrowUpRight className="text-gray-500 dark:text-gray-400" size={18} />
               <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Me deben</span>
@@ -181,7 +181,7 @@ export const DebtsView: React.FC = () => {
             </p>
           </div>
 
-          <div className="rounded-xl p-4 bg-gray-50 dark:bg-gray-800/50">
+          <div className="card-stat">
             <div className="flex items-center gap-2 mb-2">
               <ArrowDownLeft className="text-gray-500 dark:text-gray-400" size={18} />
               <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Debo</span>
@@ -192,7 +192,7 @@ export const DebtsView: React.FC = () => {
             </p>
           </div>
 
-          <div className="rounded-xl p-4 bg-gray-50 dark:bg-gray-800/50">
+          <div className="card-stat">
             <div className="flex items-center gap-2 mb-2">
               <CheckCircle2 className="text-gray-500 dark:text-gray-400" size={18} />
               <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Saldados</span>
@@ -200,7 +200,7 @@ export const DebtsView: React.FC = () => {
             <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">{debtStats.settledCount}</p>
           </div>
 
-          <div className="rounded-xl p-4 bg-gray-50 dark:bg-gray-800/50">
+          <div className="card-stat">
             <div className="flex items-center gap-2 mb-2">
               <Users className="text-gray-500 dark:text-gray-400" size={18} />
               <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Balance neto</span>
@@ -231,7 +231,7 @@ export const DebtsView: React.FC = () => {
 
         {/* Form */}
         {showForm && (
-          <div className="bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20 rounded-2xl p-5 mb-6 space-y-4 border-2 border-purple-200 dark:border-purple-800 shadow-lg">
+          <div className="bg-muted rounded-xl p-5 mb-6 space-y-4 border border-border shadow-sm">
             <div className="flex gap-3 mb-4">
               <button
                 onClick={() => setFormData(f => ({ ...f, type: 'lent' }))}

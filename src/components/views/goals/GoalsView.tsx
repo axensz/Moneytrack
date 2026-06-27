@@ -113,28 +113,28 @@ export const GoalsView: React.FC = () => {
 
         {/* Stats - planas y neutras (las metas son seguimiento, no estado) */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-          <div className="rounded-xl p-4 bg-gray-50 dark:bg-gray-800/50">
+          <div className="card-stat">
             <div className="flex items-center gap-2 mb-2">
               <Target className="text-gray-500 dark:text-gray-400" size={18} />
               <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Metas activas</span>
             </div>
             <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">{goalStats.activeCount}</p>
           </div>
-          <div className="rounded-xl p-4 bg-gray-50 dark:bg-gray-800/50">
+          <div className="card-stat">
             <div className="flex items-center gap-2 mb-2">
               <Target className="text-gray-500 dark:text-gray-400" size={18} />
               <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Objetivo total</span>
             </div>
             <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">{displayAmount(goalStats.totalTarget)}</p>
           </div>
-          <div className="rounded-xl p-4 bg-gray-50 dark:bg-gray-800/50">
+          <div className="card-stat">
             <div className="flex items-center gap-2 mb-2">
               <CheckCircle2 className="text-gray-500 dark:text-gray-400" size={18} />
               <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Ahorrado</span>
             </div>
             <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">{displayAmount(goalStats.totalSaved)}</p>
           </div>
-          <div className="rounded-xl p-4 bg-gray-50 dark:bg-gray-800/50">
+          <div className="card-stat">
             <div className="flex items-center gap-2 mb-2">
               <Trophy className="text-gray-500 dark:text-gray-400" size={18} />
               <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Completadas</span>

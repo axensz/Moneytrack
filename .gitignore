@@ -160,6 +160,11 @@ ui-debug.log
 .claude/
 # Instrucciones locales del asistente (preferencias personales de skills).
 CLAUDE.md
+# Skills/hooks de agentes y sus lockfiles: tooling por máquina, no va al repo.
+.agents/
+.impeccable/
+.kiro/
+skills-lock.json
 
 # ============================================================
 # Scripts locales de un solo uso (migraciones de datos manuales)

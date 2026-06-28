@@ -108,8 +108,8 @@ export const Header: React.FC<HeaderProps> = ({
   });
 
   return (
-    <header className="w-full py-2 sm:py-3 bg-card/90 backdrop-blur-md border-b border-border z-[100] shadow-sm shrink-0 safe-area-top">
-      <div className="px-3 sm:px-4 md:px-6 lg:px-8">
+    <header className="w-full flex items-center py-2 sm:py-3 bg-card/90 backdrop-blur-md border-b border-border z-[100] shadow-sm shrink-0 safe-area-top">
+      <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2 sm:gap-3 flex-1">
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold">

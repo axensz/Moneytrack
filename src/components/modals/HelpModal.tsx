@@ -31,8 +31,10 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
     >
         {/* Tabs */}
         <div className="border-b border-border bg-muted/50 shrink-0">
-          {/* scroll-fade-x: máscara de bordes que insinúa más tabs fuera de vista (ver utilities.css) */}
-          <div className="flex gap-1 sm:gap-2 p-2 sm:p-3 overflow-x-auto no-scrollbar scroll-smooth scroll-fade-x">
+          {/* Desktop: las tabs hacen wrap (todas visibles; un scroll oculto con
+              mouse no se puede alcanzar y cortaba el acceso a las últimas tabs).
+              Móvil (max-sm): tira horizontal con scroll touch + máscara de bordes. */}
+          <div className="flex flex-wrap gap-1 sm:gap-2 p-2 sm:p-3 scroll-smooth max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:no-scrollbar max-sm:scroll-fade-x">
             {[
               { id: 'basics', label: 'Inicio', shortLabel: 'Inicio', icon: null },
               { id: 'accounts', label: 'Cuentas', shortLabel: 'Cuentas', icon: Wallet },

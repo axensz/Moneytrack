@@ -72,13 +72,14 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
     >
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 max-h-[calc(90vh-80px)] overflow-y-auto">
         {/* Header con botón */}
-        <div className="flex justify-between items-center">
+        <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
             Administra tus categorías de ingresos y gastos.
           </p>
           <button
             onClick={() => setShowForm(!showForm)}
-            className="btn-primary text-sm"
+            className="btn-primary text-sm shrink-0"
+            aria-expanded={showForm}
           >
             <Plus size={16} />
             Nueva
@@ -88,38 +89,41 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
         {/* Formulario inline */}
         {showForm && (
           <div className="p-4 bg-muted rounded-xl border border-border space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label-base">Tipo</label>
-                <select
-                  value={newCategory.type}
-                  onChange={(e) =>
-                    setNewCategory({
-                      ...newCategory,
-                      type: e.target.value as 'expense' | 'income',
-                    })
-                  }
-                  className="input-base"
+            <div>
+              <span className="label-base" id="new-cat-type-label">Tipo</span>
+              <div className="flex gap-2" role="group" aria-labelledby="new-cat-type-label">
+                <button
+                  type="button"
+                  onClick={() => setNewCategory({ ...newCategory, type: 'expense' })}
+                  className={`btn-type ${newCategory.type === 'expense' ? 'btn-type-active-destructive' : 'btn-type-inactive'}`}
                 >
-                  <option value="expense">Gasto</option>
-                  <option value="income">Ingreso</option>
-                </select>
+                  Gasto
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewCategory({ ...newCategory, type: 'income' })}
+                  className={`btn-type ${newCategory.type === 'income' ? 'btn-type-active-success' : 'btn-type-inactive'}`}
+                >
+                  Ingreso
+                </button>
               </div>
-              <div>
-                <label className="label-base">Nombre</label>
-                <input
-                  type="text"
-                  value={newCategory.name}
-                  onChange={(e) =>
-                    setNewCategory({ ...newCategory, name: e.target.value })
-                  }
-                  placeholder="Ej: Suscripciones"
-                  className="input-base"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSubmit();
-                  }}
-                />
-              </div>
+            </div>
+            <div>
+              <label htmlFor="new-cat-name" className="label-base">Nombre</label>
+              <input
+                id="new-cat-name"
+                type="text"
+                value={newCategory.name}
+                onChange={(e) =>
+                  setNewCategory({ ...newCategory, name: e.target.value })
+                }
+                placeholder="Ej: Suscripciones"
+                className="input-base"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSubmit();
+                }}
+              />
             </div>
             <div className="flex gap-2">
               <button onClick={handleSubmit} disabled={submitting} className="btn-submit text-sm disabled:opacity-50 disabled:cursor-not-allowed">
@@ -142,7 +146,8 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
           {/* Gastos */}
           <div>
-            <h5 className="text-sm font-semibold mb-3 text-foreground">
+            <h5 className="flex items-center gap-2 text-sm font-semibold mb-3 text-foreground">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-destructive" aria-hidden="true" />
               Gastos ({categories.expense.length})
             </h5>
             <div className="space-y-0.5 max-h-48 sm:max-h-64 overflow-y-auto">
@@ -166,7 +171,8 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
 
           {/* Ingresos */}
           <div>
-            <h5 className="text-sm font-semibold mb-3 text-foreground">
+            <h5 className="flex items-center gap-2 text-sm font-semibold mb-3 text-foreground">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-success" aria-hidden="true" />
               Ingresos ({categories.income.length})
             </h5>
             <div className="space-y-0.5 max-h-48 sm:max-h-64 overflow-y-auto">

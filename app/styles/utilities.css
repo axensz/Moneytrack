@@ -70,6 +70,76 @@
   background-color: rgba(167, 139, 250, 0.5);
 }
 
+/* ─── Afordancia de scroll horizontal ──────────────────────────────
+   Para tiras scrollables (tabs del manual, chips). */
+
+/* Oculta la barra de scroll nativa SIN perder el scroll: la señal de
+   "hay más a los lados" la da .scroll-fade-x, no una barra siempre visible. */
+.no-scrollbar {
+  scrollbar-width: none;            /* Firefox */
+  -ms-overflow-style: none;         /* Edge legado */
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;                    /* Chromium / Safari */
+}
+
+/* Máscara de desvanecido en los bordes (mask real, NO un degradado
+   decorativo): recorta suavemente el contenido para insinuar que sigue
+   fuera de vista. Por defecto —y bajo prefers-reduced-motion o navegadores
+   sin scroll-driven animations— es simétrica y estática. Donde hay soporte,
+   sigue la posición de scroll: el borde contra el que descansas queda nítido
+   y el opuesto se desvanece. El foco por teclado hace auto-scroll del tab a la
+   zona nítida, así que la afordancia no interfiere con la navegación. */
+@property --scroll-fade-l {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --scroll-fade-r {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+.scroll-fade-x {
+  --scroll-fade-size: 1.5rem;
+  --scroll-fade-l: var(--scroll-fade-size);
+  --scroll-fade-r: var(--scroll-fade-size);
+  -webkit-mask-image: linear-gradient(to right,
+      transparent 0,
+      #000 var(--scroll-fade-l),
+      #000 calc(100% - var(--scroll-fade-r)),
+      transparent 100%);
+  mask-image: linear-gradient(to right,
+      transparent 0,
+      #000 var(--scroll-fade-l),
+      #000 calc(100% - var(--scroll-fade-r)),
+      transparent 100%);
+}
+
+@supports (animation-timeline: scroll()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .scroll-fade-x {
+      --scroll-fade-l: 0px;
+      --scroll-fade-r: 0px;
+      animation: scroll-fade-left linear both, scroll-fade-right linear both;
+      animation-timeline: scroll(self inline), scroll(self inline);
+    }
+  }
+}
+
+@keyframes scroll-fade-left {
+  0%, 4% { --scroll-fade-l: 0px; }
+  12%, 100% { --scroll-fade-l: var(--scroll-fade-size); }
+}
+
+@keyframes scroll-fade-right {
+  0%, 88% { --scroll-fade-r: var(--scroll-fade-size); }
+  96%, 100% { --scroll-fade-r: 0px; }
+}
+
 /* Prevenir zoom en inputs en iOS */
 @media screen and (max-width: 640px) {
 

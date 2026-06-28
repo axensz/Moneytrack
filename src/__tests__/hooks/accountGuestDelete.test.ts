@@ -11,7 +11,7 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import type { Account, Transaction, Debt, RecurringPayment } from '../../types/finance';
 
 // Modo invitado: firebase no se usa, pero los módulos deben resolver.
-vi.mock('../../lib/firebase', () => ({ db: {} }));
+vi.mock('../../lib/firebaseDb', () => ({ db: {} }));
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn(), collection: vi.fn(), query: vi.fn(), where: vi.fn(),
   getDocs: vi.fn(), getDoc: vi.fn(), updateDoc: vi.fn(), deleteDoc: vi.fn(),

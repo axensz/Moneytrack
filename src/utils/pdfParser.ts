@@ -67,7 +67,7 @@ export async function parsePDF(buffer: ArrayBuffer): Promise<ParseResult> {
 
   // ── Llamar a Gemini con el PDF inline (con retry) ────────────────────────
   let rawText = '';
-  const ai = getGeminiClient();
+  const ai = await getGeminiClient();
   const RETRY_DELAYS = [5_000, 15_000, 30_000];
 
   for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {

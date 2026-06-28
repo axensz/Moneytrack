@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { collection, onSnapshot, query, orderBy, limit as firestoreLimit, updateDoc, deleteDoc, doc, writeBatch, setDoc } from 'firebase/firestore';
 import { ensureDate, localDateKey } from '../utils/dateUtils';
-import { db } from '../lib/firebase';
+import { db } from '../lib/firebaseDb';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
 import type { Notification } from '../types/finance';

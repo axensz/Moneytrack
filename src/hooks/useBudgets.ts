@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db } from '../lib/firebaseDb';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
 import { generateId } from '../utils/formatters';

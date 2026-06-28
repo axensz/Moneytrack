@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { doc, onSnapshot, setDoc, deleteField } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from '../lib/firebase';
+import { isFirebaseConfigured } from '../lib/firebase';
+import { db } from '../lib/firebaseDb';
 import { setGeminiApiKey } from '../lib/geminiClient';
 import { setAiConsent } from '../lib/aiConsent';
 import { logger } from '../utils/logger';

@@ -99,22 +99,51 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
   const renderAdjustPreview = () => {
     if (!adjustPreview || !editingAccount) return null;
     const isCredit = editingAccount.type === 'credit';
+    const { current, target, delta } = adjustPreview;
+    const magnitude = Math.abs(delta);
+    // Mismo umbral que handleSubmit (>= 0,01): por debajo NO se crea transacción
+    // de ajuste, así que el preview tampoco debe insinuar que se creará uno.
+    const noChange = magnitude < 0.01;
+    // Dirección del ajuste como TRANSACCIÓN, en paridad con handleSubmit:
+    //  · cuenta normal: saldo sube → ingreso; saldo baja → gasto.
+    //  · TC: deuda baja → ingreso (pago); deuda sube → gasto.
+    // El color sigue al ESTADO (ingreso=success, gasto=destructive), no al signo
+    // crudo del delta: subir la deuda de una TC es un gasto, nunca "verde".
+    const isIncome = isCredit ? delta < 0 : delta > 0;
+    const signed = `${isIncome ? '+' : '-'}${formatCurrency(magnitude)}`;
     return (
       <div className="mt-2 text-xs rounded-lg bg-muted/40 border border-border p-2 space-y-0.5">
         <div className="flex justify-between">
           <span className="text-muted-foreground">{isCredit ? 'Deuda actual' : 'Saldo actual'}</span>
-          <span className="font-medium text-foreground">{formatCurrency(adjustPreview.current)}</span>
+          <span className="font-medium text-foreground">{formatCurrency(current)}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-muted-foreground">Nuevo</span>
-          <span className="font-medium text-foreground">{formatCurrency(adjustPreview.target)}</span>
+          <span className="text-muted-foreground">{isCredit ? 'Nueva deuda' : 'Nuevo saldo'}</span>
+          <span className="font-medium text-foreground">{formatCurrency(target)}</span>
         </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Ajuste a crear</span>
-          <span className={`font-semibold ${adjustPreview.delta >= 0 ? 'text-success' : 'text-destructive'}`}>
-            {adjustPreview.delta >= 0 ? '+' : ''}{formatCurrency(adjustPreview.delta)}
-          </span>
-        </div>
+        {noChange ? (
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Ajuste a crear</span>
+            <span className="font-medium text-muted-foreground">Sin cambios</span>
+          </div>
+        ) : (
+          <>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Ajuste a crear</span>
+              <span className={`font-semibold ${isIncome ? 'text-success' : 'text-destructive'}`}>
+                {signed}
+              </span>
+            </div>
+            <p className="text-muted-foreground pt-0.5 leading-snug">
+              {isIncome
+                ? `Se registrará un ingreso de ajuste de ${signed}.`
+                : `Se registrará un gasto de ajuste de ${signed}.`}
+              {isCredit && (isIncome
+                ? ` Tu deuda baja ${formatCurrency(magnitude)}.`
+                : ` Tu deuda sube ${formatCurrency(magnitude)}.`)}
+            </p>
+          </>
+        )}
       </div>
     );
   };

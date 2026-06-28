@@ -4,7 +4,7 @@
 
 import { useCallback } from 'react';
 import { collection, doc, addDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { db } from '../../lib/firebaseDb';
 import type { Category } from '../../types/finance';
 
 interface UseCategoriesCRUDReturn {

@@ -33,7 +33,7 @@ export function AIDateAdjuster({ rows, setRows }: { rows: ImportRow[]; setRows: 
     }));
 
     try {
-      const ai = getGeminiClient();
+      const ai = await getGeminiClient();
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: `Hoy es ${dayName} ${todayStr}. Tengo ${rows.length} transacciones importadas de un extracto bancario. El usuario dice: "${prompt.trim()}".

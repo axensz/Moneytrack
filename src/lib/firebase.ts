@@ -1,6 +1,5 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, type Auth } from "firebase/auth";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, terminate, clearIndexedDbPersistence, type Firestore } from "firebase/firestore";
 import { logger } from "../utils/logger";
 
 const firebaseConfig = {
@@ -31,17 +30,11 @@ export const isFirebaseConfigured = !isMissingConfig && !isDummyConfig;
 
 let _app: FirebaseApp | null = null;
 let _auth: Auth | null = null;
-let _db: Firestore | null = null;
 
 if (isFirebaseConfigured) {
   try {
     _app = initializeApp(firebaseConfig);
     _auth = getAuth(_app);
-    _db = initializeFirestore(_app, {
-      localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager()
-      })
-    });
   } catch (err) {
     logger.error('Failed to initialize Firebase', err);
   }
@@ -75,9 +68,10 @@ if (typeof window !== 'undefined' && _app && firebaseConfig.measurementId) {
 // Export with non-null types — safe because:
 // 1. useAuth guards with !auth → returns no user → userId is null
 // 2. All Firestore hooks guard with !userId → never call db when unconfigured
+// Firestore (`db`) vive en ./firebaseDb (aislado para que su SDK no entre al
+// bundle de arranque); usa `app` desde aquí.
 const app = _app as FirebaseApp;
 const auth = _auth as Auth;
-const db = _db as Firestore;
 
 export const loginWithGoogle = async () => {
   if (!_auth) throw new Error('Firebase no está configurado. Crea .env.local con tus credenciales.');
@@ -90,25 +84,4 @@ export const logoutFirebase = async () => {
   return signOut(_auth);
 };
 
-/**
- * Limpia la caché local de Firestore (IndexedDB) tras cerrar sesión (S2b).
- *
- * `signOut` NO borra los documentos cacheados por `persistentLocalCache`, así que
- * en un dispositivo compartido quedarían recuperables. La única forma de vaciarlos
- * es terminar el cliente y limpiar la persistencia; tras `terminate` la instancia
- * queda inutilizable, por lo que el llamador debe recargar la página.
- *
- * Best-effort: puede rechazar si hay otras pestañas con la persistencia abierta
- * (multi-tab). En ese caso se degrada con un warning y el llamador recarga igual.
- */
-export const clearFirestorePersistence = async (): Promise<void> => {
-  if (!_db) return;
-  try {
-    await terminate(_db);
-    await clearIndexedDbPersistence(_db);
-  } catch {
-    logger.warn('No se pudo limpiar la caché de Firestore (¿otras pestañas abiertas?)');
-  }
-};
-
-export { app, auth, db };
+export { app, auth };

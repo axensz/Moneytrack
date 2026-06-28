@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { collection, writeBatch, doc, getDocs, type DocumentReference } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db } from '../lib/firebaseDb';
 import { showToast } from '../utils/toastHelpers';
 import { logger } from '../utils/logger';
 import type { Transaction, Account, Categories, BackupData } from '../types/finance';

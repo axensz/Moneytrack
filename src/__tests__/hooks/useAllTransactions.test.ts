@@ -18,7 +18,7 @@ vi.mock('firebase/firestore', () => ({
   }),
 }));
 
-vi.mock('../../lib/firebase', () => ({ db: {} }));
+vi.mock('../../lib/firebaseDb', () => ({ db: {} }));
 
 import { useAllTransactions } from '../../hooks/useAllTransactions';
 

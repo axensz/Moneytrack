@@ -42,7 +42,7 @@ export const StatsView: React.FC = () => {
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
       {/* Fila 1: Flujo de caja a ancho completo */}
       <CashFlowChart
         data={monthlyData}

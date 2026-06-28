@@ -379,7 +379,7 @@ export async function sendChatMessage(
     categories: Categories;
   }
 ): Promise<{ text: string; tokenUsage?: TokenUsage }> {
-  const client = getGeminiClient();
+  const client = await getGeminiClient();
 
   const financialContext = buildFinancialContext(
     financialData.transactions,

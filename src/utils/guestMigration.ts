@@ -21,7 +21,7 @@
  */
 
 import { doc, writeBatch, getDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db } from '../lib/firebaseDb';
 import { generateId } from './formatters';
 import { clearGuestFinanceData } from './localData';
 import { DEFAULT_CATEGORIES } from '../config/constants';

@@ -6,7 +6,7 @@
 
 import { useEffect, useRef } from 'react';
 import { collection, getDocs, doc, updateDoc, query, where } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { db } from '../../lib/firebaseDb';
 import type { Account, Transaction } from '../../types/finance';
 import { logger } from '../../utils/logger';
 

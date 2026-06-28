@@ -18,7 +18,7 @@ const M = vi.hoisted(() => ({
   loggedErrors: [] as unknown[],
 }));
 
-vi.mock('../../lib/firebase', () => ({ db: { __db: true } }));
+vi.mock('../../lib/firebaseDb', () => ({ db: { __db: true } }));
 vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, path: string) => ({ __path: path }),
   getDoc: (ref: unknown) => M.getDocImpl(ref),

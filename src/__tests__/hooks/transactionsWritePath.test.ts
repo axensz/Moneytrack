@@ -27,7 +27,7 @@ const mockState = vi.hoisted(() => ({
   gen: 0,
 }));
 
-vi.mock('../../lib/firebase', () => ({ db: { __db: true } }));
+vi.mock('../../lib/firebaseDb', () => ({ db: { __db: true } }));
 
 vi.mock('firebase/firestore', () => ({
   collection: (_db: unknown, path: string) => ({ __collection: path }),

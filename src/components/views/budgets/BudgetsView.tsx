@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Plus, PieChart, CheckCircle2, XCircle, Trash2, ToggleLeft, ToggleRight, Sparkles, TrendingUp, TrendingDown, Minus, Target, X, Shield, Clock, Zap, ChevronDown, ChevronUp, AlertTriangle, PiggyBank, BarChart3, Home } from 'lucide-react';
-import { useBudgetsDomain, useCategoryDomain, useTransactionDomain } from '../../../hooks/useFinanceSelectors';
+import React, { useState, useMemo } from 'react';
+import { Plus, PieChart, CheckCircle2, XCircle, Trash2, ToggleLeft, ToggleRight, Sparkles, TrendingUp, TrendingDown, Minus, Target, X, Shield, Clock, Zap, ChevronDown, ChevronUp, AlertTriangle, PiggyBank, BarChart3, Home, CreditCard, Lightbulb } from 'lucide-react';
+import { useBudgetsDomain, useCategoryDomain, useTransactionDomain, useAccountDomain } from '../../../hooks/useFinanceSelectors';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { useAuth } from '../../../hooks/useAuth';
 import { usePlanConfig } from '../../../hooks/usePlanConfig';
@@ -12,17 +12,35 @@ import { useFinancialPlan, type PlanConfig } from '../../../hooks/useFinancialPl
 import { isGeminiConfigured } from '../../../lib/gemini';
 import { useBudgetRecommendations } from '../../../hooks/useBudgetRecommendations';
 import { FinancialPlanAI } from './components/FinancialPlanAI';
+import { PlanSkeleton } from './PlanSkeleton';
 import { ConfirmDialog } from '../../modals/ConfirmDialog';
 
 export const BudgetsView: React.FC = () => {
   const { budgets, addBudget, updateBudget, deleteBudget, budgetStatuses, budgetStats } = useBudgetsDomain();
   const { categories } = useCategoryDomain();
   const { transactions } = useTransactionDomain();
+  const { accounts, getAccountBalance, getCreditUsed, balancesReady } = useAccountDomain();
   const { hideBalances } = useUIPreferences();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+
+  // Datos vivos para el plan: saldo líquido (efectivo + ahorros, NO crédito) para
+  // medir el fondo de emergencia contra lo que el usuario YA tiene, y utilización
+  // de tarjetas (used/limit). Memoizado: solo cambia con las cuentas/saldos.
+  const planLiveContext = useMemo(() => {
+    const liquidBalance = accounts
+      .filter(a => a.type !== 'credit')
+      .reduce((sum, a) => sum + getAccountBalance(a.id!), 0);
+    const creditAccounts = accounts.filter(a => a.type === 'credit');
+    const limit = creditAccounts.reduce((s, a) => s + (a.creditLimit || 0), 0);
+    const used = creditAccounts.reduce((s, a) => s + getCreditUsed(a.id!), 0);
+    return {
+      liquidBalance,
+      creditUtilization: limit > 0 ? { used, limit, ratio: used / limit } : null,
+    };
+  }, [accounts, getAccountBalance, getCreditUsed]);
 
   // Plan config persistido en Firestore (o localStorage para guest)
-  const { config: planConfig, loading: planLoading, saveConfig, clearConfig } = usePlanConfig(user?.uid ?? null);
+  const { config: planConfig, loading: planLoading, saveConfig, clearConfig } = usePlanConfig(user?.uid ?? null, authLoading);
   const [showSetup, setShowSetup] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [planMinimized, setPlanMinimized] = useState(false);
@@ -33,7 +51,7 @@ export const BudgetsView: React.FC = () => {
   const [formData, setFormData] = useState({ category: '', monthlyLimit: '' });
   const [budgetToDelete, setBudgetToDelete] = useState<{ id: string; category: string } | null>(null);
 
-  const plan = useFinancialPlan(transactions, planConfig);
+  const plan = useFinancialPlan(transactions, planConfig, planLiveContext);
 
   const availableCategories = categories.expense.filter(
     cat => !budgets.some(b => b.category === cat)
@@ -102,9 +120,20 @@ export const BudgetsView: React.FC = () => {
   const trendColor = plan?.trend === 'improving' ? 'text-success' : plan?.trend === 'declining' ? 'text-destructive' : 'text-muted-foreground';
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
       {/* ===== PLAN FINANCIERO ===== */}
-      {!planConfig ? (
+      {(planLoading || !balancesReady) ? (
+        // Skeleton mientras (a) carga la config del plan y (b) los saldos asientan.
+        // Sin (b), el fondo de emergencia se calcularía con saldo líquido ~0 y
+        // mostraría un falso "sin fondo" rojo que se autocorrige al asentar (clase
+        // de bug saldos-paginados). Evita además el parpadeo "Iniciar plan" → plan.
+        // Mismo componente que el fallback del Suspense → un solo skeleton continuo.
+        <PlanSkeleton />
+      ) : (
+        // Resuelto (auth + config + saldos): el contenido entra con un fade suave
+        // en vez de saltar del skeleton de golpe. ponytail: CSS-only, sin lib.
+        <div className="space-y-4 animate-in fade-in duration-300">
+        {!planConfig ? (
         <div className="card">
           <div className="text-center py-6">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
@@ -233,6 +262,19 @@ export const BudgetsView: React.FC = () => {
                   );
                 })}
               </div>
+
+              {/* Siguiente paso accionable: la dimensión más floja del score → un "haz X". */}
+              {plan.nextStep && (
+                <div className="mt-5 flex items-start gap-2.5 p-3 rounded-xl bg-primary/5 border border-primary/15">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                    <Lightbulb size={14} className="text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-primary uppercase tracking-wide">Siguiente paso</p>
+                    <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 leading-relaxed">{plan.nextStep.message}</p>
+                  </div>
+                </div>
+              )}
               </div>
               </>
               )}
@@ -316,12 +358,64 @@ export const BudgetsView: React.FC = () => {
                 </div>
               ))}
             </div>
-            {plan.projection.monthsToEmergencyFund !== null && (
-              <div className="flex items-center justify-center gap-2 p-3 rounded-xl bg-info-muted border border-info/20">
-                <Shield size={14} className="text-info" />
-                <p className="text-xs text-gray-600 dark:text-gray-400">
-                  Fondo de emergencia en <span className="font-bold text-gray-800 dark:text-gray-200">{plan.projection.monthsToEmergencyFund} meses</span>
+            {/* Fondo de emergencia: cobertura REAL desde el saldo líquido (no desde
+                cero). Barra 0→6 meses con marca del mínimo (3 meses = 50%). Sin
+                gastos registrados no hay base para medir cobertura → estado neutro. */}
+            <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/50">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Shield size={14} className={plan.emergencyFund.monthlyExpenses <= 0 ? 'text-gray-400' : plan.emergencyFund.status === 'none' ? 'text-destructive' : plan.emergencyFund.status === 'building' ? 'text-warning' : 'text-success'} />
+                  <span className="text-xs font-bold text-gray-800 dark:text-gray-200">Fondo de emergencia</span>
+                </div>
+                {plan.emergencyFund.monthlyExpenses > 0 && (
+                  <span className="text-xs font-bold text-gray-900 dark:text-gray-100">
+                    {/* Floor a 1 decimal: nunca redondear hacia arriba cruzando un umbral
+                        de estado (2.96 mostraría "3.0" con el estado aún en "building"). */}
+                    {(Math.floor(plan.emergencyFund.coverageMonths * 10) / 10).toFixed(1)} <span className="font-normal text-muted-foreground">meses cubiertos</span>
+                  </span>
+                )}
+              </div>
+              {plan.emergencyFund.monthlyExpenses > 0 ? (
+                <>
+                  <div className="relative">
+                    <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full transition-[width] duration-700 ${plan.emergencyFund.status === 'none' ? 'bg-destructive' : plan.emergencyFund.status === 'building' ? 'bg-warning' : 'bg-success'}`}
+                        style={{ width: `${Math.min(100, (plan.emergencyFund.coverageMonths / 6) * 100)}%` }} />
+                    </div>
+                    {/* marca del mínimo: 3 de 6 meses = 50% del ancho */}
+                    <div className="absolute -top-0.5 bottom-0 w-0.5 bg-gray-500 dark:bg-gray-400 rounded-full" style={{ left: '50%' }} />
+                  </div>
+                  <div className="flex justify-between mt-1.5 text-[10px] text-muted-foreground">
+                    <span>mín 3 · ideal 6 meses</span>
+                    <span className="font-medium">
+                      {plan.emergencyFund.coverageMonths >= 3
+                        ? '✓ cubres el mínimo'
+                        : plan.emergencyFund.monthsTo3m === null
+                          ? 'sin ahorro mensual para avanzar'
+                          : `${plan.emergencyFund.monthsTo3m} ${plan.emergencyFund.monthsTo3m === 1 ? 'mes' : 'meses'} al mínimo`}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Registra tus gastos para calcular cuántos meses cubre tu fondo de emergencia.
                 </p>
+              )}
+            </div>
+
+            {/* Uso de tarjetas (solo si hay crédito): benchmark sano <30%. */}
+            {plan.creditUtilization && (
+              <div className="mt-3 flex items-center justify-between p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/50">
+                <div className="flex items-center gap-2">
+                  <CreditCard size={13} className="text-gray-400" />
+                  <span className="text-[11px] text-gray-600 dark:text-gray-400">Uso de tarjetas</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs font-bold ${plan.creditUtilization.ratio <= 0.3 ? 'text-success' : plan.creditUtilization.ratio <= 0.5 ? 'text-warning' : 'text-destructive'}`}>
+                    {Math.round(plan.creditUtilization.ratio * 100)}%
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">{plan.creditUtilization.ratio <= 0.3 ? 'sano' : plan.creditUtilization.ratio <= 0.5 ? 'medio' : 'alto'}</span>
+                </div>
               </div>
             )}
           </div>
@@ -384,6 +478,8 @@ export const BudgetsView: React.FC = () => {
         <div className="card text-center py-8">
           <p className="text-sm text-muted-foreground">No hay suficientes datos desde {planConfig.startMonth} para generar el plan.</p>
           <button onClick={() => setShowCloseConfirm(true)} className="text-xs text-purple-600 mt-2 hover:underline">Reconfigurar</button>
+        </div>
+      )}
         </div>
       )}
 

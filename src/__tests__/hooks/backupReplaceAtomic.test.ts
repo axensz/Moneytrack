@@ -26,7 +26,7 @@ const deleteLog: string[] = [];
 // Permite forzar que un commit concreto rechace (simula fallo a mitad de escritura).
 let rejectCommitWhenSetSeen = false;
 
-vi.mock('../../lib/firebase', () => ({
+vi.mock('../../lib/firebaseDb', () => ({
   db: {},
 }));
 

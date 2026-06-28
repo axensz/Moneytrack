@@ -44,8 +44,10 @@ vi.mock('firebase/firestore', () => ({
   increment: (value: number) => mockIncrement(value),
 }));
 
-vi.mock('../../lib/firebase', () => ({
+vi.mock('../../lib/firebaseDb', () => ({
   db: { type: 'mock-firestore' },
+}));
+vi.mock('../../lib/firebase', () => ({
   isFirebaseConfigured: true,
 }));
 

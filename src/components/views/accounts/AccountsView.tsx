@@ -366,7 +366,7 @@ export const AccountsView: React.FC = () => {
     .sort((a, b) => (a.order || 0) - (b.order || 0));
 
   return (
-    <div className="card">
+    <div className="card animate-in fade-in slide-in-from-bottom-2 duration-500">
       {/* Header con botón */}
       <div className="flex justify-between items-start mb-6 flex-wrap gap-4">
         <div>

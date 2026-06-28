@@ -5,7 +5,7 @@
 
 import { useCallback, useState } from 'react';
 import { collection, doc, increment, writeBatch } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db } from '../lib/firebaseDb';
 import { logger } from '../utils/logger';
 import { stripUndefined } from '../utils/firestoreHelpers';
 import { setBatchImporting, registerImportedIds } from '../utils/importBatchFlag';

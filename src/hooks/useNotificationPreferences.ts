@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db } from '../lib/firebaseDb';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
 import type { NotificationPreferences } from '../types/finance';

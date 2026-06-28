@@ -26,7 +26,7 @@ async function parseDateWithAI(query: string): Promise<{ startDate: string; endD
   const todayStr = today.toISOString().split('T')[0];
   const dayOfWeek = today.toLocaleDateString('es-CO', { weekday: 'long' });
 
-  const ai = getGeminiClient();
+  const ai = await getGeminiClient();
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
     contents: `Hoy es ${dayOfWeek} ${todayStr}. El usuario quiere filtrar por rango de fechas y dice: "${query}". Responde SOLO un JSON con formato {"startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD"}. Sin explicaciones.`,

@@ -9,7 +9,7 @@
  * BYOK puro: no hay key de servidor ni en el bundle. Sin key del usuario, las
  * funciones de IA quedan desactivadas (el resto de la app funciona normal).
  */
-import { GoogleGenAI } from '@google/genai';
+import type { GoogleGenAI } from '@google/genai';
 import { hasAiConsent } from './aiConsent';
 
 let currentKey = '';
@@ -45,7 +45,7 @@ export function isAiEnabled(): boolean {
  * cuando la key cambia. Lanza si no hay key configurada o si el usuario no ha
  * dado consentimiento para enviar sus datos a Google (chokepoint de privacidad).
  */
-export function getGeminiClient(): GoogleGenAI {
+export async function getGeminiClient(): Promise<GoogleGenAI> {
   const key = getGeminiApiKey();
   if (!key) {
     throw new Error('No hay API key de Gemini configurada. Agrégala en Ajustes.');
@@ -54,6 +54,10 @@ export function getGeminiClient(): GoogleGenAI {
     throw new Error('Debes autorizar el uso de IA en Ajustes antes de enviar tus datos a Google.');
   }
   if (!cachedClient || cachedClientKey !== key) {
+    // import() dinámico: mantiene el SDK (~240KB) FUERA del bundle de arranque;
+    // solo baja cuando de verdad ocurre una llamada de IA. ponytail: un doble
+    // import() concurrente es inocuo (el module system lo cachea; misma key → mismo cliente).
+    const { GoogleGenAI } = await import('@google/genai');
     cachedClient = new GoogleGenAI({ apiKey: key });
     cachedClientKey = key;
   }

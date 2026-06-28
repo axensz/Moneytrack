@@ -145,7 +145,7 @@ export const RecurringPaymentsView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
       {/* Header con estadísticas */}
       <div className="card">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">

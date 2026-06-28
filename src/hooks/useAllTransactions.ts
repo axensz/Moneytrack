@@ -16,7 +16,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db } from '../lib/firebaseDb';
 import { ensureDate } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 import type { Transaction } from '../types/finance';

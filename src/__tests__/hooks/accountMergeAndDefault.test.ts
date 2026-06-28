@@ -22,7 +22,7 @@ const M = vi.hoisted(() => ({
 
 const mkRef = (path: string, id: string) => ({ __path: path, __id: id, __key: `${path}/${id}` });
 
-vi.mock('../../lib/firebase', () => ({ db: { __db: true } }));
+vi.mock('../../lib/firebaseDb', () => ({ db: { __db: true } }));
 vi.mock('../../contexts/FirestoreContext', () => ({ useFirestoreData: () => M.firestoreData }));
 
 vi.mock('firebase/firestore', () => ({

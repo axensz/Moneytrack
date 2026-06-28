@@ -16,7 +16,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, getDocs, where, runTransaction, increment } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db } from '../lib/firebaseDb';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
 import { safeFirestoreOperation, checkNetworkConnection, stripUndefined } from '../utils/firestoreHelpers';

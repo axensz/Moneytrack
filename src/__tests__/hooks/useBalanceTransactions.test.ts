@@ -23,7 +23,7 @@ vi.mock('firebase/firestore', () => ({
   }),
 }));
 
-vi.mock('../../lib/firebase', () => ({ db: {} }));
+vi.mock('../../lib/firebaseDb', () => ({ db: {} }));
 
 import { useBalanceTransactions } from '../../hooks/useBalanceTransactions';
 import { BalanceCalculator } from '../../utils/balanceCalculator';

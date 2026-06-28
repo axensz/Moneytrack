@@ -4,7 +4,7 @@
 
 import { useCallback } from 'react';
 import { collection, doc, addDoc, deleteDoc, updateDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { db } from '../../lib/firebaseDb';
 import { stripUndefined } from '../../utils/firestoreHelpers';
 import type { Account } from '../../types/finance';
 

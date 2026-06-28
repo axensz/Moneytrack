@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db } from '../lib/firebaseDb';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
 import type { PlanConfig } from './useFinancialPlan';

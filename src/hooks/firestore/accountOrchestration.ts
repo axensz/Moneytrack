@@ -17,7 +17,7 @@ import {
   doc, runTransaction, collection, writeBatch, getDocs, getDoc, updateDoc, deleteDoc, query, where, deleteField,
   type DocumentReference,
 } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { db } from '../../lib/firebaseDb';
 import { safeFirestoreOperation, checkNetworkConnection, stripUndefined } from '../../utils/firestoreHelpers';
 import { getAccountReferenceIds } from '../../utils/accountTransactions';
 import { creditDeltasByAccount, reconcileUsedCredit } from '../../utils/creditDeltas';

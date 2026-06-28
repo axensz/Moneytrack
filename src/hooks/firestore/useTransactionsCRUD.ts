@@ -11,7 +11,7 @@ import {
   runTransaction,
   increment,
 } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { db } from '../../lib/firebaseDb';
 import { TRANSFER_CATEGORY } from '../../config/constants';
 import type { Transaction, Account } from '../../types/finance';
 import { isOffline, stripUndefined } from '../../utils/firestoreHelpers';

@@ -20,7 +20,7 @@ const M = vi.hoisted(() => ({
 
 const ref = (path: string, id: string) => ({ __path: path, __id: id, __key: `${path}/${id}` });
 
-vi.mock('../../lib/firebase', () => ({ db: { __db: true } }));
+vi.mock('../../lib/firebaseDb', () => ({ db: { __db: true } }));
 
 vi.mock('../../utils/firestoreHelpers', () => ({
   checkNetworkConnection: () => true,

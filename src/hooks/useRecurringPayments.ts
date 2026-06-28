@@ -19,7 +19,7 @@ import {
   deleteDoc,
   updateDoc,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db } from '../lib/firebaseDb';
 import { logger } from '../utils/logger';
 import { safeFirestoreOperation, checkNetworkConnection, stripUndefined } from '../utils/firestoreHelpers';
 import { generateId } from '../utils/formatters';

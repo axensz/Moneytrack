@@ -11,7 +11,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { collection, onSnapshot, query, orderBy, limit, doc as firestoreDoc, DocumentData, startAfter, getDocs, QueryDocumentSnapshot } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { db } from '../../lib/firebaseDb';
 import { logger } from '../../utils/logger';
 import type { Transaction, Account, Category, RecurringPayment, Debt, Budget, SavingsGoal, Notification, NotificationPreferences } from '../../types/finance';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../../types/finance';

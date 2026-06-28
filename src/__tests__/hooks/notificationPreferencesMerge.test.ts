@@ -8,7 +8,7 @@
 import { describe, it, expect, vi } from 'vitest';
 
 // Neutralizar las importaciones de firebase del módulo (withDefaults no las usa).
-vi.mock('../../lib/firebase', () => ({ db: {} }));
+vi.mock('../../lib/firebaseDb', () => ({ db: {} }));
 vi.mock('firebase/firestore', () => ({ doc: vi.fn(), onSnapshot: vi.fn(), setDoc: vi.fn() }));
 
 import { withDefaults } from '../../hooks/useNotificationPreferences';

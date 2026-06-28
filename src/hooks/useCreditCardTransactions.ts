@@ -21,7 +21,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db } from '../lib/firebaseDb';
 import { ensureDate } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 import type { Account, Transaction } from '../types/finance';

@@ -49,6 +49,7 @@ const AIChatBot = lazy(() =>
 );
 import { AITeaserButton } from './components/chat/AITeaserButton';
 import { OnboardingChecklist } from './components/onboarding/OnboardingChecklist';
+import { PlanSkeleton } from './components/views/budgets/PlanSkeleton';
 
 // Lazy-loaded secondary views
 const StatsView = lazy(() =>
@@ -471,7 +472,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
             <button
               ref={moreButtonRef}
               onClick={() => {
-                if (showMoreMenu || MOBILE_MORE_KEYS.includes(view)) {
+                if (showMoreMenu) {
                   closeMoreMenu();
                 } else {
                   setShowMoreMenu(true);
@@ -683,7 +684,10 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
 
             {view === 'budgets' && (
               <div id="panel-budgets" role="tabpanel" aria-labelledby="tab-budgets">
-                <Suspense fallback={<ViewFallback />}>
+                {/* Fallback con la forma del plan (no el genérico): así la bajada del
+                    chunk y la carga interna son UN solo skeleton continuo, sin saltar
+                    de "3 barras" a "círculo" en la primera entrada. */}
+                <Suspense fallback={<PlanSkeleton />}>
                   <BudgetsView />
                 </Suspense>
               </div>

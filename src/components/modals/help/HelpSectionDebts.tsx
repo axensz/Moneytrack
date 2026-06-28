@@ -4,50 +4,50 @@ import { BarChart3, TrendingUp, TrendingDown, CircleDollarSign } from 'lucide-re
 export const HelpSectionDebts: React.FC = () => (
   <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 fade-in">
       <div>
-        <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Préstamos y Deudas</h3>
-        <p className="text-gray-600 dark:text-gray-400">Controla quién te debe y a quién le debes.</p>
+        <h3 className="text-xl font-semibold text-foreground mb-2">Préstamos y Deudas</h3>
+        <p className="text-muted-foreground">Controla quién te debe y a quién le debes.</p>
       </div>
 
-      {/* Tipos de deuda */}
+      {/* Tipos de deuda — estado real: success = me deben, destructive = yo debo */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-         <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-800">
+         <div className="p-4 rounded-xl border" style={{ background: 'var(--success-muted)', borderColor: 'var(--success)' }}>
             <div className="flex items-center gap-2 mb-2">
-               <TrendingUp size={18} className="text-emerald-600" />
-               <span className="font-semibold text-emerald-900 dark:text-emerald-100">Me deben</span>
+               <TrendingUp size={18} style={{ color: 'var(--success)' }} />
+               <span className="font-semibold" style={{ color: 'var(--success-text)' }}>Me deben</span>
             </div>
-            <p className="text-sm text-emerald-700 dark:text-emerald-300">Dinero que prestaste a alguien. Se registra como gasto con categoría &quot;Préstamo&quot;.</p>
+            <p className="text-sm" style={{ color: 'var(--success-text)' }}>Dinero que prestaste a alguien. Se registra como gasto con categoría &quot;Préstamo&quot;.</p>
          </div>
-         <div className="p-4 bg-rose-50 dark:bg-rose-900/20 rounded-xl border border-rose-200 dark:border-rose-800">
+         <div className="p-4 rounded-xl border" style={{ background: 'var(--destructive-muted)', borderColor: 'var(--destructive)' }}>
             <div className="flex items-center gap-2 mb-2">
-               <TrendingDown size={18} className="text-rose-600" />
-               <span className="font-semibold text-rose-900 dark:text-rose-100">Yo debo</span>
+               <TrendingDown size={18} style={{ color: 'var(--destructive)' }} />
+               <span className="font-semibold" style={{ color: 'var(--destructive-text)' }}>Yo debo</span>
             </div>
-            <p className="text-sm text-rose-700 dark:text-rose-300">Dinero que alguien te prestó. Se registra como ingreso a tu cuenta.</p>
+            <p className="text-sm" style={{ color: 'var(--destructive-text)' }}>Dinero que alguien te prestó. Se registra como ingreso a tu cuenta.</p>
          </div>
       </div>
 
-      {/* Crear préstamo */}
-      <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
-         <div className="bg-gray-50 dark:bg-gray-800/50 p-4 border-b border-gray-200 dark:border-gray-700">
-            <h4 className="font-semibold text-gray-900 dark:text-gray-100">Registrar un Préstamo</h4>
+      {/* Crear préstamo — panel neutro */}
+      <div className="border border-border rounded-xl overflow-hidden">
+         <div className="bg-muted p-4 border-b border-border">
+            <h4 className="font-semibold text-foreground">Registrar un Préstamo</h4>
          </div>
          <div className="p-4 space-y-3">
-            <p className="text-sm text-gray-600 dark:text-gray-400">Campos del formulario:</p>
+            <p className="text-sm text-muted-foreground">Campos del formulario:</p>
             <div className="grid grid-cols-2 gap-2 text-sm">
-               <div className="p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg">
-                  <span className="font-medium text-gray-900 dark:text-gray-100">Tipo:</span>
+               <div className="p-2 bg-muted rounded-lg">
+                  <span className="font-medium text-foreground">Tipo:</span>
                   <span className="text-muted-foreground ml-1">Me deben / Yo debo</span>
                </div>
-               <div className="p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg">
-                  <span className="font-medium text-gray-900 dark:text-gray-100">Persona:</span>
+               <div className="p-2 bg-muted rounded-lg">
+                  <span className="font-medium text-foreground">Persona:</span>
                   <span className="text-muted-foreground ml-1">Nombre</span>
                </div>
-               <div className="p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg">
-                  <span className="font-medium text-gray-900 dark:text-gray-100">Monto:</span>
+               <div className="p-2 bg-muted rounded-lg">
+                  <span className="font-medium text-foreground">Monto:</span>
                   <span className="text-muted-foreground ml-1">Cantidad prestada</span>
                </div>
-               <div className="p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg">
-                  <span className="font-medium text-gray-900 dark:text-gray-100">Cuenta:</span>
+               <div className="p-2 bg-muted rounded-lg">
+                  <span className="font-medium text-foreground">Cuenta:</span>
                   <span className="text-muted-foreground ml-1">Desde cuál cuenta</span>
                </div>
             </div>
@@ -57,72 +57,72 @@ export const HelpSectionDebts: React.FC = () => (
          </div>
       </div>
 
-      {/* Cobros parciales */}
-      <div className="border border-emerald-200 dark:border-emerald-800 rounded-xl overflow-hidden">
-         <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 border-b border-emerald-200 dark:border-emerald-800">
-            <h4 className="font-semibold text-emerald-900 dark:text-emerald-100 flex items-center gap-2">
-               <CircleDollarSign size={18} className="text-emerald-600" />
+      {/* Cobros parciales — estado de cobro/saldado: success */}
+      <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--success)' }}>
+         <div className="p-4 border-b" style={{ background: 'var(--success-muted)', borderColor: 'var(--success)' }}>
+            <h4 className="font-semibold flex items-center gap-2" style={{ color: 'var(--success-text)' }}>
+               <CircleDollarSign size={18} style={{ color: 'var(--success)' }} />
                Registrar Pagos / Cobros
             </h4>
          </div>
          <div className="p-4 space-y-4">
-            <p className="text-sm text-emerald-800 dark:text-emerald-200">
+            <p className="text-sm" style={{ color: 'var(--success-text)' }}>
                Cuando la persona te paga (o tú pagas tu deuda):
             </p>
             <div className="flex gap-3">
-               <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">1</span>
+               <span className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold" style={{ background: 'var(--success-muted)', color: 'var(--success)' }}>1</span>
                <div>
-                  <p className="font-medium text-gray-900 dark:text-gray-100">Abre la tarjeta del préstamo</p>
+                  <p className="font-medium text-foreground">Abre la tarjeta del préstamo</p>
                   <p className="text-sm text-muted-foreground">Verás el monto original y el saldo pendiente.</p>
                </div>
             </div>
             <div className="flex gap-3">
-               <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">2</span>
+               <span className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold" style={{ background: 'var(--success-muted)', color: 'var(--success)' }}>2</span>
                <div>
-                  <p className="font-medium text-gray-900 dark:text-gray-100">Ingresa el monto del pago</p>
+                  <p className="font-medium text-foreground">Ingresa el monto del pago</p>
                   <p className="text-sm text-muted-foreground">Puede ser parcial o el total pendiente.</p>
                </div>
             </div>
             <div className="flex gap-3">
-               <span className="flex-shrink-0 w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">3</span>
+               <span className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold" style={{ background: 'var(--success-muted)', color: 'var(--success)' }}>3</span>
                <div>
-                  <p className="font-medium text-gray-900 dark:text-gray-100">Se actualiza automáticamente</p>
+                  <p className="font-medium text-foreground">Se actualiza automáticamente</p>
                   <p className="text-sm text-muted-foreground">El saldo pendiente se reduce. Si llega a $0, se marca como saldado.</p>
                </div>
             </div>
          </div>
       </div>
 
-      {/* Panel de estadísticas */}
-      <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-200 dark:border-blue-800">
-         <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2 flex items-center gap-2">
-            <BarChart3 size={16} />
+      {/* Panel de estadísticas — panel neutro; el color marca el estado real (success/destructive) */}
+      <div className="p-4 bg-muted rounded-xl border border-border">
+         <h4 className="font-semibold text-foreground mb-2 flex items-center gap-2">
+            <BarChart3 size={16} className="text-muted-foreground" />
             Panel de Control
          </h4>
-         <ul className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
+         <ul className="space-y-2 text-sm text-muted-foreground">
             <li className="flex items-start gap-2">
-               <span className="text-blue-500">•</span>
-               <span><strong>Me deben:</strong> Total pendiente de cobro</span>
+               <span style={{ color: 'var(--success)' }}>•</span>
+               <span><strong style={{ color: 'var(--success-text)' }}>Me deben:</strong> Total pendiente de cobro</span>
             </li>
             <li className="flex items-start gap-2">
-               <span className="text-blue-500">•</span>
-               <span><strong>Debo:</strong> Total pendiente de pago</span>
+               <span style={{ color: 'var(--destructive)' }}>•</span>
+               <span><strong style={{ color: 'var(--destructive-text)' }}>Debo:</strong> Total pendiente de pago</span>
             </li>
             <li className="flex items-start gap-2">
-               <span className="text-blue-500">•</span>
-               <span><strong>Balance neto:</strong> Diferencia entre lo que te deben y lo que debes</span>
+               <span className="text-muted-foreground">•</span>
+               <span><strong className="text-foreground">Balance neto:</strong> Diferencia entre lo que te deben y lo que debes</span>
             </li>
             <li className="flex items-start gap-2">
-               <span className="text-blue-500">•</span>
-               <span><strong>Saldados:</strong> Préstamos completamente pagados (se pueden mostrar/ocultar)</span>
+               <span className="text-muted-foreground">•</span>
+               <span><strong className="text-foreground">Saldados:</strong> Préstamos completamente pagados (se pueden mostrar/ocultar)</span>
             </li>
          </ul>
       </div>
 
-      {/* Barra de progreso */}
-      <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-         <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Barra de Progreso</h4>
-         <p className="text-sm text-gray-600 dark:text-gray-400">
+      {/* Barra de progreso — panel neutro */}
+      <div className="p-4 bg-muted rounded-xl border border-border">
+         <h4 className="font-semibold text-foreground mb-2">Barra de Progreso</h4>
+         <p className="text-sm text-muted-foreground">
             Cada préstamo muestra una barra visual del porcentaje pagado vs el monto original.
             Cuando el saldo llega a cero, el préstamo se marca automáticamente como saldado.
          </p>

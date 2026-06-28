@@ -97,7 +97,7 @@ export async function categorizeWithAI(
 ): Promise<CategorizationResult[]> {
     if (!isAiEnabled() || transactions.length === 0) return [];
 
-    const ai = getGeminiClient();
+    const ai = await getGeminiClient();
 
     // Limitar a 50 transacciones por llamada para no exceder tokens
     const batch = transactions.slice(0, 50);

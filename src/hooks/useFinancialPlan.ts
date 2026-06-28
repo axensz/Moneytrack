@@ -55,12 +55,44 @@ export interface Rule503020 {
   savingsPct: number;
 }
 
+export interface EmergencyFund {
+  liquidBalance: number;     // saldo líquido actual (efectivo + ahorros)
+  monthlyExpenses: number;   // gasto mensual de referencia
+  coverageMonths: number;    // cuántos meses cubres con lo que YA tienes
+  target3m: number;          // mínimo recomendado (3 meses de gasto)
+  target6m: number;          // ideal (6 meses de gasto)
+  monthsTo3m: number | null; // meses para llegar al mínimo a tu ritmo (0 = ya; null = no ahorras)
+  monthsTo6m: number | null;
+  status: 'none' | 'building' | 'covered' | 'ideal'; // <1m / 1-3m / 3-6m / >=6m
+}
+
+export interface CreditUtilization {
+  used: number;
+  limit: number;
+  ratio: number; // 0-1 (used/limit)
+}
+
+export interface NextStep {
+  dimension: 'savingsRate' | 'consistency' | 'needsRatio' | 'debtControl';
+  label: string;
+  message: string;
+}
+
+/** Datos vivos que el plan toma de otros dominios (saldos, tarjetas). */
+export interface PlanContext {
+  liquidBalance?: number; // efectivo + ahorros (NO crédito)
+  creditUtilization?: CreditUtilization | null;
+}
+
 export interface FinancialPlan {
   months: MonthSummary[];
   currentMonth: MonthSummary | null;
   score: FinancialScore;
   projection: SavingsProjection;
   rule503020: Rule503020;
+  emergencyFund: EmergencyFund;
+  creditUtilization: CreditUtilization | null;
+  nextStep: NextStep | null;
   healthLevel: 'excelente' | 'bueno' | 'regular' | 'crítico';
   avgMonthlyExpenses: number;
   avgMonthlySavings: number;
@@ -84,7 +116,9 @@ function isNeed(cat: string): boolean {
 export function useFinancialPlan(
   transactions: Transaction[],
   config: PlanConfig | null,
+  context: PlanContext = {},
 ): FinancialPlan | null {
+  const { liquidBalance = 0, creditUtilization = null } = context;
   return useMemo(() => {
     if (!config || !config.declaredIncome || config.declaredIncome <= 0) return null;
 
@@ -224,7 +258,31 @@ export function useFinancialPlan(
     const reliableMonthlyExpenses = numCompleted > 0 ? avgMonthlyExpenses : declaredIncome * 0.8;
     const reliableMonthlySavings = declaredIncome - reliableMonthlyExpenses;
     const monthlySavingsForProjection = Math.max(0, reliableMonthlySavings);
-    const monthlyExpenses3m = reliableMonthlyExpenses * 3; // fondo emergencia
+
+    // Fondo de emergencia: 3 meses (mínimo) a 6 meses (ideal) de gasto. Se mide
+    // contra el saldo líquido que el usuario YA tiene (efectivo + ahorros), NO
+    // desde cero: a quien ya lo tiene cubierto no se le pide ahorrar de nuevo.
+    // monthsTo*: 0 = ya alcanzado; null = no hay ahorro mensual para llegar.
+    const liquidForFund = Math.max(0, liquidBalance);
+    const target3m = reliableMonthlyExpenses * 3;
+    const target6m = reliableMonthlyExpenses * 6;
+    const coverageMonths = reliableMonthlyExpenses > 0 ? liquidForFund / reliableMonthlyExpenses : 0;
+    const monthsToReach = (remaining: number): number | null =>
+      remaining <= 0 ? 0
+        : monthlySavingsForProjection > 0 ? Math.ceil(remaining / monthlySavingsForProjection)
+        : null;
+    const emergencyFund: EmergencyFund = {
+      liquidBalance: liquidForFund,
+      monthlyExpenses: reliableMonthlyExpenses,
+      coverageMonths,
+      target3m,
+      target6m,
+      monthsTo3m: monthsToReach(Math.max(0, target3m - liquidForFund)),
+      monthsTo6m: monthsToReach(Math.max(0, target6m - liquidForFund)),
+      status: coverageMonths >= 6 ? 'ideal'
+        : coverageMonths >= 3 ? 'covered'
+        : coverageMonths >= 1 ? 'building' : 'none',
+    };
 
     const projection: SavingsProjection = {
       currentMonthly: numCompleted > 0 ? avgMonthlySavings : monthlySavingsForProjection,
@@ -232,9 +290,7 @@ export function useFinancialPlan(
       in3Months: monthlySavingsForProjection * 3,
       in6Months: monthlySavingsForProjection * 6,
       in12Months: monthlySavingsForProjection * 12,
-      monthsToEmergencyFund: monthlySavingsForProjection > 0
-        ? Math.ceil(monthlyExpenses3m / monthlySavingsForProjection)
-        : null,
+      monthsToEmergencyFund: emergencyFund.monthsTo3m,
     };
 
     // Tendencia (comparar últimos 2 meses completados)
@@ -246,16 +302,39 @@ export function useFinancialPlan(
       else if (last.savingsRate < prev.savingsRate - 5) trend = 'declining';
     }
 
+    // Siguiente paso: la dimensión del score con menor avance relativo (pts/max)
+    // se traduce en una acción concreta. Convierte el número pasivo en un "haz X".
+    // null si el score es perfecto (no hay punto flojo que señalar).
+    const NEXT_STEP: Record<NextStep['dimension'], { label: string; message: string }> = {
+      savingsRate: { label: 'Ahorro', message: 'Tu ahorro es el punto más flojo. Aumenta tu tasa de ahorro recortando gastos no esenciales antes de fin de mes.' },
+      consistency: { label: 'Consistencia', message: 'Ahorras de forma irregular. Aparta un monto fijo apenas recibes tu ingreso, antes de gastar.' },
+      needsRatio: { label: 'Necesidades', message: 'Tus necesidades superan el 50% ideal. Revisa los fijos grandes (vivienda, servicios) o renegocia tarifas.' },
+      debtControl: { label: 'Control', message: 'Estás gastando casi todo lo que ingresas. Deja un margen mensual para no terminar endeudándote.' },
+    };
+    const dims = [
+      { dimension: 'savingsRate' as const, pts: savingsRatePts, max: 30 },
+      { dimension: 'consistency' as const, pts: consistencyPts, max: 25 },
+      { dimension: 'needsRatio' as const, pts: needsRatioPts, max: 25 },
+      { dimension: 'debtControl' as const, pts: debtControlPts, max: 20 },
+    ];
+    const weakest = dims.reduce((a, b) => (b.pts / b.max < a.pts / a.max ? b : a));
+    const nextStep: NextStep | null = totalScore >= 100
+      ? null
+      : { dimension: weakest.dimension, ...NEXT_STEP[weakest.dimension] };
+
     return {
       months,
       currentMonth,
       score,
       projection,
       rule503020,
+      emergencyFund,
+      creditUtilization,
+      nextStep,
       healthLevel: level,
       avgMonthlyExpenses,
       avgMonthlySavings,
       trend,
     };
-  }, [transactions, config]);
+  }, [transactions, config, liquidBalance, creditUtilization]);
 }

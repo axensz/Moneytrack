@@ -10,6 +10,7 @@ import { HelpSectionBudgets } from './help/HelpSectionBudgets';
 import { HelpSectionGoals } from './help/HelpSectionGoals';
 import { HelpSectionStats } from './help/HelpSectionStats';
 import { HelpSectionAI } from './help/HelpSectionAI';
+import { HelpSectionShortcuts } from './help/HelpSectionShortcuts';
 
 interface HelpModalProps {
   isOpen: boolean;
@@ -30,7 +31,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
     >
         {/* Tabs */}
         <div className="border-b border-border bg-muted/50 shrink-0">
-          <div className="flex gap-1 sm:gap-2 p-2 sm:p-3 overflow-x-auto no-scrollbar scroll-smooth">
+          {/* scroll-fade-x: máscara de bordes que insinúa más tabs fuera de vista (ver utilities.css) */}
+          <div className="flex gap-1 sm:gap-2 p-2 sm:p-3 overflow-x-auto no-scrollbar scroll-smooth scroll-fade-x">
             {[
               { id: 'basics', label: 'Inicio', shortLabel: 'Inicio', icon: null },
               { id: 'accounts', label: 'Cuentas', shortLabel: 'Cuentas', icon: Wallet },
@@ -47,7 +49,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as typeof activeTab)}
                 className={`
-                  flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200 whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]
+                  flex items-center gap-1 sm:gap-2 min-h-[44px] px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200 whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]
                   ${activeTab === tab.id
                     ? 'bg-card text-primary shadow-sm ring-1 ring-border'
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground active:scale-[0.98]'
@@ -62,37 +64,44 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
           </div>
         </div>
 
-        {/* Content - Scrollable con altura fija para evitar cambios de tamaño */}
+        {/* Content - Scrollable con altura fija para evitar cambios de tamaño.
+            El scroller llega al borde del modal; el contenido se limita a un
+            ancho de lectura cómodo (~70ch) y se centra para una buena medida. */}
         <div className="flex-1 overflow-y-auto p-5 sm:p-6 scroll-smooth min-h-0">
-          {activeTab === 'basics' && <HelpSectionBasics />}
+          <div className="max-w-[70ch] mx-auto">
+            {activeTab === 'basics' && <HelpSectionBasics />}
 
-          {activeTab === 'accounts' && <HelpSectionAccounts />}
+            {activeTab === 'accounts' && <HelpSectionAccounts />}
 
-          {activeTab === 'transactions' && <HelpSectionTransactions />}
+            {activeTab === 'transactions' && <HelpSectionTransactions />}
 
-          {/* Pagos Periódicos */}
-          {activeTab === 'recurring' && <HelpSectionRecurring />}
+            {/* Pagos Periódicos */}
+            {activeTab === 'recurring' && <HelpSectionRecurring />}
 
-          {/* Préstamos / Deudas */}
-          {activeTab === 'debts' && <HelpSectionDebts />}
+            {/* Préstamos / Deudas */}
+            {activeTab === 'debts' && <HelpSectionDebts />}
 
-          {/* Presupuestos */}
-          {activeTab === 'budgets' && <HelpSectionBudgets />}
+            {/* Presupuestos */}
+            {activeTab === 'budgets' && <HelpSectionBudgets />}
 
-          {/* Metas de Ahorro */}
-          {activeTab === 'goals' && <HelpSectionGoals />}
+            {/* Metas de Ahorro */}
+            {activeTab === 'goals' && <HelpSectionGoals />}
 
-          {/* Estadísticas */}
-          {activeTab === 'stats' && <HelpSectionStats />}
+            {/* Estadísticas */}
+            {activeTab === 'stats' && <HelpSectionStats />}
 
-          {/* Asistente IA */}
-          {activeTab === 'ai' && <HelpSectionAI />}
+            {/* Asistente IA */}
+            {activeTab === 'ai' && <HelpSectionAI />}
+
+            {/* Atajos de teclado */}
+            {activeTab === 'shortcuts' && <HelpSectionShortcuts />}
+          </div>
         </div>
 
         {/* Footer */}
-        <div className="p-4 sm:p-5 border-t border-gray-100 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/80 shrink-0 flex items-center justify-center text-center">
+        <div className="p-4 sm:p-5 border-t border-border bg-muted/80 shrink-0 flex items-center justify-center text-center">
           <p className="text-xs sm:text-sm text-muted-foreground max-w-lg">
-            MoneyTrack utiliza formato local colombiano: <span className="font-mono bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded text-gray-700 dark:text-gray-300">1.234.567,89</span>
+            MoneyTrack utiliza formato local colombiano: <span className="font-mono bg-card border border-border px-1.5 py-0.5 rounded text-foreground">1.234.567,89</span>
           </p>
         </div>
     </BaseModal>

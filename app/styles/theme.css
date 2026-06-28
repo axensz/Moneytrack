@@ -44,6 +44,19 @@
   --balance-foreground: #6b21a8;
   --balance-value: #7c3aed;
 
+  /* TEXTO/SUPERFICIE SEMÁNTICOS — alias de la capa "*-text"/surface usada por el
+     manual (HelpSection*). Apuntan a tokens YA afinados AA: los *-text son los
+     mismos fg que ya cumplen AA sobre su -muted; el par de marca usa los tokens
+     de balance (AA en claro y oscuro). Como referencian vars que .dark redefine,
+     resuelven por modo sin duplicar el bloque. Definir aquí enciende también
+     HelpSectionBasics, que ya estaba en main referenciándolos sin definir. */
+  --success-text: var(--success);
+  --warning-text: var(--warning);
+  --destructive-text: var(--destructive);
+  --info-text: var(--info);
+  --surface-primary: var(--balance-accent);
+  --primary-text: var(--balance-accent-foreground);
+
   /* BORDERS & INPUTS - Bordes más suaves */
   --border: #e5e5e5;
   --border-accent: #ddd6fe;

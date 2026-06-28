@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { Bell, Clock, AlertTriangle, DollarSign, CreditCard, Users, Save } from 'lucide-react';
+import { Clock, AlertTriangle, DollarSign, CreditCard, Users, Save } from 'lucide-react';
 import { useNotificationContext } from '../../contexts/NotificationContext';
 import toast from 'react-hot-toast';
 import type { NotificationPreferences as NotificationPreferencesType } from '../../types/finance';
@@ -86,17 +86,10 @@ export function NotificationPreferences({ onSave }: NotificationPreferencesProps
     };
 
     return (
-        <div className="max-w-2xl mx-auto p-6 space-y-6">
-            <div className="flex items-center gap-3 mb-6">
-                <Bell className="w-6 h-6 text-blue-600" />
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                    Configuración de Notificaciones
-                </h2>
-            </div>
-
+        <div className="max-w-2xl mx-auto space-y-6">
             {/* Notification Types */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            <div className="card">
+                <h3 className="text-lg font-semibold text-foreground mb-4">
                     Tipos de Notificaciones
                 </h3>
                 <div className="space-y-4">
@@ -139,8 +132,8 @@ export function NotificationPreferences({ onSave }: NotificationPreferencesProps
             </div>
 
             {/* Thresholds */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            <div className="card">
+                <h3 className="text-lg font-semibold text-foreground mb-4">
                     Umbrales de Alerta
                 </h3>
                 <div className="space-y-4">
@@ -194,11 +187,11 @@ export function NotificationPreferences({ onSave }: NotificationPreferencesProps
             </div>
 
             {/* Quiet Hours */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <div className="card">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
-                        <Clock className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                        <Clock className="w-5 h-5 text-muted-foreground" />
+                        <h3 className="text-lg font-semibold text-foreground">
                             Horas Silenciosas
                         </h3>
                     </div>
@@ -209,22 +202,22 @@ export function NotificationPreferences({ onSave }: NotificationPreferencesProps
                             onChange={handleQuietHoursToggle}
                             className="sr-only peer"
                         />
-                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-transform dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                        <div className="w-11 h-6 bg-muted peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-transform peer-checked:bg-primary-solid"></div>
                     </label>
                 </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                <p className="text-sm text-muted-foreground mb-4">
                     No mostrar notificaciones emergentes durante estas horas (las notificaciones se guardarán en el centro)
                 </p>
                 {localPreferences.quietHours.enabled && (
                     <div className="flex gap-4">
                         <div className="flex-1">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            <label className="label-base">
                                 Desde
                             </label>
                             <select
                                 value={localPreferences.quietHours.startHour}
                                 onChange={(e) => handleQuietHoursChange('startHour', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                                className="input-base"
                             >
                                 {Array.from({ length: 24 }, (_, i) => (
                                     <option key={i} value={i}>
@@ -234,13 +227,13 @@ export function NotificationPreferences({ onSave }: NotificationPreferencesProps
                             </select>
                         </div>
                         <div className="flex-1">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            <label className="label-base">
                                 Hasta
                             </label>
                             <select
                                 value={localPreferences.quietHours.endHour}
                                 onChange={(e) => handleQuietHoursChange('endHour', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                                className="input-base"
                             >
                                 {Array.from({ length: 24 }, (_, i) => (
                                     <option key={i} value={i}>
@@ -258,7 +251,7 @@ export function NotificationPreferences({ onSave }: NotificationPreferencesProps
                 <button
                     onClick={handleSave}
                     disabled={saving}
-                    className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <Save className="w-5 h-5" />
                     {saving ? 'Guardando...' : 'Guardar Cambios'}
@@ -279,15 +272,15 @@ interface ToggleItemProps {
 
 function ToggleItem({ icon, label, description, checked, onChange }: ToggleItemProps) {
     return (
-        <div className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-            <div className="text-gray-600 dark:text-gray-400 mt-1">{icon}</div>
+        <div className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted transition-colors">
+            <div className="text-muted-foreground mt-1">{icon}</div>
             <div className="flex-1">
-                <h4 className="text-sm font-medium text-gray-900 dark:text-white">{label}</h4>
-                <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{description}</p>
+                <h4 className="text-sm font-medium text-foreground">{label}</h4>
+                <p className="text-xs text-muted-foreground mt-1">{description}</p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
                 <input type="checkbox" checked={checked} onChange={onChange} className="sr-only peer" />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-transform dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                <div className="w-11 h-6 bg-muted peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-transform peer-checked:bg-primary-solid"></div>
             </label>
         </div>
     );
@@ -316,7 +309,7 @@ function ThresholdInput({
 }: ThresholdInputProps) {
     return (
         <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="label-base">
                 {label}
             </label>
             <div className="flex items-center gap-2">
@@ -327,13 +320,13 @@ function ThresholdInput({
                     min={min}
                     max={max}
                     step={step}
-                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                    className="input-base flex-1"
                 />
-                <span className="text-sm font-medium text-gray-600 dark:text-gray-400 w-16">
+                <span className="text-sm font-medium text-muted-foreground w-16">
                     {suffix}
                 </span>
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{description}</p>
+            <p className="text-xs text-muted-foreground mt-1">{description}</p>
         </div>
     );
 }

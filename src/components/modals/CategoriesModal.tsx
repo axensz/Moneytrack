@@ -67,13 +67,13 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title="Categorías"
-      titleIcon={<Tag size={24} className="text-purple-600" />}
+      titleIcon={<Tag size={24} className="text-primary" />}
       maxWidth="max-w-2xl"
     >
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 max-h-[calc(90vh-80px)] overflow-y-auto">
         {/* Header con botón */}
         <div className="flex justify-between items-center">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-sm text-muted-foreground">
             Administra tus categorías de ingresos y gastos.
           </p>
           <button
@@ -87,7 +87,7 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
 
         {/* Formulario inline */}
         {showForm && (
-          <div className="p-4 bg-purple-50 dark:bg-purple-900/10 rounded-xl border border-purple-200 dark:border-purple-800 space-y-3">
+          <div className="p-4 bg-muted rounded-xl border border-border space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="label-base">Tipo</label>
@@ -142,41 +142,49 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
           {/* Gastos */}
           <div>
-            <h5 className="text-sm font-semibold mb-3 text-gray-700 dark:text-gray-300">
+            <h5 className="text-sm font-semibold mb-3 text-foreground">
               Gastos ({categories.expense.length})
             </h5>
-            <div className="space-y-1.5 max-h-48 sm:max-h-64 overflow-y-auto">
-              {categories.expense.map((cat) => (
-                <CategoryItem
-                  key={cat}
-                  name={cat}
-                  type="expense"
-                  isProtected={(
-                    PROTECTED_CATEGORIES.expense as readonly string[]
-                  ).includes(cat)}
-                  onDelete={() => handleDelete('expense', cat)}
-                />
-              ))}
+            <div className="space-y-0.5 max-h-48 sm:max-h-64 overflow-y-auto">
+              {categories.expense.length === 0 ? (
+                <EmptyCategories type="expense" />
+              ) : (
+                categories.expense.map((cat) => (
+                  <CategoryItem
+                    key={cat}
+                    name={cat}
+                    type="expense"
+                    isProtected={(
+                      PROTECTED_CATEGORIES.expense as readonly string[]
+                    ).includes(cat)}
+                    onDelete={() => handleDelete('expense', cat)}
+                  />
+                ))
+              )}
             </div>
           </div>
 
           {/* Ingresos */}
           <div>
-            <h5 className="text-sm font-semibold mb-3 text-gray-700 dark:text-gray-300">
+            <h5 className="text-sm font-semibold mb-3 text-foreground">
               Ingresos ({categories.income.length})
             </h5>
-            <div className="space-y-1.5 max-h-48 sm:max-h-64 overflow-y-auto">
-              {categories.income.map((cat) => (
-                <CategoryItem
-                  key={cat}
-                  name={cat}
-                  type="income"
-                  isProtected={(
-                    PROTECTED_CATEGORIES.income as readonly string[]
-                  ).includes(cat)}
-                  onDelete={() => handleDelete('income', cat)}
-                />
-              ))}
+            <div className="space-y-0.5 max-h-48 sm:max-h-64 overflow-y-auto">
+              {categories.income.length === 0 ? (
+                <EmptyCategories type="income" />
+              ) : (
+                categories.income.map((cat) => (
+                  <CategoryItem
+                    key={cat}
+                    name={cat}
+                    type="income"
+                    isProtected={(
+                      PROTECTED_CATEGORIES.income as readonly string[]
+                    ).includes(cat)}
+                    onDelete={() => handleDelete('income', cat)}
+                  />
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -199,32 +207,24 @@ const CategoryItem: React.FC<CategoryItemProps> = ({
   isProtected,
   onDelete,
 }) => {
-  const colors = {
-    expense: {
-      bg: 'bg-rose-50 dark:bg-rose-900/20',
-      border: 'border-rose-200 dark:border-rose-800',
-      hover: 'hover:bg-rose-100 dark:hover:bg-rose-900/30',
-    },
-    income: {
-      bg: 'bg-purple-50 dark:bg-purple-900/20',
-      border: 'border-purple-200 dark:border-purple-800',
-      hover: 'hover:bg-purple-100 dark:hover:bg-purple-900/30',
-    },
-  };
-
-  const style = colors[type];
+  // COLOR = ESTADO: gasto → destructive (rojo), ingreso → success (verde).
+  // El violet es marca, NUNCA estado, así que no tiñe ninguna categoría; aquí
+  // solo es un punto de acento pequeño (no una tarjeta con borde tintado).
+  const dotColor = type === 'expense' ? 'bg-destructive' : 'bg-success';
 
   return (
-    <div
-      className={`flex justify-between items-center p-2.5 ${style.bg} border ${style.border} rounded-lg ${style.hover} transition-colors`}
-    >
-      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-        {name}
-      </span>
+    <div className="group flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-muted">
+      <span
+        className={`h-2 w-2 shrink-0 rounded-full ${dotColor}`}
+        aria-hidden="true"
+      />
+      <span className="flex-1 truncate text-sm text-foreground">{name}</span>
       {!isProtected && (
+        // Se revela en hover/foco (puntero fino) y queda siempre visible en
+        // pantallas táctiles (pointer-coarse) para no romper la a11y.
         <button
           onClick={onDelete}
-          className="p-1 text-gray-400 hover:text-rose-600 rounded transition-colors"
+          className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100"
           aria-label={`Eliminar categoría ${name}`}
         >
           <X size={14} />
@@ -233,3 +233,13 @@ const CategoryItem: React.FC<CategoryItemProps> = ({
     </div>
   );
 };
+
+// Estado vacío por columna: enseña la acción para crear la primera categoría.
+const EmptyCategories: React.FC<{ type: 'expense' | 'income' }> = ({ type }) => (
+  <div className="rounded-lg border border-dashed border-border px-3 py-6 text-center">
+    <p className="text-sm text-muted-foreground">
+      Aún no tienes categorías de {type === 'expense' ? 'gastos' : 'ingresos'}.
+      Crea una con <span className="font-medium text-foreground">Nueva</span>.
+    </p>
+  </div>
+);

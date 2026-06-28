@@ -34,25 +34,25 @@ describe('geminiClient (BYOK)', () => {
     expect(isGeminiKeyConfigured()).toBe(false);
   });
 
-  it('throws from getGeminiClient when no key is configured', () => {
+  it('throws from getGeminiClient when no key is configured', async () => {
     setAiConsent(true);
-    expect(() => getGeminiClient()).toThrow(/API key/i);
+    await expect(getGeminiClient()).rejects.toThrow(/API key/i);
   });
 
-  it('returns a client and caches it for the same key', () => {
+  it('returns a client and caches it for the same key', async () => {
     setGeminiApiKey(LONG_KEY);
     setAiConsent(true);
-    const a = getGeminiClient();
-    const b = getGeminiClient();
+    const a = await getGeminiClient();
+    const b = await getGeminiClient();
     expect(a).toBe(b); // mismo cliente cacheado
   });
 
-  it('recreates the client when the key changes', () => {
+  it('recreates the client when the key changes', async () => {
     setGeminiApiKey(LONG_KEY);
     setAiConsent(true);
-    const a = getGeminiClient();
+    const a = await getGeminiClient();
     setGeminiApiKey(`${LONG_KEY}-different`);
-    const b = getGeminiClient();
+    const b = await getGeminiClient();
     expect(a).not.toBe(b);
   });
 });
@@ -80,15 +80,15 @@ describe('consent gate (S4)', () => {
     expect(isAiEnabled()).toBe(false); // consentimiento pero sin key
   });
 
-  it('getGeminiClient throws (no data leaves) when key is set but consent is off', () => {
+  it('getGeminiClient throws (no data leaves) when key is set but consent is off', async () => {
     setGeminiApiKey(LONG_KEY);
     setAiConsent(false);
-    expect(() => getGeminiClient()).toThrow(/autoriza/i);
+    await expect(getGeminiClient()).rejects.toThrow(/autoriza/i);
   });
 
-  it('getGeminiClient succeeds once consent is granted', () => {
+  it('getGeminiClient succeeds once consent is granted', async () => {
     setGeminiApiKey(LONG_KEY);
     setAiConsent(true);
-    expect(() => getGeminiClient()).not.toThrow();
+    await expect(getGeminiClient()).resolves.toBeDefined();
   });
 });

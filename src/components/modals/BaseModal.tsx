@@ -13,6 +13,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { useModalA11y } from '../../hooks/useModalA11y';
 
@@ -66,11 +67,11 @@ export function BaseModal({
     return () => clearTimeout(t);
   }, [isOpen, rendered]);
 
-  if (!rendered) return null;
+  if (!rendered || typeof document === 'undefined') return null;
 
-  return (
+  return createPortal(
     <div
-      className={`fixed inset-0 z-[110] flex items-start justify-center p-4 sm:py-[6vh] bg-black/50 backdrop-blur-sm overflow-y-auto ${closing ? 'animate-out fade-out' : 'animate-in fade-in'}`}
+      className={`fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto ${closing ? 'animate-out fade-out' : 'animate-in fade-in'}`}
       onClick={closeOnBackdrop ? onClose : undefined}
       role="dialog"
       aria-modal="true"
@@ -81,7 +82,7 @@ export function BaseModal({
         onClick={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}
         tabIndex={-1}
-        className={`bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full ${maxWidth} outline-none ${closing ? 'animate-out fade-out zoom-out-95' : 'animate-in fade-in zoom-in-95'} ${className}`}
+        className={`bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full ${maxWidth} outline-none focus-visible:outline-none ${closing ? 'animate-out fade-out zoom-out-95' : 'animate-in fade-in zoom-in-95'} ${className}`}
         style={{
           maxHeight: 'calc(100dvh - 2rem)',
         }}
@@ -109,6 +110,7 @@ export function BaseModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

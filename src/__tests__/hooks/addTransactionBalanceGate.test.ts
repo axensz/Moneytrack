@@ -28,6 +28,15 @@ import { useAddTransaction } from '../../hooks/useAddTransaction';
 type Params = Parameters<typeof useAddTransaction>[0];
 
 const savings: Account = { id: 'sav', name: 'Ahorros', type: 'savings', isDefault: true, initialBalance: 0 };
+const credit: Account = {
+  id: 'tc',
+  name: 'Visa',
+  type: 'credit',
+  isDefault: false,
+  initialBalance: 0,
+  creditLimit: 1_000_000,
+  usedCredit: 0,
+};
 
 const makeParams = (overrides: Record<string, unknown> = {}): Params =>
   ({
@@ -53,6 +62,49 @@ const expense150k: NewTransaction = {
 beforeEach(() => {
   M.toastErrors.length = 0;
   M.toastSuccess.length = 0;
+});
+
+describe('useAddTransaction - gastos USD en TC', () => {
+  const usdExpense: NewTransaction = {
+    type: 'expense',
+    amount: '100',
+    category: 'Compras',
+    description: 'Compra exterior',
+    date: '2026-06-15',
+    paid: true,
+    accountId: 'tc',
+    toAccountId: '',
+    hasInterest: false,
+    installments: 1,
+    currency: 'USD',
+    exchangeRate: '4000',
+  };
+
+  it('convierte USD a COP y guarda metadatos originales', async () => {
+    const params = makeParams({ accounts: [credit], defaultAccount: credit });
+    const { result } = renderHook(() => useAddTransaction(params));
+    await act(async () => { await result.current.handleAddTransaction(usdExpense); });
+
+    expect(params.addTransaction).toHaveBeenCalledTimes(1);
+    expect(params.addTransaction).toHaveBeenCalledWith(expect.objectContaining({
+      amount: 400_000,
+      currency: 'COP',
+      originalAmount: 100,
+      originalCurrency: 'USD',
+      exchangeRate: 4000,
+    }));
+  });
+
+  it('rechaza USD sin TRM valida', async () => {
+    const params = makeParams({ accounts: [credit], defaultAccount: credit });
+    const { result } = renderHook(() => useAddTransaction(params));
+    await act(async () => {
+      await result.current.handleAddTransaction({ ...usdExpense, exchangeRate: '' });
+    });
+
+    expect(params.addTransaction).not.toHaveBeenCalled();
+    expect(M.toastErrors.join(' ')).toMatch(/TRM/i);
+  });
 });
 
 describe('useAddTransaction — gate de balancesReady (#3)', () => {

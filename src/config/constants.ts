@@ -248,6 +248,8 @@ export const createInitialTransaction = () => ({
   paid: true, // ✅ Por defecto las transacciones están pagadas (más intuitivo)
   accountId: '',
   toAccountId: '',
+  currency: 'COP' as const,
+  exchangeRate: '',
   hasInterest: false, // 🆕 Por defecto sin intereses
   installments: 1 // 🆕 Por defecto 1 cuota
 });

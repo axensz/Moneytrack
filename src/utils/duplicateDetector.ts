@@ -1,6 +1,7 @@
 import type { Transaction, NewTransaction } from '../types/finance';
 import { parseAmount } from './csvParser';
 import { ensureDate } from './dateUtils';
+import { roundMoney } from './formatters';
 
 export interface DuplicateMatch {
   transaction: Transaction;
@@ -30,7 +31,13 @@ export function detectDuplicates(
   // parseAmount maneja tanto el formato colombiano ("50.000", "1.234.567,89")
   // como el decimal plano del CurrencyInput ("88888.5"). Antes se hacía
   // replace('.','') a ciegas y "88888.5" se convertía en 888885 (F10).
-  const newAmount = parseAmount(newTx.amount.toString());
+  const originalAmount = parseAmount(newTx.amount.toString());
+  const exchangeRate = newTx.currency === 'USD' && newTx.exchangeRate
+    ? parseAmount(newTx.exchangeRate.toString())
+    : NaN;
+  const newAmount = newTx.currency === 'USD' && exchangeRate > 0
+    ? roundMoney(originalAmount * exchangeRate)
+    : originalAmount;
 
   if (isNaN(newAmount) || newAmount <= 0) return [];
   if (!newTx.description.trim() && !newTx.category) return [];

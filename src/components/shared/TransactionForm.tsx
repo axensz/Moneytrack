@@ -6,7 +6,7 @@ import { formatCurrency, formatDate, formatNumberForInput, unformatNumber, parse
 import { getCreditCardUsedCredit } from '@/utils/accountStrategies';
 import { INSTALLMENT_OPTIONS, calculateInterest } from '@/utils/interestCalculator';
 import { detectDuplicates, type DuplicateMatch } from '@/utils/duplicateDetector';
-import type { NewTransaction, Account, Categories, Transaction, RecurringPayment } from '@/types/finance';
+import type { NewTransaction } from '@/types/finance';
 import { useTransactionDomain, useAccountDomain, useCategoryDomain, useRecurringDomain } from '@/hooks/useFinanceSelectors';
 
 interface TransactionFormProps {
@@ -18,6 +18,8 @@ interface TransactionFormProps {
   onCancel: () => void;
   batchCount?: number;
 }
+
+const OFFICIAL_TRM_URL = 'https://www.datos.gov.co/resource/32sa-8pi3.json?$limit=1&$order=vigenciadesde%20DESC';
 
 export const TransactionForm: React.FC<TransactionFormProps> = memo(({
   isOpen = true,
@@ -35,6 +37,16 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
   // Obtener cuenta seleccionada para validar restricciones
   const selectedAccount = accounts.find(acc => acc.id === newTransaction.accountId) || defaultAccount;
   const isCreditCard = selectedAccount?.type === 'credit';
+  const supportsForeignCurrency = isCreditCard && newTransaction.type === 'expense';
+  const selectedCurrency = newTransaction.currency || 'COP';
+  const typedAmount = parseCurrency(String(newTransaction.amount || ''));
+  const exchangeRate = parseCurrency(String(newTransaction.exchangeRate || ''));
+  const convertedAmount = selectedCurrency === 'USD' &&
+    Number.isFinite(typedAmount) &&
+    Number.isFinite(exchangeRate) &&
+    exchangeRate > 0
+      ? typedAmount * exchangeRate
+      : null;
 
   // Calcular cupo usado si es TC y está pagando
   const creditUsed = useMemo(() => {
@@ -51,7 +63,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
     const installments = Number(newTransaction.installments) || 1;
     if (installments <= 1) return null;
 
-    const principal = parseCurrency(String(newTransaction.amount));
+    const principal = convertedAmount ?? parseCurrency(String(newTransaction.amount));
     if (!principal || principal <= 0) return null;
 
     const annualRate = selectedAccount?.interestRate || 0;
@@ -67,7 +79,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
     } catch {
       return null;
     }
-  }, [isCreditCard, newTransaction.type, newTransaction.installments, newTransaction.amount, newTransaction.hasInterest, selectedAccount?.interestRate]);
+  }, [isCreditCard, newTransaction.type, newTransaction.installments, newTransaction.amount, newTransaction.hasInterest, selectedAccount?.interestRate, convertedAmount]);
 
   // Efecto: Inicializar accountId con defaultAccount si está vacío
   useEffect(() => {
@@ -84,9 +96,34 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
     }
   }, [isCreditCard, newTransaction.type, setNewTransaction]);
 
+  useEffect(() => {
+    if (!supportsForeignCurrency && selectedCurrency !== 'COP') {
+      setNewTransaction(prev => ({ ...prev, currency: 'COP', exchangeRate: '' }));
+    }
+  }, [supportsForeignCurrency, selectedCurrency, setNewTransaction]);
+
   // Detección de duplicados: solo al intentar enviar (no en tiempo real)
   const [pendingDuplicates, setPendingDuplicates] = useState<DuplicateMatch[]>([]);
   const [pendingAction, setPendingAction] = useState<'submit' | 'continue' | null>(null);
+  const [isFetchingTrm, setIsFetchingTrm] = useState(false);
+  const [officialTrmError, setOfficialTrmError] = useState('');
+
+  const handleUseOfficialTrm = useCallback(async () => {
+    setIsFetchingTrm(true);
+    setOfficialTrmError('');
+    try {
+      const response = await fetch(OFFICIAL_TRM_URL);
+      if (!response.ok) throw new Error('TRM request failed');
+      const data = await response.json() as Array<{ valor?: string }>;
+      const rate = Number(data[0]?.valor);
+      if (!Number.isFinite(rate) || rate <= 0) throw new Error('Invalid TRM response');
+      setNewTransaction(prev => ({ ...prev, exchangeRate: rate.toString() }));
+    } catch {
+      setOfficialTrmError('No se pudo consultar la TRM oficial');
+    } finally {
+      setIsFetchingTrm(false);
+    }
+  }, [setNewTransaction]);
 
   const checkDuplicatesAndSubmit = useCallback((action: 'submit' | 'continue') => {
     const matches = detectDuplicates(newTransaction, transactions);
@@ -188,15 +225,67 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                 onChange={(e) =>
                   setNewTransaction({ ...newTransaction, amount: unformatNumber(e.target.value) })
                 }
-                placeholder="0"
+                placeholder={selectedCurrency === 'USD' ? '0,00' : '0'}
                 className="input-base"
               />
+              {supportsForeignCurrency && (
+                <div className="mt-2 flex gap-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-1">
+                  {(['COP', 'USD'] as const).map((currency) => (
+                    <button
+                      key={currency}
+                      type="button"
+                      onClick={() => setNewTransaction({
+                        ...newTransaction,
+                        currency,
+                        exchangeRate: currency === 'COP' ? '' : newTransaction.exchangeRate,
+                      })}
+                      className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${selectedCurrency === currency
+                        ? 'bg-white dark:bg-gray-700 text-blue-700 dark:text-blue-300 shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      aria-pressed={selectedCurrency === currency}
+                    >
+                      {currency}
+                    </button>
+                  ))}
+                </div>
+              )}
               {isCreditCard && newTransaction.type === 'income' && creditUsed > 0 && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
                   Deuda pendiente: {formatCurrency(creditUsed)}
                 </p>
               )}
             </div>
+
+            {supportsForeignCurrency && selectedCurrency === 'USD' && (
+              <div>
+                <label htmlFor="tx-form-exchange-rate" className="label-base">TRM (Tasa Representativa del Mercado)</label>
+                <div className="flex gap-2">
+                  <input
+                    id="tx-form-exchange-rate"
+                    type="text"
+                    inputMode="decimal"
+                    value={formatNumberForInput(newTransaction.exchangeRate || '')}
+                    onChange={(e) =>
+                      setNewTransaction({ ...newTransaction, exchangeRate: unformatNumber(e.target.value) })
+                    }
+                    placeholder="4.000"
+                    className="input-base"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleUseOfficialTrm}
+                    disabled={isFetchingTrm}
+                    className="shrink-0 px-3 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isFetchingTrm ? '...' : 'Oficial'}
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {officialTrmError || (convertedAmount ? `Se registra en COP: ${formatCurrency(convertedAmount)}` : 'Convierte el gasto a COP para cupo y reportes')}
+                </p>
+              </div>
+            )}
 
             <div>
               <label htmlFor="tx-form-target" className="label-base">
@@ -374,7 +463,9 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                     ...(payment && {
                       category: payment.category,
                       description: payment.name,
-                      amount: payment.amount.toString()
+                      amount: payment.amount.toString(),
+                      currency: 'COP',
+                      exchangeRate: '',
                     })
                   });
                 }}

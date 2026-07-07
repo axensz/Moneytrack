@@ -16,7 +16,7 @@ import { showToast } from '../utils/toastHelpers';
 import { logger } from '../utils/logger';
 import { TransactionValidator } from '../utils/validators';
 import { calculateInterest } from '../utils/interestCalculator';
-import { parseDateWithTime, parseCurrency } from '../utils/formatters';
+import { parseDateWithTime, parseCurrency, roundMoney } from '../utils/formatters';
 import { cycleKey } from '../utils/recurringDates';
 import {
   SUCCESS_MESSAGES,
@@ -32,6 +32,13 @@ import type {
   Account,
   RecurringPayment,
 } from '../types/finance';
+
+const parseSignedCurrency = (value: string | number): number => {
+  if (typeof value === 'number') return value;
+  const trimmed = value.trim();
+  const sign = trimmed.startsWith('-') ? -1 : 1;
+  return sign * parseCurrency(trimmed);
+};
 
 interface UseAddTransactionParams {
   accounts: Account[];
@@ -129,8 +136,31 @@ export function useAddTransaction({
       // (transactions=undefined): de otro modo se valida contra la ventana
       // paginada incompleta y se rechazan transacciones legítimas con un falso
       // "Saldo insuficiente" (#3). Misma decisión que el path de edición.
+      const typedAmount = parseSignedCurrency(newTransaction.amount.toString());
+      const isForeignCreditExpense =
+        selectedAccount.type === 'credit' &&
+        newTransaction.type === 'expense' &&
+        newTransaction.currency === 'USD';
+      const exchangeRate = isForeignCreditExpense
+        ? parseSignedCurrency((newTransaction.exchangeRate || '').toString())
+        : undefined;
+
+      if (!Number.isFinite(typedAmount)) {
+        showToast.error('Monto invalido');
+        return false;
+      }
+
+      if (isForeignCreditExpense && (!exchangeRate || !Number.isFinite(exchangeRate) || exchangeRate <= 0)) {
+        showToast.error('Ingresa una TRM valida para convertir el gasto a COP');
+        return false;
+      }
+
+      const amount = isForeignCreditExpense
+        ? roundMoney(typedAmount * exchangeRate!)
+        : typedAmount;
+
       const validation = TransactionValidator.validate(
-        newTransaction,
+        { ...newTransaction, amount: amount.toString() },
         selectedAccount,
         balancesReady ? transactions : undefined
       );
@@ -143,9 +173,7 @@ export function useAddTransaction({
       try {
         // El input entrega formato es-CO ("88.888" o "88.888,5"); parseCurrency
         // maneja la coma decimal sin perder centavos (parseFloat la truncaría).
-        const amount = parseCurrency(newTransaction.amount.toString());
-
-        if (isNaN(amount)) {
+        if (!Number.isFinite(amount)) {
           showToast.error('Monto inválido');
           return false;
         }
@@ -196,6 +224,13 @@ export function useAddTransaction({
           // que cambie hoy / el dueDay). Boundary cases se reajustan con re-vincular.
           recurringCycle: recurringPayment ? cycleKey(recurringPayment, txDate) : undefined,
         };
+
+        if (isForeignCreditExpense) {
+          transactionData.currency = 'COP';
+          transactionData.originalAmount = typedAmount;
+          transactionData.originalCurrency = 'USD';
+          transactionData.exchangeRate = exchangeRate;
+        }
 
         // Calcular intereses si es un gasto en TC con cuotas
         if (

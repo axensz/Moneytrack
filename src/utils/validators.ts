@@ -15,7 +15,7 @@ import {
 } from '../config/constants';
 import { AccountStrategyFactory } from './accountStrategies';
 import { getCreditDelta } from './creditDeltas';
-import { roundMoney } from './formatters';
+import { parseCurrency, roundMoney } from './formatters';
 import type {
   NewTransaction,
   NewAccount,
@@ -23,6 +23,13 @@ import type {
   Account,
   Transaction
 } from '../types/finance';
+
+const parseValidationAmount = (value: string | number): number => {
+  if (typeof value === 'number') return value;
+  const trimmed = value.trim();
+  const sign = trimmed.startsWith('-') ? -1 : 1;
+  return sign * parseCurrency(trimmed);
+};
 
 /**
  * 🔵 VALIDADOR DE TRANSACCIONES CON STRATEGY PATTERN
@@ -85,7 +92,7 @@ export class TransactionValidator {
 
     // ===== VALIDACIÓN DE MONTO =====
 
-    const amount = parseFloat(transaction.amount);
+    const amount = parseValidationAmount(transaction.amount);
     if (!transaction.amount || isNaN(amount)) {
       errors.push(ERROR_MESSAGES.INVALID_AMOUNT);
     } else if (amount <= TRANSACTION_VALIDATION.amount.min) {
@@ -150,7 +157,7 @@ export class TransactionValidator {
    */
   static validateAmount(amount: string | number): ValidationResult {
     const errors: string[] = [];
-    const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+    const numAmount = parseValidationAmount(amount);
 
     if (isNaN(numAmount) || numAmount <= TRANSACTION_VALIDATION.amount.min) {
       errors.push(TRANSACTION_VALIDATION.amount.errorMessage);

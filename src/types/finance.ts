@@ -146,6 +146,8 @@ export interface NewTransaction {
   // 🆕 Campos para intereses (usado en formulario)
   hasInterest: boolean;
   installments: number;
+  currency?: 'COP' | 'USD';
+  exchangeRate?: string;
 
   // 🆕 Asociación con pago periódico
   recurringPaymentId?: string;

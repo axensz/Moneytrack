@@ -82,6 +82,16 @@ export function useCategoryDomain() {
   return useStoreSelector(useFinanceStore(), selectCategoryDomain);
 }
 
+const selectBeneficiaryDomain = (s: FinanceContextValue) => ({
+  beneficiaries: s.transactionBeneficiaries,
+  addBeneficiary: s.addTransactionBeneficiary,
+  deleteBeneficiary: s.deleteTransactionBeneficiary,
+}) as const;
+
+export function useBeneficiaryDomain() {
+  return useStoreSelector(useFinanceStore(), selectBeneficiaryDomain);
+}
+
 // ── Pagos Recurrentes ─────────────────────────────────────────────────────────
 
 const selectRecurringDomain = (s: FinanceContextValue) => ({

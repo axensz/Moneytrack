@@ -336,6 +336,13 @@ service cloud.firestore {
           && request.resource.data.startMonth is string
           && request.resource.data.startMonth.matches('[0-9]{4}-[0-9]{2}')
           && isValidAmount(request.resource.data.declaredIncome);
+
+        // settings/beneficiaries — lista editable de Personas / Beneficiarios.
+        allow create, update: if isOwner(userId)
+          && settingId == 'beneficiaries'
+          && request.resource.data.keys().hasOnly(['items'])
+          && request.resource.data.items is list
+          && request.resource.data.items.size() <= 50;
       }
     }
 

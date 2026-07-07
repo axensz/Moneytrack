@@ -204,7 +204,7 @@ export const Header: React.FC<HeaderProps> = ({
                     role="menuitem"
                   >
                     <Tag size={18} aria-hidden="true" />
-                    <span>Categorías</span>
+                    <span>Categorías y personas</span>
                   </button>
                   {user && (
                     <button

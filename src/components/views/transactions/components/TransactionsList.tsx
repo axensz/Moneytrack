@@ -17,6 +17,7 @@ interface TransactionsListProps {
     expandedTransaction?: string | null;
     toggleExpand?: (id: string) => void;
     categories: Categories;
+    beneficiaries: string[];
     formatCurrency: (amount: number) => string;
     getAccountForTransaction: (accountId: string) => Account | undefined;
     getRecurringPaymentName: (id?: string) => string | null | undefined;
@@ -53,6 +54,7 @@ export function TransactionsList({
     expandedTransaction = null,
     toggleExpand,
     categories,
+    beneficiaries,
     formatCurrency,
     getAccountForTransaction,
     getRecurringPaymentName,
@@ -202,6 +204,7 @@ export function TransactionsList({
                                 isEditing={editingTransaction === item.transaction.id}
                                 editForm={editForm}
                                 categories={categories}
+                                beneficiaries={beneficiaries}
                                 recurringPaymentName={getRecurringPaymentName(item.transaction.recurringPaymentId)}
                                 formatCurrency={formatCurrency}
                                 isExpanded={expandedTransaction === item.transaction.id}
@@ -217,6 +220,7 @@ export function TransactionsList({
                                 transactions={item.transactions}
                                 formatCurrency={formatCurrency}
                                 categories={categories}
+                                beneficiaries={beneficiaries}
                                 getAccountForTransaction={getAccountForTransaction}
                                 getRecurringPaymentName={getRecurringPaymentName}
                                 editingTransaction={editingTransaction}

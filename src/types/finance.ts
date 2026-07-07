@@ -155,7 +155,7 @@ export interface NewTransaction {
   recurringPaymentId?: string;
 }
 
-export type TransactionBeneficiary = 'Yo' | 'Novia' | 'Mamá' | 'Papá' | 'Familia' | 'Otro';
+export type TransactionBeneficiary = string;
 
 export interface NewAccount {
   name: string;

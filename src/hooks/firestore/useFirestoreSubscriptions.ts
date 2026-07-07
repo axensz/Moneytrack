@@ -46,6 +46,7 @@ export interface FirestoreData {
   transactions: Transaction[];
   accounts: Account[];
   categories: Category[];
+  transactionBeneficiaries: string[];
   recurringPayments: RecurringPayment[];
   debts: Debt[];
   budgets: Budget[];
@@ -66,6 +67,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [transactionBeneficiaries, setTransactionBeneficiaries] = useState<string[]>([]);
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
   const [debts, setDebts] = useState<Debt[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -119,6 +121,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
       setTransactions([]);
       setAccounts([]);
       setCategories([]);
+      setTransactionBeneficiaries([]);
       setRecurringPayments([]);
       setDebts([]);
       setBudgets([]);
@@ -188,6 +191,19 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
         checkAllLoaded();
       },
       handleError('categorías')
+    ));
+
+    // 4. Recurring Payments (ordered by dueDay)
+    unsubscribes.push(onSnapshot(
+      firestoreDoc(db, `${base}/settings/beneficiaries`),
+      (snap) => {
+        if (!isMountedRef.current) return;
+        const items = snap.exists() && Array.isArray(snap.data().items)
+          ? snap.data().items.filter((item: unknown): item is string => typeof item === 'string')
+          : [];
+        setTransactionBeneficiaries(items);
+      },
+      handleError('personas')
     ));
 
     // 4. Recurring Payments (ordered by dueDay)
@@ -331,5 +347,5 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     return [...transactions, ...unique];
   }, [transactions, olderTransactions]);
 
-  return { transactions: allTransactions, accounts, categories, recurringPayments, debts, budgets, savingsGoals, notifications, notificationPreferences, loading, error, hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions, retryLoad };
+  return { transactions: allTransactions, accounts, categories, transactionBeneficiaries, recurringPayments, debts, budgets, savingsGoals, notifications, notificationPreferences, loading, error, hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions, retryLoad };
 }

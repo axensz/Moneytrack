@@ -123,6 +123,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     balancesReady,
     accounts,
     categories,
+    transactionBeneficiaries,
     recurringPayments,
     budgets,
     debts,
@@ -134,6 +135,8 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     addCreditPaymentAtomic,
     deleteCategory,
     addCategory,
+    deleteTransactionBeneficiary,
+    addTransactionBeneficiary,
     updateRecurringPayment,
     getAccountBalance,
     formatCurrency,
@@ -523,6 +526,9 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
           categories={categories}
           addCategory={addCategory}
           deleteCategory={deleteCategory}
+          beneficiaries={transactionBeneficiaries}
+          addBeneficiary={addTransactionBeneficiary}
+          deleteBeneficiary={deleteTransactionBeneficiary}
         />
       )}
 

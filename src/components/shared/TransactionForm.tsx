@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, memo, useState, useCallback } from 'react';
 import { Repeat, Zap, AlertTriangle } from 'lucide-react';
 import { BaseModal } from '@/components/modals/BaseModal';
-import { TRANSACTION_BENEFICIARIES, UI_LABELS, TRANSFER_CATEGORY } from '@/config/constants';
+import { UI_LABELS, TRANSFER_CATEGORY } from '@/config/constants';
 import { formatCurrency, formatDate, formatNumberForInput, unformatNumber, parseCurrency } from '@/utils/formatters';
 import { getCreditCardUsedCredit } from '@/utils/accountStrategies';
 import { INSTALLMENT_OPTIONS, calculateInterest } from '@/utils/interestCalculator';
 import { detectDuplicates, type DuplicateMatch } from '@/utils/duplicateDetector';
 import type { NewTransaction } from '@/types/finance';
-import { useTransactionDomain, useAccountDomain, useCategoryDomain, useRecurringDomain } from '@/hooks/useFinanceSelectors';
+import { useTransactionDomain, useAccountDomain, useBeneficiaryDomain, useCategoryDomain, useRecurringDomain } from '@/hooks/useFinanceSelectors';
 
 interface TransactionFormProps {
   isOpen?: boolean;
@@ -33,6 +33,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
   const { accounts, defaultAccount } = useAccountDomain();
   const { transactions } = useTransactionDomain();
   const { categories } = useCategoryDomain();
+  const { beneficiaries } = useBeneficiaryDomain();
   const { recurringPayments } = useRecurringDomain();
   // Obtener cuenta seleccionada para validar restricciones
   const selectedAccount = accounts.find(acc => acc.id === newTransaction.accountId) || defaultAccount;
@@ -356,11 +357,12 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
               <label htmlFor="tx-form-beneficiary" className="label-base">Persona / Beneficiario</label>
               <select
                 id="tx-form-beneficiary"
-                value={newTransaction.beneficiary || 'Yo'}
-                onChange={(e) => setNewTransaction({ ...newTransaction, beneficiary: e.target.value as typeof TRANSACTION_BENEFICIARIES[number] })}
+                value={newTransaction.beneficiary || ''}
+                onChange={(e) => setNewTransaction({ ...newTransaction, beneficiary: e.target.value })}
                 className="input-base"
               >
-                {TRANSACTION_BENEFICIARIES.map((beneficiary) => (
+                <option value="">Sin persona</option>
+                {beneficiaries.map((beneficiary) => (
                   <option key={beneficiary} value={beneficiary}>{beneficiary}</option>
                 ))}
               </select>

@@ -218,7 +218,7 @@ export function useAddTransaction({
           paid: newTransaction.paid,
           accountId: newTransaction.accountId || defaultAccount?.id || '',
           toAccountId: newTransaction.toAccountId || undefined,
-          beneficiary: newTransaction.beneficiary || 'Yo',
+          beneficiary: newTransaction.beneficiary?.trim() || undefined,
           recurringPaymentId: newTransaction.recurringPaymentId || undefined,
           // Estampar el ciclo de la fecha del pago → isPaidForMonth lo atribuye a
           // ese ciclo de forma explícita y estable (no depende de la ventana ni de
@@ -274,7 +274,7 @@ export function useAddTransaction({
               date: txDate,
               paid: true,
               accountId: sourceAccount.id!,
-              beneficiary: newTransaction.beneficiary || 'Yo',
+              beneficiary: newTransaction.beneficiary?.trim() || undefined,
             };
             await addCreditPaymentAtomic(transactionData, sourceTx);
           } else {

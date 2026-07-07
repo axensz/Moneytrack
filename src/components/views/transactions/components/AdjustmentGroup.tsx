@@ -9,6 +9,7 @@ interface AdjustmentGroupProps {
   transactions: Transaction[];
   formatCurrency: (amount: number) => string;
   categories: Categories;
+  beneficiaries: string[];
   getAccountForTransaction: (accountId: string) => Account | undefined;
   getRecurringPaymentName: (id?: string) => string | null | undefined;
   editingTransaction: string | null;
@@ -26,6 +27,7 @@ export const AdjustmentGroup: React.FC<AdjustmentGroupProps> = ({
   transactions,
   formatCurrency,
   categories,
+  beneficiaries,
   getAccountForTransaction,
   getRecurringPaymentName,
   editingTransaction,
@@ -89,6 +91,7 @@ export const AdjustmentGroup: React.FC<AdjustmentGroupProps> = ({
                     isEditing={editingTransaction === transaction.id}
                     editForm={editForm}
                     categories={categories}
+                    beneficiaries={beneficiaries}
                     recurringPaymentName={getRecurringPaymentName(transaction.recurringPaymentId)}
                     formatCurrency={formatCurrency}
                     isExpanded={expandedTransaction === transaction.id}

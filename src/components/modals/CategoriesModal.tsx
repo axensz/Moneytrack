@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Plus, Tag } from 'lucide-react';
+import { X, Plus, Tag, UserRound } from 'lucide-react';
 import { BaseModal } from './BaseModal';
-import { PROTECTED_CATEGORIES } from '../../config/constants';
+import { DEFAULT_TRANSACTION_BENEFICIARIES, PROTECTED_CATEGORIES } from '../../config/constants';
 import { showToast } from '../../utils/toastHelpers';
 import { SUCCESS_MESSAGES } from '../../config/constants';
 
@@ -16,6 +16,9 @@ interface CategoriesModalProps {
   };
   addCategory: (type: 'expense' | 'income', name: string) => void | Promise<void>;
   deleteCategory: (type: 'expense' | 'income', name: string) => void | Promise<void>;
+  beneficiaries: string[];
+  addBeneficiary: (name: string) => void | Promise<void>;
+  deleteBeneficiary: (name: string) => void | Promise<void>;
 }
 
 export const CategoriesModal: React.FC<CategoriesModalProps> = ({
@@ -24,14 +27,20 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
   categories,
   addCategory,
   deleteCategory,
+  beneficiaries,
+  addBeneficiary,
+  deleteBeneficiary,
 }) => {
   const [showForm, setShowForm] = useState(false);
+  const [showBeneficiaryForm, setShowBeneficiaryForm] = useState(false);
+  const [newBeneficiary, setNewBeneficiary] = useState('');
   const [newCategory, setNewCategory] = useState<{
     type: 'expense' | 'income';
     name: string;
   }>({ type: 'expense', name: '' });
 
   const [submitting, setSubmitting] = useState(false);
+  const [submittingBeneficiary, setSubmittingBeneficiary] = useState(false);
 
   // addCategory es async: hay que await-earlo para capturar errores (nombre
   // duplicado, fallo de Firestore) y para no mostrar el toast de éxito ni doble
@@ -62,11 +71,35 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
     }
   };
 
+  const handleBeneficiarySubmit = async () => {
+    if (submittingBeneficiary) return;
+    setSubmittingBeneficiary(true);
+    try {
+      await addBeneficiary(newBeneficiary);
+      setNewBeneficiary('');
+      setShowBeneficiaryForm(false);
+      showToast.success('Persona agregada');
+    } catch (error) {
+      showToast.error((error as Error).message);
+    } finally {
+      setSubmittingBeneficiary(false);
+    }
+  };
+
+  const handleBeneficiaryDelete = async (name: string) => {
+    try {
+      await deleteBeneficiary(name);
+      showToast.success('Persona eliminada');
+    } catch (error) {
+      showToast.error((error as Error).message);
+    }
+  };
+
   return (
     <BaseModal
       isOpen={isOpen}
       onClose={onClose}
-      title="Categorías"
+      title="Categorías y personas"
       titleIcon={<Tag size={24} className="text-primary" />}
       maxWidth="max-w-2xl"
     >
@@ -194,6 +227,73 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
             </div>
           </div>
         </div>
+
+        <div className="border-t border-border pt-4 sm:pt-5 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h5 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <UserRound size={16} className="text-primary" aria-hidden="true" />
+                Personas / Beneficiarios ({beneficiaries.length})
+              </h5>
+              <p className="text-xs text-muted-foreground mt-1">
+                Etiquetas para saber para quién fue cada movimiento.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowBeneficiaryForm(!showBeneficiaryForm)}
+              className="btn-primary text-sm shrink-0"
+              aria-expanded={showBeneficiaryForm}
+            >
+              <Plus size={16} />
+              Nueva
+            </button>
+          </div>
+
+          {showBeneficiaryForm && (
+            <div className="p-4 bg-muted rounded-xl border border-border space-y-3">
+              <div>
+                <label htmlFor="new-beneficiary-name" className="label-base">Nombre</label>
+                <input
+                  id="new-beneficiary-name"
+                  type="text"
+                  value={newBeneficiary}
+                  onChange={(e) => setNewBeneficiary(e.target.value)}
+                  placeholder="Ej: Ana, Padres, Casa"
+                  className="input-base"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleBeneficiarySubmit();
+                  }}
+                />
+              </div>
+              <div className="flex gap-2">
+                <button onClick={handleBeneficiarySubmit} disabled={submittingBeneficiary} className="btn-submit text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                  Crear
+                </button>
+                <button
+                  onClick={() => {
+                    setShowBeneficiaryForm(false);
+                    setNewBeneficiary('');
+                  }}
+                  className="btn-cancel text-sm"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+            {beneficiaries.map((beneficiary) => (
+              <BeneficiaryItem
+                key={beneficiary}
+                name={beneficiary}
+                isProtected={(DEFAULT_TRANSACTION_BENEFICIARIES as readonly string[]).includes(beneficiary)}
+                onDelete={() => handleBeneficiaryDelete(beneficiary)}
+              />
+            ))}
+          </div>
+        </div>
       </div>
     </BaseModal>
   );
@@ -239,6 +339,32 @@ const CategoryItem: React.FC<CategoryItemProps> = ({
     </div>
   );
 };
+
+interface BeneficiaryItemProps {
+  name: string;
+  isProtected: boolean;
+  onDelete: () => void;
+}
+
+const BeneficiaryItem: React.FC<BeneficiaryItemProps> = ({
+  name,
+  isProtected,
+  onDelete,
+}) => (
+  <div className="group flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-muted">
+    <UserRound size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+    <span className="flex-1 truncate text-sm text-foreground">{name}</span>
+    {!isProtected && (
+      <button
+        onClick={onDelete}
+        className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100"
+        aria-label={`Eliminar persona ${name}`}
+      >
+        <X size={14} />
+      </button>
+    )}
+  </div>
+);
 
 // Estado vacío por columna: enseña la acción para crear la primera categoría.
 const EmptyCategories: React.FC<{ type: 'expense' | 'income' }> = ({ type }) => (

@@ -13,7 +13,7 @@ import {
 
 export function useFirestore(userId: string | null) {
   const {
-    transactions, accounts, categories,
+    transactions, accounts, categories, transactionBeneficiaries,
     recurringPayments, debts, budgets, savingsGoals,
     notifications, notificationPreferences,
     loading, error,
@@ -29,7 +29,7 @@ export function useFirestore(userId: string | null) {
 
   return {
     // Data (all 7 collections + notifications)
-    transactions, accounts, categories,
+    transactions, accounts, categories, transactionBeneficiaries,
     recurringPayments, debts, budgets, savingsGoals,
     notifications, notificationPreferences,
     loading, error,

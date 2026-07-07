@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { CheckCircle2, Circle, X, Wallet, Plus, Sparkles } from 'lucide-react';
+import React from 'react';
+import { CheckCircle2, Circle, Wallet, Plus, Sparkles } from 'lucide-react';
 
 interface OnboardingChecklistProps {
   hasAccounts: boolean;
@@ -12,16 +12,11 @@ interface OnboardingChecklistProps {
   onOpenAISettings: () => void;
 }
 
-const DISMISSED_KEY = 'moneytrack_onboarding_dismissed';
-
 /**
- * P-onboarding — Checklist pasivo de primeros pasos.
+ * P-onboarding: checklist pasivo de primeros pasos.
  *
- * Reemplaza la dependencia del manual estático como onboarding: una tarjeta
- * dismissable con 3 pasos que se marcan SOLOS al completarse (derivados del
- * estado real: hay cuentas, hay movimientos, IA lista). Se oculta al completar
- * todo o si el usuario la cierra (persistido en localStorage). No intrusivo:
- * no bloquea la UI ni usa overlays.
+ * Se marca solo con el estado real de la app y se mantiene visible mientras
+ * falte algun paso. Desaparece unicamente cuando todo queda completo.
  */
 export function OnboardingChecklist({
   hasAccounts,
@@ -31,10 +26,6 @@ export function OnboardingChecklist({
   onAddTransaction,
   onOpenAISettings,
 }: OnboardingChecklistProps) {
-  const [dismissed, setDismissed] = useState(
-    () => typeof window !== 'undefined' && localStorage.getItem(DISMISSED_KEY) === 'true'
-  );
-
   const steps = [
     { key: 'account', label: 'Crea tu primera cuenta', done: hasAccounts, icon: Wallet, cta: 'Ir a Cuentas', onAction: onGoToAccounts },
     { key: 'transaction', label: 'Registra tu primer movimiento', done: hasTransactions, icon: Plus, cta: 'Registrar', onAction: onAddTransaction },
@@ -44,32 +35,18 @@ export function OnboardingChecklist({
   const completed = steps.filter(s => s.done).length;
   const allDone = completed === steps.length;
 
-  if (dismissed || allDone) return null;
-
-  const dismiss = () => {
-    setDismissed(true);
-    try { localStorage.setItem(DISMISSED_KEY, 'true'); } catch { /* noop */ }
-  };
+  if (allDone) return null;
 
   return (
     <section
       aria-label="Primeros pasos"
-      className="mb-4 rounded-2xl border border-border-accent bg-primary/5 p-4 sm:p-5"
+      className="fixed bottom-[156px] left-4 right-4 z-40 rounded-2xl border border-border-accent bg-card/95 p-4 shadow-2xl backdrop-blur-sm sm:bottom-6 sm:left-6 sm:right-auto sm:w-[360px] sm:p-5"
     >
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div>
-          <h2 className="text-sm font-bold text-foreground">Primeros pasos</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {completed} de {steps.length} completados
-          </p>
-        </div>
-        <button
-          onClick={dismiss}
-          aria-label="Ocultar primeros pasos"
-          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          <X size={16} />
-        </button>
+      <div className="mb-3">
+        <h2 className="text-sm font-bold text-foreground">Primeros pasos</h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {completed} de {steps.length} completados
+        </p>
       </div>
 
       <ul className="space-y-2">
@@ -87,7 +64,7 @@ export function OnboardingChecklist({
             {!step.done && (
               <button
                 onClick={step.onAction}
-                className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-lg bg-primary-solid text-white hover:opacity-90 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="flex items-center gap-1 rounded-lg bg-primary-solid px-2.5 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <step.icon size={12} aria-hidden="true" />
                 {step.cta}

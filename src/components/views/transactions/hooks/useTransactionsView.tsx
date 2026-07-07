@@ -17,7 +17,7 @@ import { TransactionValidator } from '../../../../utils/validators';
 import { calculateInterest } from '../../../../utils/interestCalculator';
 import { showToast } from '../../../../utils/toastHelpers';
 import { logger } from '../../../../utils/logger';
-import { SUCCESS_MESSAGES, TRANSACTION_BENEFICIARIES } from '../../../../config/constants';
+import { SUCCESS_MESSAGES } from '../../../../config/constants';
 
 interface UseTransactionsViewParams {
   transactions: Transaction[];
@@ -82,7 +82,7 @@ export const useTransactionsView = ({
     amount: '',
     date: '',
     category: '',
-    beneficiary: 'Yo' as TransactionBeneficiary,
+    beneficiary: '' as TransactionBeneficiary,
   });
 
   // Estado de detalle (expandir fila en modo solo lectura)
@@ -214,7 +214,7 @@ export const useTransactionsView = ({
       amount: transaction.amount.toString(),
       date: new Date(transaction.date).toISOString().split('T')[0],
       category: transaction.category,
-      beneficiary: transaction.beneficiary || 'Yo',
+      beneficiary: transaction.beneficiary || '',
     });
   }, []);
 
@@ -240,9 +240,7 @@ export const useTransactionsView = ({
           description: editForm.description,
           accountId: original?.accountId ?? '',
           toAccountId: original?.toAccountId ?? '',
-          beneficiary: TRANSACTION_BENEFICIARIES.includes(editForm.beneficiary)
-            ? editForm.beneficiary
-            : 'Yo',
+          beneficiary: editForm.beneficiary.trim() || undefined,
         } as NewTransaction,
         account,
         balancesReady ? balanceTransactions : undefined,
@@ -262,9 +260,7 @@ export const useTransactionsView = ({
             ? parseDateWithTime(editForm.date, ensureDate(original.date))
             : parseDateWithTime(editForm.date),
           category: editForm.category,
-          beneficiary: TRANSACTION_BENEFICIARIES.includes(editForm.beneficiary)
-            ? editForm.beneficiary
-            : 'Yo',
+          beneficiary: editForm.beneficiary.trim() || null,
         };
 
         const amountChanged = original
@@ -296,7 +292,7 @@ export const useTransactionsView = ({
         await updateTransaction(id, updates as Partial<Transaction>);
 
         setEditingTransaction(null);
-        setEditForm({ description: '', amount: '', date: '', category: '', beneficiary: 'Yo' });
+        setEditForm({ description: '', amount: '', date: '', category: '', beneficiary: '' });
         showToast.success(SUCCESS_MESSAGES.TRANSACTION_UPDATED);
       } catch (error) {
         const errorMessage = error instanceof Error
@@ -314,7 +310,7 @@ export const useTransactionsView = ({
 
   const handleCancelEdit = useCallback(() => {
     setEditingTransaction(null);
-    setEditForm({ description: '', amount: '', date: '', category: '', beneficiary: 'Yo' });
+    setEditForm({ description: '', amount: '', date: '', category: '', beneficiary: '' });
   }, []);
 
   const handleDeleteTransaction = useCallback(

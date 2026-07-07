@@ -3,7 +3,6 @@
 import React, { memo } from 'react';
 import { formatNumberForInput, unformatNumber } from '../../../../utils/formatters';
 import { ArrowDownLeft, ArrowRightLeft, ArrowUpRight, Check, ChevronDown, Clock, Edit2, Repeat, X } from 'lucide-react';
-import { TRANSACTION_BENEFICIARIES } from '../../../../config/constants';
 import type { Transaction, Account, Categories, TransactionBeneficiary } from '../../../../types/finance';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 import { ensureDate } from '../../../../utils/dateUtils';
@@ -21,6 +20,7 @@ interface TransactionItemProps {
     beneficiary: TransactionBeneficiary;
   };
   categories: Categories;
+  beneficiaries: string[];
   recurringPaymentName?: string | null;
   formatCurrency: (amount: number) => string;
   isExpanded?: boolean;
@@ -42,6 +42,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
   isEditing,
   editForm,
   categories,
+  beneficiaries,
   recurringPaymentName,
   formatCurrency,
   isExpanded = false,
@@ -142,7 +143,8 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
                 }
                 className="input-base"
               >
-                {TRANSACTION_BENEFICIARIES.map((beneficiary) => (
+                <option value="">Sin persona</option>
+                {beneficiaries.map((beneficiary) => (
                   <option key={beneficiary} value={beneficiary}>{beneficiary}</option>
                 ))}
               </select>
@@ -443,6 +445,7 @@ function areEqual(prev: TransactionItemProps, next: TransactionItemProps): boole
     prev.account === next.account &&
     prev.destinationAccount === next.destinationAccount &&
     prev.categories === next.categories &&
+    prev.beneficiaries === next.beneficiaries &&
     prev.recurringPaymentName === next.recurringPaymentName &&
     prev.formatCurrency === next.formatCurrency &&
     prev.isExpanded === next.isExpanded &&

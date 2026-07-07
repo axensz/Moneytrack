@@ -123,12 +123,12 @@ describe('useAddTransaction - beneficiario', () => {
         toAccountId: '',
         hasInterest: false,
         installments: 1,
-        beneficiary: 'Mamá',
+        beneficiary: 'Madre',
       });
     });
 
     expect(params.addTransaction).toHaveBeenCalledWith(expect.objectContaining({
-      beneficiary: 'Mamá',
+      beneficiary: 'Madre',
     }));
   });
 });

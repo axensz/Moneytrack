@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import type { Transaction, Account } from '../../../types/finance';
 import { useTransactionDomain, useAccountDomain, useFormatCurrency } from '../../../hooks/useFinanceSelectors';
 import { useAuth } from '../../../hooks/useAuth';
 import { useAllTransactions } from '../../../hooks/useAllTransactions';
@@ -9,6 +8,7 @@ import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { CashFlowChart } from './components/CashFlowChart';
 import { MonthlyComparisonChart } from './components/MonthlyComparisonChart';
 import { CategoryPieChart } from './components/CategoryPieChart';
+import { BeneficiarySpendTable } from './components/BeneficiarySpendTable';
 import { YearlyTrendChart } from './components/YearlyTrendChart';
 import { CreditCardInterestsCard } from './components/CreditCardInterestsCard';
 import { PeriodSummaryCard } from './components/PeriodSummaryCard';
@@ -61,11 +61,17 @@ export const StatsView: React.FC = () => {
         />
       </div>
 
-      {/* Fila 3: Tendencia anual */}
-      <YearlyTrendChart
-        data={yearlyData}
-        formatCurrency={displayAmount}
-      />
+      {/* Fila 3: Tendencia anual y gasto por persona */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <YearlyTrendChart
+          data={yearlyData}
+          formatCurrency={displayAmount}
+        />
+        <BeneficiarySpendTable
+          transactions={allTransactions}
+          formatCurrency={displayAmount}
+        />
+      </div>
 
       {/* Fila 4: Intereses de tarjetas de crédito */}
       <CreditCardInterestsCard

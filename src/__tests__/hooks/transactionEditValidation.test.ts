@@ -185,13 +185,13 @@ describe('edición de beneficiario', () => {
     const params = makeParams();
     const { result } = renderHook(() => useTransactionsView(params));
     act(() => result.current.startEditTransaction(expenseSav));
-    act(() => result.current.setEditForm({ ...result.current.editForm, beneficiary: 'Novia' }));
+    act(() => result.current.setEditForm({ ...result.current.editForm, beneficiary: 'Pareja' }));
     await act(async () => {
       await result.current.handleSaveEdit(expenseSav.id!);
     });
 
     expect(params.updateTransaction).toHaveBeenCalledWith('e1', expect.objectContaining({
-      beneficiary: 'Novia',
+      beneficiary: 'Pareja',
     }));
   });
 });

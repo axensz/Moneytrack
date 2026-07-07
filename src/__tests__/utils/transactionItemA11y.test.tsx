@@ -13,6 +13,7 @@ vi.mock('@/contexts/UIPreferencesContext', () => ({
 import { TransactionItem } from '../../components/views/transactions/components/TransactionItem';
 
 const categories: Categories = { income: ['Salario'], expense: ['Comida'] };
+const beneficiaries = ['Titular', 'Pareja', 'Familia'];
 
 const baseTx: Transaction = {
   id: 'abc123',
@@ -26,7 +27,7 @@ const baseTx: Transaction = {
 } as Transaction;
 
 const account: Account = { id: 'acc1', name: 'Bancolombia', type: 'savings', isDefault: false, initialBalance: 0 };
-const emptyEditForm = { description: '', amount: '', date: '', category: '', beneficiary: 'Yo' as const };
+const emptyEditForm = { description: '', amount: '', date: '', category: '', beneficiary: 'Titular' as const };
 
 const noop = () => {};
 
@@ -38,6 +39,7 @@ function renderItem(overrides: Partial<React.ComponentProps<typeof TransactionIt
       isEditing={false}
       editForm={emptyEditForm}
       categories={categories}
+      beneficiaries={beneficiaries}
       formatCurrency={(n) => `$${n.toLocaleString('es-CO')}`}
       onEdit={noop}
       onDelete={noop}
@@ -91,6 +93,7 @@ describe('TransactionItem a11y / máscara', () => {
         isEditing={false}
         editForm={emptyEditForm}
         categories={categories}
+        beneficiaries={beneficiaries}
         formatCurrency={(n) => `$${n.toLocaleString('es-CO')}`}
         onEdit={noop}
         onDelete={noop}
@@ -116,6 +119,7 @@ describe('TransactionItem a11y / máscara', () => {
         isEditing={false}
         editForm={emptyEditForm}
         categories={categories}
+        beneficiaries={beneficiaries}
         formatCurrency={(n) => `$${n.toLocaleString('es-CO')}`}
         onEdit={noop}
         onDelete={noop}
@@ -149,6 +153,7 @@ describe('TransactionItem a11y / máscara', () => {
         isEditing={false}
         editForm={emptyEditForm}
         categories={categories}
+        beneficiaries={beneficiaries}
         formatCurrency={(n) => `$${n}`}
         onEdit={onEdit}
         onDelete={onDelete}
@@ -174,8 +179,9 @@ describe('TransactionItem a11y / máscara', () => {
         transaction={baseTx}
         account={account}
         isEditing
-        editForm={{ description: 'x', amount: '1000', date: '2026-06-01', category: 'Comida', beneficiary: 'Yo' }}
+        editForm={{ description: 'x', amount: '1000', date: '2026-06-01', category: 'Comida', beneficiary: 'Titular' }}
         categories={categories}
+        beneficiaries={beneficiaries}
         formatCurrency={(n) => `$${n}`}
         onEdit={noop}
         onDelete={noop}

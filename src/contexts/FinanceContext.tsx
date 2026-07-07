@@ -27,6 +27,7 @@ import { useAccounts } from '../hooks/useAccounts';
 import type { MergeCreditCardsParams } from '../hooks/useAccounts';
 import { useRecurringPayments } from '../hooks/useRecurringPayments';
 import { useCategories } from '../hooks/useCategories';
+import { useBeneficiaries } from '../hooks/useBeneficiaries';
 import { useDebts } from '../hooks/useDebts';
 import { useBudgets } from '../hooks/useBudgets';
 import { useSavingsGoals } from '../hooks/useSavingsGoals';
@@ -67,6 +68,7 @@ export interface FinanceContextValue {
   balancesReady: boolean;
   accounts: Account[];
   categories: Categories;
+  transactionBeneficiaries: string[];
   recurringPayments: RecurringPayment[];
   defaultAccount: Account | null;
   totalBalance: number;
@@ -107,6 +109,8 @@ export interface FinanceContextValue {
   // ── Category CRUD ──
   addCategory: (type: 'expense' | 'income', name: string) => Promise<void>;
   deleteCategory: (type: 'expense' | 'income', name: string) => Promise<void>;
+  addTransactionBeneficiary: (name: string) => Promise<void>;
+  deleteTransactionBeneficiary: (name: string) => Promise<void>;
 
   // ── Recurring CRUD + Utils ──
   addRecurringPayment: (payment: Omit<RecurringPayment, 'id' | 'createdAt'>) => Promise<void>;
@@ -244,6 +248,11 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
 
   // 4. Categorías (depende de transactions)
   const { categories, addCategory, deleteCategory } = useCategories(transactions, userId);
+  const {
+    beneficiaries: transactionBeneficiaries,
+    addBeneficiary: addTransactionBeneficiary,
+    deleteBeneficiary: deleteTransactionBeneficiary,
+  } = useBeneficiaries(transactions, userId);
 
   // 5. Deudas/Préstamos — uses centralized data when authenticated
   const {
@@ -334,6 +343,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     balancesReady,
     accounts,
     categories,
+    transactionBeneficiaries,
     recurringPayments,
     defaultAccount: defaultAccount || null,
     totalBalance,
@@ -370,6 +380,8 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     // Category CRUD
     addCategory,
     deleteCategory,
+    addTransactionBeneficiary,
+    deleteTransactionBeneficiary,
 
     // Recurring
     addRecurringPayment,
@@ -414,14 +426,14 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     // Utilidades
     formatCurrency,
   }), [
-    transactions, balanceTransactions, balancesReady, accounts, categories, recurringPayments, defaultAccount, totalBalance,
+    transactions, balanceTransactions, balancesReady, accounts, categories, transactionBeneficiaries, recurringPayments, defaultAccount, totalBalance,
     transactionsLoading, accountsLoading,
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
     firestoreError, retryLoad,
     addTransaction, addCreditPaymentAtomic, deleteTransactionWithDebtSync, updateTransaction,
     addAccount, updateAccount, deleteAccount, mergeCreditCards, setDefaultAccount,
     getAccountBalance, getCreditUsed, getTransactionCountForAccount,
-    addCategory, deleteCategory,
+    addCategory, deleteCategory, addTransactionBeneficiary, deleteTransactionBeneficiary,
     addRecurringPayment, updateRecurringPayment, deleteRecurringPayment,
     isPaidForMonth, getNextDueDate, getDaysUntilDue, getDaysOverdue, isOverdue, getPaymentHistory, recurringStats,
     debts, addDebt, updateDebt, deleteDebt, registerDebtPayment, modifyDebtBalance, forgiveDebt,

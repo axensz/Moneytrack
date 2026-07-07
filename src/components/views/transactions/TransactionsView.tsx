@@ -7,7 +7,7 @@ import type {
   FilterValue,
   DateRangePreset,
 } from '../../../types/finance';
-import { useTransactionDomain, useAccountDomain, useCategoryDomain, useRecurringDomain, useFormatCurrency } from '../../../hooks/useFinanceSelectors';
+import { useTransactionDomain, useAccountDomain, useBeneficiaryDomain, useCategoryDomain, useRecurringDomain, useFormatCurrency } from '../../../hooks/useFinanceSelectors';
 import dynamic from 'next/dynamic';
 
 /**
@@ -85,6 +85,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   const { accounts, balancesReady } = useAccountDomain();
   const { recurringPayments } = useRecurringDomain();
   const { categories } = useCategoryDomain();
+  const { beneficiaries } = useBeneficiaryDomain();
   const formatCurrency = useFormatCurrency();
   const {
     filteredTransactions,
@@ -244,6 +245,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           expandedTransaction={expandedTransaction}
           toggleExpand={toggleExpand}
           categories={categories}
+          beneficiaries={beneficiaries}
           formatCurrency={formatCurrency}
           getAccountForTransaction={getAccountForTransaction}
           getRecurringPaymentName={getRecurringPaymentName}

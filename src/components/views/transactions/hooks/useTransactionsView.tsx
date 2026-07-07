@@ -8,14 +8,16 @@ import type {
   DateRangePreset,
   RecurringPayment,
   NewTransaction,
+  TransactionBeneficiary,
 } from '../../../../types/finance';
-import { parseDateFromInput, parseDateWithTime, parseCurrency } from '../../../../utils/formatters';
+import { parseDateFromInput, parseDateWithTime, parseCurrency, roundMoney } from '../../../../utils/formatters';
 import { getDateRangeFromPreset, ensureDate } from '../../../../utils/dateUtils';
 import { findAccountForTransaction, transactionUsesAccount } from '../../../../utils/accountTransactions';
 import { TransactionValidator } from '../../../../utils/validators';
+import { calculateInterest } from '../../../../utils/interestCalculator';
 import { showToast } from '../../../../utils/toastHelpers';
 import { logger } from '../../../../utils/logger';
-import { SUCCESS_MESSAGES } from '../../../../config/constants';
+import { SUCCESS_MESSAGES, TRANSACTION_BENEFICIARIES } from '../../../../config/constants';
 
 interface UseTransactionsViewParams {
   transactions: Transaction[];
@@ -37,6 +39,17 @@ interface UseTransactionsViewParams {
   /** false mientras el historial completo asienta: se omite la validación. */
   balancesReady: boolean;
 }
+
+type TransactionEditUpdates = {
+  [K in keyof Transaction]?: Transaction[K] | null;
+} & Record<string, unknown>;
+
+const nullDerivedForeignCurrencyFields: TransactionEditUpdates = {
+  currency: null,
+  originalAmount: null,
+  originalCurrency: null,
+  exchangeRate: null,
+};
 
 /**
  * Hook para gestionar la lógica de la vista de transacciones
@@ -69,6 +82,7 @@ export const useTransactionsView = ({
     amount: '',
     date: '',
     category: '',
+    beneficiary: 'Yo' as TransactionBeneficiary,
   });
 
   // Estado de detalle (expandir fila en modo solo lectura)
@@ -117,6 +131,7 @@ export const useTransactionsView = ({
         const searchableText = [
           t.description,
           t.category,
+          t.beneficiary,
           typeLabel,
           sourceAccount?.name,
           destinationAccount?.name,
@@ -199,6 +214,7 @@ export const useTransactionsView = ({
       amount: transaction.amount.toString(),
       date: new Date(transaction.date).toISOString().split('T')[0],
       category: transaction.category,
+      beneficiary: transaction.beneficiary || 'Yo',
     });
   }, []);
 
@@ -224,6 +240,9 @@ export const useTransactionsView = ({
           description: editForm.description,
           accountId: original?.accountId ?? '',
           toAccountId: original?.toAccountId ?? '',
+          beneficiary: TRANSACTION_BENEFICIARIES.includes(editForm.beneficiary)
+            ? editForm.beneficiary
+            : 'Yo',
         } as NewTransaction,
         account,
         balancesReady ? balanceTransactions : undefined,
@@ -235,7 +254,7 @@ export const useTransactionsView = ({
       }
 
       try {
-        await updateTransaction(id, {
+        const updates: TransactionEditUpdates = {
           description: editForm.description.trim(),
           amount,
           // Mantiene la hora original de la transacción; el input solo cambia el día.
@@ -243,10 +262,41 @@ export const useTransactionsView = ({
             ? parseDateWithTime(editForm.date, ensureDate(original.date))
             : parseDateWithTime(editForm.date),
           category: editForm.category,
-        });
+          beneficiary: TRANSACTION_BENEFICIARIES.includes(editForm.beneficiary)
+            ? editForm.beneficiary
+            : 'Yo',
+        };
+
+        const amountChanged = original
+          ? roundMoney(amount) !== roundMoney(original.amount)
+          : false;
+
+        if (original && amountChanged) {
+          if (original.originalCurrency || original.originalAmount || original.exchangeRate) {
+            Object.assign(updates, nullDerivedForeignCurrencyFields);
+          }
+
+          if (original.type === 'expense' && original.installments && original.installments > 1) {
+            const annualRate = original.interestRate ?? account?.interestRate ?? 0;
+            const interestResult = calculateInterest(
+              amount,
+              annualRate,
+              original.installments,
+              !!original.hasInterest
+            );
+
+            updates.hasInterest = !!original.hasInterest;
+            updates.installments = original.installments;
+            updates.monthlyInstallmentAmount = interestResult.monthlyInstallmentAmount;
+            updates.totalInterestAmount = interestResult.totalInterestAmount;
+            updates.interestRate = annualRate;
+          }
+        }
+
+        await updateTransaction(id, updates as Partial<Transaction>);
 
         setEditingTransaction(null);
-        setEditForm({ description: '', amount: '', date: '', category: '' });
+        setEditForm({ description: '', amount: '', date: '', category: '', beneficiary: 'Yo' });
         showToast.success(SUCCESS_MESSAGES.TRANSACTION_UPDATED);
       } catch (error) {
         const errorMessage = error instanceof Error
@@ -264,7 +314,7 @@ export const useTransactionsView = ({
 
   const handleCancelEdit = useCallback(() => {
     setEditingTransaction(null);
-    setEditForm({ description: '', amount: '', date: '', category: '' });
+    setEditForm({ description: '', amount: '', date: '', category: '', beneficiary: 'Yo' });
   }, []);
 
   const handleDeleteTransaction = useCallback(

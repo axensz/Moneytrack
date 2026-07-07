@@ -3,7 +3,8 @@
 import React, { memo } from 'react';
 import { formatNumberForInput, unformatNumber } from '../../../../utils/formatters';
 import { ArrowDownLeft, ArrowRightLeft, ArrowUpRight, Check, ChevronDown, Clock, Edit2, Repeat, X } from 'lucide-react';
-import type { Transaction, Account, Categories } from '../../../../types/finance';
+import { TRANSACTION_BENEFICIARIES } from '../../../../config/constants';
+import type { Transaction, Account, Categories, TransactionBeneficiary } from '../../../../types/finance';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 import { ensureDate } from '../../../../utils/dateUtils';
 
@@ -17,6 +18,7 @@ interface TransactionItemProps {
     amount: string;
     date: string;
     category: string;
+    beneficiary: TransactionBeneficiary;
   };
   categories: Categories;
   recurringPaymentName?: string | null;
@@ -30,7 +32,7 @@ interface TransactionItemProps {
   onDelete: (transaction: Transaction) => void;
   onSave: (id: string) => void;
   onCancel: () => void;
-  onEditFormChange: (form: { description: string; amount: string; date: string; category: string }) => void;
+  onEditFormChange: (form: { description: string; amount: string; date: string; category: string; beneficiary: TransactionBeneficiary }) => void;
 }
 
 export const TransactionItem: React.FC<TransactionItemProps> = memo(({
@@ -86,6 +88,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
     const editId = `tx-edit-${transaction.id ?? 'new'}`;
     const descId = `${editId}-description`;
     const categoryId = `${editId}-category`;
+    const beneficiaryId = `${editId}-beneficiary`;
     const amountId = `${editId}-amount`;
     const dateId = `${editId}-date`;
     return (
@@ -121,6 +124,26 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
               >
                 {visibleCategories.map(cat => (
                   <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor={beneficiaryId} className="label-base">
+                Persona / Beneficiario
+              </label>
+              <select
+                id={beneficiaryId}
+                value={editForm.beneficiary}
+                onChange={(e) =>
+                  onEditFormChange({
+                    ...editForm,
+                    beneficiary: e.target.value as TransactionBeneficiary,
+                  })
+                }
+                className="input-base"
+              >
+                {TRANSACTION_BENEFICIARIES.map((beneficiary) => (
+                  <option key={beneficiary} value={beneficiary}>{beneficiary}</option>
                 ))}
               </select>
             </div>
@@ -232,6 +255,11 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
               <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-muted text-muted-foreground">
                 {transaction.category}
               </span>
+              {transaction.beneficiary && (
+                <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-[var(--balance-accent)] text-[var(--balance-accent-foreground)]">
+                  {transaction.beneficiary}
+                </span>
+              )}
               <span className="text-[11px] text-muted-foreground">
                 {dateLabel}
               </span>
@@ -318,6 +346,12 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
               <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">Categoría</dt>
               <dd className="text-foreground break-words">{transaction.category}</dd>
             </div>
+            {transaction.beneficiary && (
+              <div>
+                <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">Persona</dt>
+                <dd className="text-foreground break-words">{transaction.beneficiary}</dd>
+              </div>
+            )}
             <div>
               <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">Fecha</dt>
               <dd className="text-foreground">{dateLabel}</dd>

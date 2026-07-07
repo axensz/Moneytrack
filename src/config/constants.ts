@@ -52,6 +52,16 @@ export const LOAN_CATEGORY = 'Préstamo' as const;
 // Categoría especial para cobro de deudas
 export const LOAN_PAYMENT_CATEGORY = 'Cobro Préstamo' as const;
 
+// Personas/beneficiarios para etiquetar para quién fue cada movimiento.
+export const TRANSACTION_BENEFICIARIES = [
+  'Yo',
+  'Novia',
+  'Mamá',
+  'Papá',
+  'Familia',
+  'Otro',
+] as const;
+
 // Categorías especiales del sistema (auto-asignadas, no creadas por usuario)
 export const SPECIAL_CATEGORIES = {
   transfer: TRANSFER_CATEGORY,
@@ -248,6 +258,7 @@ export const createInitialTransaction = () => ({
   paid: true, // ✅ Por defecto las transacciones están pagadas (más intuitivo)
   accountId: '',
   toAccountId: '',
+  beneficiary: 'Yo' as const,
   currency: 'COP' as const,
   exchangeRate: '',
   hasInterest: false, // 🆕 Por defecto sin intereses

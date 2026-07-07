@@ -107,6 +107,32 @@ describe('useAddTransaction - gastos USD en TC', () => {
   });
 });
 
+describe('useAddTransaction - beneficiario', () => {
+  it('guarda la persona seleccionada en la transacción', async () => {
+    const params = makeParams();
+    const { result } = renderHook(() => useAddTransaction(params));
+    await act(async () => {
+      await result.current.handleAddTransaction({
+        type: 'income',
+        amount: '50000',
+        category: 'Sueldo',
+        description: 'pago',
+        date: '2026-06-15',
+        paid: true,
+        accountId: 'sav',
+        toAccountId: '',
+        hasInterest: false,
+        installments: 1,
+        beneficiary: 'Mamá',
+      });
+    });
+
+    expect(params.addTransaction).toHaveBeenCalledWith(expect.objectContaining({
+      beneficiary: 'Mamá',
+    }));
+  });
+});
+
 describe('useAddTransaction — gate de balancesReady (#3)', () => {
   it('con saldos asentados (ready=true) valida y RECHAZA un gasto que sobregira', async () => {
     const params = makeParams();

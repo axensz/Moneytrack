@@ -5,7 +5,7 @@ import { ChevronDown, Loader2, AlertTriangle } from 'lucide-react';
 import { TransactionItem } from './TransactionItem';
 import { AdjustmentGroup } from './AdjustmentGroup';
 import { SPECIAL_CATEGORIES } from '../../../../config/constants';
-import type { Transaction, Account, Categories } from '../../../../types/finance';
+import type { Transaction, Account, Categories, TransactionBeneficiary } from '../../../../types/finance';
 
 const INITIAL_BATCH = 30;
 const BATCH_SIZE = 20;
@@ -13,7 +13,7 @@ const BATCH_SIZE = 20;
 interface TransactionsListProps {
     transactions: Transaction[];
     editingTransaction: string | null;
-    editForm: { description: string; amount: string; date: string; category: string };
+    editForm: { description: string; amount: string; date: string; category: string; beneficiary: TransactionBeneficiary };
     expandedTransaction?: string | null;
     toggleExpand?: (id: string) => void;
     categories: Categories;
@@ -24,7 +24,7 @@ interface TransactionsListProps {
     handleDeleteTransaction: (t: Transaction) => void;
     handleSaveEdit: (id: string) => void;
     handleCancelEdit: () => void;
-    setEditForm: (form: { description: string; amount: string; date: string; category: string }) => void;
+    setEditForm: (form: { description: string; amount: string; date: string; category: string; beneficiary: TransactionBeneficiary }) => void;
     hasMoreTransactions?: boolean;
     loadingMoreTransactions?: boolean;
     loadMoreTransactions?: () => Promise<void>;

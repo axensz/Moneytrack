@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronRight, Settings2 } from 'lucide-react';
 import { TransactionItem } from './TransactionItem';
-import type { Transaction, Account, Categories } from '../../../../types/finance';
+import type { Transaction, Account, Categories, TransactionBeneficiary } from '../../../../types/finance';
 
 interface AdjustmentGroupProps {
   transactions: Transaction[];
@@ -12,14 +12,14 @@ interface AdjustmentGroupProps {
   getAccountForTransaction: (accountId: string) => Account | undefined;
   getRecurringPaymentName: (id?: string) => string | null | undefined;
   editingTransaction: string | null;
-  editForm: { description: string; amount: string; date: string; category: string };
+  editForm: { description: string; amount: string; date: string; category: string; beneficiary: TransactionBeneficiary };
   expandedTransaction?: string | null;
   toggleExpand?: (id: string) => void;
   startEditTransaction: (t: Transaction) => void;
   handleDeleteTransaction: (t: Transaction) => void;
   handleSaveEdit: (id: string) => void;
   handleCancelEdit: () => void;
-  setEditForm: (form: { description: string; amount: string; date: string; category: string }) => void;
+  setEditForm: (form: { description: string; amount: string; date: string; category: string; beneficiary: TransactionBeneficiary }) => void;
 }
 
 export const AdjustmentGroup: React.FC<AdjustmentGroupProps> = ({

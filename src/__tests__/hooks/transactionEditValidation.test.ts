@@ -28,6 +28,25 @@ const credit: Account = { id: 'tc', name: 'Visa', type: 'credit', isDefault: fal
 const expenseSav: Transaction = { id: 'e1', type: 'expense', amount: 90_000, category: 'Compras', description: 'super', date: new Date('2026-06-01T12:00:00'), paid: true, accountId: 'sav' };
 const expenseTc: Transaction = { id: 'c1', type: 'expense', amount: 500_000, category: 'Compras', description: 'tv', date: new Date('2026-06-01T12:00:00'), paid: false, accountId: 'tc' };
 const expenseTc2: Transaction = { id: 'c2', type: 'expense', amount: 300_000, category: 'Compras', description: 'mercado', date: new Date('2026-06-02T12:00:00'), paid: false, accountId: 'tc' };
+const usdInstallmentTc: Transaction = {
+  id: 'fx1',
+  type: 'expense',
+  amount: 400_000,
+  category: 'Compras',
+  description: 'Compra exterior',
+  date: new Date('2026-06-04T12:00:00'),
+  paid: true,
+  accountId: 'tc',
+  currency: 'COP',
+  originalAmount: 100,
+  originalCurrency: 'USD',
+  exchangeRate: 4000,
+  hasInterest: false,
+  installments: 6,
+  monthlyInstallmentAmount: 66_666.67,
+  totalInterestAmount: 0,
+  interestRate: 24,
+};
 
 type Params = Parameters<typeof useTransactionsView>[0];
 
@@ -125,6 +144,55 @@ describe('#8 — la edición valida saldo/cupo excluyendo la original', () => {
     await editAndSave(params, expenseSav, '150000');
 
     expect(params.updateTransaction).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('edición mantiene datos derivados consistentes', () => {
+  it('si cambia el monto de una compra USD, limpia los metadatos originales y recalcula cuotas', async () => {
+    const txs = [usdInstallmentTc];
+    const params = makeParams({ transactions: txs, balanceTransactions: txs });
+    await editAndSave(params, usdInstallmentTc, '600000');
+
+    expect(params.updateTransaction).toHaveBeenCalledTimes(1);
+    expect(params.updateTransaction).toHaveBeenCalledWith('fx1', expect.objectContaining({
+      amount: 600_000,
+      currency: null,
+      originalAmount: null,
+      originalCurrency: null,
+      exchangeRate: null,
+      installments: 6,
+      monthlyInstallmentAmount: 100_000,
+      totalInterestAmount: 0,
+      interestRate: 24,
+    }));
+  });
+
+  it('si el monto no cambia, no borra los metadatos USD', async () => {
+    const txs = [usdInstallmentTc];
+    const params = makeParams({ transactions: txs, balanceTransactions: txs });
+    await editAndSave(params, usdInstallmentTc, '400000');
+
+    expect(params.updateTransaction).toHaveBeenCalledTimes(1);
+    const updates = vi.mocked(params.updateTransaction).mock.calls[0][1] as Record<string, unknown>;
+    expect(updates).not.toHaveProperty('originalAmount');
+    expect(updates).not.toHaveProperty('originalCurrency');
+    expect(updates).not.toHaveProperty('exchangeRate');
+  });
+});
+
+describe('edición de beneficiario', () => {
+  it('guarda el cambio de Persona / Beneficiario', async () => {
+    const params = makeParams();
+    const { result } = renderHook(() => useTransactionsView(params));
+    act(() => result.current.startEditTransaction(expenseSav));
+    act(() => result.current.setEditForm({ ...result.current.editForm, beneficiary: 'Novia' }));
+    await act(async () => {
+      await result.current.handleSaveEdit(expenseSav.id!);
+    });
+
+    expect(params.updateTransaction).toHaveBeenCalledWith('e1', expect.objectContaining({
+      beneficiary: 'Novia',
+    }));
   });
 });
 

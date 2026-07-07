@@ -26,6 +26,7 @@ const baseTx: Transaction = {
 } as Transaction;
 
 const account: Account = { id: 'acc1', name: 'Bancolombia', type: 'savings', isDefault: false, initialBalance: 0 };
+const emptyEditForm = { description: '', amount: '', date: '', category: '', beneficiary: 'Yo' as const };
 
 const noop = () => {};
 
@@ -35,7 +36,7 @@ function renderItem(overrides: Partial<React.ComponentProps<typeof TransactionIt
       transaction={baseTx}
       account={account}
       isEditing={false}
-      editForm={{ description: '', amount: '', date: '', category: '' }}
+      editForm={emptyEditForm}
       categories={categories}
       formatCurrency={(n) => `$${n.toLocaleString('es-CO')}`}
       onEdit={noop}
@@ -62,9 +63,11 @@ describe('TransactionItem a11y / máscara', () => {
     // getByLabelText falla si el label no está asociado correctamente.
     const desc = screen.getByLabelText('Descripción');
     const cat = screen.getByLabelText('Categoría');
+    const beneficiary = screen.getByLabelText('Persona / Beneficiario');
     const date = screen.getByLabelText('Fecha');
     expect(desc).toHaveAttribute('id', 'tx-edit-abc123-description');
     expect(cat).toHaveAttribute('id', 'tx-edit-abc123-category');
+    expect(beneficiary).toHaveAttribute('id', 'tx-edit-abc123-beneficiary');
     expect(date).toHaveAttribute('id', 'tx-edit-abc123-date');
   });
 
@@ -86,7 +89,7 @@ describe('TransactionItem a11y / máscara', () => {
         transaction={baseTx}
         account={account}
         isEditing={false}
-        editForm={{ description: '', amount: '', date: '', category: '' }}
+        editForm={emptyEditForm}
         categories={categories}
         formatCurrency={(n) => `$${n.toLocaleString('es-CO')}`}
         onEdit={noop}
@@ -111,7 +114,7 @@ describe('TransactionItem a11y / máscara', () => {
         transaction={baseTx}
         account={account}
         isEditing={false}
-        editForm={{ description: '', amount: '', date: '', category: '' }}
+        editForm={emptyEditForm}
         categories={categories}
         formatCurrency={(n) => `$${n.toLocaleString('es-CO')}`}
         onEdit={noop}
@@ -144,7 +147,7 @@ describe('TransactionItem a11y / máscara', () => {
         transaction={baseTx}
         account={account}
         isEditing={false}
-        editForm={{ description: '', amount: '', date: '', category: '' }}
+        editForm={emptyEditForm}
         categories={categories}
         formatCurrency={(n) => `$${n}`}
         onEdit={onEdit}
@@ -171,7 +174,7 @@ describe('TransactionItem a11y / máscara', () => {
         transaction={baseTx}
         account={account}
         isEditing
-        editForm={{ description: 'x', amount: '1000', date: '2026-06-01', category: 'Comida' }}
+        editForm={{ description: 'x', amount: '1000', date: '2026-06-01', category: 'Comida', beneficiary: 'Yo' }}
         categories={categories}
         formatCurrency={(n) => `$${n}`}
         onEdit={noop}

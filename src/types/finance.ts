@@ -9,6 +9,7 @@ export interface Transaction {
   accountId: string; // Cambio a string
   toAccountId?: string; // Cambio a string
   createdAt?: Date;
+  beneficiary?: TransactionBeneficiary;
 
   // 🆕 Campos para manejo de intereses en TC
   hasInterest?: boolean; // Si la compra genera intereses
@@ -142,6 +143,7 @@ export interface NewTransaction {
   paid: boolean;
   accountId: string;
   toAccountId: string;
+  beneficiary?: TransactionBeneficiary;
 
   // 🆕 Campos para intereses (usado en formulario)
   hasInterest: boolean;
@@ -152,6 +154,8 @@ export interface NewTransaction {
   // 🆕 Asociación con pago periódico
   recurringPaymentId?: string;
 }
+
+export type TransactionBeneficiary = 'Yo' | 'Novia' | 'Mamá' | 'Papá' | 'Familia' | 'Otro';
 
 export interface NewAccount {
   name: string;

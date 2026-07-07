@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, memo, useState, useCallback } from 'react';
 import { Repeat, Zap, AlertTriangle } from 'lucide-react';
 import { BaseModal } from '@/components/modals/BaseModal';
-import { UI_LABELS, TRANSFER_CATEGORY } from '@/config/constants';
+import { TRANSACTION_BENEFICIARIES, UI_LABELS, TRANSFER_CATEGORY } from '@/config/constants';
 import { formatCurrency, formatDate, formatNumberForInput, unformatNumber, parseCurrency } from '@/utils/formatters';
 import { getCreditCardUsedCredit } from '@/utils/accountStrategies';
 import { INSTALLMENT_OPTIONS, calculateInterest } from '@/utils/interestCalculator';
@@ -350,6 +350,20 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                 onChange={(e) => setNewTransaction({ ...newTransaction, date: e.target.value })}
                 className="input-base"
               />
+            </div>
+
+            <div>
+              <label htmlFor="tx-form-beneficiary" className="label-base">Persona / Beneficiario</label>
+              <select
+                id="tx-form-beneficiary"
+                value={newTransaction.beneficiary || 'Yo'}
+                onChange={(e) => setNewTransaction({ ...newTransaction, beneficiary: e.target.value as typeof TRANSACTION_BENEFICIARIES[number] })}
+                className="input-base"
+              >
+                {TRANSACTION_BENEFICIARIES.map((beneficiary) => (
+                  <option key={beneficiary} value={beneficiary}>{beneficiary}</option>
+                ))}
+              </select>
             </div>
           </div>
 

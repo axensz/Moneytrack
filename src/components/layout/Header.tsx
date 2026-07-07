@@ -1,10 +1,18 @@
 'use client';
 
 import React, { useRef, useEffect, useCallback } from 'react';
-import { LogIn, LogOut, User as UserIcon, Settings, HelpCircle, Tag, Bell, Sparkles } from 'lucide-react';
+import {
+  Bell,
+  HelpCircle,
+  LogIn,
+  LogOut,
+  Settings,
+  Sparkles,
+  Tag,
+  User as UserIcon,
+} from 'lucide-react';
 import { ThemeToggle } from '../theme/ThemeToggle';
 import { NotificationBell, NotificationCenter } from '../notifications/NotificationCenter';
-import { InstallPrompt } from '../pwa/InstallPrompt';
 import { useDismissable } from '../../hooks/useDismissable';
 import type { User } from 'firebase/auth';
 
@@ -20,11 +28,12 @@ interface HeaderProps {
   onOpenNotificationPreferences: () => void;
   onOpenAISettings: () => void;
   onLogout: () => Promise<void>;
-  /** Nº de acciones de configuración pendientes (p. ej. autorizar IA). */
   pendingSettingsCount?: number;
-  /** Hay una API key configurada pero la IA aún no está autorizada. */
   aiAuthPending?: boolean;
 }
+
+const menuItemClass =
+  'w-full flex items-center justify-start gap-3 px-4 py-2.5 text-left text-sm text-foreground whitespace-nowrap hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary';
 
 export const Header: React.FC<HeaderProps> = ({
   user,
@@ -45,21 +54,27 @@ export const Header: React.FC<HeaderProps> = ({
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
 
-  // UI-header-menu: navegación por teclado del menú (role=menu sin teclado antes).
-  // Al abrir, enfocar el primer ítem; flechas mueven el foco; Escape cierra y
-  // devuelve el foco al botón disparador.
-  useEffect(() => {
-    if (!showSettingsMenu) return;
-    const first = settingsMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]');
+  const focusFirstMenuItem = useCallback((menuRef: React.RefObject<HTMLDivElement | null>) => {
+    const first = menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]');
     first?.focus();
-  }, [showSettingsMenu]);
+  }, []);
 
-  const handleMenuKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+  useEffect(() => {
+    if (showSettingsMenu) focusFirstMenuItem(settingsMenuRef);
+  }, [focusFirstMenuItem, showSettingsMenu]);
+
+  const handleMenuKeyDown = useCallback((
+    e: React.KeyboardEvent<HTMLDivElement>,
+    menuRef: React.RefObject<HTMLDivElement | null>,
+    close: () => void,
+    triggerRef: React.RefObject<HTMLButtonElement | null>
+  ) => {
     const items = Array.from(
-      settingsMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []
+      menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []
     );
     if (items.length === 0) return;
     const current = items.indexOf(document.activeElement as HTMLButtonElement);
+
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
@@ -79,15 +94,12 @@ export const Header: React.FC<HeaderProps> = ({
         break;
       case 'Escape':
         e.preventDefault();
-        setShowSettingsMenu(false);
-        settingsButtonRef.current?.focus();
+        close();
+        triggerRef.current?.focus();
         break;
     }
-  }, [setShowSettingsMenu]);
+  }, []);
 
-  // Cierre unificado (clic fuera + Escape, con foco devuelto al disparador) —
-  // mismo patrón que el menú "Más" móvil. Reemplaza los dos efectos manuales
-  // de click-outside que vivían aquí.
   const closeSettingsMenu = useCallback(() => setShowSettingsMenu(false), [setShowSettingsMenu]);
   useDismissable({
     isOpen: showSettingsMenu,
@@ -96,9 +108,6 @@ export const Header: React.FC<HeaderProps> = ({
     triggerRef: settingsButtonRef,
   });
 
-  // Notificaciones: el panel se renderiza en un portal (NotificationCenter), por
-  // eso se ignora ese subárbol con ignoreSelectors para no cerrarlo al pulsar
-  // dentro. ESC ahora también cierra (antes no lo hacía).
   const closeNotifications = useCallback(() => setShowNotifications(false), [setShowNotifications]);
   useDismissable({
     isOpen: showNotifications,
@@ -107,24 +116,25 @@ export const Header: React.FC<HeaderProps> = ({
     ignoreSelectors: ['[data-notification-center]'],
   });
 
+  const accountLabel = user?.displayName || user?.email || 'Usuario';
   return (
-    <header className="w-full flex items-center py-2 sm:py-3 bg-card/90 backdrop-blur-md border-b border-border z-[100] shadow-sm shrink-0 safe-area-top">
+    <header className="w-full flex items-center pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 sm:pt-[calc(0.75rem+env(safe-area-inset-top))] sm:pb-3 bg-card/90 backdrop-blur-md border-b border-border z-[100] shadow-sm shrink-0">
       <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2 sm:gap-3 flex-1">
-            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold leading-none">
               <span className="text-primary">Money</span>
               <span className="text-foreground">Track</span>
             </h1>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
-            {/* Install PWA Button (desktop only) */}
-            <InstallPrompt variant="button" />
-
-            {/* Usuario logueado - Nombre primero */}
-            {user ? (
-              <div className="flex items-center gap-1.5 sm:gap-2" role="status" aria-label={`Sesión iniciada como ${user.displayName || 'Usuario'}`}>
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {user && (
+              <div
+                className="flex items-center rounded-lg p-1 text-foreground"
+                role="status"
+                aria-label={`Sesión iniciada como ${accountLabel}`}
+              >
                 {user.photoURL ? (
                   <img
                     src={user.photoURL}
@@ -133,32 +143,15 @@ export const Header: React.FC<HeaderProps> = ({
                     className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-border-accent"
                   />
                 ) : (
-                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-balance-accent flex items-center justify-center text-primary" aria-hidden="true">
+                  <span className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-balance-accent flex items-center justify-center text-primary" aria-hidden="true">
                     <UserIcon size={18} />
-                  </div>
+                  </span>
                 )}
-                <span className="hidden md:inline text-sm font-medium text-foreground max-w-24 truncate">
-                  {user.displayName?.split(' ')[0] || 'Usuario'}
-                </span>
               </div>
-            ) : (
-              <button
-                onClick={() => setIsAuthModalOpen(true)}
-                className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-foreground text-background rounded-lg text-sm font-medium active:opacity-80 transition-opacity"
-                aria-label="Iniciar sesión"
-              >
-                <LogIn size={16} className="sm:w-[18px] sm:h-[18px]" aria-hidden="true" />
-                <span className="hidden sm:inline">Acceder</span>
-              </button>
             )}
 
-            {/* Divisor */}
-            <div className="h-6 w-px bg-border"></div>
-
-            {/* Theme Toggle */}
             <ThemeToggle />
 
-            {/* Notification Bell */}
             {user && (
               <div className="relative" ref={notificationsRef}>
                 <NotificationBell
@@ -169,16 +162,17 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             )}
 
-            {/* Menú de Configuración */}
             <div className="relative" ref={settingsMenuRef}>
               <button
                 ref={settingsButtonRef}
-                onClick={() => setShowSettingsMenu(!showSettingsMenu)}
+                onClick={() => {
+                  setShowSettingsMenu(!showSettingsMenu);
+                }}
                 className="header-icon"
                 aria-label={
                   pendingSettingsCount > 0
-                    ? `Abrir menú de configuración (${pendingSettingsCount} pendiente${pendingSettingsCount !== 1 ? 's' : ''})`
-                    : 'Abrir menú de configuración'
+                    ? `Abrir menú de ajustes (${pendingSettingsCount} pendiente${pendingSettingsCount !== 1 ? 's' : ''})`
+                    : 'Abrir menú de ajustes'
                 }
                 aria-expanded={showSettingsMenu}
                 aria-haspopup="menu"
@@ -194,20 +188,19 @@ export const Header: React.FC<HeaderProps> = ({
                 )}
               </button>
 
-              {/* Menú desplegable */}
               {showSettingsMenu && (
                 <div
-                  className="absolute right-0 mt-2 w-48 bg-card text-card-foreground rounded-lg shadow-lg border border-border py-1 z-50 animate-in fade-in zoom-in duration-200"
+                  className="absolute right-0 mt-2 w-[min(calc(100vw-2rem),17rem)] bg-card text-card-foreground rounded-lg shadow-lg border border-border py-1 z-50 animate-in fade-in zoom-in duration-200"
                   role="menu"
-                  aria-label="Opciones de configuración"
-                  onKeyDown={handleMenuKeyDown}
+                  aria-label="Opciones de ajustes"
+                  onKeyDown={(e) => handleMenuKeyDown(e, settingsMenuRef, closeSettingsMenu, settingsButtonRef)}
                 >
                   <button
                     onClick={() => {
                       onOpenCategories();
                       setShowSettingsMenu(false);
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                    className={menuItemClass}
                     role="menuitem"
                   >
                     <Tag size={18} aria-hidden="true" />
@@ -219,7 +212,7 @@ export const Header: React.FC<HeaderProps> = ({
                         onOpenNotificationPreferences();
                         setShowSettingsMenu(false);
                       }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      className={menuItemClass}
                       role="menuitem"
                     >
                       <Bell size={18} aria-hidden="true" />
@@ -231,7 +224,7 @@ export const Header: React.FC<HeaderProps> = ({
                       onOpenAISettings();
                       setShowSettingsMenu(false);
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                    className={menuItemClass}
                     role="menuitem"
                   >
                     <Sparkles size={18} aria-hidden="true" />
@@ -244,23 +237,23 @@ export const Header: React.FC<HeaderProps> = ({
                       />
                     )}
                   </button>
+                  <div className="my-1 border-t border-border" aria-hidden="true" />
                   <button
                     onClick={() => {
                       onOpenHelp();
                       setShowSettingsMenu(false);
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                    className={menuItemClass}
                     role="menuitem"
                   >
                     <HelpCircle size={18} aria-hidden="true" />
-                    <span>Manual de Ayuda</span>
+                    <span>Ayuda</span>
                   </button>
                 </div>
               )}
             </div>
 
-            {/* Botón de salir - solo si está logueado */}
-            {user && (
+            {user ? (
               <button
                 onClick={onLogout}
                 className="header-icon hover:text-destructive"
@@ -268,12 +261,20 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <LogOut size={20} aria-hidden="true" />
               </button>
+            ) : (
+              <button
+                onClick={() => setIsAuthModalOpen(true)}
+                className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-foreground text-background rounded-lg text-sm font-medium active:opacity-80 transition-opacity"
+                aria-label="Iniciar sesión"
+              >
+                <LogIn size={16} className="sm:w-[18px] sm:h-[18px]" aria-hidden="true" />
+                <span className="hidden sm:inline">Acceder</span>
+              </button>
             )}
           </div>
         </div>
       </div>
 
-      {/* Notification Center - rendered via portal */}
       {user && (
         <NotificationCenter
           isOpen={showNotifications}

@@ -49,7 +49,7 @@ describe('buildPlanPrompt — fondo de emergencia en el prompt de IA', () => {
     expect(prompt).toContain('sin ahorro mensual');
     expect(prompt).toContain('BRECHAS 50/30/20');
     expect(prompt).toContain('PRIORIDAD Y ACCIONES');
-    expect(prompt).toContain('CATEGORIAS QUE EXPLICAN EXCESOS');
+    expect(prompt).toContain('CATEGORÍAS QUE EXPLICAN EXCESOS');
     expect(prompt).toContain('Entretenimiento');
     expect(prompt).toContain('faltan');
     expect(prompt).toContain('se pasa');

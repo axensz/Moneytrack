@@ -31,7 +31,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
   batchCount = 0,
 }) => {
   const { accounts, defaultAccount } = useAccountDomain();
-  const { transactions } = useTransactionDomain();
+  const { transactions, balanceTransactions } = useTransactionDomain();
   const { categories } = useCategoryDomain();
   const { beneficiaries } = useBeneficiaryDomain();
   const { recurringPayments } = useRecurringDomain();
@@ -52,10 +52,10 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
   // Calcular cupo usado si es TC y está pagando
   const creditUsed = useMemo(() => {
     if (isCreditCard && newTransaction.type === 'income' && selectedAccount) {
-      return getCreditCardUsedCredit(selectedAccount, transactions);
+      return getCreditCardUsedCredit(selectedAccount, balanceTransactions);
     }
     return 0;
-  }, [isCreditCard, newTransaction.type, selectedAccount, transactions]);
+  }, [isCreditCard, newTransaction.type, selectedAccount, balanceTransactions]);
 
   // Previsualización del costo de las cuotas en el momento de decidir:
   // muestra cuota mensual, interés total y total a pagar antes de guardar.

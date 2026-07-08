@@ -24,6 +24,15 @@ describe('getCycleByIndex', () => {
     expect(c.paymentDueDate.getMonth()).toBe(6); // julio
   });
 
+  it('si el día de pago es posterior al corte, paga en el mismo mes del cierre', () => {
+    const c = getCycleByIndex(5, 25, 0, new Date(2026, 6, 1));
+    expect(c.cycleEnd.getFullYear()).toBe(2026);
+    expect(c.cycleEnd.getMonth()).toBe(6); // julio
+    expect(c.cycleEnd.getDate()).toBe(5);
+    expect(c.paymentDueDate.getMonth()).toBe(6); // julio
+    expect(c.paymentDueDate.getDate()).toBe(25);
+  });
+
   it('acota corte de fin de mes: corte 31 en febrero → 28 (2026 no bisiesto)', () => {
     const c = getCycleByIndex(31, 15, 0, new Date(2026, 1, 10)); // 10 feb, antes del corte
     expect(c.cycleEnd.getMonth()).toBe(1); // febrero

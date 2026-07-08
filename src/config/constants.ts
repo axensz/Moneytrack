@@ -108,6 +108,11 @@ export const ACCOUNT_VALIDATION = {
     max: 31,
     errorMessage: 'El día de pago debe estar entre 1 y 31'
   },
+  monthlySpendingLimit: {
+    min: 0,
+    max: 1000000000,
+    errorMessage: 'El tope manual debe estar entre $0 y $1,000,000,000'
+  },
   initialBalance: {
     min: -1000000000,
     max: 1000000000,
@@ -157,6 +162,7 @@ export const ERROR_MESSAGES = {
   INVALID_CUTOFF_DAY: 'El día de corte debe estar entre 1 y 31',
   INVALID_PAYMENT_DAY: 'El día de pago debe estar entre 1 y 31',
   PAYMENT_BEFORE_CUTOFF: 'El día de pago debe ser posterior al día de corte',
+  INVALID_MONTHLY_SPENDING_LIMIT: 'El tope manual debe ser 0 o un valor positivo menor o igual al cupo',
   INVALID_INITIAL_BALANCE: 'El saldo inicial debe ser un número válido'
 } as const;
 

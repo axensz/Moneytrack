@@ -12,6 +12,7 @@ const INITIAL_ACCOUNT: NewAccount = {
   creditLimit: 0,
   cutoffDay: 1,
   paymentDay: 10,
+  monthlySpendingLimit: 0,
   bankAccountId: undefined,
   interestRate: 0,
 };
@@ -41,11 +42,13 @@ interface UseAccountFormReturn {
   balanceAdjustment: string;
   initialBalanceInput: string;
   creditLimitInput: string;
+  monthlyLimitInput: string;
   interestRateInput: string;
   setNewAccount: (account: NewAccount) => void;
   setBalanceAdjustment: (value: string) => void;
   setInitialBalanceInput: (value: string) => void;
   setCreditLimitInput: (value: string) => void;
+  setMonthlyLimitInput: (value: string) => void;
   setInterestRateInput: (value: string) => void;
   openCreateForm: () => void;
   openEditForm: (account: Account) => void;
@@ -73,6 +76,7 @@ export function useAccountForm({
   const [balanceAdjustment, setBalanceAdjustment] = useState('');
   const [initialBalanceInput, setInitialBalanceInput] = useState('');
   const [creditLimitInput, setCreditLimitInput] = useState('');
+  const [monthlyLimitInput, setMonthlyLimitInput] = useState('');
   const [interestRateInput, setInterestRateInput] = useState('');
   // Evita el doble submit: un doble clic en "Actualizar" creaba DOS transacciones
   // de ajuste de saldo/deuda (el closeForm de la rama editar corre después de los
@@ -86,6 +90,7 @@ export function useAccountForm({
     setBalanceAdjustment('');
     setInitialBalanceInput('');
     setCreditLimitInput('');
+    setMonthlyLimitInput('');
     setInterestRateInput('');
   }, []);
 
@@ -110,11 +115,13 @@ export function useAccountForm({
       creditLimit: account.creditLimit || 0,
       cutoffDay: account.cutoffDay || 1,
       paymentDay: account.paymentDay || 10,
+      monthlySpendingLimit: account.monthlySpendingLimit || 0,
       bankAccountId: account.bankAccountId,
       interestRate: account.interestRate || 0,
     });
     setInitialBalanceInput(account.initialBalance.toString());
     setCreditLimitInput((account.creditLimit || 0).toString());
+    setMonthlyLimitInput((account.monthlySpendingLimit || 0).toString());
 
     // Formatear interestRate para el input
     const rate = account.interestRate || 0;
@@ -203,10 +210,17 @@ export function useAccountForm({
         const updates: Partial<Account> = { name: newAccount.name.trim() };
 
         if (editingAccount.type === 'credit') {
+          const manualLimit = parseFloat(newAccount.monthlySpendingLimit.toString()) || 0;
+          const creditLimit = parseFloat(newAccount.creditLimit.toString()) || 0;
+          if (manualLimit < 0 || manualLimit > creditLimit) {
+            showToast.error(ERROR_MESSAGES.INVALID_MONTHLY_SPENDING_LIMIT);
+            return;
+          }
           if (newAccount.creditLimit) {
             updates.creditLimit = newAccount.creditLimit;
           }
           updates.interestRate = newAccount.interestRate || 0;
+          updates.monthlySpendingLimit = newAccount.monthlySpendingLimit || 0;
         }
 
         await updateAccount(accountId, updates);
@@ -245,6 +259,12 @@ export function useAccountForm({
             showToast.error(ERROR_MESSAGES.INVALID_PAYMENT_DAY);
             return;
           }
+
+          const monthlySpendingLimit = parseFloat(newAccount.monthlySpendingLimit.toString()) || 0;
+          if (monthlySpendingLimit < 0 || monthlySpendingLimit > creditLimit) {
+            showToast.error(ERROR_MESSAGES.INVALID_MONTHLY_SPENDING_LIMIT);
+            return;
+          }
         } else {
           const initialBalance = parseFloat(newAccount.initialBalance.toString());
           if (newAccount.initialBalance && isNaN(initialBalance)) {
@@ -261,6 +281,7 @@ export function useAccountForm({
           creditLimit: parseFloat(newAccount.creditLimit.toString()) || 0,
           cutoffDay: parseInt(newAccount.cutoffDay.toString()) || 1,
           paymentDay: parseInt(newAccount.paymentDay.toString()) || 10,
+          monthlySpendingLimit: parseFloat(newAccount.monthlySpendingLimit.toString()) || 0,
           bankAccountId: newAccount.bankAccountId,
           interestRate: parseFloat(newAccount.interestRate.toString()) || 0,
         };
@@ -299,11 +320,13 @@ export function useAccountForm({
     balanceAdjustment,
     initialBalanceInput,
     creditLimitInput,
+    monthlyLimitInput,
     interestRateInput,
     setNewAccount,
     setBalanceAdjustment,
     setInitialBalanceInput,
     setCreditLimitInput,
+    setMonthlyLimitInput,
     setInterestRateInput,
     openCreateForm,
     openEditForm,

@@ -2,26 +2,29 @@
 
 import React, { useState, useMemo } from 'react';
 import { Plus, PieChart, CheckCircle2, XCircle, Trash2, ToggleLeft, ToggleRight, Sparkles, TrendingUp, TrendingDown, Minus, Target, X, Shield, Clock, Zap, ChevronDown, ChevronUp, AlertTriangle, PiggyBank, BarChart3, Home, CreditCard, Lightbulb } from 'lucide-react';
-import { useBudgetsDomain, useCategoryDomain, useTransactionDomain, useAccountDomain } from '../../../hooks/useFinanceSelectors';
+import { useBudgetsDomain, useCategoryDomain, useTransactionDomain, useAccountDomain, useRecurringDomain } from '../../../hooks/useFinanceSelectors';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { useAuth } from '../../../hooks/useAuth';
 import { usePlanConfig } from '../../../hooks/usePlanConfig';
 import { formatCurrency, formatNumberForInput, unformatNumber, parseCurrency } from '../../../utils/formatters';
 import { showToast } from '../../../utils/toastHelpers';
-import { useFinancialPlan, type PlanConfig } from '../../../hooks/useFinancialPlan';
+import { useFinancialPlan } from '../../../hooks/useFinancialPlan';
 import { isGeminiConfigured } from '../../../lib/gemini';
 import { useBudgetRecommendations } from '../../../hooks/useBudgetRecommendations';
 import { FinancialPlanAI } from './components/FinancialPlanAI';
 import { PlanSkeleton } from './PlanSkeleton';
 import { ConfirmDialog } from '../../modals/ConfirmDialog';
+import { isRealBudgetExpense } from '../../../utils/budgetPlanning';
 
 export const BudgetsView: React.FC = () => {
   const { budgets, addBudget, updateBudget, deleteBudget, budgetStatuses, budgetStats } = useBudgetsDomain();
   const { categories } = useCategoryDomain();
-  const { transactions } = useTransactionDomain();
+  const { transactions, balanceTransactions = transactions } = useTransactionDomain();
   const { accounts, getAccountBalance, getCreditUsed, balancesReady } = useAccountDomain();
+  const { recurringPayments } = useRecurringDomain();
   const { hideBalances } = useUIPreferences();
   const { user, loading: authLoading } = useAuth();
+  const planTransactions = balanceTransactions.length > 0 ? balanceTransactions : transactions;
 
   // Datos vivos para el plan: saldo líquido (efectivo + ahorros, NO crédito) para
   // medir el fondo de emergencia contra lo que el usuario YA tiene, y utilización
@@ -36,8 +39,9 @@ export const BudgetsView: React.FC = () => {
     return {
       liquidBalance,
       creditUtilization: limit > 0 ? { used, limit, ratio: used / limit } : null,
+      recurringPayments,
     };
-  }, [accounts, getAccountBalance, getCreditUsed]);
+  }, [accounts, getAccountBalance, getCreditUsed, recurringPayments]);
 
   // Plan config persistido en Firestore (o localStorage para guest)
   const { config: planConfig, loading: planLoading, saveConfig, clearConfig } = usePlanConfig(user?.uid ?? null, authLoading);
@@ -48,22 +52,47 @@ export const BudgetsView: React.FC = () => {
 
   // Presupuestos
   const [showForm, setShowForm] = useState(false);
+  const [budgetsMinimized, setBudgetsMinimized] = useState(false);
   const [formData, setFormData] = useState({ category: '', monthlyLimit: '' });
   const [budgetToDelete, setBudgetToDelete] = useState<{ id: string; category: string } | null>(null);
 
-  const plan = useFinancialPlan(transactions, planConfig, planLiveContext);
+  const plan = useFinancialPlan(planTransactions, planConfig, planLiveContext);
 
   const availableCategories = categories.expense.filter(
     cat => !budgets.some(b => b.category === cat)
   );
 
   // Recomendaciones de presupuesto basadas en el gasto del mes anterior
-  const budgetAnalysis = useBudgetRecommendations(transactions, budgets);
+  const budgetAnalysis = useBudgetRecommendations(planTransactions, budgets);
   const selectedRecommendation = formData.category
     ? budgetAnalysis?.recommendations.find(r => r.category === formData.category)
     : undefined;
+  const visibleRecommendations = budgetAnalysis?.recommendations.slice(0, 3) ?? [];
 
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
+
+  const planEmptyState = useMemo(() => {
+    if (!planConfig) return null;
+    if (!planConfig.declaredIncome || planConfig.declaredIncome <= 0) {
+      return {
+        title: 'Falta configurar ingreso',
+        message: 'Ingresa tu ingreso mensual neto para calcular necesidades, gustos y ahorro.',
+      };
+    }
+    const [startYear, startMo] = planConfig.startMonth.split('-').map(Number);
+    const startDate = new Date(startYear, startMo - 1, 1);
+    const paidExpenses = planTransactions.filter(t => isRealBudgetExpense(t) && new Date(t.date) >= startDate);
+    if (paidExpenses.length === 0) {
+      return {
+        title: 'Faltan gastos pagados',
+        message: `Registra al menos un gasto pagado desde ${planConfig.startMonth} para calcular necesidades, gustos y ahorro real.`,
+      };
+    }
+    return {
+      title: 'No hay suficientes datos',
+      message: `Revisa el mes inicial (${planConfig.startMonth}) o agrega más movimientos pagados para generar el plan.`,
+    };
+  }, [planConfig, planTransactions]);
 
   const handleSetupSubmit = async () => {
     const income = parseCurrency(setupForm.income);
@@ -89,6 +118,12 @@ export const BudgetsView: React.FC = () => {
     showToast.success('Presupuesto creado');
     setFormData({ category: '', monthlyLimit: '' });
     setShowForm(false);
+  };
+
+  const handleUseRecommendation = (category: string, suggestedLimit: number) => {
+    setFormData({ category, monthlyLimit: String(suggestedLimit) });
+    setShowForm(true);
+    showToast.success('Sugerencia aplicada');
   };
 
   const handleDelete = (id: string, category: string) => {
@@ -121,6 +156,149 @@ export const BudgetsView: React.FC = () => {
 
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
+      {/* ===== PRESUPUESTOS ===== */}
+      <div className="card">
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+              <button
+                type="button"
+                onClick={() => setBudgetsMinimized(prev => !prev)}
+                aria-expanded={!budgetsMinimized}
+                className="flex items-center gap-2 rounded-lg text-left transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <span>Presupuestos</span>
+                {budgetsMinimized ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronUp size={16} className="text-gray-400" />}
+              </button>
+            </h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Limites mensuales por categoria</p>
+          </div>
+          {availableCategories.length > 0 && (
+            <button
+              onClick={() => {
+                setBudgetsMinimized(false);
+                setShowForm(prev => budgetsMinimized ? true : !prev);
+              }}
+              className="btn-primary text-sm"
+            >
+              <Plus size={16} /> Nuevo
+            </button>
+          )}
+        </div>
+
+        {!budgetsMinimized && budgetStats.active > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+            <div className="p-2.5 rounded-xl bg-purple-50 dark:bg-purple-900/20">
+              <p className="text-lg font-bold text-purple-700 dark:text-purple-300">{budgetStats.active}</p>
+              <p className="text-[10px] text-purple-600 dark:text-purple-400">Activos</p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/20">
+              <p className="text-xs font-bold text-blue-700 dark:text-blue-300">{displayAmount(budgetStats.totalBudgeted)}</p>
+              <p className="text-[10px] text-blue-600 dark:text-blue-400">Presupuestado</p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-green-50 dark:bg-green-900/20">
+              <p className="text-xs font-bold text-green-700 dark:text-green-300">{displayAmount(budgetStats.totalSpent)}</p>
+              <p className="text-[10px] text-green-600 dark:text-green-400">Gastado</p>
+            </div>
+            <div className={`p-2.5 rounded-xl ${budgetStats.exceeded > 0 ? 'bg-red-50 dark:bg-red-900/20' : 'bg-gray-50 dark:bg-gray-800/50'}`}>
+              <p className={`text-lg font-bold ${budgetStats.exceeded > 0 ? 'text-red-700 dark:text-red-300' : 'text-muted-foreground'}`}>{budgetStats.exceeded}</p>
+              <p className="text-[10px] text-muted-foreground">Excedidos</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {!budgetsMinimized && (
+        <>
+          {/* Formulario nuevo presupuesto */}
+          {showForm && (
+            <div className="card">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Nuevo presupuesto</h3>
+              <div className="space-y-3">
+                <select value={formData.category} onChange={e => setFormData(f => ({ ...f, category: e.target.value }))} className="input-base">
+                  <option value="">Seleccionar categoria...</option>
+                  {availableCategories.map(cat => (<option key={cat} value={cat}>{cat}</option>))}
+                </select>
+
+                {selectedRecommendation && selectedRecommendation.suggestedLimit > 0 && (
+                  <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800/50">
+                    <p className="text-xs text-purple-800 dark:text-purple-200">
+                      <Sparkles size={12} className="inline mr-1" />
+                      Sugerencia: <strong>{formatCurrency(selectedRecommendation.suggestedLimit)}/mes</strong>
+                      <span className="block text-purple-500 dark:text-purple-300/80">{selectedRecommendation.reason}</span>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setFormData(f => ({ ...f, monthlyLimit: String(selectedRecommendation.suggestedLimit) }))}
+                      className="shrink-0 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                    >
+                      Usar
+                    </button>
+                  </div>
+                )}
+
+                <input
+                  type="text" inputMode="numeric"
+                  value={formatNumberForInput(formData.monthlyLimit)}
+                  onChange={e => setFormData(f => ({ ...f, monthlyLimit: unformatNumber(e.target.value) }))}
+                  placeholder="Limite mensual" className="input-base"
+                />
+                <div className="flex gap-2">
+                  <button onClick={handleBudgetSubmit} className="btn-submit flex-1">Crear</button>
+                  <button onClick={() => setShowForm(false)} className="btn-cancel flex-1">Cancelar</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Lista de presupuestos */}
+          {budgetStatuses.length > 0 ? (
+            <div className="space-y-2">
+              {budgetStatuses.map(({ budget, spent, remaining, percentage, status }) => (
+                <div key={budget.id} className="card p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      {getStatusIcon(status)}
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white">{budget.category}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => updateBudget(budget.id!, { isActive: !budget.isActive })} className="p-1 text-gray-400 hover:text-gray-600">
+                        {budget.isActive ? <ToggleRight size={18} className="text-purple-500" /> : <ToggleLeft size={18} />}
+                      </button>
+                      <button onClick={() => handleDelete(budget.id!, budget.category)} className="p-1 text-gray-400 hover:text-red-500">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    <span>{displayAmount(spent)} gastado</span>
+                    <span>{displayAmount(remaining)} disponible</span>
+                  </div>
+                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full transition-[width] duration-500 ${status === 'exceeded' ? 'bg-red-500' : status === 'warning' ? 'bg-amber-500' : 'bg-green-500'}`}
+                      style={{ width: `${Math.min(100, percentage)}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between mt-1">
+                    <span className={`text-xs font-medium ${status === 'exceeded' ? 'text-red-600' : status === 'warning' ? 'text-amber-600' : 'text-green-600'}`}>{percentage}%</span>
+                    <span className="text-xs text-muted-foreground">Limite: {displayAmount(budget.monthlyLimit)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            !showForm && (
+              <div className="card text-center py-8 text-gray-500 dark:text-gray-400">
+                <PieChart size={40} className="mx-auto mb-3 opacity-30" />
+                <p className="text-sm">No hay presupuestos configurados</p>
+                <p className="text-xs mt-1">Define limites de gasto por categoria</p>
+              </div>
+            )
+          )}
+        </>
+      )}
+
       {/* ===== PLAN FINANCIERO ===== */}
       {(planLoading || !balancesReady) ? (
         // Skeleton mientras (a) carga la config del plan y (b) los saldos asientan.
@@ -188,7 +366,12 @@ export const BudgetsView: React.FC = () => {
             <div>
               {/* Header */}
               <div className="flex items-center justify-between">
-                <button onClick={() => setPlanMinimized(!planMinimized)} className="flex items-center gap-2.5 group">
+                <button
+                  type="button"
+                  onClick={() => setPlanMinimized(prev => !prev)}
+                  aria-expanded={!planMinimized}
+                  className="flex items-center gap-2.5 group"
+                >
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
                     <Sparkles size={14} className="text-primary" />
                   </div>
@@ -217,6 +400,24 @@ export const BudgetsView: React.FC = () => {
               {!planMinimized && (
               <>
               <div className="mt-6">
+              {/* Prioridad accionable: antes del score para que el plan diga qué hacer. */}
+              {plan.actionItems.length > 0 && (
+                <div className="mb-5 flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3.5">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                    <Lightbulb size={16} className="text-primary" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold text-primary uppercase tracking-wide">Tu prioridad este mes</p>
+                    <p className="text-sm font-black text-gray-900 dark:text-gray-100 mt-0.5">{plan.actionItems[0].label}</p>
+                    <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 leading-relaxed">
+                      {plan.actionItems[0].category ? 'Ajusta' : 'Aparta'}{' '}
+                      <span className="font-bold text-gray-900 dark:text-gray-100">{displayAmount(plan.actionItems[0].amount)}</span>
+                      {plan.actionItems[0].category ? ` en ${plan.actionItems[0].category}` : ''}. {plan.actionItems[0].message}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Score centrado */}
               <div className="flex flex-col items-center mb-6">
                 <div className="relative mb-2">
@@ -287,17 +488,30 @@ export const BudgetsView: React.FC = () => {
           <div className="card">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">Distribución mensual</h3>
-              <span className="text-[10px] text-muted-foreground font-medium">de {displayAmount(planConfig.declaredIncome)}</span>
+              <span className="text-[10px] text-muted-foreground font-medium">
+                de {displayAmount(planConfig.declaredIncome)} · {plan.analysisLabel}
+              </span>
             </div>
             <div className="space-y-5">
               {[
-                { label: 'Necesidades', pct: plan.rule503020.needsPct, target: 50, amount: plan.rule503020.needs, targetAmount: planConfig.declaredIncome * 0.5, Icon: Home, warn: plan.rule503020.needsPct > 55 },
-                { label: 'Gustos', pct: plan.rule503020.wantsPct, target: 30, amount: plan.rule503020.wants, targetAmount: planConfig.declaredIncome * 0.3, Icon: Sparkles, warn: plan.rule503020.wantsPct > 35 },
-                { label: 'Ahorro', pct: Math.max(0, plan.rule503020.savingsPct), target: 20, amount: Math.max(0, plan.rule503020.savings), targetAmount: planConfig.declaredIncome * 0.2, Icon: PiggyBank, warn: plan.rule503020.savingsPct < 10 },
+                { label: 'Necesidades', pct: plan.rule503020.needsPct, target: 50, amount: plan.rule503020.needs, targetAmount: plan.needsGap.target, gap: plan.needsGap, Icon: Home },
+                { label: 'Gustos', pct: plan.rule503020.wantsPct, target: 30, amount: plan.rule503020.wants, targetAmount: plan.wantsGap.target, gap: plan.wantsGap, Icon: Sparkles },
+                { label: 'Ahorro', pct: Math.max(0, plan.rule503020.savingsPct), target: 20, amount: Math.max(0, plan.rule503020.savings), targetAmount: plan.savingsGap.target, gap: plan.savingsGap, Icon: PiggyBank },
               ].map(item => {
                 // Barra lineal 0-100%: el ancho ES el % del ingreso y la línea de
                 // objetivo cae en su posición real (target%), sin escalado engañoso.
                 const linearWidth = Math.min(100, Math.max(0, item.pct));
+                const isSavings = item.label === 'Ahorro';
+                const warn = item.gap.status === 'over' || item.gap.status === 'under';
+                const gapText = item.gap.status === 'over'
+                  ? `Te pasas por ${displayAmount(item.gap.difference)}`
+                  : item.gap.status === 'under'
+                    ? `Faltan ${displayAmount(item.gap.difference)} para llegar`
+                    : item.gap.difference > 0
+                      ? isSavings
+                        ? `Superas la meta por ${displayAmount(item.gap.difference)}`
+                        : `Margen ${displayAmount(item.gap.difference)}`
+                      : 'Dentro del rango';
                 return (
                   <div key={item.label}>
                     <div className="flex items-center justify-between mb-1">
@@ -306,7 +520,7 @@ export const BudgetsView: React.FC = () => {
                         <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{item.label}</span>
                       </div>
                       <div className="flex items-baseline gap-1">
-                        <span className={`text-lg font-black ${item.warn ? 'text-destructive' : 'text-gray-900 dark:text-gray-100'}`}>
+                        <span className={`text-lg font-black ${warn ? 'text-destructive' : 'text-gray-900 dark:text-gray-100'}`}>
                           {item.pct}%
                         </span>
                         <span className="text-xs text-muted-foreground">/ {item.target}%</span>
@@ -315,15 +529,18 @@ export const BudgetsView: React.FC = () => {
                     {/* Montos: real vs ideal */}
                     <div className="flex items-center justify-between text-[11px] mb-2 px-0.5">
                       <span className="text-gray-500 dark:text-gray-400">
-                        Usas <span className={`font-bold ${item.warn ? 'text-destructive' : 'text-gray-700 dark:text-gray-300'}`}>{displayAmount(item.amount)}</span>
+                        Usas <span className={`font-bold ${warn ? 'text-destructive' : 'text-gray-700 dark:text-gray-300'}`}>{displayAmount(item.amount)}</span>
                       </span>
                       <span className="text-muted-foreground">
                         ideal <span className="font-bold text-gray-600 dark:text-gray-300">{displayAmount(item.targetAmount)}</span>
                       </span>
                     </div>
+                    <div className={`mb-2 text-[11px] font-semibold ${warn ? 'text-destructive' : 'text-success'}`}>
+                      {gapText}
+                    </div>
                     <div className="relative">
                       <div className="w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full ${item.warn ? 'bg-destructive' : 'bg-primary'} transition-[width] duration-700`}
+                        <div className={`h-full rounded-full ${warn ? 'bg-destructive' : 'bg-primary'} transition-[width] duration-700`}
                           style={{ width: `${linearWidth}%` }} />
                       </div>
                       {/* Línea del objetivo, en su posición real y etiquetada */}
@@ -339,6 +556,112 @@ export const BudgetsView: React.FC = () => {
               })}
             </div>
           </div>
+
+          {plan.recurringForecast.items.length > 0 && (
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">Gastos programados del mes</h3>
+                <span className="text-[10px] text-muted-foreground font-medium capitalize">{plan.recurringForecast.monthLabel}</span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                <div className="rounded-xl bg-gray-50 dark:bg-gray-800/50 p-3">
+                  <p className="text-[10px] text-muted-foreground">Por venir</p>
+                  <p className="mt-1 text-sm font-black text-gray-900 dark:text-gray-100">{displayAmount(plan.recurringForecast.pendingAmount)}</p>
+                </div>
+                <div className="rounded-xl bg-gray-50 dark:bg-gray-800/50 p-3">
+                  <p className="text-[10px] text-muted-foreground">Cierre estimado</p>
+                  <p className="mt-1 text-sm font-black text-gray-900 dark:text-gray-100">{displayAmount(plan.recurringForecast.projectedExpenses)}</p>
+                </div>
+                <div className="rounded-xl bg-gray-50 dark:bg-gray-800/50 p-3">
+                  <p className="text-[10px] text-muted-foreground">Ahorro estimado</p>
+                  <p className={`mt-1 text-sm font-black ${plan.recurringForecast.projectedSavings < 0 ? 'text-destructive' : 'text-gray-900 dark:text-gray-100'}`}>
+                    {displayAmount(plan.recurringForecast.projectedSavings)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {plan.recurringForecast.items.slice(0, 3).map(item => {
+                  const dueLabel = item.status === 'overdue'
+                    ? `${Math.abs(item.daysUntilDue)} ${Math.abs(item.daysUntilDue) === 1 ? 'dia vencido' : 'dias vencido'}`
+                    : item.daysUntilDue === 0
+                      ? 'Vence hoy'
+                      : `En ${item.daysUntilDue} ${item.daysUntilDue === 1 ? 'dia' : 'dias'}`;
+                  const dueDate = item.dueDate.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
+                  return (
+                    <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 dark:border-gray-700/60 p-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          {item.status === 'overdue' ? (
+                            <AlertTriangle size={13} className="text-destructive" />
+                          ) : (
+                            <Clock size={13} className="text-gray-400" />
+                          )}
+                          <p className="truncate text-xs font-bold text-gray-900 dark:text-gray-100">{item.name}</p>
+                        </div>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">
+                          {item.category} · {dueLabel} · {dueDate}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-xs font-black text-gray-900 dark:text-gray-100">{displayAmount(item.amount)}</span>
+                    </div>
+                  );
+                })}
+                {plan.recurringForecast.items.length > 3 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    +{plan.recurringForecast.items.length - 3} pagos mas este mes
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {(plan.actionItems.length > 0 || visibleRecommendations.length > 0) && (
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">Acciones recomendadas</h3>
+                {budgetAnalysis && (
+                  <span className="text-[10px] text-muted-foreground font-medium">basado en {budgetAnalysis.monthLabel}</span>
+                )}
+              </div>
+              {plan.actionItems.length > 0 && (
+                <div className="space-y-2 mb-4">
+                  {plan.actionItems.map((item, index) => (
+                    <div key={`${item.kind}-${item.category ?? index}`} className="flex items-start justify-between gap-3 rounded-xl bg-gray-50 dark:bg-gray-800/50 p-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-gray-900 dark:text-gray-100">{item.label}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{item.message}</p>
+                      </div>
+                      <span className="shrink-0 text-xs font-black text-gray-900 dark:text-gray-100">{displayAmount(item.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {visibleRecommendations.length > 0 && (
+                <div className="space-y-2">
+                  {visibleRecommendations.map(rec => (
+                    <div key={rec.category} className="flex items-center justify-between gap-3 rounded-xl border border-primary/10 bg-primary/5 p-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-gray-900 dark:text-gray-100">{rec.category}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Límite sugerido {displayAmount(rec.suggestedLimit)}/mes · {rec.reason}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleUseRecommendation(rec.category, rec.suggestedLimit)}
+                        className="shrink-0 rounded-lg bg-primary-solid px-3 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90"
+                      >
+                        Usar sugerencia
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ──── Proyección de ahorro ──── */}
           <div className="card">
@@ -476,135 +799,16 @@ export const BudgetsView: React.FC = () => {
         </>
       ) : (
         <div className="card text-center py-8">
-          <p className="text-sm text-muted-foreground">No hay suficientes datos desde {planConfig.startMonth} para generar el plan.</p>
+          <p className="text-sm font-bold text-gray-900 dark:text-gray-100">{planEmptyState?.title ?? 'No hay suficientes datos'}</p>
+          <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto leading-relaxed">
+            {planEmptyState?.message ?? `No hay suficientes datos desde ${planConfig.startMonth} para generar el plan.`}
+          </p>
           <button onClick={() => setShowCloseConfirm(true)} className="text-xs text-purple-600 mt-2 hover:underline">Reconfigurar</button>
         </div>
       )}
         </div>
       )}
 
-      {/* ===== PRESUPUESTOS ===== */}
-      <div className="card">
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Presupuestos</h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Límites mensuales por categoría</p>
-          </div>
-          {availableCategories.length > 0 && (
-            <button onClick={() => setShowForm(!showForm)} className="btn-primary text-sm">
-              <Plus size={16} /> Nuevo
-            </button>
-          )}
-        </div>
-
-        {budgetStats.active > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-            <div className="p-2.5 rounded-xl bg-purple-50 dark:bg-purple-900/20">
-              <p className="text-lg font-bold text-purple-700 dark:text-purple-300">{budgetStats.active}</p>
-              <p className="text-[10px] text-purple-600 dark:text-purple-400">Activos</p>
-            </div>
-            <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/20">
-              <p className="text-xs font-bold text-blue-700 dark:text-blue-300">{displayAmount(budgetStats.totalBudgeted)}</p>
-              <p className="text-[10px] text-blue-600 dark:text-blue-400">Presupuestado</p>
-            </div>
-            <div className="p-2.5 rounded-xl bg-green-50 dark:bg-green-900/20">
-              <p className="text-xs font-bold text-green-700 dark:text-green-300">{displayAmount(budgetStats.totalSpent)}</p>
-              <p className="text-[10px] text-green-600 dark:text-green-400">Gastado</p>
-            </div>
-            <div className={`p-2.5 rounded-xl ${budgetStats.exceeded > 0 ? 'bg-red-50 dark:bg-red-900/20' : 'bg-gray-50 dark:bg-gray-800/50'}`}>
-              <p className={`text-lg font-bold ${budgetStats.exceeded > 0 ? 'text-red-700 dark:text-red-300' : 'text-muted-foreground'}`}>{budgetStats.exceeded}</p>
-              <p className="text-[10px] text-muted-foreground">Excedidos</p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Formulario nuevo presupuesto */}
-      {showForm && (
-        <div className="card">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Nuevo presupuesto</h3>
-          <div className="space-y-3">
-            <select value={formData.category} onChange={e => setFormData(f => ({ ...f, category: e.target.value }))} className="input-base">
-              <option value="">Seleccionar categoría...</option>
-              {availableCategories.map(cat => (<option key={cat} value={cat}>{cat}</option>))}
-            </select>
-
-            {selectedRecommendation && selectedRecommendation.suggestedLimit > 0 && (
-              <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800/50">
-                <p className="text-xs text-purple-800 dark:text-purple-200">
-                  <Sparkles size={12} className="inline mr-1" />
-                  Sugerencia: <strong>{formatCurrency(selectedRecommendation.suggestedLimit)}/mes</strong>
-                  <span className="block text-purple-500 dark:text-purple-300/80">{selectedRecommendation.reason}</span>
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setFormData(f => ({ ...f, monthlyLimit: String(selectedRecommendation.suggestedLimit) }))}
-                  className="shrink-0 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors"
-                >
-                  Usar
-                </button>
-              </div>
-            )}
-
-            <input
-              type="text" inputMode="numeric"
-              value={formatNumberForInput(formData.monthlyLimit)}
-              onChange={e => setFormData(f => ({ ...f, monthlyLimit: unformatNumber(e.target.value) }))}
-              placeholder="Límite mensual" className="input-base"
-            />
-            <div className="flex gap-2">
-              <button onClick={handleBudgetSubmit} className="btn-submit flex-1">Crear</button>
-              <button onClick={() => setShowForm(false)} className="btn-cancel flex-1">Cancelar</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Lista de presupuestos */}
-      {budgetStatuses.length > 0 ? (
-        <div className="space-y-2">
-          {budgetStatuses.map(({ budget, spent, remaining, percentage, status }) => (
-            <div key={budget.id} className="card p-3">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  {getStatusIcon(status)}
-                  <span className="text-sm font-semibold text-gray-900 dark:text-white">{budget.category}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => updateBudget(budget.id!, { isActive: !budget.isActive })} className="p-1 text-gray-400 hover:text-gray-600">
-                    {budget.isActive ? <ToggleRight size={18} className="text-purple-500" /> : <ToggleLeft size={18} />}
-                  </button>
-                  <button onClick={() => handleDelete(budget.id!, budget.category)} className="p-1 text-gray-400 hover:text-red-500">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-              <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-                <span>{displayAmount(spent)} gastado</span>
-                <span>{displayAmount(remaining)} disponible</span>
-              </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                <div
-                  className={`h-2 rounded-full transition-[width] duration-500 ${status === 'exceeded' ? 'bg-red-500' : status === 'warning' ? 'bg-amber-500' : 'bg-green-500'}`}
-                  style={{ width: `${Math.min(100, percentage)}%` }}
-                />
-              </div>
-              <div className="flex justify-between mt-1">
-                <span className={`text-xs font-medium ${status === 'exceeded' ? 'text-red-600' : status === 'warning' ? 'text-amber-600' : 'text-green-600'}`}>{percentage}%</span>
-                <span className="text-xs text-muted-foreground">Límite: {displayAmount(budget.monthlyLimit)}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        !showForm && (
-          <div className="card text-center py-8 text-gray-500 dark:text-gray-400">
-            <PieChart size={40} className="mx-auto mb-3 opacity-30" />
-            <p className="text-sm">No hay presupuestos configurados</p>
-            <p className="text-xs mt-1">Define límites de gasto por categoría</p>
-          </div>
-        )
-      )}
 
       {/* Confirmación eliminar presupuesto */}
       <ConfirmDialog

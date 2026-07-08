@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Wallet, CreditCard, Banknote, Receipt } from 'lucide-react';
+import { Plus, Wallet, CreditCard, Banknote, Receipt, Sparkles } from 'lucide-react';
 import { BALANCE_ADJUSTMENT_CATEGORY } from '../../../config/constants';
 import { showToast } from '../../../utils/toastHelpers';
 import { useAccountDomain, useTransactionDomain, useRecurringDomain, useDebtsDomain, useFormatCurrency } from '../../../hooks/useFinanceSelectors';
@@ -12,11 +12,13 @@ import { AccountFormModal } from './components/AccountFormModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { MergeCreditCardsModal } from './components/MergeCreditCardsModal';
 import { CreditCardsConsolidatedSummary } from './components/CreditCardsConsolidatedSummary';
+import { CreditCardOptimizerModal } from './components/CreditCardOptimizerModal';
 import { AccountCard } from './components/AccountCard';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
 import { useAccountForm } from './hooks/useAccountForm';
 import { CardStatementsModal } from './components/CardStatementsModal';
 import { useCardPaymentSchedule } from '../../../hooks/useCardPaymentSchedule';
+import { buildCreditCardUsagePlans } from '../../../utils/creditCardOptimizer';
 
 const ACCOUNT_TYPES = [
   { value: 'savings' as const, label: 'Cuenta de Ahorros', icon: Wallet },
@@ -51,6 +53,7 @@ export const AccountsView: React.FC = () => {
   const { debts } = useDebtsDomain();
   const formatCurrency = useFormatCurrency();
   const [showStatements, setShowStatements] = useState(false);
+  const [showOptimizer, setShowOptimizer] = useState(false);
   const paymentSchedule = useCardPaymentSchedule(accounts, balanceTransactions, recurringPayments);
   // Mapa memoizado del cupo usado por tarjeta para el resumen (evita llamar al
   // accesor por tarjeta en cada render). El cálculo correcto (historial
@@ -65,6 +68,18 @@ export const AccountsView: React.FC = () => {
     });
     return map;
   }, [accounts, getCreditUsed]);
+
+  const usedCreditByCard = useMemo(() => {
+    const map: Record<string, number> = {};
+    creditUsedMap.forEach((used, cardId) => {
+      map[cardId] = used;
+    });
+    return map;
+  }, [creditUsedMap]);
+
+  const cardUsagePlans = useMemo(() => (
+    buildCreditCardUsagePlans(accounts, balanceTransactions, { usedCreditByCard })
+  ), [accounts, balanceTransactions, usedCreditByCard]);
 
   const creditCardSummary = useMemo(() => {
     const cards = accounts
@@ -169,18 +184,6 @@ export const AccountsView: React.FC = () => {
     if (!card?.id) return 0;
     return card.usedCredit != null ? Math.max(0, card.usedCredit) : getCreditUsed(card.id);
   };
-  // Saldo real (usedCredit autoritativo) por tarjeta para la comparación de saldos en
-  // extractos. Mismo criterio que el merge: usedCredit persistido, fallback a getCreditUsed
-  // solo para datos legacy (NO la ventana paginada como fuente de verdad).
-  const usedCreditByCard = useMemo(() => {
-    const map: Record<string, number> = {};
-    accounts.forEach((card) => {
-      if (card.type === 'credit' && card.id) {
-        map[card.id] = card.usedCredit != null ? Math.max(0, card.usedCredit) : getCreditUsed(card.id);
-      }
-    });
-    return map;
-  }, [accounts, getCreditUsed]);
   const mergeCombinedUsedDebt = usedDebtForMerge(mergeSourceCard) + usedDebtForMerge(mergeTargetCard);
   // Clamp a 0: si la deuda combinada supera el cupo, "disponible" es 0, no negativo (#accounts).
   const mergeCombinedAvailableCredit = Math.max(0, mergeCombinedCreditLimit - mergeCombinedUsedDebt);
@@ -380,14 +383,25 @@ export const AccountsView: React.FC = () => {
 
         <div className="flex flex-wrap items-center gap-2">
           {creditCards.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setShowStatements(true)}
-              className="flex items-center gap-2 rounded-lg border border-border-accent bg-primary/10 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary min-h-[44px]"
-            >
-              <Receipt size={18} />
-              Extractos
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setShowOptimizer(true)}
+                className="flex items-center gap-2 rounded-lg border border-border-accent bg-primary/10 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary min-h-[44px]"
+              >
+                <Sparkles size={18} />
+                Próxima compra
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowStatements(true)}
+                className="flex items-center gap-2 rounded-lg border border-border-accent bg-primary/10 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary min-h-[44px]"
+              >
+                <Receipt size={18} />
+                Extractos
+              </button>
+            </>
           )}
 
           <button
@@ -413,6 +427,7 @@ export const AccountsView: React.FC = () => {
         balanceAdjustment={accountForm.balanceAdjustment}
         initialBalanceInput={accountForm.initialBalanceInput}
         creditLimitInput={accountForm.creditLimitInput}
+        monthlyLimitInput={accountForm.monthlyLimitInput}
         interestRateInput={accountForm.interestRateInput}
         savingsAccounts={savingsAccounts}
         accountTypes={ACCOUNT_TYPES}
@@ -420,6 +435,7 @@ export const AccountsView: React.FC = () => {
         setBalanceAdjustment={accountForm.setBalanceAdjustment}
         setInitialBalanceInput={accountForm.setInitialBalanceInput}
         setCreditLimitInput={accountForm.setCreditLimitInput}
+        setMonthlyLimitInput={accountForm.setMonthlyLimitInput}
         setInterestRateInput={accountForm.setInterestRateInput}
         onClose={accountForm.closeForm}
         onSubmit={accountForm.handleSubmit}
@@ -463,6 +479,13 @@ export const AccountsView: React.FC = () => {
         totalUsed={creditCardSummary.totalUsed}
         totalAvailable={creditCardSummary.totalAvailable}
         usagePercentage={creditCardSummary.usagePercentage}
+        formatCurrency={formatCurrency}
+      />
+
+      <CreditCardOptimizerModal
+        isOpen={showOptimizer}
+        onClose={() => setShowOptimizer(false)}
+        plans={cardUsagePlans}
         formatCurrency={formatCurrency}
       />
 

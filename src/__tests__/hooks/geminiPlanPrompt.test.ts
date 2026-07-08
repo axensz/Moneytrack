@@ -47,5 +47,11 @@ describe('buildPlanPrompt — fondo de emergencia en el prompt de IA', () => {
     const prompt = buildPlanPrompt(result.current!, config);
     expect(result.current!.emergencyFund.monthsTo3m).toBeNull();
     expect(prompt).toContain('sin ahorro mensual');
+    expect(prompt).toContain('BRECHAS 50/30/20');
+    expect(prompt).toContain('PRIORIDAD Y ACCIONES');
+    expect(prompt).toContain('CATEGORIAS QUE EXPLICAN EXCESOS');
+    expect(prompt).toContain('Entretenimiento');
+    expect(prompt).toContain('faltan');
+    expect(prompt).toContain('se pasa');
   });
 });

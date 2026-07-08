@@ -46,7 +46,10 @@ export function getCycleByIndex(
   const start = normMonth(base.y, endAbs - 1); // corte del mes anterior
   const cycleStart = new Date(start.y, start.m, effectiveDueDay(cutoffDay, start.y, start.m) + 1, 0, 0, 0, 0);
 
-  const pay = normMonth(base.y, endAbs + 1); // pago: mes siguiente al cierre
+  // Si el día de pago es posterior al corte, cae en el mismo mes del cierre.
+  // Si es menor o igual, corresponde al mes siguiente (ej. corte 15, pago 5).
+  const paymentMonthOffset = paymentDay > cutoffDay ? endAbs : endAbs + 1;
+  const pay = normMonth(base.y, paymentMonthOffset);
   const paymentDueDate = new Date(pay.y, pay.m, effectiveDueDay(paymentDay, pay.y, pay.m));
 
   return { index, cycleStart, cycleEnd, paymentDueDate };

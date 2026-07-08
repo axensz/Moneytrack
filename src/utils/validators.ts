@@ -238,6 +238,16 @@ export class AccountValidator {
         ) {
           errors.push(ERROR_MESSAGES.INVALID_PAYMENT_DAY);
         }
+
+        const monthlySpendingLimit = parseFloat(account.monthlySpendingLimit.toString());
+        if (
+          isNaN(monthlySpendingLimit) ||
+          monthlySpendingLimit < ACCOUNT_VALIDATION.monthlySpendingLimit.min ||
+          monthlySpendingLimit > ACCOUNT_VALIDATION.monthlySpendingLimit.max ||
+          monthlySpendingLimit > creditLimit
+        ) {
+          errors.push(ERROR_MESSAGES.INVALID_MONTHLY_SPENDING_LIMIT);
+        }
       } else {
         // Validar saldo inicial para cuentas de ahorro/efectivo
         const initialBalance = parseFloat(account.initialBalance.toString());

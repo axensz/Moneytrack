@@ -129,6 +129,7 @@ describe('AccountValidator', () => {
     creditLimit: 0,
     cutoffDay: 1,
     paymentDay: 1,
+    monthlySpendingLimit: 0,
     interestRate: 0,
   };
 
@@ -139,6 +140,7 @@ describe('AccountValidator', () => {
     creditLimit: 5000000,
     cutoffDay: 15,
     paymentDay: 5,
+    monthlySpendingLimit: 1500000,
     interestRate: 28.5,
   };
 
@@ -150,6 +152,16 @@ describe('AccountValidator', () => {
   it('passes valid credit card account', () => {
     const result = AccountValidator.validate(validCredit);
     expect(result.isValid).toBe(true);
+  });
+
+  it('allows zero manual card cap because it means automatic analysis', () => {
+    const result = AccountValidator.validate({ ...validCredit, monthlySpendingLimit: 0 });
+    expect(result.isValid).toBe(true);
+  });
+
+  it('rejects manual card cap above credit limit', () => {
+    const result = AccountValidator.validate({ ...validCredit, monthlySpendingLimit: 6000000 });
+    expect(result.isValid).toBe(false);
   });
 
   it('fails when name is empty', () => {

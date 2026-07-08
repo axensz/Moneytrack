@@ -14,7 +14,7 @@
  */
 export const SENSITIVE_KEYS = new Set<string>([
   'amount', 'originalAmount', 'monthlyInstallmentAmount', 'totalInterestAmount',
-  'remainingAmount', 'declaredIncome', 'monthlyLimit', 'currentAmount', 'targetAmount',
+  'remainingAmount', 'declaredIncome', 'monthlyLimit', 'monthlySpendingLimit', 'currentAmount', 'targetAmount',
   'initialBalance', 'balance', 'usedCredit', 'creditLimit', 'lastPaidAmount',
   'description', 'notes', 'personName', 'title', 'message', 'raw', 'geminiApiKey', 'apiKey',
 ]);

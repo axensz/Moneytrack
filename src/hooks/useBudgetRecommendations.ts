@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { Transaction, Budget } from '../types/finance';
 import { ensureDate } from '../utils/dateUtils';
+import { classifyBudgetCategory, isFixedBudgetCategory, isRealBudgetTransaction } from '../utils/budgetPlanning';
 
 export interface BudgetRecommendation {
     category: string;
@@ -54,25 +55,6 @@ export interface BudgetAnalysis {
     };
     tips: FinancialTip[];
     method: MethodRecommendation;
-}
-
-// Clasificación de categorías
-const NEEDS = new Set([
-    'servicios', 'vivienda', 'salud', 'educación',
-    'alimentación', 'transporte',
-    'arriendo', 'seguros', 'internet', 'teléfono',
-]);
-const FIXED_NEEDS = new Set([
-    'servicios', 'vivienda', 'salud', 'educación',
-    'arriendo', 'seguros', 'internet', 'teléfono', 'suscripciones',
-]);
-
-function classifyCategory(cat: string): 'need' | 'want' {
-    return NEEDS.has(cat.toLowerCase()) ? 'need' : 'want';
-}
-
-function isFixed(cat: string): boolean {
-    return FIXED_NEEDS.has(cat.toLowerCase());
 }
 
 function pickMethod(savingsRate: number, needsPct: number): MethodRecommendation {
@@ -197,10 +179,10 @@ export function useBudgetRecommendations(
         const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
 
-        // Transacciones del mes anterior (sin transferencias)
+        // Transacciones reales pagadas del mes anterior.
         const lastMonthTx = transactions.filter(t => {
             const d = ensureDate(t.date);
-            return d >= lastMonth && d <= lastMonthEnd && t.type !== 'transfer';
+            return d >= lastMonth && d <= lastMonthEnd && isRealBudgetTransaction(t);
         });
 
         const lastMonthExpenses = lastMonthTx.filter(t => t.type === 'expense');
@@ -225,7 +207,7 @@ export function useBudgetRecommendations(
         let needsTotal = 0;
         let wantsTotal = 0;
         byCategory.forEach((spent, cat) => {
-            if (classifyCategory(cat) === 'need') needsTotal += spent;
+            if (classifyBudgetCategory(cat) === 'need') needsTotal += spent;
             else wantsTotal += spent;
         });
 
@@ -254,10 +236,10 @@ export function useBudgetRecommendations(
             let suggestedLimit: number;
             let reason: string;
 
-            if (isFixed(category)) {
+            if (isFixedBudgetCategory(category)) {
                 suggestedLimit = Math.ceil(spent * 1.05 / 1000) * 1000;
                 reason = 'Gasto fijo — margen del 5%';
-            } else if (classifyCategory(category) === 'need') {
+            } else if (classifyBudgetCategory(category) === 'need') {
                 suggestedLimit = Math.ceil(spent * 0.90 / 1000) * 1000;
                 reason = 'Esencial — meta de ahorro 10%';
             } else {

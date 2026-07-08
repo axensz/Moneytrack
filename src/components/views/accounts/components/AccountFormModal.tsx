@@ -19,6 +19,7 @@ interface AccountFormModalProps {
   balanceAdjustment: string;
   initialBalanceInput: string;
   creditLimitInput: string;
+  monthlyLimitInput: string;
   interestRateInput: string;
   savingsAccounts: Account[];
   accountTypes: AccountType[];
@@ -26,6 +27,7 @@ interface AccountFormModalProps {
   setBalanceAdjustment: (value: string) => void;
   setInitialBalanceInput: (value: string) => void;
   setCreditLimitInput: (value: string) => void;
+  setMonthlyLimitInput: (value: string) => void;
   setInterestRateInput: (value: string) => void;
   onClose: () => void;
   onSubmit: () => void;
@@ -47,6 +49,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
   balanceAdjustment,
   initialBalanceInput,
   creditLimitInput,
+  monthlyLimitInput,
   interestRateInput,
   savingsAccounts,
   accountTypes,
@@ -54,6 +57,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
   setBalanceAdjustment,
   setInitialBalanceInput,
   setCreditLimitInput,
+  setMonthlyLimitInput,
   setInterestRateInput,
   onClose,
   onSubmit,
@@ -216,6 +220,26 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                   />
                 </div>
                 <div>
+                  <label htmlFor="af-monthly-limit-edit" className="label-base">Tope manual (opcional)</label>
+                  <input
+                    id="af-monthly-limit-edit"
+                    type="text"
+                    inputMode="decimal"
+                    value={formatNumberForInput(monthlyLimitInput)}
+                    onChange={(e) => {
+                      const unformatted = unformatNumber(e.target.value);
+                      setMonthlyLimitInput(unformatted);
+                      const numValue = parseFloat(unformatted.replace(',', '.')) || 0;
+                      setNewAccount({ ...newAccount, monthlySpendingLimit: numValue });
+                    }}
+                    placeholder="Auto"
+                    className="input-base"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Si lo dejas en 0, MoneyTrack calcula un tope sugerido por cupo y liquidez.
+                  </p>
+                </div>
+                <div>
                   <label htmlFor="af-interest-rate-edit" className="label-base">Tasa de Interés E.A. (%)</label>
                   <input
                     id="af-interest-rate-edit"
@@ -361,6 +385,27 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                         placeholder="0"
                         className="input-base"
                       />
+                    </div>
+
+                    <div>
+                      <label htmlFor="af-monthly-limit" className="label-base">Tope manual (opcional)</label>
+                      <input
+                        id="af-monthly-limit"
+                        type="text"
+                        inputMode="decimal"
+                        value={formatNumberForInput(monthlyLimitInput)}
+                        onChange={(e) => {
+                          const unformatted = unformatNumber(e.target.value);
+                          setMonthlyLimitInput(unformatted);
+                          const numValue = parseFloat(unformatted.replace(',', '.')) || 0;
+                          setNewAccount({ ...newAccount, monthlySpendingLimit: numValue });
+                        }}
+                        placeholder="Auto"
+                        className="input-base"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Si lo dejas en 0, se calcula automáticamente.
+                      </p>
                     </div>
 
                     <div>

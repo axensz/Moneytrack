@@ -7,8 +7,9 @@
  */
 
 import { useMemo } from 'react';
-import type { Transaction } from '../types/finance';
-import { SPECIAL_CATEGORIES } from '../config/constants';
+import type { RecurringPayment, Transaction } from '../types/finance';
+import { classifyBudgetCategory, type BudgetCategoryGroup, isRealBudgetTransaction } from '../utils/budgetPlanning';
+import { cycleKey, effectiveDueDay, getCycleWindow, getYearlyAnchorMonth } from '../utils/recurringDates';
 
 // ============ TIPOS ============
 
@@ -55,6 +56,56 @@ export interface Rule503020 {
   savingsPct: number;
 }
 
+export interface PlanGap {
+  current: number;
+  target: number;
+  difference: number;
+  status: 'ok' | 'over' | 'under';
+}
+
+export interface PlanTopDriver {
+  category: string;
+  group: BudgetCategoryGroup;
+  spent: number;
+  pctOfIncome: number;
+  suggestedReduction: number;
+}
+
+export interface PlanActionItem {
+  kind: 'increase_savings' | 'reduce_need' | 'reduce_want';
+  label: string;
+  message: string;
+  amount: number;
+  category?: string;
+}
+
+export interface RecurringForecastItem {
+  id: string;
+  name: string;
+  category: string;
+  group: BudgetCategoryGroup;
+  amount: number;
+  dueDate: Date;
+  daysUntilDue: number;
+  status: 'overdue' | 'soon' | 'scheduled';
+}
+
+export interface RecurringMonthForecast {
+  monthLabel: string;
+  scheduledAmount: number;
+  pendingAmount: number;
+  overdueAmount: number;
+  projectedExpenses: number;
+  projectedSavings: number;
+  projectedSavingsRate: number;
+  projectedNeeds: number;
+  projectedWants: number;
+  projectedNeedsPct: number;
+  projectedWantsPct: number;
+  projectedSavingsGap: PlanGap;
+  items: RecurringForecastItem[];
+}
+
 export interface EmergencyFund {
   liquidBalance: number;     // saldo líquido actual (efectivo + ahorros)
   monthlyExpenses: number;   // gasto mensual de referencia
@@ -82,6 +133,7 @@ export interface NextStep {
 export interface PlanContext {
   liquidBalance?: number; // efectivo + ahorros (NO crédito)
   creditUtilization?: CreditUtilization | null;
+  recurringPayments?: RecurringPayment[];
 }
 
 export interface FinancialPlan {
@@ -90,6 +142,14 @@ export interface FinancialPlan {
   score: FinancialScore;
   projection: SavingsProjection;
   rule503020: Rule503020;
+  needsGap: PlanGap;
+  wantsGap: PlanGap;
+  savingsGap: PlanGap;
+  topDrivers: PlanTopDriver[];
+  actionItems: PlanActionItem[];
+  recurringForecast: RecurringMonthForecast;
+  analysisIsEstimated: boolean;
+  analysisLabel: string;
   emergencyFund: EmergencyFund;
   creditUtilization: CreditUtilization | null;
   nextStep: NextStep | null;
@@ -99,26 +159,70 @@ export interface FinancialPlan {
   trend: 'improving' | 'stable' | 'declining';
 }
 
-// ============ CLASIFICACIÓN ============
+// ============ HOOK ============
 
-const NEEDS_SET = new Set([
-  'servicios', 'vivienda', 'salud', 'educación',
-  'alimentación', 'transporte', 'arriendo', 'seguros',
-  'internet', 'teléfono', 'suscripciones',
-]);
-
-function isNeed(cat: string): boolean {
-  return NEEDS_SET.has(cat.toLowerCase());
+function monthKeyOf(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
-// ============ HOOK ============
+function buildSpendingGap(current: number, target: number): PlanGap {
+  const overBy = current - target;
+  return {
+    current,
+    target,
+    difference: Math.abs(overBy),
+    status: overBy > 0 ? 'over' : 'ok',
+  };
+}
+
+function buildSavingsGap(current: number, target: number): PlanGap {
+  const missing = target - current;
+  return {
+    current,
+    target,
+    difference: Math.abs(missing),
+    status: missing > 0 ? 'under' : 'ok',
+  };
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const EMPTY_RECURRING_PAYMENTS: RecurringPayment[] = [];
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function recurringDueDateForMonth(payment: RecurringPayment, year: number, month: number): Date | null {
+  if (!payment.isActive) return null;
+  if (payment.frequency === 'yearly' && getYearlyAnchorMonth(payment, month) !== month) return null;
+  return new Date(year, month, effectiveDueDay(payment.dueDay, year, month));
+}
+
+function isRecurringPaidForCycle(
+  payment: RecurringPayment,
+  transactions: Transaction[],
+  referenceDate: Date,
+): boolean {
+  if (!payment.id) return false;
+  const targetKey = cycleKey(payment, referenceDate);
+  const { start, end } = getCycleWindow(payment, referenceDate);
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+
+  return transactions.some(t => {
+    if (!t.paid || t.recurringPaymentId !== payment.id) return false;
+    if (t.recurringCycle) return t.recurringCycle === targetKey;
+    const time = new Date(t.date).getTime();
+    return time >= startMs && time < endMs;
+  });
+}
 
 export function useFinancialPlan(
   transactions: Transaction[],
   config: PlanConfig | null,
   context: PlanContext = {},
 ): FinancialPlan | null {
-  const { liquidBalance = 0, creditUtilization = null } = context;
+  const { liquidBalance = 0, creditUtilization = null, recurringPayments = EMPTY_RECURRING_PAYMENTS } = context;
   return useMemo(() => {
     if (!config || !config.declaredIncome || config.declaredIncome <= 0) return null;
 
@@ -127,16 +231,14 @@ export function useFinancialPlan(
     const startDate = new Date(startYear, startMo - 1, 1);
     const now = new Date();
 
-    // Filtrar transacciones reales desde el mes de inicio
-    const excluded = new Set(SPECIAL_CATEGORIES.adjustmentCategories);
+    // Filtrar transacciones reales pagadas desde el mes de inicio.
     const relevantTx = transactions.filter(t => {
-      if (excluded.has(t.category)) return false;
-      if (t.type === 'transfer') return false;
+      if (!isRealBudgetTransaction(t)) return false;
       const d = new Date(t.date);
       return d >= startDate;
     });
 
-    if (relevantTx.length === 0) return null;
+    if (!relevantTx.some(t => t.type === 'expense')) return null;
 
     // Generar resumen por mes
     const monthsMap = new Map<string, { income: number; expenses: number; needs: number; wants: number }>();
@@ -157,7 +259,7 @@ export function useFinancialPlan(
       if (t.type === 'income') entry.income += t.amount;
       else if (t.type === 'expense') {
         entry.expenses += t.amount;
-        if (isNeed(t.category)) entry.needs += t.amount;
+        if (classifyBudgetCategory(t.category) === 'need') entry.needs += t.amount;
         else entry.wants += t.amount;
       }
     });
@@ -178,32 +280,37 @@ export function useFinancialPlan(
       };
     });
 
-    const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const currentKey = monthKeyOf(now);
     const currentMonth = months.find(m => m.key === currentKey) || null;
 
-    // Meses completados (excluir mes actual para promedios)
-    const completedMonths = months.filter(m => m.key !== currentKey);
+    // Meses completados con gasto real. Si el plan empezo en un mes anterior
+    // vacio y solo hay movimientos actuales, usamos el mes actual como estimado.
+    const completedMonths = months.filter(m => m.key !== currentKey && m.expenses > 0);
     const numCompleted = completedMonths.length;
+    const analysisMonths = numCompleted > 0
+      ? completedMonths
+      : (currentMonth && currentMonth.expenses > 0 ? [currentMonth] : []);
+    if (analysisMonths.length === 0) return null;
+    const analysisMonthKeys = new Set(analysisMonths.map(m => m.key));
+    const analysisIsEstimated = numCompleted === 0;
+    const analysisLabel = analysisIsEstimated
+      ? 'Mes actual (estimado)'
+      : `${numCompleted} ${numCompleted === 1 ? 'mes completo' : 'meses completos'}`;
+    const monthsForAvg = Math.max(1, analysisMonths.length);
 
-    const avgMonthlyExpenses = numCompleted > 0
-      ? completedMonths.reduce((s, m) => s + m.expenses, 0) / numCompleted
-      : declaredIncome * 0.8; // Sin datos completos, estimar 80% del ingreso
+    const avgMonthlyExpenses = analysisMonths.reduce((s, m) => s + m.expenses, 0) / monthsForAvg;
 
-    const avgMonthlySavings = numCompleted > 0
-      ? completedMonths.reduce((s, m) => s + m.savings, 0) / numCompleted
-      : declaredIncome * 0.2; // Sin datos completos, estimar 20% de ahorro
+    const avgMonthlySavings = analysisMonths.reduce((s, m) => s + m.savings, 0) / monthsForAvg;
 
     // Regla 50/30/20 (basado en meses completados o actual)
-    const analysisMonths = numCompleted > 0 ? completedMonths : (currentMonth ? [currentMonth] : []);
     const totalNeeds = Array.from(monthsMap.entries())
-      .filter(([k]) => numCompleted > 0 ? k !== currentKey : true)
+      .filter(([k]) => analysisMonthKeys.has(k))
       .reduce((s, [, d]) => s + d.needs, 0);
     const totalWants = Array.from(monthsMap.entries())
-      .filter(([k]) => numCompleted > 0 ? k !== currentKey : true)
+      .filter(([k]) => analysisMonthKeys.has(k))
       .reduce((s, [, d]) => s + d.wants, 0);
 
     // Para porcentajes, usar siempre declaredIncome como referencia
-    const monthsForAvg = Math.max(1, numCompleted > 0 ? numCompleted : 1);
     const avgNeeds = totalNeeds / monthsForAvg;
     const avgWants = totalWants / monthsForAvg;
 
@@ -215,6 +322,134 @@ export function useFinancialPlan(
       savings: avgMonthlySavings,
       savingsPct: declaredIncome > 0 ? Math.round((avgMonthlySavings / declaredIncome) * 100) : 0,
     };
+
+    const needsTarget = declaredIncome * 0.5;
+    const wantsTarget = declaredIncome * 0.3;
+    const savingsTarget = declaredIncome * 0.2;
+    const needsGap = buildSpendingGap(rule503020.needs, needsTarget);
+    const wantsGap = buildSpendingGap(rule503020.wants, wantsTarget);
+    const savingsGap = buildSavingsGap(rule503020.savings, savingsTarget);
+
+    const currentMonthData = monthsMap.get(currentKey) || { income: 0, expenses: 0, needs: 0, wants: 0 };
+    const today = startOfDay(now);
+    const currentYear = now.getFullYear();
+    const currentMonthIndex = now.getMonth();
+    const dueRecurringPayments = recurringPayments
+      .map(payment => ({ payment, dueDate: recurringDueDateForMonth(payment, currentYear, currentMonthIndex) }))
+      .filter((entry): entry is { payment: RecurringPayment; dueDate: Date } => Boolean(entry.dueDate));
+
+    const recurringItems: RecurringForecastItem[] = dueRecurringPayments
+      .filter(({ payment }) => !isRecurringPaidForCycle(payment, transactions, now))
+      .map(({ payment, dueDate }) => {
+        const dueDay = startOfDay(dueDate);
+        const daysUntilDue = Math.ceil((dueDay.getTime() - today.getTime()) / DAY_MS);
+        const group = classifyBudgetCategory(payment.category);
+        const status: RecurringForecastItem['status'] =
+          daysUntilDue < 0 ? 'overdue' : daysUntilDue <= 7 ? 'soon' : 'scheduled';
+        return {
+          id: payment.id || `${payment.name}-${payment.category}-${payment.dueDay}`,
+          name: payment.name,
+          category: payment.category,
+          group,
+          amount: payment.amount,
+          dueDate,
+          daysUntilDue,
+          status,
+        };
+      })
+      .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime() || b.amount - a.amount);
+
+    const pendingAmount = recurringItems.reduce((sum, item) => sum + item.amount, 0);
+    const overdueAmount = recurringItems
+      .filter(item => item.status === 'overdue')
+      .reduce((sum, item) => sum + item.amount, 0);
+    const pendingNeeds = recurringItems
+      .filter(item => item.group === 'need')
+      .reduce((sum, item) => sum + item.amount, 0);
+    const pendingWants = recurringItems
+      .filter(item => item.group === 'want')
+      .reduce((sum, item) => sum + item.amount, 0);
+    const projectedExpenses = currentMonthData.expenses + pendingAmount;
+    const projectedNeeds = currentMonthData.needs + pendingNeeds;
+    const projectedWants = currentMonthData.wants + pendingWants;
+    const projectedSavings = declaredIncome - projectedExpenses;
+    const recurringForecast: RecurringMonthForecast = {
+      monthLabel: now.toLocaleDateString('es-CO', { month: 'long', year: 'numeric' }),
+      scheduledAmount: dueRecurringPayments.reduce((sum, { payment }) => sum + payment.amount, 0),
+      pendingAmount,
+      overdueAmount,
+      projectedExpenses,
+      projectedSavings,
+      projectedSavingsRate: declaredIncome > 0 ? Math.round((projectedSavings / declaredIncome) * 100) : 0,
+      projectedNeeds,
+      projectedWants,
+      projectedNeedsPct: declaredIncome > 0 ? Math.round((projectedNeeds / declaredIncome) * 100) : 0,
+      projectedWantsPct: declaredIncome > 0 ? Math.round((projectedWants / declaredIncome) * 100) : 0,
+      projectedSavingsGap: buildSavingsGap(projectedSavings, savingsTarget),
+      items: recurringItems,
+    };
+
+    const categoryTotals = new Map<string, { spent: number; group: BudgetCategoryGroup }>();
+    relevantTx
+      .filter(t => t.type === 'expense' && analysisMonthKeys.has(monthKeyOf(new Date(t.date))))
+      .forEach(t => {
+        const group = classifyBudgetCategory(t.category);
+        const current = categoryTotals.get(t.category) || { spent: 0, group };
+        categoryTotals.set(t.category, { spent: current.spent + t.amount, group });
+      });
+
+    const gapForGroup = (group: BudgetCategoryGroup) =>
+      group === 'need'
+        ? (needsGap.status === 'over' ? needsGap.difference : 0)
+        : (wantsGap.status === 'over' ? wantsGap.difference : 0);
+
+    const categorySummaries: PlanTopDriver[] = Array.from(categoryTotals.entries())
+      .map(([category, data]) => ({
+        category,
+        group: data.group,
+        spent: data.spent / monthsForAvg,
+        pctOfIncome: declaredIncome > 0 ? Math.round(((data.spent / monthsForAvg) / declaredIncome) * 100) : 0,
+        suggestedReduction: Math.min(data.spent / monthsForAvg, gapForGroup(data.group)),
+      }))
+      .sort((a, b) => b.spent - a.spent);
+
+    const topDrivers: PlanTopDriver[] = categorySummaries
+      .filter(d => d.suggestedReduction > 0)
+      .sort((a, b) => b.suggestedReduction - a.suggestedReduction || b.spent - a.spent);
+
+    const topNeed = categorySummaries.find(d => d.group === 'need');
+    const topWant = categorySummaries.find(d => d.group === 'want');
+    const actionItems: PlanActionItem[] = [];
+    if (savingsGap.status === 'under') {
+      actionItems.push({
+        kind: 'increase_savings',
+        label: topWant ? `Libera ahorro desde ${topWant.category}` : 'Aparta ahorro primero',
+        message: topWant
+          ? 'Recorta primero el gasto discrecional más grande para acercarte al 20% de ahorro.'
+          : 'Separa este monto apenas recibas tu ingreso para acercarte al 20% de ahorro.',
+        amount: topWant ? Math.min(savingsGap.difference, topWant.spent) : savingsGap.difference,
+        category: topWant?.category,
+      });
+    }
+    if (needsGap.status === 'over' && topNeed) {
+      actionItems.push({
+        kind: 'reduce_need',
+        label: `Ajusta ${topNeed.category}`,
+        message: 'Esta necesidad explica la mayor parte del exceso frente al 50% ideal.',
+        amount: Math.min(needsGap.difference, topNeed.spent),
+        category: topNeed.category,
+      });
+    }
+    if (wantsGap.status === 'over' && topWant) {
+      actionItems.push({
+        kind: 'reduce_want',
+        label: `Recorta ${topWant.category}`,
+        message: 'Este gusto es el mejor candidato para recuperar margen este mes.',
+        amount: Math.min(wantsGap.difference, topWant.spent),
+        category: topWant.category,
+      });
+    }
+    actionItems.sort((a, b) => b.amount - a.amount);
 
     // Score financiero (0-100)
     // 1. Ahorro (0-30): 20%+ = 30, 10-20% = 20, 0-10% = 10, <0 = 0
@@ -253,9 +488,9 @@ export function useFinancialPlan(
       level,
     };
 
-    // Proyección de ahorro
-    // Usar solo meses completados para calcular. Si no hay, estimar 20% de ahorro como meta.
-    const reliableMonthlyExpenses = numCompleted > 0 ? avgMonthlyExpenses : declaredIncome * 0.8;
+    // Proyección de ahorro: usa meses completos o, si aún no existen, el mes
+    // actual marcado como estimado.
+    const reliableMonthlyExpenses = avgMonthlyExpenses;
     const reliableMonthlySavings = declaredIncome - reliableMonthlyExpenses;
     const monthlySavingsForProjection = Math.max(0, reliableMonthlySavings);
 
@@ -328,6 +563,14 @@ export function useFinancialPlan(
       score,
       projection,
       rule503020,
+      needsGap,
+      wantsGap,
+      savingsGap,
+      topDrivers,
+      actionItems: actionItems.slice(0, 3),
+      recurringForecast,
+      analysisIsEstimated,
+      analysisLabel,
       emergencyFund,
       creditUtilization,
       nextStep,
@@ -336,5 +579,5 @@ export function useFinancialPlan(
       avgMonthlySavings,
       trend,
     };
-  }, [transactions, config, liquidBalance, creditUtilization]);
+  }, [transactions, config, liquidBalance, creditUtilization, recurringPayments]);
 }

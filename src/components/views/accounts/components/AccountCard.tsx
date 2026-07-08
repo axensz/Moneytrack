@@ -223,6 +223,7 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
             creditLimit={account.creditLimit!}
             nextCutoff={nextCutoff}
             nextPayment={nextPayment}
+            monthlySpendingLimit={account.monthlySpendingLimit}
             interestRate={account.interestRate}
             formatCurrency={formatCurrency}
             isAssociated={isAssociated}
@@ -279,6 +280,7 @@ interface CreditCardInfoProps {
   creditLimit: number;
   nextCutoff: Date | null;
   nextPayment: Date | null;
+  monthlySpendingLimit?: number;
   interestRate?: number;
   formatCurrency: (amount: number) => string;
   isAssociated: boolean;
@@ -289,6 +291,7 @@ const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
   creditLimit,
   nextCutoff,
   nextPayment,
+  monthlySpendingLimit,
   interestRate,
   formatCurrency,
   isAssociated,
@@ -333,6 +336,14 @@ const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
             <span className="text-muted-foreground">Tasa E.A.: </span>
             <span className="font-medium text-foreground">
               {interestRate.toFixed(2).replace('.', ',')}%
+            </span>
+          </div>
+        )}
+        {monthlySpendingLimit && monthlySpendingLimit > 0 && (
+          <div>
+            <span className="text-muted-foreground">Tope manual: </span>
+            <span className="font-medium text-foreground">
+              {displayAmount(monthlySpendingLimit)}
             </span>
           </div>
         )}

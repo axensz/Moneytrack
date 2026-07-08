@@ -131,7 +131,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center gap-1.5 sm:gap-2">
             {user && (
               <div
-                className="flex items-center rounded-lg p-1 text-foreground"
+                className="hidden sm:flex items-center rounded-lg p-1 text-foreground"
                 role="status"
                 aria-label={`Sesión iniciada como ${accountLabel}`}
               >

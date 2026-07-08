@@ -111,6 +111,7 @@ export interface Account {
   creditLimit?: number;
   cutoffDay?: number;
   paymentDay?: number;
+  monthlySpendingLimit?: number;
   bankAccountId?: string; // ID de cuenta bancaria asociada (para tarjetas de crédito)
   mergedAccountIds?: string[]; // IDs históricos fusionados en esta cuenta
   createdAt?: Date;
@@ -164,6 +165,7 @@ export interface NewAccount {
   creditLimit: number;
   cutoffDay: number;
   paymentDay: number;
+  monthlySpendingLimit: number;
   bankAccountId?: string;
   interestRate: number; // 🆕 Tasa E.A. para TC
 }

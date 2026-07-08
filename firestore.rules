@@ -44,6 +44,16 @@ service cloud.firestore {
         && (!('exchangeRate' in data.keys()) || (data.exchangeRate is number && data.exchangeRate > 0));
     }
 
+    // Helper: validate optional payment mapping fields on debts/loans
+    function hasValidDebtPaymentSchedule(data) {
+      return (!('expectedPaymentDay' in data.keys())
+              || (data.expectedPaymentDay is int
+                  && data.expectedPaymentDay >= 1
+                  && data.expectedPaymentDay <= 31))
+        && (!('nextPaymentDate' in data.keys())
+              || data.nextPaymentDate is timestamp);
+    }
+
     // User data collections
     match /users/{userId} {
       // Only authenticated users can read/write their own data
@@ -209,7 +219,8 @@ service cloud.firestore {
           && request.resource.data.remainingAmount >= 0
           && request.resource.data.remainingAmount <= request.resource.data.originalAmount
           && request.resource.data.isSettled is bool
-          && request.resource.data.createdAt is timestamp;
+          && request.resource.data.createdAt is timestamp
+          && hasValidDebtPaymentSchedule(request.resource.data);
 
         allow update: if isOwner(userId)
           && request.resource.data.type == resource.data.type
@@ -218,7 +229,8 @@ service cloud.firestore {
           && isValidAmount(request.resource.data.originalAmount)
           && request.resource.data.remainingAmount is number
           && request.resource.data.remainingAmount >= 0
-          && request.resource.data.remainingAmount <= request.resource.data.originalAmount;
+          && request.resource.data.remainingAmount <= request.resource.data.originalAmount
+          && hasValidDebtPaymentSchedule(request.resource.data);
 
         allow delete: if isOwner(userId);
       }

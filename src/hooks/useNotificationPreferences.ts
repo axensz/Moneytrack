@@ -25,6 +25,8 @@ export function withDefaults(p?: Partial<NotificationPreferences> | null): Notif
         enabled: { ...DEFAULT_NOTIFICATION_PREFERENCES.enabled, ...p?.enabled },
         thresholds: { ...DEFAULT_NOTIFICATION_PREFERENCES.thresholds, ...p?.thresholds },
         quietHours: { ...DEFAULT_NOTIFICATION_PREFERENCES.quietHours, ...p?.quietHours },
+        browserNotifications: { ...DEFAULT_NOTIFICATION_PREFERENCES.browserNotifications, ...p?.browserNotifications },
+        dailyExpenseReminder: { ...DEFAULT_NOTIFICATION_PREFERENCES.dailyExpenseReminder, ...p?.dailyExpenseReminder },
     };
 }
 
@@ -82,7 +84,7 @@ export function useNotificationPreferences(userId: string | null, externalPrefer
         );
 
         return () => unsubscribe();
-    }, [userId]);
+    }, [externalPreferences, userId]);
 
     // Usar Firebase si hay usuario, localStorage si no. Siempre mergeado con
     // defaults para que los objetos anidados existan aunque el doc sea legacy.
@@ -126,12 +128,24 @@ export function useNotificationPreferences(userId: string | null, externalPrefer
                 }
             }
 
+            if (updates.dailyExpenseReminder) {
+                const { hour, minute } = updates.dailyExpenseReminder;
+                if (hour !== undefined && (hour < 0 || hour > 23)) {
+                    throw new Error('Reminder hour must be between 0 and 23');
+                }
+                if (minute !== undefined && (minute < 0 || minute > 59)) {
+                    throw new Error('Reminder minute must be between 0 and 59');
+                }
+            }
+
             const newPreferences = {
                 ...preferences,
                 ...updates,
                 enabled: { ...preferences.enabled, ...updates.enabled },
                 thresholds: { ...preferences.thresholds, ...updates.thresholds },
                 quietHours: { ...preferences.quietHours, ...updates.quietHours },
+                browserNotifications: { ...preferences.browserNotifications, ...updates.browserNotifications },
+                dailyExpenseReminder: { ...preferences.dailyExpenseReminder, ...updates.dailyExpenseReminder },
             };
 
             if (userId) {

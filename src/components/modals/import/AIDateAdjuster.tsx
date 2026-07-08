@@ -3,8 +3,23 @@
 import React, { useState } from 'react';
 import { Sparkles, Loader2 } from 'lucide-react';
 import { getGeminiClient } from '../../../lib/geminiClient';
+import { GEMINI_MODELS, dateAssignmentsResponseSchema, geminiJsonConfig, parseGeminiJson } from '../../../lib/geminiConfig';
 import { isAIAvailable } from '../../../utils/aiCategorizer';
 import type { ImportRow } from '../../../hooks/useImportTransactions';
+
+interface DateAssignment {
+  index: number;
+  date: string;
+}
+
+function isDateAssignments(value: unknown): value is DateAssignment[] {
+  return Array.isArray(value) && value.every(item =>
+    item &&
+    typeof item === 'object' &&
+    typeof (item as Partial<DateAssignment>).index === 'number' &&
+    typeof (item as Partial<DateAssignment>).date === 'string'
+  );
+}
 
 /** Ajuste masivo de fechas de las filas importadas usando IA Gemini. */
 export function AIDateAdjuster({ rows, setRows }: { rows: ImportRow[]; setRows: React.Dispatch<React.SetStateAction<ImportRow[]>> }) {
@@ -35,7 +50,7 @@ export function AIDateAdjuster({ rows, setRows }: { rows: ImportRow[]; setRows: 
     try {
       const ai = await getGeminiClient();
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: GEMINI_MODELS.structured,
         contents: `Hoy es ${dayName} ${todayStr}. Tengo ${rows.length} transacciones importadas de un extracto bancario. El usuario dice: "${prompt.trim()}".
 
 Necesito que asignes la fecha correcta a CADA transacción individualmente basándote en el contexto del usuario y las descripciones. Si una descripción menciona un día de la semana o una fecha relativa, úsala. Si no hay pista clara, distribuye lógicamente según el contexto.
@@ -47,15 +62,16 @@ Responde SOLO un JSON array con la fecha asignada a cada transacción por su ín
 [{"index":0,"date":"YYYY-MM-DD"},{"index":1,"date":"YYYY-MM-DD"},...]
 
 Sin explicaciones, solo el JSON array.`,
-        config: { temperature: 0 },
+        config: {
+          ...geminiJsonConfig(dateAssignmentsResponseSchema),
+          temperature: 0,
+          maxOutputTokens: 8192,
+        },
       });
 
-      const text = response.text?.trim() || '';
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) { setFeedback('No pude interpretar. Intenta ser más específico.'); setLoading(false); return; }
+      const assignments = parseGeminiJson<unknown>(response.text ?? '', 'array');
 
-      const assignments: { index: number; date: string }[] = JSON.parse(jsonMatch[0]);
-      if (!Array.isArray(assignments) || assignments.length === 0) {
+      if (!isDateAssignments(assignments) || assignments.length === 0) {
         setFeedback('Respuesta incompleta de la IA.'); setLoading(false); return;
       }
 

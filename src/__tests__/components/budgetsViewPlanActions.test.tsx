@@ -1,7 +1,8 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RecurringPayment, Transaction } from '../../types/finance';
 import { BudgetsView } from '../../components/views/budgets/BudgetsView';
+import { FinancialPlanView } from '../../components/views/financial-plan/FinancialPlanView';
 
 const mocks = vi.hoisted(() => ({
   addBudget: vi.fn(),
@@ -9,6 +10,9 @@ const mocks = vi.hoisted(() => ({
   deleteBudget: vi.fn(),
   saveConfig: vi.fn(),
   clearConfig: vi.fn(),
+  applyBudgetSuggestion: vi.fn(),
+  draftApplied: vi.fn(),
+  openPlan: vi.fn(),
   transactions: [] as Transaction[],
   recurringPayments: [] as RecurringPayment[],
   hideBalances: false,
@@ -74,7 +78,7 @@ vi.mock('../../lib/gemini', () => ({
   isGeminiConfigured: () => false,
 }));
 
-describe('BudgetsView — plan financiero accionable', () => {
+describe('FinancialPlanView — plan financiero accionable', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-15T12:00:00'));
@@ -93,7 +97,7 @@ describe('BudgetsView — plan financiero accionable', () => {
   });
 
   it('muestra brechas accionables y recomendaciones visibles', () => {
-    render(<BudgetsView />);
+    render(<FinancialPlanView onUseBudgetSuggestion={mocks.applyBudgetSuggestion} />);
 
     expect(screen.getByText('Tu prioridad este mes')).toBeInTheDocument();
     expect(screen.getByText(/Faltan .*50\.000.* para llegar/)).toBeInTheDocument();
@@ -102,35 +106,8 @@ describe('BudgetsView — plan financiero accionable', () => {
     expect(screen.getAllByText('Usar sugerencia').length).toBeGreaterThan(0);
   });
 
-  it('muestra presupuestos antes del plan financiero', () => {
-    const { container } = render(<BudgetsView />);
-    const content = container.textContent || '';
-
-    expect(content.indexOf('Presupuestos')).toBeGreaterThanOrEqual(0);
-    expect(content.indexOf('Plan financiero')).toBeGreaterThanOrEqual(0);
-    expect(content.indexOf('Presupuestos')).toBeLessThan(content.indexOf('Plan financiero'));
-  });
-
-  it('permite colapsar presupuestos y reabrirlos desde nuevo', () => {
-    render(<BudgetsView />);
-
-    const budgetsToggle = screen.getByRole('button', { name: /presupuestos/i });
-    expect(budgetsToggle).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('No hay presupuestos configurados')).toBeInTheDocument();
-
-    fireEvent.click(budgetsToggle);
-
-    expect(budgetsToggle).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByText('No hay presupuestos configurados')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /nuevo/i }));
-
-    expect(budgetsToggle).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('Nuevo presupuesto')).toBeInTheDocument();
-  });
-
   it('permite colapsar el plan financiero', () => {
-    render(<BudgetsView />);
+    render(<FinancialPlanView />);
 
     const planToggle = screen.getByRole('button', { name: /plan financiero/i });
     expect(planToggle).toHaveAttribute('aria-expanded', 'true');
@@ -142,20 +119,19 @@ describe('BudgetsView — plan financiero accionable', () => {
     expect(screen.queryByText('Distribución mensual')).not.toBeInTheDocument();
   });
 
-  it('prellena el formulario al usar una sugerencia', () => {
-    render(<BudgetsView />);
+  it('envía una sugerencia de presupuesto sin abrir formularios propios del plan', () => {
+    render(<FinancialPlanView onUseBudgetSuggestion={mocks.applyBudgetSuggestion} />);
 
     fireEvent.click(screen.getAllByText('Usar sugerencia')[0]);
 
-    expect(screen.getByText('Nuevo presupuesto')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('Alimentación')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('540.000')).toBeInTheDocument();
+    expect(mocks.applyBudgetSuggestion).toHaveBeenCalledWith('Alimentación', 540_000);
+    expect(screen.queryByText('Nuevo presupuesto')).not.toBeInTheDocument();
   });
 
   it('oculta montos de brechas y acciones cuando balances ocultos esta activo', () => {
     mocks.hideBalances = true;
 
-    render(<BudgetsView />);
+    render(<FinancialPlanView />);
 
     expect(screen.getByText(/Te pasas por .*••••••/)).toBeInTheDocument();
     expect(screen.getByText(/Faltan .*••••••.* para llegar/)).toBeInTheDocument();
@@ -176,12 +152,116 @@ describe('BudgetsView — plan financiero accionable', () => {
       createdAt: new Date('2026-01-01'),
     }];
 
-    render(<BudgetsView />);
+    render(<FinancialPlanView />);
 
     expect(screen.getByText('Gastos programados del mes')).toBeInTheDocument();
     expect(screen.getByText('Internet hogar')).toBeInTheDocument();
     expect(screen.getByText('Por venir')).toBeInTheDocument();
     expect(screen.getByText('Cierre estimado')).toBeInTheDocument();
     expect(screen.getAllByText(/120\.000/).length).toBeGreaterThan(0);
+  });
+});
+
+describe('BudgetsView — responsabilidad de presupuestos', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-15T12:00:00'));
+    mocks.hideBalances = false;
+    mocks.recurringPayments = [];
+    mocks.transactions = [
+      tx({ type: 'income', amount: 1_000_000, category: 'Salario' }),
+      tx({ amount: 600_000, category: 'Alimentación' }),
+      tx({ amount: 250_000, category: 'Entretenimiento' }),
+    ];
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  it('no renderiza el plan financiero por defecto', () => {
+    render(<BudgetsView />);
+
+    expect(screen.getByRole('button', { name: /presupuestos/i })).toBeInTheDocument();
+    expect(screen.queryByText('Plan financiero')).not.toBeInTheDocument();
+  });
+
+  it('permite colapsar presupuestos y reabrirlos desde nuevo', () => {
+    render(<BudgetsView />);
+
+    const budgetsToggle = screen.getByRole('button', { name: /presupuestos/i });
+    expect(budgetsToggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('No hay presupuestos configurados')).toBeInTheDocument();
+
+    fireEvent.click(budgetsToggle);
+
+    expect(budgetsToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('No hay presupuestos configurados')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /nuevo/i }));
+
+    expect(budgetsToggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Nuevo presupuesto')).toBeInTheDocument();
+  });
+
+  it('prellena el formulario con una sugerencia recibida desde el plan', () => {
+    render(
+      <BudgetsView
+        initialDraft={{ category: 'Alimentación', suggestedLimit: 540_000 }}
+        onInitialDraftApplied={mocks.draftApplied}
+      />,
+    );
+
+    expect(screen.getByText('Nuevo presupuesto')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Alimentación')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('540.000')).toBeInTheDocument();
+    expect(mocks.draftApplied).toHaveBeenCalledTimes(1);
+  });
+
+  it('descarta el borrador al cancelar un presupuesto nuevo', () => {
+    render(<BudgetsView />);
+
+    fireEvent.click(screen.getByRole('button', { name: /nuevo/i }));
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Entretenimiento' } });
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '123000' } });
+    fireEvent.click(screen.getByRole('button', { name: /cancelar/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /nuevo/i }));
+
+    expect(screen.getByRole('combobox')).toHaveValue('');
+    expect(screen.getByRole('textbox')).toHaveValue('');
+  });
+
+  it('bloquea doble submit mientras se guarda un presupuesto', async () => {
+    let release!: () => void;
+    mocks.addBudget.mockReturnValueOnce(new Promise<void>((resolve) => { release = resolve; }));
+
+    render(<BudgetsView />);
+
+    fireEvent.click(screen.getByRole('button', { name: /nuevo/i }));
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Entretenimiento' } });
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '123000' } });
+
+    const submit = screen.getByRole('button', { name: /^crear$/i });
+    await act(async () => {
+      fireEvent.click(submit);
+      fireEvent.click(submit);
+    });
+
+    expect(mocks.addBudget).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      release();
+    });
+  });
+
+  it('puede mostrar una entrada liviana hacia el plan sin calcularlo dentro de presupuestos', () => {
+    render(<BudgetsView onOpenFinancialPlan={mocks.openPlan} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /abrir plan/i }));
+
+    expect(mocks.openPlan).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Distribución mensual')).not.toBeInTheDocument();
   });
 });

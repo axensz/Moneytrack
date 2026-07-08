@@ -90,7 +90,7 @@ const DATE_FIELDS: Record<string, readonly string[]> = {
   accounts: ['createdAt'],
   transactions: ['date', 'createdAt'],
   recurringPayments: ['createdAt', 'lastPaidDate'],
-  debts: ['createdAt', 'settledAt'],
+  debts: ['createdAt', 'settledAt', 'lentDate', 'dueDate', 'nextPaymentDate'],
   budgets: ['createdAt'],
   savingsGoals: ['targetDate', 'createdAt', 'completedAt'],
 };

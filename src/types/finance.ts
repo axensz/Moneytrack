@@ -66,6 +66,8 @@ export interface Debt {
   isSettled: boolean; // Si la deuda está completamente saldada
   lentDate?: Date; // Fecha en que se prestó/recibió el dinero (default: hoy)
   dueDate?: Date; // Fecha de vencimiento opcional
+  expectedPaymentDay?: number; // Día aproximado del mes para el próximo pago recurrente (1-31)
+  nextPaymentDate?: Date; // Próximo pago directo o excepción puntual del mes
   createdAt?: Date;
   settledAt?: Date; // Fecha en que se saldó
   forgivenReason?: 'unpaid' | 'gift' | 'other'; // Presente = deuda condonada (no pagada / regalo / otro)
@@ -171,7 +173,7 @@ export interface NewAccount {
 }
 
 export type FilterValue = 'all' | string;
-export type ViewType = 'transactions' | 'stats' | 'accounts' | 'recurring' | 'debts' | 'budgets' | 'goals';
+export type ViewType = 'transactions' | 'stats' | 'accounts' | 'recurring' | 'debts' | 'budgets' | 'financial-plan' | 'goals';
 
 export interface BackupData {
   transactions: Transaction[];
@@ -209,6 +211,7 @@ export interface NotificationMetadata {
   transactionId?: string;
   accountId?: string;
   debtId?: string;
+  reminderKey?: string;
   percentage?: number;
   amount?: number;
   threshold?: number;
@@ -233,6 +236,14 @@ export interface NotificationPreferences {
     enabled: boolean;
     startHour: number;          // 0-23
     endHour: number;            // 0-23
+  };
+  browserNotifications: {
+    enabled: boolean;
+  };
+  dailyExpenseReminder: {
+    enabled: boolean;
+    hour: number;               // 0-23
+    minute: number;             // 0-59
   };
 }
 
@@ -261,5 +272,13 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
     enabled: false,
     startHour: 22,
     endHour: 8,
+  },
+  browserNotifications: {
+    enabled: false,
+  },
+  dailyExpenseReminder: {
+    enabled: false,
+    hour: 20,
+    minute: 0,
   },
 };

@@ -124,7 +124,7 @@ export function InstallPrompt({
 
     if (variant === 'banner') {
         return (
-            <div className="fixed bottom-0 left-0 right-0 z-50 bg-primary-solid text-white p-4 shadow-lg md:hidden">
+            <div className="fixed left-0 right-0 z-[90] [bottom:var(--shell-nav-h,72px)] bg-primary-solid text-white p-4 shadow-lg md:hidden">
                 <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3 flex-1">
                         {ios

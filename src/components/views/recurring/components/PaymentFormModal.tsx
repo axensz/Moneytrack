@@ -8,6 +8,7 @@ import type { RecurringPayment, Account } from '../../../../types/finance';
 import { formatNumberForInput } from '../../../../utils/formatters';
 import { BaseModal } from '../../../modals/BaseModal';
 import { LAST_DAY_OF_MONTH } from '../../../../utils/recurringDates';
+import { UI_TEXT } from '../../../../config/ui';
 
 interface PaymentFormModalProps {
   isOpen: boolean;
@@ -144,7 +145,7 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
     <BaseModal
       isOpen={isOpen}
       onClose={() => guardedClose(onClose)}
-      title={editingPayment ? 'Editar pago periódico' : 'Nuevo pago periódico'}
+      title={editingPayment ? 'Editar pago periódico' : `${UI_TEXT.actions.new} pago periódico`}
       maxWidth="max-w-lg"
     >
       <div className="space-y-4">
@@ -286,17 +287,17 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
                 }`}
             >
               {isSubmitting
-                ? 'Guardando...'
+                ? UI_TEXT.states.saving
                 : editingPayment
-                  ? 'Actualizar'
-                  : 'Crear'}
+                  ? UI_TEXT.actions.update
+                  : UI_TEXT.actions.create}
             </button>
             <button
               onClick={() => guardedClose(onClose)}
               disabled={isSubmitting}
               className="btn-cancel"
             >
-              Cancelar
+              {UI_TEXT.actions.cancel}
             </button>
           </div>
     </BaseModal>

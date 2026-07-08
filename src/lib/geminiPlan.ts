@@ -6,6 +6,7 @@
 import type { FinancialPlan, PlanConfig } from '../hooks/useFinancialPlan';
 import { formatCurrency } from '../utils/formatters';
 import { logger } from '../utils/logger';
+import { GEMINI_MODELS } from './geminiConfig';
 import { getGeminiClient } from './geminiClient';
 
 export function buildPlanPrompt(plan: FinancialPlan, config: PlanConfig): string {
@@ -21,15 +22,15 @@ export function buildPlanPrompt(plan: FinancialPlan, config: PlanConfig): string
       ? kind === 'saving'
         ? `supera la meta por ${formatCurrency(gap.difference)}`
         : `tiene margen de ${formatCurrency(gap.difference)}`
-      : 'esta en el punto ideal';
+      : 'está en el punto ideal';
     return `- ${label}: dentro del rango, ${okDetail} (actual ${formatCurrency(gap.current)}, ideal ${formatCurrency(gap.target)})`;
   };
   const actions = plan.actionItems.length > 0
     ? plan.actionItems.map((item, idx) => `  ${idx + 1}. ${item.label}: ${formatCurrency(item.amount)}${item.category ? ` en ${item.category}` : ''}. ${item.message}`).join('\n')
-    : '  Sin acciones urgentes; refuerza el habito actual.';
+    : '  Sin acciones urgentes; refuerza el hábito actual.';
   const drivers = plan.topDrivers.length > 0
     ? plan.topDrivers.slice(0, 3).map(d => `  - ${d.category}: ${formatCurrency(d.spent)}/mes, recorte sugerido ${formatCurrency(d.suggestedReduction)}`).join('\n')
-    : '  No hay categorias por encima del rango 50/30/20.';
+    : '  No hay categorías por encima del rango 50/30/20.';
   const recurring = plan.recurringForecast.items.length > 0
     ? [
         `- Pagos programados pendientes: ${formatCurrency(plan.recurringForecast.pendingAmount)}`,
@@ -37,7 +38,7 @@ export function buildPlanPrompt(plan: FinancialPlan, config: PlanConfig): string
         `- Ahorro estimado al cierre: ${formatCurrency(plan.recurringForecast.projectedSavings)} (${plan.recurringForecast.projectedSavingsRate}%)`,
         ...plan.recurringForecast.items.slice(0, 3).map(item => `  - ${item.name}: ${formatCurrency(item.amount)} vence ${item.dueDate.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}`),
       ].join('\n')
-    : '- No hay pagos periodicos pendientes este mes.';
+    : '- No hay pagos periódicos pendientes este mes.';
 
   // Fondo de emergencia en 3 estados. `monthsTo3m` es 0 cuando YA está cubierto y
   // null cuando no hay ahorro para construirlo: un check de truthiness leía el 0
@@ -55,7 +56,7 @@ REGLAS:
 - Máximo 3 consejos numerados, cada uno de 1-2 líneas.
 - Sé práctico: di QUÉ hacer, no por qué.
 - Usa moneda colombiana ($ con puntos).
-- Usa primero la seccion PRIORIDAD Y ACCIONES; no inventes categorias ni montos.
+- Usa primero la sección PRIORIDAD Y ACCIONES; no inventes categorías ni montos.
 - NO menciones "inconsistencias" ni cuestiones los datos.
 - Si el porcentaje de necesidades/gustos es alto, simplemente sugiere cómo reducirlo.
 
@@ -78,7 +79,7 @@ ${gapLine('Ahorro', plan.savingsGap, 'saving')}
 PRIORIDAD Y ACCIONES:
 ${actions}
 
-CATEGORIAS QUE EXPLICAN EXCESOS:
+CATEGORÍAS QUE EXPLICAN EXCESOS:
 ${drivers}
 
 PAGOS PROGRAMADOS DEL MES:
@@ -94,7 +95,7 @@ export async function getFinancialAdvice(plan: FinancialPlan, config: PlanConfig
 
   try {
     const response = await client.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: GEMINI_MODELS.planning,
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: { temperature: 0.7, maxOutputTokens: 2048 },
     });

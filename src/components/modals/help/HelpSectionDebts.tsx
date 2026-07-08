@@ -1,10 +1,11 @@
 import React from 'react';
-import { BarChart3, TrendingUp, TrendingDown, CircleDollarSign } from 'lucide-react';
+import { BarChart3, TrendingUp, TrendingDown, CircleDollarSign, CalendarClock } from 'lucide-react';
+import { sectionTitle } from '../../../config/ui';
 
 export const HelpSectionDebts: React.FC = () => (
   <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 fade-in">
       <div>
-        <h3 className="text-xl font-semibold text-foreground mb-2">Préstamos y Deudas</h3>
+        <h3 className="text-xl font-semibold text-foreground mb-2">{sectionTitle('debts')}</h3>
         <p className="text-muted-foreground">Controla quién te debe y a quién le debes.</p>
       </div>
 
@@ -33,7 +34,7 @@ export const HelpSectionDebts: React.FC = () => (
          </div>
          <div className="p-4 space-y-3">
             <p className="text-sm text-muted-foreground">Campos del formulario:</p>
-            <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                <div className="p-2 bg-muted rounded-lg">
                   <span className="font-medium text-foreground">Tipo:</span>
                   <span className="text-muted-foreground ml-1">Me deben / Yo debo</span>
@@ -49,6 +50,10 @@ export const HelpSectionDebts: React.FC = () => (
                <div className="p-2 bg-muted rounded-lg">
                   <span className="font-medium text-foreground">Cuenta:</span>
                   <span className="text-muted-foreground ml-1">Desde cuál cuenta</span>
+               </div>
+               <div className="p-2 bg-muted rounded-lg sm:col-span-2">
+                  <span className="font-medium text-foreground">Próximo pago:</span>
+                  <span className="text-muted-foreground ml-1">Día, fecha o meses</span>
                </div>
             </div>
             <p className="text-xs text-muted-foreground">
@@ -91,6 +96,17 @@ export const HelpSectionDebts: React.FC = () => (
                </div>
             </div>
          </div>
+      </div>
+
+      <div className="p-4 bg-muted rounded-xl border border-border">
+         <h4 className="font-semibold text-foreground mb-2 flex items-center gap-2">
+            <CalendarClock size={16} className="text-muted-foreground" />
+            Próximo Pago
+         </h4>
+         <p className="text-sm text-muted-foreground">
+            Puedes marcar un día mensual aproximado, una fecha específica o una cantidad de meses.
+            Si hay un día mensual y cambias solo la próxima fecha, el siguiente mes vuelve al día habitual.
+         </p>
       </div>
 
       {/* Panel de estadísticas — panel neutro; el color marca el estado real (success/destructive) */}

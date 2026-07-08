@@ -14,8 +14,10 @@
 
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
 import { useModalA11y } from '../../hooks/useModalA11y';
+import { ACTION_ICONS, UI_TEXT } from '../../config/ui';
+
+const CloseIcon = ACTION_ICONS.close;
 
 interface BaseModalProps {
   isOpen: boolean;
@@ -25,6 +27,8 @@ interface BaseModalProps {
   titleIcon?: React.ReactNode;
   maxWidth?: string;
   className?: string;
+  scrollAreaClassName?: string;
+  contentClassName?: string;
   showCloseButton?: boolean;
   closeOnBackdrop?: boolean;
   closeOnEscape?: boolean;
@@ -38,6 +42,8 @@ export function BaseModal({
   titleIcon,
   maxWidth = 'max-w-md',
   className = '',
+  scrollAreaClassName,
+  contentClassName,
   showCloseButton = true,
   closeOnBackdrop = true,
   closeOnEscape = true,
@@ -87,7 +93,10 @@ export function BaseModal({
           maxHeight: 'calc(100dvh - 2rem)',
         }}
       >
-        <div className="overflow-y-auto" style={{ maxHeight: 'calc(100dvh - 2rem)' }}>
+        <div
+          className={scrollAreaClassName ?? 'overflow-y-auto'}
+          style={{ maxHeight: 'calc(100dvh - 2rem)' }}
+        >
           {title && (
             <div className="sticky top-0 z-10 flex justify-between items-center p-4 sm:p-6 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
               <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -97,15 +106,15 @@ export function BaseModal({
               {showCloseButton && (
                 <button
                   onClick={onClose}
-                  aria-label="Cerrar"
+                  aria-label={UI_TEXT.aria.close}
                   className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 transition-colors p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary min-w-[44px] min-h-[44px] flex items-center justify-center"
                 >
-                  <X size={20} />
+                  <CloseIcon size={20} />
                 </button>
               )}
             </div>
           )}
-          <div className="p-4 sm:p-6">
+          <div className={contentClassName ?? 'p-4 sm:p-6'}>
             {children}
           </div>
         </div>

@@ -15,7 +15,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, getDocs, where, runTransaction, increment } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, getDocs, where, runTransaction, increment, deleteField } from 'firebase/firestore';
 import { db } from '../lib/firebaseDb';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
@@ -44,10 +44,11 @@ export function useDebts(
 
   // LocalStorage for guest mode
   const [localDebts, setLocalDebts] = useLocalStorage<Debt[]>('debts', []);
+  const hasExternalDebts = externalDebts !== undefined;
 
   // Firestore subscription — skip if data provided externally (centralized)
   useEffect(() => {
-    if (externalDebts !== undefined) {
+    if (hasExternalDebts) {
       setLoading(false);
       return;
     }
@@ -71,6 +72,7 @@ export function useDebts(
           settledAt: doc.data().settledAt?.toDate() || null,
           lentDate: doc.data().lentDate?.toDate() || undefined,
           dueDate: doc.data().dueDate?.toDate() || undefined,
+          nextPaymentDate: doc.data().nextPaymentDate?.toDate() || undefined,
         })) as Debt[];
         setFirestoreDebts(data);
         setLoading(false);
@@ -82,7 +84,7 @@ export function useDebts(
     );
 
     return () => unsubscribe();
-  }, [userId, externalDebts !== undefined]);
+  }, [userId, hasExternalDebts]);
 
   const debts = externalDebts ?? (userId ? firestoreDebts : localDebts);
 
@@ -138,9 +140,18 @@ export function useDebts(
       }
 
       const cleanUpdates = stripUndefined(updates);
+      const clearablePaymentFields = ['expectedPaymentDay', 'nextPaymentDate'] as const;
+      const deletedPaymentFields = Object.fromEntries(
+        clearablePaymentFields
+          .filter(field => Object.prototype.hasOwnProperty.call(updates, field) && updates[field] === undefined)
+          .map(field => [field, deleteField()])
+      );
 
       await safeFirestoreOperation(
-        () => updateDoc(doc(db, `users/${userId}/debts`, id), cleanUpdates),
+        () => updateDoc(doc(db, `users/${userId}/debts`, id), {
+          ...cleanUpdates,
+          ...deletedPaymentFields,
+        }),
         'updateDebt',
         { maxRetries: 2 }
       );

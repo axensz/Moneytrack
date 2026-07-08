@@ -32,6 +32,15 @@ describe('OnboardingChecklist (P-onboarding)', () => {
     expect(checklist).not.toHaveClass('mb-4');
   });
 
+  it('no captura clics con el fondo flotante, pero mantiene sus CTAs activos', () => {
+    render(<OnboardingChecklist {...props()} />);
+    const checklist = screen.getByRole('region', { name: /Primeros pasos/i });
+    const cta = screen.getByRole('button', { name: /Ir a Cuentas/i });
+
+    expect(checklist).toHaveClass('pointer-events-none');
+    expect(cta).toHaveClass('pointer-events-auto');
+  });
+
   it('se muestra aunque exista un dismissal antiguo si faltan pasos', () => {
     localStorage.setItem('moneytrack_onboarding_dismissed', 'true');
     render(<OnboardingChecklist {...props()} />);

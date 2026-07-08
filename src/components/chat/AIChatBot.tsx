@@ -3,7 +3,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 import { X, Send, Bot, User, Loader2, Sparkles, Trash2, Check, XCircle, Info } from 'lucide-react';
 import { sendChatMessage, isGeminiConfigured, parseActionFromResponse, type ChatMessage, type ChatAction, type TokenUsage } from '../../lib/gemini';
-import type { Transaction, Account, Categories } from '../../types/finance';
 import { formatCurrency } from '../../utils/formatters';
 import { logger } from '../../utils/logger';
 import { useTransactionDomain, useAccountDomain, useCategoryDomain } from '../../hooks/useFinanceSelectors';
@@ -178,11 +177,10 @@ const TokenBadge: React.FC<{ tokenUsage: TokenUsage }> = ({ tokenUsage }) => {
 // Action confirmation card component
 const ActionCard: React.FC<{
   action: ChatAction;
-  accounts: Account[];
   isExecuting: boolean;
   onConfirm: () => void;
   onReject: () => void;
-}> = ({ action, accounts, isExecuting, onConfirm, onReject }) => {
+}> = ({ action, isExecuting, onConfirm, onReject }) => {
   const getActionSummary = () => {
     switch (action.type) {
       case 'add_transaction': {
@@ -345,10 +343,11 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
           content: m.content,
         }));
 
-      const { text: rawText, tokenUsage } = await sendChatMessage(trimmed, history, financialData);
+      const { text: rawText, action: toolAction, tokenUsage } = await sendChatMessage(trimmed, history, financialData);
 
-      // Parsear acciones del response
-      const { text, action } = parseActionFromResponse(rawText);
+      // Preferir function calling; mantener el parser de bloques como fallback.
+      const { text, action: textAction } = parseActionFromResponse(rawText);
+      const action = toolAction ?? textAction;
       setMessages(prev => [...prev, { id: nextMsgId(), role: 'model', content: text, action, tokenUsage }]);
     } catch (err) {
       logger.error('[AIChatBot] Error sending message', err);
@@ -515,7 +514,16 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
     } finally {
       setExecutingAction(null);
     }
-  }, [messages, onAddTransaction, onUpdateTransaction, onAddCategory]);
+  }, [
+    accounts,
+    categories.expense,
+    categories.income,
+    messages,
+    onAddCategory,
+    onAddTransaction,
+    onUpdateTransaction,
+    transactions,
+  ]);
 
   const handleRejectAction = useCallback((msgIndex: number) => {
     setMessages(prev => {
@@ -624,7 +632,6 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
               <div className="ml-9 max-w-[calc(100%-3rem)]">
                 <ActionCard
                   action={msg.action}
-                  accounts={accounts}
                   isExecuting={executingAction === i}
                   onConfirm={() => handleConfirmAction(i)}
                   onReject={() => handleRejectAction(i)}

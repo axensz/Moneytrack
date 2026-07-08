@@ -191,7 +191,7 @@ export const UI_LABELS = {
   },
   // Tipos de cuenta
   accountTypes: {
-    savings: 'Cuenta de Ahorros',
+    savings: 'Cuenta de ahorros',
     credit: 'Crédito',
     cash: 'Efectivo'
   },

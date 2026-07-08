@@ -1,10 +1,11 @@
 import React from 'react';
 import { Settings, Percent, Filter, BarChart3, PieChart, TrendingUp, Eye } from 'lucide-react';
+import { sectionTitle } from '../../../config/ui';
 
 export const HelpSectionStats: React.FC = () => (
   <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 fade-in">
      <div>
-        <h3 className="text-xl font-semibold text-foreground mb-2">Estadísticas</h3>
+        <h3 className="text-xl font-semibold text-foreground mb-2">{sectionTitle('stats')}</h3>
         <p className="text-muted-foreground">Visualiza y analiza el comportamiento de tus finanzas.</p>
      </div>
 

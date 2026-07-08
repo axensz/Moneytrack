@@ -6,6 +6,7 @@
 import toast from 'react-hot-toast';
 import { logger } from '../utils/logger';
 import { localDateKey } from '../utils/dateUtils';
+import { appNotificationToBrowserPayload, showBrowserNotification } from '../lib/browserNotifications';
 import type { Notification, NotificationFilter, NotificationPreferences } from '../types/finance';
 
 interface NotificationManagerDeps {
@@ -67,6 +68,10 @@ export class NotificationManager {
             // Show toast if appropriate
             if (this.shouldShowToast(notification)) {
                 this.queueToast(notification);
+            }
+
+            if (this.shouldShowBrowserNotification()) {
+                void showBrowserNotification(appNotificationToBrowserPayload(notification));
             }
 
             logger.info('Notification created', { notification });
@@ -194,6 +199,14 @@ export class NotificationManager {
         return notification.severity === 'warning' || notification.severity === 'error';
     }
 
+    shouldShowBrowserNotification(): boolean {
+        if (!this.deps.preferences.browserNotifications.enabled) {
+            return false;
+        }
+
+        return !this.isInQuietHours();
+    }
+
     /**
      * Check if notification type is enabled in preferences
      */
@@ -245,12 +258,13 @@ export class NotificationManager {
 
         // Add relevant metadata to key for more specific deduplication
         if (notification.metadata) {
-            const { budgetId, recurringPaymentId, transactionId, accountId, debtId } = notification.metadata;
+            const { budgetId, recurringPaymentId, transactionId, accountId, debtId, reminderKey } = notification.metadata;
             if (budgetId) parts.push(budgetId);
             if (recurringPaymentId) parts.push(recurringPaymentId);
             if (transactionId) parts.push(transactionId);
             if (accountId) parts.push(accountId);
             if (debtId) parts.push(debtId);
+            if (reminderKey) parts.push(reminderKey);
         }
 
         return parts.join(':');

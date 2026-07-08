@@ -146,12 +146,12 @@ export function useAddTransaction({
         : undefined;
 
       if (!Number.isFinite(typedAmount)) {
-        showToast.error('Monto invalido');
+        showToast.error('Monto inválido');
         return false;
       }
 
       if (isForeignCreditExpense && (!exchangeRate || !Number.isFinite(exchangeRate) || exchangeRate <= 0)) {
-        showToast.error('Ingresa una TRM valida para convertir el gasto a COP');
+        showToast.error('Ingresa una TRM válida para convertir el gasto a COP');
         return false;
       }
 

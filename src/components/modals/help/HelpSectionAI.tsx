@@ -65,7 +65,7 @@ export const HelpSectionAI: React.FC = () => (
         </div>
         <div className="p-4 space-y-4">
            <p className="text-sm text-muted-foreground">
-              Además de consultar, el asistente puede realizar acciones en tu cuenta:
+              Además de consultar, el asistente puede preparar acciones para que las confirmes:
            </p>
            <div className="space-y-3">
               <div className="flex gap-3">
@@ -74,7 +74,7 @@ export const HelpSectionAI: React.FC = () => (
                  </span>
                  <div>
                     <p className="font-medium text-foreground">Agregar transacciones</p>
-                    <p className="text-sm text-muted-foreground">Escribe: <em>"Gasté 35mil en almuerzo"</em> y lo registra por ti.</p>
+                    <p className="text-sm text-muted-foreground">Escribe: <em>"Gasté 35mil en almuerzo"</em> y preparará el registro.</p>
                  </div>
               </div>
               <div className="flex gap-3">
@@ -92,7 +92,7 @@ export const HelpSectionAI: React.FC = () => (
                  </span>
                  <div>
                     <p className="font-medium text-foreground">Recategorización masiva</p>
-                    <p className="text-sm text-muted-foreground">Puede recategorizar varias transacciones a la vez automáticamente.</p>
+                    <p className="text-sm text-muted-foreground">Puede proponer cambios para varias transacciones a la vez.</p>
                  </div>
               </div>
               <div className="flex gap-3">
@@ -101,7 +101,7 @@ export const HelpSectionAI: React.FC = () => (
                  </span>
                  <div>
                     <p className="font-medium text-foreground">Crear categorías</p>
-                    <p className="text-sm text-muted-foreground">Si una recategorización necesita una categoría nueva, la crea automáticamente.</p>
+                    <p className="text-sm text-muted-foreground">Si una recategorización necesita una categoría nueva, te pedirá confirmar su creación.</p>
                  </div>
               </div>
            </div>

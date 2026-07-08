@@ -1,13 +1,21 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Plus, Target, Trophy, Calendar, Trash2, DollarSign, X, Clock, CheckCircle2, Info, Lightbulb } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Target, Trophy, Calendar, Trash2, DollarSign, X, Clock, CheckCircle2, Info, Lightbulb } from 'lucide-react';
 import { useGoalsDomain } from '../../../hooks/useFinanceSelectors';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
-import { formatCurrency, formatNumberForInput, unformatNumber, parseCurrency } from '../../../utils/formatters';
+import { formatCurrency, formatNumberForInput, unformatNumber, parseCurrency, parseDateFromInput } from '../../../utils/formatters';
 import { showToast } from '../../../utils/toastHelpers';
 import { ConfirmDialog } from '../../modals/ConfirmDialog';
+import { ACTION_ICONS, sectionTitle, UI_TEXT } from '../../../config/ui';
 import type { SavingsGoal } from '../../../types/finance';
+
+const createEmptyGoalForm = () => ({
+  name: '',
+  targetAmount: '',
+  targetDate: '',
+});
+const NewIcon = ACTION_ICONS.new;
 
 /**
  * Vista de metas de ahorro
@@ -28,14 +36,14 @@ export const GoalsView: React.FC = () => {
   const [savingsAmount, setSavingsAmount] = useState('');
   const [showCompleted, setShowCompleted] = useState(false);
   const [goalToDelete, setGoalToDelete] = useState<SavingsGoal | null>(null);
+  const [isSubmittingGoal, setIsSubmittingGoal] = useState(false);
+  const submittingGoalRef = useRef(false);
 
-  const [formData, setFormData] = useState({
-    name: '',
-    targetAmount: '',
-    targetDate: '',
-  });
+  const [formData, setFormData] = useState(createEmptyGoalForm);
 
   const handleSubmit = async () => {
+    if (submittingGoalRef.current) return;
+
     const amount = parseCurrency(formData.targetAmount);
     if (!formData.name.trim()) {
       showToast.error('Ingresa un nombre para la meta');
@@ -46,17 +54,40 @@ export const GoalsView: React.FC = () => {
       return;
     }
 
-    await addGoal({
-      name: formData.name.trim(),
-      targetAmount: amount,
-      currentAmount: 0,
-      targetDate: formData.targetDate ? new Date(formData.targetDate) : undefined,
-      isCompleted: false,
-    });
+    submittingGoalRef.current = true;
+    setIsSubmittingGoal(true);
+    try {
+      await addGoal({
+        name: formData.name.trim(),
+        targetAmount: amount,
+        currentAmount: 0,
+        targetDate: formData.targetDate ? parseDateFromInput(formData.targetDate) : undefined,
+        isCompleted: false,
+      });
 
-    showToast.success('Meta creada');
-    setFormData({ name: '', targetAmount: '', targetDate: '' });
+      showToast.success('Meta creada');
+      setFormData(createEmptyGoalForm());
+      setShowForm(false);
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : 'No se pudo guardar la meta');
+    } finally {
+      submittingGoalRef.current = false;
+      setIsSubmittingGoal(false);
+    }
+  };
+
+  const handleCancelGoalForm = () => {
+    if (isSubmittingGoal) return;
+    setFormData(createEmptyGoalForm());
     setShowForm(false);
+  };
+
+  const handleToggleGoalForm = () => {
+    if (showForm) {
+      handleCancelGoalForm();
+    } else {
+      setShowForm(true);
+    }
   };
 
   const handleAddSavings = async (goalId: string) => {
@@ -94,7 +125,7 @@ export const GoalsView: React.FC = () => {
         {/* Header con descripción */}
         <div className="mb-6">
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-            Metas de ahorro
+            {sectionTitle('goals')}
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Define y alcanza tus objetivos financieros
@@ -149,11 +180,11 @@ export const GoalsView: React.FC = () => {
             Mis metas
           </h3>
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={handleToggleGoalForm}
             className="btn-primary text-sm"
           >
-            <Plus size={16} />
-            Nueva meta
+            <NewIcon size={16} />
+            {UI_TEXT.actions.newFeminine} meta
           </button>
         </div>
 
@@ -190,11 +221,19 @@ export const GoalsView: React.FC = () => {
             </div>
 
             <div className="flex gap-2">
-              <button onClick={handleSubmit} className="btn-submit flex-1">
-                Crear meta
+              <button
+                onClick={handleSubmit}
+                disabled={isSubmittingGoal}
+                className="btn-submit flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmittingGoal ? UI_TEXT.states.saving : 'Crear meta'}
               </button>
-              <button onClick={() => setShowForm(false)} className="btn-cancel flex-1">
-                Cancelar
+              <button
+                onClick={handleCancelGoalForm}
+                disabled={isSubmittingGoal}
+                className="btn-cancel flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {UI_TEXT.actions.cancel}
               </button>
             </div>
           </div>
@@ -368,7 +407,7 @@ export const GoalsView: React.FC = () => {
             <span className="font-semibold text-gray-900 dark:text-white">{goalToDelete.name}</span>?
           </>
         )}
-        confirmLabel="Eliminar"
+        confirmLabel={UI_TEXT.actions.delete}
         onConfirm={confirmDeleteGoal}
         onClose={() => setGoalToDelete(null)}
       />

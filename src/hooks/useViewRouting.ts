@@ -15,7 +15,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { ViewType } from '../types/finance';
 
 const VALID_VIEWS: readonly ViewType[] = [
-  'transactions', 'stats', 'accounts', 'recurring', 'debts', 'budgets', 'goals',
+  'transactions', 'stats', 'accounts', 'recurring', 'debts', 'budgets', 'financial-plan', 'goals',
 ];
 const DEFAULT_VIEW: ViewType = 'transactions';
 

@@ -1,10 +1,11 @@
 import React from 'react';
 import { BarChart3, PieChart, CheckCircle, AlertCircle } from 'lucide-react';
+import { sectionTitle } from '../../../config/ui';
 
 export const HelpSectionBudgets: React.FC = () => (
   <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 fade-in">
       <div>
-        <h3 className="text-xl font-semibold text-foreground mb-2">Presupuestos</h3>
+        <h3 className="text-xl font-semibold text-foreground mb-2">{sectionTitle('budgets')}</h3>
         <p className="text-muted-foreground">Define límites de gasto mensuales por categoría.</p>
       </div>
 

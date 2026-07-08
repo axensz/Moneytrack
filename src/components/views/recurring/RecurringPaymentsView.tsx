@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, Repeat, List, CalendarDays, AlertTriangle } from 'lucide-react';
+import { Repeat, List, CalendarDays, AlertTriangle } from 'lucide-react';
 
-import type { RecurringPayment, Account, Transaction } from '../../../types/finance';
+import type { RecurringPayment, Transaction } from '../../../types/finance';
 import { useRecurringDomain, useAccountDomain, useCategoryDomain, useFormatCurrency, useTransactionDomain } from '../../../hooks/useFinanceSelectors';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { cycleKey } from '../../../utils/recurringDates';
 import { showToast } from '../../../utils/toastHelpers';
+import { ACTION_ICONS, sectionTitle, UI_TEXT } from '../../../config/ui';
 
 // Componentes
 import { RecurringStatsCards } from './components/RecurringStatsCards';
@@ -22,6 +23,7 @@ import { RecurringCalendar } from './components/RecurringCalendar';
 
 // Hook
 import { useRecurringPaymentsView } from './hooks/useRecurringPaymentsView';
+const NewIcon = ACTION_ICONS.new;
 
 /**
  * Vista principal de pagos periódicos
@@ -151,15 +153,15 @@ export const RecurringPaymentsView: React.FC = () => {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div>
             <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-              Pagos periódicos
+              {sectionTitle('recurring')}
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               Gestiona tus suscripciones y pagos recurrentes
             </p>
           </div>
           <button onClick={() => setShowForm(true)} className="btn-primary">
-            <Plus size={18} />
-            Nuevo Pago
+            <NewIcon size={18} />
+            {UI_TEXT.actions.new} pago
           </button>
         </div>
 
@@ -322,7 +324,7 @@ export const RecurringPaymentsView: React.FC = () => {
                 disabled={busyDelete}
                 className="w-full btn-cancel disabled:opacity-50"
               >
-                Cancelar
+                {UI_TEXT.actions.cancel}
               </button>
             </div>
           </>

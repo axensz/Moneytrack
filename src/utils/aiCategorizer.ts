@@ -7,6 +7,7 @@ import { DEFAULT_CATEGORIES } from '../config/constants';
 import { logger } from './logger';
 import { withTimeout } from './withTimeout';
 import { getGeminiClient, isAiEnabled } from '../lib/geminiClient';
+import { GEMINI_MODELS, geminiJsonConfig, parseGeminiJson } from '../lib/geminiConfig';
 
 // Confianza mínima para que una sugerencia de IA se considere aplicable.
 // Por debajo de esto se ignora (la transacción queda en su categoría actual / 'Otros').
@@ -18,6 +19,23 @@ const AI_TIMEOUT_MS = 20_000;
 const ALL_CATEGORIES = [
     ...new Set([...DEFAULT_CATEGORIES.expense, ...DEFAULT_CATEGORIES.income]),
 ];
+
+const categorizationResponseSchema = {
+    type: 'array',
+    maxItems: 50,
+    items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+            i: { type: 'integer', minimum: 0 },
+            c: { type: 'string', enum: ALL_CATEGORIES },
+            conf: { type: 'string', enum: ['high', 'medium', 'low'] },
+            confidence: { type: 'number', minimum: 0, maximum: 1 },
+            reason: { type: 'string' },
+        },
+        required: ['i', 'c', 'conf'],
+    },
+};
 
 interface TransactionToCateg {
     index: number;
@@ -67,10 +85,8 @@ export function parseAICategorizationResponse(
     const match = text.match(/\[[\s\S]*\]/);
     const jsonStr = match ? match[0] : text.replace(/^```json?\s*/i, '').replace(/\s*```$/i, '');
 
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(jsonStr);
-    } catch {
+    const parsed = parseGeminiJson<unknown>(jsonStr, 'array');
+    if (!parsed) {
         logger.warn('AI categorization returned invalid JSON');
         return [];
     }
@@ -132,8 +148,13 @@ Responde SOLO el JSON array, sin markdown ni explicaciones.`;
     try {
         const response = await withTimeout(
             ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+                model: GEMINI_MODELS.structured,
                 contents: prompt,
+                config: {
+                    ...geminiJsonConfig(categorizationResponseSchema),
+                    temperature: 0,
+                    maxOutputTokens: 4096,
+                },
             }),
             AI_TIMEOUT_MS,
             'categorización IA',

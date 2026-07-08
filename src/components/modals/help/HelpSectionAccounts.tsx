@@ -1,10 +1,11 @@
 import React from 'react';
 import { Wallet, CreditCard, Settings, GripVertical, Percent, DollarSign, Tag, Receipt } from 'lucide-react';
+import { sectionTitle } from '../../../config/ui';
 
 export const HelpSectionAccounts: React.FC = () => (
   <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 fade-in">
    <div className="prose dark:prose-invert max-w-none">
-      <h3 className="text-xl font-semibold text-foreground mb-2">Gestión de Cuentas</h3>
+      <h3 className="text-xl font-semibold text-foreground mb-2">{sectionTitle('accounts')}</h3>
       <p className="text-muted-foreground">Administra todas tus fuentes de dinero en un solo lugar.</p>
    </div>
 

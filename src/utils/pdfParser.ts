@@ -9,9 +9,28 @@ import { detectInstallments, inferImportType, suggestCategory } from './csvParse
 import { detectImportProfileFromRows, IMPORT_PROFILES } from './importProfiles';
 import { withTimeout } from './withTimeout';
 import { getGeminiClient, isAiEnabled } from '../lib/geminiClient';
+import { GEMINI_MODELS, geminiJsonConfig, parseGeminiJson, pdfTransactionsResponseSchema } from '../lib/geminiConfig';
 
 // Tiempo máximo por intento de extracción del PDF con Gemini.
 const PDF_TIMEOUT_MS = 60_000;
+
+interface PdfTransactionAIResult {
+  date: string;
+  description: string;
+  amount: number;
+  type: 'income' | 'expense';
+}
+
+function isPdfTransactionArray(value: unknown): value is PdfTransactionAIResult[] {
+  return Array.isArray(value) && value.every(item =>
+    item &&
+    typeof item === 'object' &&
+    typeof (item as Partial<PdfTransactionAIResult>).date === 'string' &&
+    typeof (item as Partial<PdfTransactionAIResult>).description === 'string' &&
+    typeof (item as Partial<PdfTransactionAIResult>).amount === 'number' &&
+    ['income', 'expense'].includes(String((item as Partial<PdfTransactionAIResult>).type))
+  );
+}
 
 export function isPDFParsingAvailable(): boolean {
   return isAiEnabled();
@@ -74,7 +93,7 @@ export async function parsePDF(buffer: ArrayBuffer): Promise<ParseResult> {
     try {
       const response = await withTimeout(
         ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: GEMINI_MODELS.document,
           contents: [
             {
               role: 'user',
@@ -90,6 +109,7 @@ export async function parsePDF(buffer: ArrayBuffer): Promise<ParseResult> {
             },
           ],
           config: {
+            ...geminiJsonConfig(pdfTransactionsResponseSchema),
             temperature: 0.05,
             maxOutputTokens: 16384,
           },
@@ -123,24 +143,9 @@ export async function parsePDF(buffer: ArrayBuffer): Promise<ParseResult> {
     }
   }
 
-  // ── Limpiar posible markdown del response ─────────────────────────────────
-  const jsonStr = rawText
-    .replace(/^```json?\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim();
-
-  // ── Parsear JSON ─────────────────────────────────────────────────────────
-  let parsed: Array<{
-    date: string;
-    description: string;
-    amount: number;
-    type: string;
-  }>;
-
-  try {
-    parsed = JSON.parse(jsonStr);
-    if (!Array.isArray(parsed)) throw new Error('La respuesta no es un array');
-  } catch {
+  // ── Parsear la salida estructurada ───────────────────────────────────────
+  const parsed = parseGeminiJson<unknown>(rawText, 'array');
+  if (!isPdfTransactionArray(parsed)) {
     return {
       rows: [],
       errors: [

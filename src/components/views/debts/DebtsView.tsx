@@ -1,19 +1,121 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Plus, HandCoins, Users, CheckCircle2, ArrowDownLeft, ArrowUpRight, Trash2, X, DollarSign, Edit, AlertTriangle, Ban } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { HandCoins, Users, CheckCircle2, ArrowDownLeft, ArrowUpRight, Trash2, X, DollarSign, AlertTriangle, Ban, CalendarClock } from 'lucide-react';
 import { useDebtsDomain, useAccountDomain } from '../../../hooks/useFinanceSelectors';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { formatCurrency, formatNumberForInput, unformatNumber, parseCurrency, formatDateForInput, parseDateFromInput, formatDate, formatRelativeTime } from '../../../utils/formatters';
 import { ensureDate } from '../../../utils/dateUtils';
+import { addMonthsClamped, compareDebtsByNextPayment, getDebtNextPaymentInfo, normalizePaymentDay } from '../../../utils/debtPaymentSchedule';
 import { showToast } from '../../../utils/toastHelpers';
 import { ConfirmDialog } from '../../modals/ConfirmDialog';
+import { ACTION_ICONS, sectionTitle, UI_TEXT } from '../../../config/ui';
 import type { Debt } from '../../../types/finance';
 
 const FORGIVEN_LABELS: Record<NonNullable<Debt['forgivenReason']>, string> = {
   unpaid: 'No pagada',
   gift: 'Regalo',
   other: 'Otro',
+};
+const EditIcon = ACTION_ICONS.edit;
+const NewIcon = ACTION_ICONS.new;
+
+type PaymentScheduleMode = 'none' | 'monthly' | 'date' | 'months';
+
+interface PaymentScheduleFormState {
+  mode: PaymentScheduleMode;
+  expectedPaymentDay: string;
+  nextPaymentDate: string;
+  monthsFromNow: string;
+}
+
+const PAYMENT_SCHEDULE_MODES: { mode: PaymentScheduleMode; label: string }[] = [
+  { mode: 'none', label: 'Sin fecha' },
+  { mode: 'monthly', label: 'Mensual' },
+  { mode: 'date', label: 'Fecha' },
+  { mode: 'months', label: 'Meses' },
+];
+
+const createEmptyPaymentScheduleForm = (): PaymentScheduleFormState => ({
+  mode: 'none',
+  expectedPaymentDay: '15',
+  nextPaymentDate: '',
+  monthsFromNow: '1',
+});
+
+const createInitialDebtFormData = () => ({
+  personName: '',
+  type: 'lent' as 'lent' | 'borrowed',
+  originalAmount: '',
+  description: '',
+  accountId: '',
+  lentDate: formatDateForInput(new Date()),
+  dueDate: '',
+});
+
+const createPaymentScheduleFormFromDebt = (debt: Debt): PaymentScheduleFormState => {
+  const expectedPaymentDay = normalizePaymentDay(debt.expectedPaymentDay);
+  const nextPaymentDate = debt.nextPaymentDate
+    ? formatDateForInput(ensureDate(debt.nextPaymentDate))
+    : '';
+
+  return {
+    mode: expectedPaymentDay ? 'monthly' : nextPaymentDate ? 'date' : 'none',
+    expectedPaymentDay: expectedPaymentDay ? String(expectedPaymentDay) : '15',
+    nextPaymentDate,
+    monthsFromNow: '1',
+  };
+};
+
+const isDateInput = (value: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(value);
+
+const buildPaymentScheduleUpdates = (
+  form: PaymentScheduleFormState,
+): { updates?: Pick<Debt, 'expectedPaymentDay' | 'nextPaymentDate'>; error?: string } => {
+  if (form.mode === 'none') {
+    return { updates: { expectedPaymentDay: undefined, nextPaymentDate: undefined } };
+  }
+
+  if (form.mode === 'monthly') {
+    const expectedPaymentDay = Number(form.expectedPaymentDay);
+    if (!Number.isInteger(expectedPaymentDay) || expectedPaymentDay < 1 || expectedPaymentDay > 31) {
+      return { error: 'El día mensual debe estar entre 1 y 31' };
+    }
+
+    return {
+      updates: {
+        expectedPaymentDay,
+        nextPaymentDate: form.nextPaymentDate && isDateInput(form.nextPaymentDate)
+          ? parseDateFromInput(form.nextPaymentDate)
+          : undefined,
+      },
+    };
+  }
+
+  if (form.mode === 'date') {
+    if (!isDateInput(form.nextPaymentDate)) {
+      return { error: 'Elige una fecha de próximo pago' };
+    }
+
+    return {
+      updates: {
+        expectedPaymentDay: undefined,
+        nextPaymentDate: parseDateFromInput(form.nextPaymentDate),
+      },
+    };
+  }
+
+  const monthsFromNow = Number(form.monthsFromNow);
+  if (!Number.isInteger(monthsFromNow) || monthsFromNow < 1 || monthsFromNow > 120) {
+    return { error: 'Los meses deben estar entre 1 y 120' };
+  }
+
+  return {
+    updates: {
+      expectedPaymentDay: undefined,
+      nextPaymentDate: addMonthsClamped(new Date(), monthsFromNow),
+    },
+  };
 };
 
 /**
@@ -29,7 +131,6 @@ export const DebtsView: React.FC = () => {
     registerDebtPayment,
     modifyDebtBalance,
     forgiveDebt,
-    getDebtTransactions,
     debtStats,
   } = useDebtsDomain();
   const { accounts } = useAccountDomain();
@@ -39,8 +140,12 @@ export const DebtsView: React.FC = () => {
   const [debtToDelete, setDebtToDelete] = useState<Debt | null>(null);
   const [showPaymentForm, setShowPaymentForm] = useState<string | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [showPaymentScheduleForm, setShowPaymentScheduleForm] = useState<string | null>(null);
+  const [paymentScheduleForm, setPaymentScheduleForm] = useState<PaymentScheduleFormState>(createEmptyPaymentScheduleForm());
   const [showSettled, setShowSettled] = useState(false);
   const [showForgive, setShowForgive] = useState<string | null>(null);
+  const [isSubmittingDebt, setIsSubmittingDebt] = useState(false);
+  const submittingDebtRef = useRef(false);
 
   // Balance modifier state
   const [showBalanceModifier, setShowBalanceModifier] = useState<string | null>(null);
@@ -48,17 +153,12 @@ export const DebtsView: React.FC = () => {
   const [modifierOperation, setModifierOperation] = useState<'add' | 'subtract'>('add');
 
   // Form state
-  const [formData, setFormData] = useState({
-    personName: '',
-    type: 'lent' as 'lent' | 'borrowed',
-    originalAmount: '',
-    description: '',
-    accountId: '',
-    lentDate: formatDateForInput(new Date()),
-    dueDate: '',
-  });
+  const [formData, setFormData] = useState(createInitialDebtFormData);
+  const [newDebtPaymentSchedule, setNewDebtPaymentSchedule] = useState<PaymentScheduleFormState>(createEmptyPaymentScheduleForm());
 
   const handleSubmit = async () => {
+    if (submittingDebtRef.current) return;
+
     const amount = parseCurrency(formData.originalAmount);
     if (!formData.personName.trim()) {
       showToast.error('Ingresa el nombre de la persona');
@@ -69,7 +169,16 @@ export const DebtsView: React.FC = () => {
       return;
     }
 
-    await addDebt({
+    const paymentSchedule = buildPaymentScheduleUpdates(newDebtPaymentSchedule);
+    if (paymentSchedule.error || !paymentSchedule.updates) {
+      showToast.error(paymentSchedule.error || 'Revisa la próxima fecha de pago');
+      return;
+    }
+
+    submittingDebtRef.current = true;
+    setIsSubmittingDebt(true);
+    try {
+      await addDebt({
       personName: formData.personName.trim(),
       type: formData.type,
       originalAmount: amount,
@@ -79,11 +188,34 @@ export const DebtsView: React.FC = () => {
       isSettled: false,
       lentDate: formData.lentDate ? parseDateFromInput(formData.lentDate) : undefined,
       dueDate: formData.dueDate ? parseDateFromInput(formData.dueDate) : undefined,
+      ...paymentSchedule.updates,
     });
 
     showToast.success(formData.type === 'lent' ? 'Préstamo registrado' : 'Deuda registrada');
-    setFormData({ personName: '', type: 'lent', originalAmount: '', description: '', accountId: '', lentDate: formatDateForInput(new Date()), dueDate: '' });
+    setFormData(createInitialDebtFormData());
+    setNewDebtPaymentSchedule(createEmptyPaymentScheduleForm());
     setShowForm(false);
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : 'No se pudo guardar el préstamo');
+    } finally {
+      submittingDebtRef.current = false;
+      setIsSubmittingDebt(false);
+    }
+  };
+
+  const handleCancelNewDebt = () => {
+    if (isSubmittingDebt) return;
+    setFormData(createInitialDebtFormData());
+    setNewDebtPaymentSchedule(createEmptyPaymentScheduleForm());
+    setShowForm(false);
+  };
+
+  const handleToggleNewDebtForm = () => {
+    if (showForm) {
+      handleCancelNewDebt();
+    } else {
+      setShowForm(true);
+    }
   };
 
   const handlePayment = async (debtId: string) => {
@@ -132,6 +264,31 @@ export const DebtsView: React.FC = () => {
     setShowForgive(null);
   };
 
+  const handleOpenPaymentSchedule = (debt: Debt) => {
+    if (showPaymentScheduleForm === debt.id) {
+      setShowPaymentScheduleForm(null);
+      return;
+    }
+
+    setPaymentScheduleForm(createPaymentScheduleFormFromDebt(debt));
+    setShowPaymentScheduleForm(debt.id!);
+    setShowPaymentForm(null);
+    setShowBalanceModifier(null);
+    setShowForgive(null);
+  };
+
+  const handleSavePaymentSchedule = async (debtId: string) => {
+    const paymentSchedule = buildPaymentScheduleUpdates(paymentScheduleForm);
+    if (paymentSchedule.error || !paymentSchedule.updates) {
+      showToast.error(paymentSchedule.error || 'Revisa la próxima fecha de pago');
+      return;
+    }
+
+    await updateDebt(debtId, paymentSchedule.updates);
+    showToast.success('Próximo pago actualizado');
+    setShowPaymentScheduleForm(null);
+  };
+
   const handleDelete = (debt: Debt) => {
     setDebtToDelete(debt);
   };
@@ -145,8 +302,10 @@ export const DebtsView: React.FC = () => {
 
   const activeDebts = debts.filter(d => !d.isSettled);
   const settledDebts = debts.filter(d => d.isSettled);
-  const lentDebts = activeDebts.filter(d => d.type === 'lent');
-  const borrowedDebts = activeDebts.filter(d => d.type === 'borrowed');
+  const sortDebtsByNextPayment = (items: Debt[]) =>
+    [...items].sort((a, b) => compareDebtsByNextPayment(a, b) || a.personName.localeCompare(b.personName));
+  const lentDebts = sortDebtsByNextPayment(activeDebts.filter(d => d.type === 'lent'));
+  const borrowedDebts = sortDebtsByNextPayment(activeDebts.filter(d => d.type === 'borrowed'));
 
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
 
@@ -161,7 +320,7 @@ export const DebtsView: React.FC = () => {
       <div className="card">
         <div className="mb-6">
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-            Préstamos y deudas
+            {sectionTitle('debts')}
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Controla el dinero que prestas y debes
@@ -221,11 +380,11 @@ export const DebtsView: React.FC = () => {
             Gestionar préstamos
           </h3>
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={handleToggleNewDebtForm}
             className="btn-primary text-sm"
           >
-            <Plus size={18} />
-            <span className="hidden sm:inline">Nuevo</span>
+            <NewIcon size={18} />
+            <span className="hidden sm:inline">{UI_TEXT.actions.new}</span>
           </button>
         </div>
 
@@ -305,6 +464,17 @@ export const DebtsView: React.FC = () => {
               </div>
             </div>
 
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-400">
+                <CalendarClock size={14} />
+                Próximo pago <span className="text-muted-foreground font-normal">(opcional)</span>
+              </label>
+              <PaymentScheduleFields
+                value={newDebtPaymentSchedule}
+                onChange={setNewDebtPaymentSchedule}
+              />
+            </div>
+
             <select
               value={formData.accountId}
               onChange={e => setFormData(f => ({ ...f, accountId: e.target.value }))}
@@ -330,10 +500,18 @@ export const DebtsView: React.FC = () => {
             </p>
 
             <div className="flex gap-3">
-              <button onClick={handleSubmit} className="btn-submit flex-1 shadow-md hover:shadow-lg">
-                Registrar
+              <button
+                onClick={handleSubmit}
+                disabled={isSubmittingDebt}
+                className="btn-submit flex-1 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmittingDebt ? 'Guardando...' : 'Registrar'}
               </button>
-              <button onClick={() => setShowForm(false)} className="btn-cancel flex-1 shadow-md hover:shadow-lg">
+              <button
+                onClick={handleCancelNewDebt}
+                disabled={isSubmittingDebt}
+                className="btn-cancel flex-1 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 Cancelar
               </button>
             </div>
@@ -369,6 +547,12 @@ export const DebtsView: React.FC = () => {
                   onForgive={handleForgive}
                   showForgive={showForgive}
                   setShowForgive={setShowForgive}
+                  showPaymentScheduleForm={showPaymentScheduleForm}
+                  paymentScheduleForm={paymentScheduleForm}
+                  setPaymentScheduleForm={setPaymentScheduleForm}
+                  onOpenPaymentSchedule={handleOpenPaymentSchedule}
+                  onSavePaymentSchedule={handleSavePaymentSchedule}
+                  setShowPaymentScheduleForm={setShowPaymentScheduleForm}
                 />
               ))}
             </div>
@@ -404,6 +588,12 @@ export const DebtsView: React.FC = () => {
                   onForgive={handleForgive}
                   showForgive={showForgive}
                   setShowForgive={setShowForgive}
+                  showPaymentScheduleForm={showPaymentScheduleForm}
+                  paymentScheduleForm={paymentScheduleForm}
+                  setPaymentScheduleForm={setPaymentScheduleForm}
+                  onOpenPaymentSchedule={handleOpenPaymentSchedule}
+                  onSavePaymentSchedule={handleSavePaymentSchedule}
+                  setShowPaymentScheduleForm={setShowPaymentScheduleForm}
                 />
               ))}
             </div>
@@ -471,10 +661,92 @@ export const DebtsView: React.FC = () => {
             saldos afectados. Esta acción no se puede deshacer.
           </>
         )}
-        confirmLabel="Eliminar"
+        confirmLabel={UI_TEXT.actions.delete}
         onConfirm={confirmDelete}
         onClose={() => setDebtToDelete(null)}
       />
+    </div>
+  );
+};
+
+interface PaymentScheduleFieldsProps {
+  value: PaymentScheduleFormState;
+  onChange: React.Dispatch<React.SetStateAction<PaymentScheduleFormState>>;
+}
+
+const PaymentScheduleFields: React.FC<PaymentScheduleFieldsProps> = ({ value, onChange }) => {
+  const setField = (updates: Partial<PaymentScheduleFormState>) => {
+    onChange(prev => ({ ...prev, ...updates }));
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {PAYMENT_SCHEDULE_MODES.map(({ mode, label }) => (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => setField({ mode })}
+            className={`py-2 px-2 rounded-lg text-xs font-semibold transition-colors ${value.mode === mode
+              ? 'bg-primary-solid text-white'
+              : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {value.mode === 'monthly' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <label className="space-y-1">
+            <span className="block text-xs text-gray-500 dark:text-gray-400">Día aprox.</span>
+            <input
+              type="number"
+              min={1}
+              max={31}
+              value={value.expectedPaymentDay}
+              onChange={event => setField({ expectedPaymentDay: event.target.value })}
+              className="input-base text-sm"
+            />
+          </label>
+          <label className="space-y-1">
+            <span className="block text-xs text-gray-500 dark:text-gray-400">Esta vez</span>
+            <input
+              type="date"
+              value={value.nextPaymentDate}
+              onChange={event => setField({ nextPaymentDate: event.target.value })}
+              className="input-base text-sm"
+            />
+          </label>
+        </div>
+      )}
+
+      {value.mode === 'date' && (
+        <label className="space-y-1 block">
+          <span className="block text-xs text-gray-500 dark:text-gray-400">Fecha próxima</span>
+          <input
+            type="date"
+            value={value.nextPaymentDate}
+            onChange={event => setField({ nextPaymentDate: event.target.value })}
+            className="input-base text-sm"
+          />
+        </label>
+      )}
+
+      {value.mode === 'months' && (
+        <label className="space-y-1 block">
+          <span className="block text-xs text-gray-500 dark:text-gray-400">En meses</span>
+          <input
+            type="number"
+            min={1}
+            max={120}
+            value={value.monthsFromNow}
+            onChange={event => setField({ monthsFromNow: event.target.value })}
+            className="input-base text-sm"
+          />
+        </label>
+      )}
     </div>
   );
 };
@@ -499,6 +771,12 @@ interface DebtCardProps {
   onForgive: (id: string, reason: NonNullable<Debt['forgivenReason']>) => void;
   showForgive: string | null;
   setShowForgive: (id: string | null) => void;
+  showPaymentScheduleForm: string | null;
+  paymentScheduleForm: PaymentScheduleFormState;
+  setPaymentScheduleForm: React.Dispatch<React.SetStateAction<PaymentScheduleFormState>>;
+  onOpenPaymentSchedule: (debt: Debt) => void;
+  onSavePaymentSchedule: (id: string) => void;
+  setShowPaymentScheduleForm: (id: string | null) => void;
 }
 
 const DebtCard: React.FC<DebtCardProps> = React.memo(({
@@ -520,6 +798,12 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
   onForgive,
   showForgive,
   setShowForgive,
+  showPaymentScheduleForm,
+  paymentScheduleForm,
+  setPaymentScheduleForm,
+  onOpenPaymentSchedule,
+  onSavePaymentSchedule,
+  setShowPaymentScheduleForm,
 }) => {
   const progress = debt.originalAmount > 0
     ? Math.round(((debt.originalAmount - debt.remainingAmount) / debt.originalAmount) * 100)
@@ -534,9 +818,16 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const isDebtOverdue = !!dueDate && !debt.isSettled && dueDate < todayStart;
+  const paymentInfo = getDebtNextPaymentInfo(debt, todayStart);
+  const isPaymentOverdue = Boolean(paymentInfo?.isOverdue);
+  const paymentLabel = paymentInfo
+    ? paymentInfo.isOverdue
+      ? `Pago esperado ${formatRelativeTime(paymentInfo.date)}`
+      : `Próximo pago ${paymentInfo.source === 'monthly' ? 'aprox. ' : ''}${formatDate(paymentInfo.date)}`
+    : null;
 
   return (
-    <div className={`border rounded-xl p-3 bg-white dark:bg-gray-800 ${isDebtOverdue ? 'border-rose-300 dark:border-rose-800' : 'border-gray-200 dark:border-gray-700'}`}>
+    <div className={`border rounded-xl p-3 bg-white dark:bg-gray-800 ${isDebtOverdue || isPaymentOverdue ? 'border-rose-300 dark:border-rose-800' : 'border-gray-200 dark:border-gray-700'}`}>
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -595,10 +886,31 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
                 </span>
               )
             )}
+            {paymentInfo && paymentLabel && (
+              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md font-medium ${isPaymentOverdue
+                ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300'
+                : 'bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300'
+              }`}>
+                {isPaymentOverdue ? <AlertTriangle size={11} /> : <CalendarClock size={11} />}
+                {paymentLabel}
+              </span>
+            )}
+            {paymentInfo?.isOneTimeOverride && paymentInfo.expectedPaymentDay && (
+              <span className="text-gray-400 dark:text-gray-500">
+                Luego vuelve al día {paymentInfo.expectedPaymentDay}
+              </span>
+            )}
           </div>
         </div>
 
         <div className="flex items-center gap-1 ml-2">
+          <button
+            onClick={() => onOpenPaymentSchedule(debt)}
+            className="p-1.5 rounded-lg hover:bg-sky-50 dark:hover:bg-sky-900/30 text-sky-600 dark:text-sky-400"
+            title="Próximo pago"
+          >
+            <CalendarClock size={16} />
+          </button>
           <button
             onClick={() => {
               if (showBalanceModifier === debt.id) {
@@ -607,12 +919,13 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
                 setShowBalanceModifier(debt.id!);
                 setModifierAmount('');
                 setModifierOperation('add');
+                setShowPaymentScheduleForm(null);
               }
             }}
             className="p-1.5 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/30 text-purple-600 dark:text-purple-400"
             title="Modificar saldo"
           >
-            <Edit size={16} />
+            <EditIcon size={16} />
           </button>
           <button
             onClick={() => {
@@ -621,6 +934,7 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
               } else {
                 setShowPaymentForm(debt.id!);
                 setPaymentAmount('');
+                setShowPaymentScheduleForm(null);
               }
             }}
             className="p-1.5 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/30 text-green-600 dark:text-green-400"
@@ -644,6 +958,34 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
           </button>
         </div>
       </div>
+
+      {/* Payment schedule form */}
+      {showPaymentScheduleForm === debt.id && (
+        <div className="mt-3 space-y-3 rounded-lg border border-border bg-muted p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Próximo pago
+            </span>
+            <button
+              onClick={() => setShowPaymentScheduleForm(null)}
+              className="p-1 text-gray-400 hover:text-gray-600"
+              title="Cerrar"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <PaymentScheduleFields
+            value={paymentScheduleForm}
+            onChange={setPaymentScheduleForm}
+          />
+          <button
+            onClick={() => onSavePaymentSchedule(debt.id!)}
+            className="btn-submit w-full text-sm"
+          >
+            Guardar fecha
+          </button>
+        </div>
+      )}
 
       {/* Payment form */}
       {showPaymentForm === debt.id && (

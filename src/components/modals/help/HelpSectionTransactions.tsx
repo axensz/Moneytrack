@@ -1,10 +1,11 @@
 import React from 'react';
 import { Wallet, CreditCard, Settings, Edit2, Filter, ArrowRightLeft, Clock, CheckCircle, TrendingUp, TrendingDown, Calendar, Download } from 'lucide-react';
+import { sectionTitle, UI_TEXT } from '../../../config/ui';
 
 export const HelpSectionTransactions: React.FC = () => (
   <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 fade-in">
       <div>
-        <h3 className="text-xl font-semibold text-foreground mb-2">Transacciones</h3>
+        <h3 className="text-xl font-semibold text-foreground mb-2">{sectionTitle('transactions')}</h3>
         <p className="text-muted-foreground">El corazón de tu seguimiento financiero.</p>
       </div>
 
@@ -41,7 +42,7 @@ export const HelpSectionTransactions: React.FC = () => (
          </div>
          <div className="p-4 space-y-3">
             <ol className="space-y-2 text-sm text-muted-foreground">
-               <li className="flex gap-2"><span className="font-bold text-foreground">1.</span> Clic en el botón + o "Nueva Transacción"</li>
+               <li className="flex gap-2"><span className="font-bold text-foreground">1.</span> Clic en el botón + o "{UI_TEXT.titles.newTransaction}"</li>
                <li className="flex gap-2"><span className="font-bold text-foreground">2.</span> Selecciona el tipo (Ingreso, Gasto, Transferencia)</li>
                <li className="flex gap-2"><span className="font-bold text-foreground">3.</span> Ingresa el monto (acepta: 1000, 1.000, 1,000)</li>
                <li className="flex gap-2"><span className="font-bold text-foreground">4.</span> Selecciona categoría, cuenta y fecha</li>

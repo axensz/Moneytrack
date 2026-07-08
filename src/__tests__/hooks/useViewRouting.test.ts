@@ -30,6 +30,12 @@ describe('useViewRouting (S6)', () => {
     expect(result.current.view).toBe('stats');
   });
 
+  it('accepts the financial plan view from ?view param', () => {
+    setSearch('?view=financial-plan');
+    const { result } = renderHook(() => useViewRouting());
+    expect(result.current.view).toBe('financial-plan');
+  });
+
   it('falls back to transactions for unknown ?view values', () => {
     setSearch('?view=hacker');
     const { result } = renderHook(() => useViewRouting());

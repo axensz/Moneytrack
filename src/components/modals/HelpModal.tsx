@@ -1,5 +1,13 @@
-import React, { useState } from 'react';
-import { Wallet, TrendingUp, Repeat, BarChart3, PieChart, Bot, HandCoins, Target, Keyboard } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  BookOpen,
+  Bot,
+  Keyboard,
+  Wallet,
+  type LucideIcon,
+} from 'lucide-react';
+import type { ViewType } from '../../types/finance';
+import { NAV_TABS, UI_TEXT } from '../../config/ui';
 import { BaseModal } from './BaseModal';
 import { HelpSectionBasics } from './help/HelpSectionBasics';
 import { HelpSectionAccounts } from './help/HelpSectionAccounts';
@@ -17,60 +25,113 @@ interface HelpModalProps {
   onClose: () => void;
 }
 
+type HelpViewTabId = Exclude<ViewType, 'financial-plan'>;
+type HelpTabId = 'basics' | HelpViewTabId | 'ai' | 'shortcuts';
+
+interface HelpTab {
+  id: HelpTabId;
+  label: string;
+  Icon: LucideIcon;
+}
+
+const helpTabFromView = (view: HelpViewTabId): HelpTab => {
+  const tab = NAV_TABS.find((item) => item.key === view);
+  return {
+    id: view,
+    label: tab?.label ?? view,
+    Icon: tab?.icon ?? BookOpen,
+  };
+};
+
+const HELP_TABS: HelpTab[] = [
+  { id: 'basics', label: 'Inicio', Icon: BookOpen },
+  helpTabFromView('accounts'),
+  helpTabFromView('transactions'),
+  helpTabFromView('recurring'),
+  helpTabFromView('debts'),
+  helpTabFromView('budgets'),
+  helpTabFromView('goals'),
+  helpTabFromView('stats'),
+  { id: 'ai', label: 'Asistente IA', Icon: Bot },
+  { id: 'shortcuts', label: 'Atajos', Icon: Keyboard },
+];
+
 export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'basics' | 'accounts' | 'transactions' | 'recurring' | 'debts' | 'budgets' | 'goals' | 'stats' | 'ai' | 'shortcuts'>('basics');
+  const [activeTab, setActiveTab] = useState<HelpTabId>('basics');
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  const scrollContentToStart = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      contentRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    });
+  }, []);
+
+  useEffect(() => {
+    scrollContentToStart();
+  }, [activeTab, scrollContentToStart]);
 
   return (
     <BaseModal
       isOpen={isOpen}
       onClose={onClose}
-      title="Manual de Usuario"
+      title={UI_TEXT.titles.helpManual}
       titleIcon={<Wallet size={24} className="text-primary" />}
-      maxWidth="max-w-3xl"
-      className="h-[85vh] sm:h-[600px] flex flex-col"
+      maxWidth="max-w-[calc(100vw-1rem)] sm:max-w-[min(94vw,64rem)] xl:max-w-[min(90vw,78rem)]"
+      className="h-[92dvh] max-h-[960px] flex flex-col overflow-hidden sm:h-[88dvh] lg:h-[90dvh] xl:h-[92dvh]"
+      scrollAreaClassName="flex min-h-0 flex-1 flex-col overflow-hidden"
+      contentClassName="flex min-h-0 flex-1 flex-col overflow-hidden"
     >
         {/* Tabs */}
-        <div className="border-b border-border bg-muted/50 shrink-0">
-          {/* Desktop: las tabs hacen wrap (todas visibles; un scroll oculto con
-              mouse no se puede alcanzar y cortaba el acceso a las últimas tabs).
-              Móvil (max-sm): tira horizontal con scroll touch + máscara de bordes. */}
-          <div className="flex flex-wrap gap-1 sm:gap-2 p-2 sm:p-3 scroll-smooth max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:no-scrollbar max-sm:scroll-fade-x">
-            {[
-              { id: 'basics', label: 'Inicio', shortLabel: 'Inicio', icon: null },
-              { id: 'accounts', label: 'Cuentas', shortLabel: 'Cuentas', icon: Wallet },
-              { id: 'transactions', label: 'Transacciones', shortLabel: 'Trans.', icon: TrendingUp },
-              { id: 'recurring', label: 'Periódicos', shortLabel: 'Peri.', icon: Repeat },
-              { id: 'debts', label: 'Préstamos', shortLabel: 'Prést.', icon: HandCoins },
-              { id: 'budgets', label: 'Presupuestos', shortLabel: 'Presup.', icon: PieChart },
-              { id: 'goals', label: 'Metas', shortLabel: 'Metas', icon: Target },
-              { id: 'stats', label: 'Estadísticas', shortLabel: 'Stats', icon: BarChart3 },
-              { id: 'ai', label: 'Asistente IA', shortLabel: 'IA', icon: Bot },
-              { id: 'shortcuts', label: 'Atajos', shortLabel: 'Atajos', icon: Keyboard },
-            ].map((tab) => (
+        <div className="shrink-0 border-b border-border bg-muted/50">
+          <div
+            role="tablist"
+            aria-label="Secciones del manual"
+            className="flex flex-wrap justify-center gap-1.5 p-2 scroll-smooth sm:gap-2 sm:p-3 lg:gap-3 max-sm:flex-nowrap max-sm:justify-start max-sm:overflow-x-auto max-sm:no-scrollbar max-sm:scroll-fade-x"
+          >
+            {HELP_TABS.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                id={`help-tab-${tab.id}`}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                aria-controls={`help-panel-${tab.id}`}
+                aria-label={tab.label}
+                title={tab.label}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  scrollContentToStart();
+                }}
                 className={`
-                  flex items-center gap-1 sm:gap-2 min-h-[44px] px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200 whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]
+                  group relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground outline-none transition-[background-color,color,box-shadow,transform] duration-200 focus-visible:ring-2 focus-visible:ring-primary sm:h-12 sm:w-12 lg:h-14 lg:w-14
                   ${activeTab === tab.id
                     ? 'bg-card text-primary shadow-sm ring-1 ring-border'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground active:scale-[0.98]'
+                    : 'hover:bg-muted hover:text-foreground active:scale-[0.98]'
                   }
                 `}
               >
-                {tab.icon && <tab.icon size={14} className="sm:w-4 sm:h-4" />}
-                <span className="hidden sm:inline">{tab.label}</span>
-                <span className="sm:hidden">{tab.shortLabel}</span>
+                <tab.Icon aria-hidden="true" className="h-5 w-5 sm:h-[22px] sm:w-[22px] lg:h-6 lg:w-6" />
+                <span className="sr-only">{tab.label}</span>
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-1/2 top-[calc(100%+0.45rem)] z-30 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-foreground px-2.5 py-1.5 text-xs font-medium text-background opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 sm:block"
+                >
+                  {tab.label}
+                </span>
               </button>
             ))}
           </div>
         </div>
 
-        {/* Content - Scrollable con altura fija para evitar cambios de tamaño.
-            El scroller llega al borde del modal; el contenido se limita a un
-            ancho de lectura cómodo (~70ch) y se centra para una buena medida. */}
-        <div className="flex-1 overflow-y-auto p-5 sm:p-6 scroll-smooth min-h-0">
-          <div className="max-w-[70ch] mx-auto">
+        {/* Content */}
+        <div
+          ref={contentRef}
+          id={`help-panel-${activeTab}`}
+          role="tabpanel"
+          aria-labelledby={`help-tab-${activeTab}`}
+          className="min-h-0 flex-1 overflow-y-auto p-4 scroll-smooth scrollbar-thin sm:p-6 lg:p-8"
+        >
+          <div className="mx-auto w-full max-w-[70ch] lg:max-w-[84ch]">
             {activeTab === 'basics' && <HelpSectionBasics />}
 
             {activeTab === 'accounts' && <HelpSectionAccounts />}
@@ -101,8 +162,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
         </div>
 
         {/* Footer */}
-        <div className="p-4 sm:p-5 border-t border-border bg-muted/80 shrink-0 flex items-center justify-center text-center">
-          <p className="text-xs sm:text-sm text-muted-foreground max-w-lg">
+        <div className="shrink-0 border-t border-border bg-muted/80 p-4 text-center sm:p-5">
+          <p className="mx-auto max-w-lg text-xs text-muted-foreground sm:text-sm lg:max-w-2xl">
             MoneyTrack utiliza formato local colombiano: <span className="font-mono bg-card border border-border px-1.5 py-0.5 rounded text-foreground">1.234.567,89</span>
           </p>
         </div>

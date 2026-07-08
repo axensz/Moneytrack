@@ -6,6 +6,7 @@ import type { DateRangePreset } from '../../../../types/finance';
 import { DATE_PRESETS } from '../../../../utils/dateUtils';
 import { isGeminiConfigured } from '../../../../lib/gemini';
 import { getGeminiClient, isAiEnabled } from '../../../../lib/geminiClient';
+import { GEMINI_MODELS, dateRangeResponseSchema, geminiJsonConfig, parseGeminiJson } from '../../../../lib/geminiConfig';
 
 interface DateFilterDropdownProps {
   dateRangePreset: DateRangePreset;
@@ -19,7 +20,24 @@ interface DateFilterDropdownProps {
   align?: 'left' | 'right';
 }
 
-async function parseDateWithAI(query: string): Promise<{ startDate: string; endDate: string } | null> {
+interface DateRangeAIResult {
+  startDate: string;
+  endDate: string;
+}
+
+function isDateRangeAIResult(value: unknown): value is DateRangeAIResult {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as Partial<DateRangeAIResult>;
+  const isoDate = /^\d{4}-\d{2}-\d{2}$/;
+  return (
+    typeof data.startDate === 'string' &&
+    typeof data.endDate === 'string' &&
+    isoDate.test(data.startDate) &&
+    isoDate.test(data.endDate)
+  );
+}
+
+async function parseDateWithAI(query: string): Promise<DateRangeAIResult | null> {
   if (!isAiEnabled()) return null;
 
   const today = new Date();
@@ -28,22 +46,17 @@ async function parseDateWithAI(query: string): Promise<{ startDate: string; endD
 
   const ai = await getGeminiClient();
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
+    model: GEMINI_MODELS.structured,
     contents: `Hoy es ${dayOfWeek} ${todayStr}. El usuario quiere filtrar por rango de fechas y dice: "${query}". Responde SOLO un JSON con formato {"startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD"}. Sin explicaciones.`,
-    config: { temperature: 0 },
+    config: {
+      ...geminiJsonConfig(dateRangeResponseSchema),
+      temperature: 0,
+      maxOutputTokens: 256,
+    },
   });
 
-  const text = response.text?.trim() || '';
-  const jsonMatch = text.match(/\{[^}]+\}/);
-  if (!jsonMatch) return null;
-
-  try {
-    const parsed = JSON.parse(jsonMatch[0]);
-    if (parsed.startDate && parsed.endDate) return parsed;
-    return null;
-  } catch {
-    return null;
-  }
+  const parsed = parseGeminiJson<unknown>(response.text ?? '', 'object');
+  return isDateRangeAIResult(parsed) ? parsed : null;
 }
 
 /**

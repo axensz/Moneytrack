@@ -1,10 +1,11 @@
 import React from 'react';
 import { BarChart3, Calendar, Target, Plus } from 'lucide-react';
+import { sectionTitle } from '../../../config/ui';
 
 export const HelpSectionGoals: React.FC = () => (
   <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 fade-in">
       <div>
-        <h3 className="text-xl font-semibold text-foreground mb-2">Metas de Ahorro</h3>
+        <h3 className="text-xl font-semibold text-foreground mb-2">{sectionTitle('goals')}</h3>
         <p className="text-muted-foreground">Define objetivos financieros y haz seguimiento de tu progreso.</p>
       </div>
 

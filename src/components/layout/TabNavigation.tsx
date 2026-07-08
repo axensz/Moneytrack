@@ -1,35 +1,10 @@
 'use client';
 
 import React from 'react';
-import { Activity, BarChart3, Wallet, Repeat, HandCoins, PieChart, Target } from 'lucide-react';
 import type { ViewType } from '../../types/finance';
+import { NAV_TABS, UI_TEXT } from '../../config/ui';
 
-export interface NavTab {
-  key: ViewType;
-  /** Etiqueta ÚNICA por vista — misma palabra en desktop y móvil. */
-  label: string;
-  icon: typeof Activity;
-}
-
-/**
- * Fuente ÚNICA de las pestañas de navegación. La consumen tanto la barra de
- * escritorio (TabNavigation) como la barra inferior móvil (finance-tracker),
- * para que la etiqueta de cada vista sea idéntica en ambas. "Transacciones"
- * (no "Inicio": la vista es el registro de movimientos) y "Estadísticas".
- */
-export const NAV_TABS: NavTab[] = [
-  { key: 'transactions', label: 'Transacciones', icon: Activity },
-  { key: 'accounts', label: 'Cuentas', icon: Wallet },
-  { key: 'recurring', label: 'Periódicos', icon: Repeat },
-  { key: 'debts', label: 'Préstamos', icon: HandCoins },
-  { key: 'budgets', label: 'Presupuestos', icon: PieChart },
-  { key: 'goals', label: 'Metas', icon: Target },
-  { key: 'stats', label: 'Estadísticas', icon: BarChart3 },
-];
-
-/** Helper para reusar la etiqueta canónica de una vista fuera de aquí. */
-export const navTabLabel = (key: ViewType): string =>
-  NAV_TABS.find((tab) => tab.key === key)?.label ?? key;
+export { NAV_TABS, navTabLabel, type NavTab } from '../../config/ui';
 
 interface TabNavigationProps {
   view: ViewType;
@@ -45,7 +20,7 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
       {/* Desktop Navigation */}
       <nav
         className="hidden sm:flex justify-start items-center gap-4 mb-4 sm:mb-5 md:mb-6"
-        aria-label="Navegación principal"
+        aria-label={UI_TEXT.aria.mainNavigation}
       >
         <div className="flex gap-2 border-b border-border" role="tablist">
           {NAV_TABS.map(tab => (

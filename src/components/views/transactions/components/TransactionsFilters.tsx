@@ -1,13 +1,20 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Download, FilterX, PlusCircle, Search, Tag, Upload, Wallet, X } from 'lucide-react';
+import { Tag, Wallet } from 'lucide-react';
 import type { Account, DateRangePreset, FilterValue } from '../../../../types/finance';
 import { CREDIT_PAYMENT_CATEGORY, TRANSFER_CATEGORY, BALANCE_ADJUSTMENT_CATEGORY } from '../../../../config/constants';
+import { ACTION_ICONS, UI_TEXT } from '../../../../config/ui';
 import { DateFilterDropdown } from './DateFilterDropdown';
 import { FilterDropdown } from './FilterDropdown';
 
 const SPECIAL_FILTER_CATEGORIES = [TRANSFER_CATEGORY, CREDIT_PAYMENT_CATEGORY, BALANCE_ADJUSTMENT_CATEGORY];
+const ClearIcon = ACTION_ICONS.clear;
+const ExportIcon = ACTION_ICONS.export;
+const ImportIcon = ACTION_ICONS.import;
+const NewIcon = ACTION_ICONS.new;
+const SearchIcon = ACTION_ICONS.search;
+const CloseIcon = ACTION_ICONS.close;
 
 interface TransactionsFiltersProps {
   accounts: Account[];
@@ -101,11 +108,11 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
             onClick={() => setShowForm(!showForm)}
             disabled={isDisabled}
             className={`btn-primary flex-1 sm:flex-none ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-            title={isDisabled ? 'Crea una cuenta primero' : 'Crear transacción'}
-            aria-label="Crear nueva transacción"
+            title={isDisabled ? 'Crea una cuenta primero' : UI_TEXT.titles.newTransaction}
+            aria-label={UI_TEXT.titles.newTransaction}
           >
-            <PlusCircle size={18} aria-hidden="true" />
-            Nueva
+            <NewIcon size={18} aria-hidden="true" />
+            {UI_TEXT.actions.newFeminine}
           </button>
 
           {onImport && (
@@ -116,8 +123,8 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
               title="Importar desde extracto bancario"
               aria-label="Importar transacciones"
             >
-              <Upload size={16} aria-hidden="true" />
-              <span className="hidden sm:inline">Importar</span>
+              <ImportIcon size={16} aria-hidden="true" />
+              <span className="hidden sm:inline">{UI_TEXT.actions.import}</span>
             </button>
           )}
 
@@ -129,15 +136,15 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
               title={exportDisabled ? 'No hay transacciones para exportar' : 'Exportar a CSV las transacciones filtradas'}
               aria-label="Exportar transacciones a CSV"
             >
-              <Download size={16} aria-hidden="true" />
-              <span className="hidden sm:inline">Exportar</span>
+              <ExportIcon size={16} aria-hidden="true" />
+              <span className="hidden sm:inline">{UI_TEXT.actions.export}</span>
             </button>
           )}
         </div>
 
         <div className="relative flex-1 min-w-0">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Search size={16} className="text-muted-foreground" aria-hidden="true" />
+            <SearchIcon size={16} className="text-muted-foreground" aria-hidden="true" />
           </div>
           <input
             type="text"
@@ -153,7 +160,7 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
               className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted-foreground hover:text-foreground"
               aria-label="Limpiar búsqueda"
             >
-              <X size={16} />
+              <CloseIcon size={16} />
             </button>
           )}
         </div>
@@ -210,8 +217,8 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-destructive hover:bg-[var(--destructive-muted)] transition-colors min-h-[44px]"
             aria-label="Limpiar todos los filtros"
           >
-            <FilterX size={16} aria-hidden="true" />
-            Limpiar
+            <ClearIcon size={16} aria-hidden="true" />
+            {UI_TEXT.actions.clear}
           </button>
         )}
       </div>

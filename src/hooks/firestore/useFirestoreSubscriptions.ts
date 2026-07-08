@@ -231,6 +231,9 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
           id: d.id, ...d.data(),
           createdAt: d.data().createdAt?.toDate() || new Date(),
           settledAt: d.data().settledAt?.toDate() || null,
+          lentDate: d.data().lentDate?.toDate() || undefined,
+          dueDate: d.data().dueDate?.toDate() || undefined,
+          nextPaymentDate: d.data().nextPaymentDate?.toDate() || undefined,
         })) as Debt[]);
         loadedCollections.current.debts = true;
         checkAllLoaded();

@@ -110,10 +110,10 @@ export function GeminiKeyModal({ isOpen, onClose }: GeminiKeyModalProps) {
         <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl text-xs text-amber-700 dark:text-amber-300">
           <ShieldCheck size={16} className="flex-shrink-0 mt-0.5" aria-hidden="true" />
           <span>
-            Si <strong>inicias sesión</strong>, tu key se guarda en tu cuenta para sincronizarse
-            entre tus dispositivos (cifrada en reposo; solo tú puedes leerla). Como invitado, se
-            guarda solo en este navegador. Al usar la IA, las descripciones y montos de tus
-            movimientos (y los PDF que importes) se envían a Google con tu key. Recomendado:{' '}
+            Tu key se guarda en tu cuenta para sincronizarse entre tus dispositivos (cifrada en
+            reposo en Firebase; solo tu usuario puede leerla). MoneyTrack no tiene backend proxy:
+            cuando usas la IA, tu navegador envía a Google las descripciones, montos y PDF de tus
+            movimientos con tu propia key. Recomendado:{' '}
             <a
               href="https://aistudio.google.com/apikey"
               target="_blank"

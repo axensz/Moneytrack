@@ -1,9 +1,11 @@
 /**
  * Servicio de IA con Google Gemini (Free Tier)
- * Usa @google/genai SDK (nueva generación) con gemini-2.5-flash
+ * Usa @google/genai SDK con modelos centralizados por tarea.
  */
 
 import { getGeminiClient, isAiEnabled } from './geminiClient';
+import { GEMINI_MODELS } from './geminiConfig';
+import type { FunctionCall } from '@google/genai';
 import type { Transaction, Account, Categories } from '../types/finance';
 import { formatCurrency } from '../utils/formatters';
 import { BalanceCalculator } from '../utils/balanceCalculator';
@@ -71,6 +73,10 @@ export interface ChatMessage {
   tokenUsage?: TokenUsage;
 }
 
+interface FinancialContextOptions {
+  includeRecentTransactions?: boolean;
+}
+
 export function isGeminiConfigured(): boolean {
   return isAiEnabled();
 }
@@ -81,8 +87,10 @@ export function isGeminiConfigured(): boolean {
 export function buildFinancialContext(
   transactions: Transaction[],
   accounts: Account[],
-  categories: Categories
+  categories: Categories,
+  options: FinancialContextOptions = {},
 ): string {
+  const includeRecentTransactions = options.includeRecentTransactions ?? true;
   const now = new Date();
   const currentMonth = now.getMonth();
   const currentYear = now.getFullYear();
@@ -192,7 +200,8 @@ export function buildFinancialContext(
     .reduce((sum, a) => sum + getCreditCardUsedCredit(a, transactions), 0);
 
   // --- ÚLTIMAS 20 TRANSACCIONES (con IDs para acciones) ---
-  const recentTx = realTransactions
+  const recentTx = includeRecentTransactions
+    ? realTransactions
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 20)
     .map(t => {
@@ -201,7 +210,8 @@ export function buildFinancialContext(
       const account = findAccountForTransaction(accounts, t.accountId);
       const estado = t.paid ? '' : ' [PENDIENTE]';
       return `  - [ID:${t.id}] ${fecha} | ${tipo} | ${formatCurrency(t.amount)} | ${t.category} | ${t.description} | ${account?.name || 'N/A'} [ACC:${t.accountId}]${estado}`;
-    }).join('\n');
+    }).join('\n')
+    : '  (Omitidas para minimizar datos; pide detalle o recategorizacion para incluirlas)';
 
   // --- GASTOS PENDIENTES TOTALES ---
   const allPending = realTransactions
@@ -273,6 +283,290 @@ Total de transacciones históricas: ${transactions.length} (reales: ${realTransa
 `.trim();
 }
 
+const ACTION_FUNCTION_NAMES = [
+  'add_transaction',
+  'update_category',
+  'bulk_update_category',
+  'add_category',
+] as const;
+
+type BulkCategoryUpdate = Extract<ChatAction, { type: 'bulk_update_category' }>['data']['updates'][number];
+
+type ChatActionFunctionDefinition = {
+  name: (typeof ACTION_FUNCTION_NAMES)[number];
+  description: string;
+  parameters: Record<string, unknown>;
+};
+
+const CHAT_ACTION_FUNCTION_DEFINITIONS = [
+  {
+    name: 'add_transaction',
+    description: 'Prepare a new income or expense transaction for the user to confirm in MoneyTrack.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        txType: { type: 'string', enum: ['income', 'expense'] },
+        amount: { type: 'number', minimum: 1 },
+        category: { type: 'string', minLength: 1, maxLength: 100 },
+        description: { type: 'string', minLength: 1, maxLength: 500 },
+        accountId: { type: 'string', minLength: 1 },
+        accountName: { type: 'string', minLength: 1 },
+        paid: { type: 'boolean' },
+        date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+      },
+      required: ['txType', 'amount', 'category', 'description', 'accountId', 'accountName', 'paid'],
+    },
+  },
+  {
+    name: 'update_category',
+    description: 'Prepare a category change for one existing transaction ID shown in the context.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        transactionId: { type: 'string', minLength: 1 },
+        oldCategory: { type: 'string', minLength: 1, maxLength: 100 },
+        newCategory: { type: 'string', minLength: 1, maxLength: 100 },
+        description: { type: 'string', minLength: 1, maxLength: 500 },
+      },
+      required: ['transactionId', 'oldCategory', 'newCategory', 'description'],
+    },
+  },
+  {
+    name: 'bulk_update_category',
+    description: 'Prepare category changes for multiple existing transaction IDs shown in the context.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        updates: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 20,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              transactionId: { type: 'string', minLength: 1 },
+              oldCategory: { type: 'string', minLength: 1, maxLength: 100 },
+              newCategory: { type: 'string', minLength: 1, maxLength: 100 },
+              description: { type: 'string', minLength: 1, maxLength: 500 },
+            },
+            required: ['transactionId', 'oldCategory', 'newCategory', 'description'],
+          },
+        },
+      },
+      required: ['updates'],
+    },
+  },
+  {
+    name: 'add_category',
+    description: 'Prepare a new income or expense category for the user to confirm.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        categoryType: { type: 'string', enum: ['expense', 'income'] },
+        name: { type: 'string', minLength: 1, maxLength: 100 },
+      },
+      required: ['categoryType', 'name'],
+    },
+  },
+] as const satisfies readonly ChatActionFunctionDefinition[];
+
+const CHAT_ACTION_INTERACTION_TOOLS = CHAT_ACTION_FUNCTION_DEFINITIONS.map((definition) => ({
+  type: 'function' as const,
+  name: definition.name,
+  description: definition.description,
+  parameters: definition.parameters,
+}));
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function numberValue(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function booleanValue(value: unknown): boolean | null {
+  return typeof value === 'boolean' ? value : null;
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  if (isRecord(value)) return value;
+  if (typeof value !== 'string') return null;
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function parseActionFromFunctionCall(call: FunctionCall): ChatAction | undefined {
+  const args = call.args;
+  if (!isRecord(args)) return undefined;
+
+  switch (call.name) {
+    case 'add_transaction': {
+      const txType = args.txType === 'income' || args.txType === 'expense' ? args.txType : null;
+      const amount = numberValue(args.amount);
+      const category = stringValue(args.category);
+      const description = stringValue(args.description);
+      const accountId = stringValue(args.accountId);
+      const accountName = stringValue(args.accountName);
+      const paid = booleanValue(args.paid);
+      const date = stringValue(args.date);
+      if (!txType || !amount || amount <= 0 || !category || !description || !accountId || !accountName || paid === null) return undefined;
+      return {
+        type: 'add_transaction',
+        data: {
+          txType,
+          amount,
+          category,
+          description,
+          accountId,
+          accountName,
+          paid,
+          ...(date ? { date } : {}),
+        },
+      };
+    }
+    case 'update_category': {
+      const transactionId = stringValue(args.transactionId);
+      const oldCategory = stringValue(args.oldCategory);
+      const newCategory = stringValue(args.newCategory);
+      const description = stringValue(args.description);
+      if (!transactionId || !oldCategory || !newCategory || !description) return undefined;
+      return { type: 'update_category', data: { transactionId, oldCategory, newCategory, description } };
+    }
+    case 'bulk_update_category': {
+      if (!Array.isArray(args.updates)) return undefined;
+      const updates = args.updates
+        .map((item): BulkCategoryUpdate | null => {
+          if (!isRecord(item)) return null;
+          const transactionId = stringValue(item.transactionId);
+          const oldCategory = stringValue(item.oldCategory);
+          const newCategory = stringValue(item.newCategory);
+          const description = stringValue(item.description);
+          return transactionId && oldCategory && newCategory && description
+            ? { transactionId, oldCategory, newCategory, description }
+            : null;
+        })
+        .filter((item): item is BulkCategoryUpdate => item !== null);
+      if (updates.length === 0) return undefined;
+      return { type: 'bulk_update_category', data: { updates } };
+    }
+    case 'add_category': {
+      const categoryType = args.categoryType === 'expense' || args.categoryType === 'income' ? args.categoryType : null;
+      const name = stringValue(args.name);
+      if (!categoryType || !name) return undefined;
+      return { type: 'add_category', data: { categoryType, name } };
+    }
+    default:
+      return undefined;
+  }
+}
+
+function parseActionFromInteractionItems(items: unknown): ChatAction | undefined {
+  if (!Array.isArray(items)) return undefined;
+
+  for (const item of items) {
+    if (!isRecord(item) || item.type !== 'function_call') continue;
+
+    const name = stringValue(item.name);
+    const args = recordValue(item.arguments ?? item.args);
+    if (!name || !args) continue;
+
+    const action = parseActionFromFunctionCall({ name, args } as FunctionCall);
+    if (action) return action;
+  }
+
+  return undefined;
+}
+
+export function parseActionFromInteractionPayload(payload: unknown): ChatAction | undefined {
+  if (!isRecord(payload)) return undefined;
+
+  return (
+    parseActionFromInteractionItems(payload.outputs) ??
+    parseActionFromInteractionItems(payload.steps)
+  );
+}
+
+function extractTextFromContentBlocks(content: unknown): string[] {
+  if (!Array.isArray(content)) return [];
+
+  return content.flatMap((item) => {
+    if (!isRecord(item) || item.type !== 'text') return [];
+    const text = stringValue(item.text);
+    return text ? [text] : [];
+  });
+}
+
+function extractTextFromInteractionItems(items: unknown): string[] {
+  if (!Array.isArray(items)) return [];
+
+  return items.flatMap((item) => {
+    if (!isRecord(item)) return [];
+    if (item.type === 'text') {
+      const text = stringValue(item.text);
+      return text ? [text] : [];
+    }
+    if (item.type === 'model_output') {
+      return extractTextFromContentBlocks(item.content);
+    }
+    return [];
+  });
+}
+
+function extractInteractionText(payload: unknown): string {
+  if (!isRecord(payload)) return '';
+
+  const outputText = stringValue(payload.output_text);
+  if (outputText) return outputText;
+
+  return [
+    ...extractTextFromInteractionItems(payload.outputs),
+    ...extractTextFromInteractionItems(payload.steps),
+  ].join('\n').trim();
+}
+
+function extractInteractionTokenUsage(payload: unknown): TokenUsage | undefined {
+  if (!isRecord(payload) || !isRecord(payload.usage)) return undefined;
+
+  const promptTokens = numberValue(payload.usage.total_input_tokens) ?? 0;
+  const responseTokens = numberValue(payload.usage.total_output_tokens) ?? 0;
+  const totalTokens = numberValue(payload.usage.total_tokens) ?? promptTokens + responseTokens;
+  const thinkingTokens = numberValue(payload.usage.total_thought_tokens) ?? undefined;
+
+  return {
+    promptTokens,
+    responseTokens,
+    totalTokens,
+    thinkingTokens,
+  };
+}
+
+function shouldIncludeRecentTransactions(message: string): boolean {
+  return /\b(transacci|movimiento|recategori|categoria|categoría|agrega|agregar|gaste|gast[eé]|ingreso|cuenta|ultimo|último|detalle|editar|cambiar)\b/i.test(message);
+}
+
+function buildInteractionInput(message: string, history: ChatMessage[]): string {
+  const historyText = history
+    .map((item) => `${item.role === 'user' ? 'Usuario' : 'Asistente'}: ${item.content}`)
+    .join('\n\n');
+
+  return historyText ? `${historyText}\n\nUsuario: ${message}` : message;
+}
+
 const SYSTEM_PROMPT = `Eres el asistente financiero de MoneyTrack, una app de finanzas personales colombiana.
 
 TU PERSONALIDAD:
@@ -307,45 +601,18 @@ REGLAS:
 - Los "Ajustes de saldo" y "Pago Crédito" son movimientos internos de la app, NO son gastos reales. Ignóralos completamente.
 - Si ves transacciones en "Otros" cuya descripción claramente pertenece a otra categoría, sugiérele al usuario recategorizarlas (ej: "Transporte" en Otros → debería estar en Transporte). Sé breve: solo menciona las más obvias.
 
-ACCIONES - PUEDES EJECUTAR ACCIONES EN LA APP:
-Cuando el usuario te pida agregar una transacción, recategorizar, o crear categorías, incluye un bloque de acción al FINAL de tu respuesta.
-
-FORMATO DE ACCIÓN (SIEMPRE al final del mensaje, después del texto):
-<<<ACTION>>>
-{JSON de la acción}
-<<<END_ACTION>>>
-
-TIPOS DE ACCIÓN DISPONIBLES:
-
-1. AGREGAR TRANSACCIÓN:
-<<<ACTION>>>
-{"type":"add_transaction","data":{"txType":"expense","amount":35000,"category":"Alimentación","description":"Almuerzo","accountId":"ID_DE_CUENTA","accountName":"Bancolombia","paid":true}}
-<<<END_ACTION>>>
-
-2. RECATEGORIZAR UNA TRANSACCIÓN:
-<<<ACTION>>>
-{"type":"update_category","data":{"transactionId":"ID","oldCategory":"Otros","newCategory":"Transporte","description":"Descripción de la tx"}}
-<<<END_ACTION>>>
-
-3. RECATEGORIZAR VARIAS TRANSACCIONES A LA VEZ:
-<<<ACTION>>>
-{"type":"bulk_update_category","data":{"updates":[{"transactionId":"ID1","oldCategory":"Otros","newCategory":"Transporte","description":"Desc1"},{"transactionId":"ID2","oldCategory":"Otros","newCategory":"Compras Personales","description":"Desc2"}]}}
-<<<END_ACTION>>>
-
-4. CREAR NUEVA CATEGORÍA:
-<<<ACTION>>>
-{"type":"add_category","data":{"categoryType":"expense","name":"Mascotas"}}
-<<<END_ACTION>>>
+ACCIONES EN LA APP:
+Cuando el usuario pida agregar una transacción, recategorizar o crear categorías, usa una llamada de herramienta disponible. No escribas JSON ni bloques <<<ACTION>>> en el texto.
 
 REGLAS DE ACCIONES:
-- SIEMPRE confirma lo que vas a hacer ANTES del bloque de acción (ej: "Perfecto, voy a agregar ese gasto...")
-- Si el usuario no especifica cuenta, usa la cuenta por defecto o pregunta
-- Si el usuario no especifica categoría, infiere la más lógica por la descripción
-- Si el monto usa "mil" o "k", conviértelo (35mil = 35000, 150k = 150000)
-- Para recategorización, necesitas el transactionId exacto de los datos del contexto
-- NO inventes transactionIds, solo usa los que aparecen en las ÚLTIMAS TRANSACCIONES del contexto
-- Solo incluye UNA acción por mensaje
-- Si necesitas datos que no tienes (ej: qué cuenta usar), PREGUNTA en vez de adivinar`;
+- Explica brevemente que prepararas la accion y que el usuario debe confirmarla en la tarjeta de MoneyTrack.
+- Si el usuario no especifica cuenta, usa la cuenta por defecto si aparece en el contexto; si no, pregunta.
+- Si el usuario no especifica categoría, infiere la más lógica por la descripción.
+- Si el monto usa "mil" o "k", conviertelo (35mil = 35000, 150k = 150000).
+- Para recategorizacion, usa solo transactionId exactos de las ULTIMAS TRANSACCIONES incluidas en el contexto.
+- No inventes IDs. Si las últimas transacciones fueron omitidas o no tienes el ID, pide al usuario que solicite detalle.
+- Solo prepara UNA accion por mensaje.
+- Si necesitas datos que no tienes, pregunta en vez de adivinar`;
 
 /**
  * Parsea la respuesta de Gemini para extraer acciones y texto limpio
@@ -368,7 +635,7 @@ export function parseActionFromResponse(response: string): { text: string; actio
 
 /**
  * Envía un mensaje al chatbot con contexto financiero.
- * Usa @google/genai SDK con gemini-2.0-flash.
+ * Usa Interactions API para chat y function calling confirmable.
  */
 export async function sendChatMessage(
   message: string,
@@ -378,70 +645,53 @@ export async function sendChatMessage(
     accounts: Account[];
     categories: Categories;
   }
-): Promise<{ text: string; tokenUsage?: TokenUsage }> {
+): Promise<{ text: string; action?: ChatAction; tokenUsage?: TokenUsage }> {
   const client = await getGeminiClient();
 
   const financialContext = buildFinancialContext(
     financialData.transactions,
     financialData.accounts,
-    financialData.categories
+    financialData.categories,
+    { includeRecentTransactions: shouldIncludeRecentTransactions(message) },
   );
 
   // Construir el contenido completo del prompt
   const systemInstruction = `${SYSTEM_PROMPT}\n\n${financialContext}`;
+  const input = buildInteractionInput(message, history);
 
   // Construir historial de mensajes para la API
-  const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
-
   // Agregar historial de conversación previo
-  for (const msg of history) {
-    contents.push({
-      role: msg.role === 'user' ? 'user' : 'model',
-      parts: [{ text: msg.content }],
-    });
-  }
-
   // Agregar el mensaje actual
-  contents.push({
-    role: 'user',
-    parts: [{ text: message }],
-  });
-
   // Retry con espera progresiva: 10s, 30s, 60s
   const RETRY_DELAYS = [10_000, 30_000, 60_000];
 
   for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
     try {
-      const response = await client.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents,
-        config: {
-          systemInstruction,
+      const response = await client.interactions.create({
+        model: GEMINI_MODELS.chat,
+        input,
+        stream: false,
+        store: false,
+        system_instruction: systemInstruction,
+        tools: CHAT_ACTION_INTERACTION_TOOLS,
+        generation_config: {
           temperature: 0.7,
-          maxOutputTokens: 8192,
+          max_output_tokens: 8192,
+          tool_choice: {
+            allowed_tools: {
+              mode: 'validated',
+              tools: [...ACTION_FUNCTION_NAMES],
+            },
+          },
         },
       });
 
-      const text = response.text || '';
+      const action = parseActionFromInteractionPayload(response);
+      const text = extractInteractionText(response) || (action ? 'Perfecto. Revisa y confirma la accion propuesta.' : '');
 
-      // Extraer token usage
-      const usageMetadata = response.usageMetadata;
-      const tokenUsage: TokenUsage | undefined = usageMetadata ? {
-        promptTokens: usageMetadata.promptTokenCount || 0,
-        responseTokens: usageMetadata.candidatesTokenCount || 0,
-        totalTokens: usageMetadata.totalTokenCount || 0,
-        thinkingTokens: 'thoughtsTokenCount' in usageMetadata
-          ? (usageMetadata.thoughtsTokenCount as number | undefined)
-          : undefined,
-      } : undefined;
-      
-      // Si la respuesta se cortó por tokens, agregar indicador
-      const finishReason = response.candidates?.[0]?.finishReason;
-      if (finishReason === 'MAX_TOKENS' && text) {
-        return { text: text.trimEnd() + '\n\n_(Respuesta resumida por límite de longitud)_', tokenUsage };
-      }
+      const tokenUsage = extractInteractionTokenUsage(response);
 
-      return { text: text || 'No pude generar una respuesta. Intenta de nuevo.', tokenUsage };
+      return { text: text || 'No pude generar una respuesta. Intenta de nuevo.', action, tokenUsage };
     } catch (error: unknown) {
       const errMsg = error instanceof Error ? error.message : String(error);
       const is429 = errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('RATE_LIMIT');

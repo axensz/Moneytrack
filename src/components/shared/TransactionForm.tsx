@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, memo, useState, useCallback } from 'react';
 import { Repeat, Zap, AlertTriangle } from 'lucide-react';
 import { BaseModal } from '@/components/modals/BaseModal';
 import { UI_LABELS, TRANSFER_CATEGORY } from '@/config/constants';
+import { UI_TEXT } from '@/config/ui';
 import { formatCurrency, formatDate, formatNumberForInput, unformatNumber, parseCurrency } from '@/utils/formatters';
 import { getCreditCardUsedCredit } from '@/utils/accountStrategies';
 import { INSTALLMENT_OPTIONS, calculateInterest } from '@/utils/interestCalculator';
@@ -154,7 +155,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
     <BaseModal
       isOpen={isOpen}
       onClose={onCancel}
-      title="Nueva Transacción"
+      title={UI_TEXT.titles.newTransaction}
       maxWidth="max-w-4xl"
     >
       <div>
@@ -541,7 +542,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                       onClick={handleCancelDuplicate}
                       className="text-xs font-medium text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200 underline underline-offset-2"
                     >
-                      Cancelar
+                      {UI_TEXT.actions.cancel}
                     </button>
                   </div>
                 </div>
@@ -559,7 +560,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
             hasta el borde inferior sin dejar hueco. */}
         <div className="sticky bottom-0 z-10 -mx-4 -mb-4 sm:-mx-6 sm:-mb-6 mt-4 px-4 sm:px-6 py-4 flex flex-wrap gap-3 border-t border-gray-100 dark:border-gray-700 items-center bg-white dark:bg-gray-800">
           <button onClick={() => checkDuplicatesAndSubmit('submit')} className="btn-submit">
-            Agregar
+            {UI_TEXT.actions.add}
           </button>
           {onSubmitAndContinue && (
             <button
@@ -572,7 +573,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
             </button>
           )}
           <button onClick={onCancel} className="btn-cancel">
-            Cancelar
+            {UI_TEXT.actions.cancel}
           </button>
           {batchCount > 0 && (
             <span className="ml-auto text-sm text-purple-600 dark:text-purple-400 font-medium bg-purple-50 dark:bg-purple-900/30 px-3 py-1.5 rounded-full">

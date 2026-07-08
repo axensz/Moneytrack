@@ -235,3 +235,25 @@ self.addEventListener('message', (event) => {
         );
     }
 });
+
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+
+    const targetUrl = new URL(
+        event.notification.data?.url || withBasePath('/'),
+        self.location.origin
+    ).href;
+
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true })
+            .then((clientList) => {
+                const existingClient = clientList.find((client) => client.url === targetUrl);
+
+                if (existingClient) {
+                    return existingClient.focus();
+                }
+
+                return clients.openWindow(targetUrl);
+            })
+    );
+});

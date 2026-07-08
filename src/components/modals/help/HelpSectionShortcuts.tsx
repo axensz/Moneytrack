@@ -1,5 +1,6 @@
 import React from 'react';
 import { Compass, Zap } from 'lucide-react';
+import { UI_TEXT, VIEW_SHORTCUTS } from '../../../config/ui';
 
 /**
  * Atajos de teclado — refleja EXACTAMENTE los registrados en AuthenticatedApp.tsx
@@ -14,22 +15,14 @@ const shortcutGroups: {
   {
     title: 'Navegación',
     icon: Compass,
-    items: [
-      { keys: ['1'], desc: 'Ir a Transacciones' },
-      { keys: ['2'], desc: 'Ir a Cuentas' },
-      { keys: ['3'], desc: 'Ir a Pagos Periódicos' },
-      { keys: ['4'], desc: 'Ir a Préstamos' },
-      { keys: ['5'], desc: 'Ir a Presupuestos' },
-      { keys: ['6'], desc: 'Ir a Metas' },
-      { keys: ['7'], desc: 'Ir a Estadísticas' },
-    ],
+    items: VIEW_SHORTCUTS.map(({ key, description }) => ({ keys: [key], desc: description })),
   },
   {
     title: 'Acciones',
     icon: Zap,
     items: [
-      { keys: ['N'], desc: 'Nueva transacción' },
-      { keys: ['H'], desc: 'Abrir esta ayuda' },
+      { keys: ['N'], desc: UI_TEXT.titles.newTransaction },
+      { keys: ['H'], desc: 'Abrir ayuda' },
       { keys: ['Esc'], desc: 'Cerrar ventana o formulario' },
     ],
   },
@@ -44,7 +37,7 @@ const Kbd: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 export const HelpSectionShortcuts: React.FC = () => (
   <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 fade-in">
     <div>
-      <h3 className="text-xl font-semibold text-foreground mb-3">Atajos de Teclado</h3>
+      <h3 className="text-xl font-semibold text-foreground mb-3">Atajos de teclado</h3>
       <p className="text-muted-foreground mb-4 leading-relaxed">
         Muévete y registra más rápido sin soltar el teclado. Los atajos funcionan en
         cualquier pantalla, salvo mientras escribes en un campo.

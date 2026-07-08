@@ -1,10 +1,11 @@
 import React from 'react';
 import { Repeat, BarChart3, Clock, CheckCircle, AlertCircle, Calendar } from 'lucide-react';
+import { sectionTitle } from '../../../config/ui';
 
 export const HelpSectionRecurring: React.FC = () => (
   <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 fade-in">
       <div>
-        <h3 className="text-xl font-semibold text-foreground mb-2">Pagos Periódicos</h3>
+        <h3 className="text-xl font-semibold text-foreground mb-2">{sectionTitle('recurring')}</h3>
         <p className="text-muted-foreground">Gestiona suscripciones, servicios y pagos recurrentes.</p>
       </div>
 
@@ -19,11 +20,13 @@ export const HelpSectionRecurring: React.FC = () => (
             MoneyTrack te ayuda a recordarlos y llevar el control de cuáles ya pagaste cada mes.
          </p>
          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="p-2 rounded-lg text-center" style={{ background: 'var(--card)', color: 'var(--primary-text)' }}>
-               <Calendar size={14} className="inline mr-1" /> Mensuales
+            <div className="flex items-center justify-center gap-1.5 p-2 rounded-lg text-center" style={{ background: 'var(--card)', color: 'var(--primary-text)' }}>
+               <Calendar size={14} className="shrink-0" aria-hidden="true" />
+               <span>Mensuales</span>
             </div>
-            <div className="p-2 rounded-lg text-center" style={{ background: 'var(--card)', color: 'var(--primary-text)' }}>
-               <Calendar size={14} className="inline mr-1" /> Anuales
+            <div className="flex items-center justify-center gap-1.5 p-2 rounded-lg text-center" style={{ background: 'var(--card)', color: 'var(--primary-text)' }}>
+               <Calendar size={14} className="shrink-0" aria-hidden="true" />
+               <span>Anuales</span>
             </div>
          </div>
       </div>

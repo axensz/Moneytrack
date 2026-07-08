@@ -4,7 +4,7 @@ import React from 'react';
  * Esqueleto del Plan financiero con la MISMA forma que la tarjeta de score
  * (header + círculo + grid 2×2). Se usa en DOS sitios para que la carga sea un
  * solo skeleton continuo sin parpadeos:
- *   1. fallback del <Suspense> que baja el chunk lazy de BudgetsView (1ª entrada),
+ *   1. fallback del <Suspense> que baja el chunk lazy de FinancialPlanView (1ª entrada),
  *   2. estado de carga interno mientras la config del plan y los saldos asientan.
  * Es presentacional y ligero → seguro de importar de forma eager en el shell.
  */

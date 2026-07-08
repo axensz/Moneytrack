@@ -12,6 +12,7 @@
 import React, { useState, useRef } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { BaseModal } from './BaseModal';
+import { UI_TEXT } from '../../config/ui';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -29,8 +30,8 @@ export function ConfirmDialog({
   isOpen,
   title,
   message,
-  confirmLabel = 'Eliminar',
-  cancelLabel = 'Cancelar',
+  confirmLabel = UI_TEXT.actions.delete,
+  cancelLabel = UI_TEXT.actions.cancel,
   onConfirm,
   onClose,
   variant = 'danger',

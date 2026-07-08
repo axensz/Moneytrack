@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspens
 import toast, { Toaster } from 'react-hot-toast';
 import { MoreHorizontal } from 'lucide-react';
 import { Header } from './components/layout/Header';
-import { TabNavigation, NAV_TABS } from './components/layout/TabNavigation';
+import { TabNavigation } from './components/layout/TabNavigation';
 import { LoadingScreen } from './components/layout/LoadingScreen';
 import { FirestoreErrorBanner } from './components/layout/FirestoreErrorBanner';
 import { StatsCards, TransactionForm } from './components/shared';
@@ -25,6 +25,7 @@ import { useAddTransaction } from './hooks/useAddTransaction';
 import { useFilteredData } from './hooks/useFilteredData';
 import { useWelcomeModal } from './hooks/useWelcomeModal';
 import { useNotificationMonitoring } from './hooks';
+import { useDailyExpenseReminder } from './hooks/useDailyExpenseReminder';
 import { useGuestMigration } from './hooks/useGuestMigration';
 import { NotificationProvider, useNotificationContext } from './contexts/NotificationContext';
 import { UIPreferencesProvider } from './contexts/UIPreferencesContext';
@@ -32,6 +33,7 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useViewRouting } from './hooks/useViewRouting';
 import { useDismissable } from './hooks/useDismissable';
 import { TOAST_CONFIG, createInitialTransaction } from './config/constants';
+import { NAV_TABS, UI_TEXT, VIEW_SHORTCUTS } from './config/ui';
 import { DATE_PRESETS } from './utils/dateUtils';
 import { parseDateFromInput } from './utils/formatters';
 import { logger } from './utils/logger';
@@ -46,7 +48,8 @@ const AIChatBot = lazy(() =>
 );
 import { AITeaserButton } from './components/chat/AITeaserButton';
 import { OnboardingChecklist } from './components/onboarding/OnboardingChecklist';
-import { PlanSkeleton } from './components/views/budgets/PlanSkeleton';
+import { PlanSkeleton } from './components/views/financial-plan/PlanSkeleton';
+import type { BudgetDraft } from './components/views/budgets/BudgetsView';
 
 // Lazy-loaded secondary views
 const StatsView = lazy(() =>
@@ -64,6 +67,9 @@ const DebtsView = lazy(() =>
 const BudgetsView = lazy(() =>
   import('./components/views/budgets/BudgetsView').then(m => ({ default: m.BudgetsView }))
 );
+const FinancialPlanView = lazy(() =>
+  import('./components/views/financial-plan/FinancialPlanView').then(m => ({ default: m.FinancialPlanView }))
+);
 const GoalsView = lazy(() =>
   import('./components/views/goals/GoalsView').then(m => ({ default: m.GoalsView }))
 );
@@ -72,7 +78,7 @@ const GoalsView = lazy(() =>
 // "Más" con el resto. Las etiquetas/iconos salen de NAV_TABS para no divergir de
 // la barra de escritorio (misma palabra por vista en ambas).
 const MOBILE_PRIMARY_KEYS: ViewType[] = ['transactions', 'accounts', 'goals', 'stats'];
-const MOBILE_MORE_KEYS: ViewType[] = ['recurring', 'debts', 'budgets'];
+const MOBILE_MORE_KEYS: ViewType[] = ['recurring', 'debts', 'budgets', 'financial-plan'];
 const tabsFor = (keys: ViewType[]) =>
   keys.map((key) => NAV_TABS.find((t) => t.key === key)!).filter(Boolean);
 const MOBILE_PRIMARY_TABS = tabsFor(MOBILE_PRIMARY_KEYS);
@@ -151,7 +157,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const pendingSettingsCount = aiAuthPending ? 1 : 0;
 
   // Initialize notification system
-  const { notificationManager } = useNotificationContext();
+  const { notificationManager, preferences: notificationPreferences } = useNotificationContext();
 
   // Set up notification monitoring
   useNotificationMonitoring({
@@ -164,6 +170,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     debts,
     notificationManager,
   });
+  useDailyExpenseReminder(notificationManager, notificationPreferences);
 
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -181,6 +188,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const [showNotifications, setShowNotifications] = useState(false);
 
   const [showForm, setShowForm] = useState(false);
+  const [pendingBudgetDraft, setPendingBudgetDraft] = useState<BudgetDraft | null>(null);
   const [batchCount, setBatchCount] = useState(0);
   // S6: sincroniza la vista con ?view=<name> en la URL (back/forward funciona).
   const { view, setView } = useViewRouting();
@@ -225,6 +233,15 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   // Keep ref in sync for stable callbacks
   useEffect(() => { newTransactionRef.current = newTransaction; }, [newTransaction]);
 
+  const handleCloseForm = useCallback(() => {
+    setBatchCount(0);
+    setNewTransaction({
+      ...createInitialTransaction(),
+      accountId: defaultAccount?.id || '',
+    });
+    setShowForm(false);
+  }, [defaultAccount?.id, setBatchCount, setNewTransaction, setShowForm]);
+
   // Aviso honesto al reconectar: las escrituras se bloquean sin conexión
   // (no se encolan), así que al volver la conexión el usuario ya puede guardar.
   const wasOnlineRef = useRef(isOnline);
@@ -246,32 +263,40 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const shortcuts = useMemo(() => [
     {
       key: 'n',
-      description: 'Nueva transacción',
+      description: UI_TEXT.titles.newTransaction,
       action: () => { if (accounts.length > 0) { setShowForm(true); setView('transactions'); } }
     },
-    { key: '1', description: 'Ir a Transacciones', action: () => setView('transactions') },
-    { key: '2', description: 'Ir a Cuentas', action: () => setView('accounts') },
-    { key: '3', description: 'Ir a Pagos Periódicos', action: () => setView('recurring') },
-    { key: '4', description: 'Ir a Préstamos', action: () => setView('debts') },
-    { key: '5', description: 'Ir a Presupuestos', action: () => setView('budgets') },
-    { key: '6', description: 'Ir a Metas', action: () => setView('goals') },
-    { key: '7', description: 'Ir a Estadísticas', action: () => setView('stats') },
+    ...VIEW_SHORTCUTS.map(({ key, view: targetView, description }) => ({
+      key,
+      description,
+      action: () => setView(targetView),
+    })),
     { key: 'h', description: 'Abrir ayuda', action: () => setShowHelpModal(true) },
     {
       key: 'Escape', description: 'Cerrar modal',
-      action: () => { setShowForm(false); setShowHelpModal(false); setShowCategoriesModal(false); setIsAuthModalOpen(false); },
+      action: () => { handleCloseForm(); setShowHelpModal(false); setShowCategoriesModal(false); setIsAuthModalOpen(false); },
       preventDefault: false
     }
   ], [
     accounts.length,
+    handleCloseForm,
     setIsAuthModalOpen,
     setShowCategoriesModal,
-    setShowForm,
     setShowHelpModal,
     setView,
   ]);
 
   useKeyboardShortcuts(shortcuts, { enabled: true, announceShortcuts: true });
+
+  const handleUseBudgetSuggestion = useCallback((category: string, suggestedLimit: number) => {
+    setPendingBudgetDraft({ category, suggestedLimit });
+    setView('budgets');
+    scrollContainerRef.current?.scrollTo({ top: 0 });
+  }, [setView]);
+
+  const handleBudgetDraftApplied = useCallback(() => {
+    setPendingBudgetDraft(null);
+  }, []);
 
   // Menú "Más" (móvil): cierre unificado (clic fuera + Escape, con restauración
   // de foco al disparador) — mismo patrón que el menú de Configuración y el
@@ -343,7 +368,6 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const handleCloseCategories = useCallback(() => setShowCategoriesModal(false), []);
   const handleCloseHelpModal = useCallback(() => setShowHelpModal(false), []);
   const handleCloseNotificationPreferences = useCallback(() => setShowNotificationPreferences(false), []);
-  const handleCloseForm = useCallback(() => { setBatchCount(0); setShowForm(false); }, [setBatchCount, setShowForm]);
   const handleRestoreTransaction = useCallback(
     (t: Omit<import('./types/finance').Transaction, 'id' | 'createdAt'>) => addTransaction(t),
     [addTransaction]
@@ -396,7 +420,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         <div
           ref={moreMenuRef}
           role="menu"
-          aria-label="Más secciones"
+          aria-label={UI_TEXT.aria.moreSections}
           className="sm:hidden fixed right-3 z-[70] bg-card text-card-foreground rounded-xl shadow-xl border border-border overflow-hidden min-w-[var(--shell-more-menu-w,170px)] animate-in slide-in-from-bottom-2 duration-150 fade-in [bottom:var(--shell-nav-h,72px)]"
         >
           {MOBILE_MORE_TABS.map(tab => (
@@ -424,7 +448,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
       {/* Mobile Bottom Navigation - Fixed at bottom, FUERA del contenedor scrollable */}
       <nav
         className="sm:hidden fixed bottom-0 left-0 right-0 z-[100] bg-card/95 backdrop-blur-md border-t border-border shadow-lg safe-area-bottom"
-        aria-label="Navegación principal"
+        aria-label={UI_TEXT.aria.mainNavigation}
         role="navigation"
       >
         <div className="flex justify-around items-center px-2 py-1.5 pb-2" role="tablist">
@@ -472,7 +496,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
                 }`}
               aria-haspopup="menu"
               aria-expanded={showMoreMenu}
-              aria-label="Más secciones"
+              aria-label={UI_TEXT.aria.moreSections}
             >
               <MoreHorizontal size={20} strokeWidth={MOBILE_MORE_KEYS.includes(view) ? 2.5 : 2} aria-hidden="true" />
               <span className="text-[10px] font-semibold leading-tight">Más</span>
@@ -673,11 +697,20 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
 
             {view === 'budgets' && (
               <div id="panel-budgets" role="tabpanel" aria-labelledby="tab-budgets">
-                {/* Fallback con la forma del plan (no el genérico): así la bajada del
-                    chunk y la carga interna son UN solo skeleton continuo, sin saltar
-                    de "3 barras" a "círculo" en la primera entrada. */}
+                <Suspense fallback={<ViewFallback />}>
+                  <BudgetsView
+                    initialDraft={pendingBudgetDraft}
+                    onInitialDraftApplied={handleBudgetDraftApplied}
+                    onOpenFinancialPlan={() => setView('financial-plan')}
+                  />
+                </Suspense>
+              </div>
+            )}
+
+            {view === 'financial-plan' && (
+              <div id="panel-financial-plan" role="tabpanel" aria-labelledby="tab-financial-plan">
                 <Suspense fallback={<PlanSkeleton />}>
-                  <BudgetsView />
+                  <FinancialPlanView onUseBudgetSuggestion={handleUseBudgetSuggestion} />
                 </Suspense>
               </div>
             )}

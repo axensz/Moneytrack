@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Wallet, DollarSign, TrendingUp, LogOut } from 'lucide-react';
 
 interface LoadingScreenProps {
   message?: string;
   variant?: 'default' | 'logout';
+  exiting?: boolean;
 }
 
 /**
@@ -14,16 +15,9 @@ interface LoadingScreenProps {
  */
 export const LoadingScreen: React.FC<LoadingScreenProps> = ({ 
   message = 'Organizando tus finanzas...',
-  variant = 'default'
+  variant = 'default',
+  exiting = false,
 }) => {
-  const [fadeOut, setFadeOut] = useState(false);
-
-  useEffect(() => {
-    // Activar fade-out justo antes de desmontarse
-    const timer = setTimeout(() => setFadeOut(true), 50);
-    return () => clearTimeout(timer);
-  }, []);
-
   const isLogout = variant === 'logout';
 
   return (
@@ -31,9 +25,11 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
       // Splash: usa el MISMO fondo de la app (--background) para que body,
       // loadscreen y app compartan color y no haya parpadeo negro al arrancar.
       // La marca se siente como luz: un bloom violet que florece desde el centro.
-      className={`fixed inset-0 overflow-hidden bg-background flex items-center justify-center z-50 transition-opacity duration-500 ${
-        fadeOut ? 'opacity-0' : 'opacity-100'
+      className={`fixed inset-0 overflow-hidden bg-background flex items-center justify-center z-50 transition-opacity duration-500 motion-reduce:transition-none ${
+        exiting ? 'opacity-0 pointer-events-none' : 'opacity-100'
       }`}
+      aria-busy={!exiting}
+      aria-live="polite"
     >
       {/* Bloom violet ambiental: florece tras el logo y se desvanece al borde. */}
       <div
@@ -182,6 +178,17 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
 
         .animate-pulse-slow {
           animation: pulse-slow 2s ease-in-out infinite;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .animate-scale-in,
+          .animate-fade-in-up,
+          .animate-float,
+          .animate-float-delayed,
+          .animate-bounce-dot,
+          .animate-pulse-slow {
+            animation: none;
+          }
         }
       `}</style>
     </div>

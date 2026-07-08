@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Wallet } from 'lucide-react';
 import { BaseModal } from '../../../modals/BaseModal';
+import { UI_TEXT } from '../../../../config/ui';
 import type { Account, NewAccount } from '../../../../types/finance';
 
 interface AccountType {
@@ -174,7 +175,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       closeOnBackdrop={false}
-      title={editingAccount ? 'Editar Cuenta' : 'Nueva Cuenta'}
+      title={editingAccount ? UI_TEXT.titles.editAccount : UI_TEXT.titles.newAccount}
       titleIcon={<Wallet size={20} className="text-primary" />}
       maxWidth="max-w-2xl"
     >
@@ -203,7 +204,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
             {editingAccount && editingAccount.type === 'credit' && (
               <>
                 <div>
-                  <label htmlFor="af-credit-limit-edit" className="label-base">Límite de Crédito</label>
+                  <label htmlFor="af-credit-limit-edit" className="label-base">Límite de crédito</label>
                   <input
                     id="af-credit-limit-edit"
                     type="text"
@@ -240,7 +241,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                   </p>
                 </div>
                 <div>
-                  <label htmlFor="af-interest-rate-edit" className="label-base">Tasa de Interés E.A. (%)</label>
+                  <label htmlFor="af-interest-rate-edit" className="label-base">Tasa de interés E.A. (%)</label>
                   <input
                     id="af-interest-rate-edit"
                     type="text"
@@ -409,7 +410,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                     </div>
 
                     <div>
-                      <label htmlFor="af-interest-rate" className="label-base">Tasa de Interés E.A. (%)</label>
+                      <label htmlFor="af-interest-rate" className="label-base">Tasa de interés E.A. (%)</label>
                       <input
                         id="af-interest-rate"
                         type="text"
@@ -462,10 +463,10 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
               disabled={isSubmitting}
               className="btn-submit disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? 'Guardando…' : editingAccount ? 'Actualizar' : 'Crear'}
+              {isSubmitting ? UI_TEXT.states.saving : editingAccount ? UI_TEXT.actions.update : UI_TEXT.actions.create}
             </button>
             <button onClick={onClose} disabled={isSubmitting} className="btn-cancel disabled:opacity-50 disabled:cursor-not-allowed">
-              Cancelar
+              {UI_TEXT.actions.cancel}
             </button>
           </div>
     </BaseModal>

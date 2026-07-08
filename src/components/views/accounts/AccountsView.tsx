@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Wallet, CreditCard, Banknote, Receipt, Sparkles } from 'lucide-react';
-import { BALANCE_ADJUSTMENT_CATEGORY } from '../../../config/constants';
+import { Wallet, CreditCard, Banknote, Receipt, Sparkles } from 'lucide-react';
+import { BALANCE_ADJUSTMENT_CATEGORY, UI_LABELS } from '../../../config/constants';
+import { ACTION_ICONS, sectionTitle, UI_TEXT } from '../../../config/ui';
 import { showToast } from '../../../utils/toastHelpers';
 import { useAccountDomain, useTransactionDomain, useRecurringDomain, useDebtsDomain, useFormatCurrency } from '../../../hooks/useFinanceSelectors';
 import type { Account } from '../../../types/finance';
@@ -21,10 +22,11 @@ import { useCardPaymentSchedule } from '../../../hooks/useCardPaymentSchedule';
 import { buildCreditCardUsagePlans } from '../../../utils/creditCardOptimizer';
 
 const ACCOUNT_TYPES = [
-  { value: 'savings' as const, label: 'Cuenta de Ahorros', icon: Wallet },
-  { value: 'credit' as const, label: 'Crédito', icon: CreditCard },
-  { value: 'cash' as const, label: 'Efectivo', icon: Banknote },
+  { value: 'savings' as const, label: UI_LABELS.accountTypes.savings, icon: Wallet },
+  { value: 'credit' as const, label: UI_LABELS.accountTypes.credit, icon: CreditCard },
+  { value: 'cash' as const, label: UI_LABELS.accountTypes.cash, icon: Banknote },
 ];
+const NewIcon = ACTION_ICONS.new;
 
 /**
  * Vista de Cuentas y Categorías
@@ -374,7 +376,7 @@ export const AccountsView: React.FC = () => {
       <div className="flex justify-between items-start mb-6 flex-wrap gap-4">
         <div>
           <h2 className="text-xl font-bold text-foreground">
-            Cuentas
+            {sectionTitle('accounts')}
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
             Administra tus cuentas bancarias y tarjetas de crédito
@@ -412,8 +414,8 @@ export const AccountsView: React.FC = () => {
             disabled={accountsLoading}
             className="btn-primary"
           >
-            <Plus size={18} />
-            Nueva Cuenta
+            <NewIcon size={18} />
+            {UI_TEXT.titles.newAccount}
           </button>
         </div>
       </div>

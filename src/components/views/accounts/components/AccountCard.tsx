@@ -5,11 +5,12 @@ import { Edit2, Trash2, GripVertical, ChevronUp, ChevronDown, Wallet, CreditCard
 import type { Account } from '../../../../types/finance';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 import { BalanceSettling } from '@/components/shared/BalanceSettling';
+import { UI_LABELS } from '@/config/constants';
 
 const ACCOUNT_TYPES = [
-  { value: 'savings' as const, label: 'Cuenta de Ahorros', icon: Wallet },
-  { value: 'credit' as const, label: 'Crédito', icon: CreditCard },
-  { value: 'cash' as const, label: 'Efectivo', icon: Banknote },
+  { value: 'savings' as const, label: UI_LABELS.accountTypes.savings, icon: Wallet },
+  { value: 'credit' as const, label: UI_LABELS.accountTypes.credit, icon: CreditCard },
+  { value: 'cash' as const, label: UI_LABELS.accountTypes.cash, icon: Banknote },
 ];
 
 interface AccountCardProps {

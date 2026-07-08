@@ -40,7 +40,7 @@ export function OnboardingChecklist({
   return (
     <section
       aria-label="Primeros pasos"
-      className="fixed bottom-[156px] left-4 right-4 z-40 rounded-2xl border border-border-accent bg-card/95 p-4 shadow-2xl backdrop-blur-sm sm:bottom-6 sm:left-6 sm:right-auto sm:w-[360px] sm:p-5"
+      className="pointer-events-none fixed bottom-[156px] left-4 right-4 z-40 rounded-2xl border border-border-accent bg-card/95 p-4 shadow-2xl backdrop-blur-sm sm:bottom-6 sm:left-6 sm:right-auto sm:w-[360px] sm:p-5"
     >
       <div className="mb-3">
         <h2 className="text-sm font-bold text-foreground">Primeros pasos</h2>
@@ -64,7 +64,7 @@ export function OnboardingChecklist({
             {!step.done && (
               <button
                 onClick={step.onAction}
-                className="flex items-center gap-1 rounded-lg bg-primary-solid px-2.5 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="pointer-events-auto flex items-center gap-1 rounded-lg bg-primary-solid px-2.5 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <step.icon size={12} aria-hidden="true" />
                 {step.cta}

@@ -1,23 +1,23 @@
 'use client';
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
+import { Loader2, X } from 'lucide-react';
 import type {
   Transaction,
   FilterValue,
   DateRangePreset,
 } from '../../../types/finance';
 import { useTransactionDomain, useAccountDomain, useBeneficiaryDomain, useCategoryDomain, useRecurringDomain, useFormatCurrency } from '../../../hooks/useFinanceSelectors';
-import dynamic from 'next/dynamic';
 
 /**
  * S5: Carga perezosa del modal de importación.
  * ImportTransactionsModal arrastra @google/genai (~400KB) y xlsx (~200KB).
- * Con dynamic + ssr:false solo se descarga el chunk cuando el usuario abre el modal.
+ * Con lazy + Suspense solo se descarga el chunk cuando el usuario abre el modal,
+ * mostrando feedback inmediato mientras baja el importador real.
  */
-const ImportTransactionsModal = dynamic(
+const ImportTransactionsModal = lazy(
   () => import('../../modals/ImportTransactionsModal').then((m) => ({ default: m.ImportTransactionsModal })),
-  { ssr: false, loading: () => null },
 );
 import { DATE_PRESETS } from '../../../utils/dateUtils';
 
@@ -31,6 +31,41 @@ import { TransactionsList } from './components/TransactionsList';
 // Hook
 import { useTransactionsView } from './hooks/useTransactionsView';
 import { useCSVExport } from '../../../hooks/useCSVExport';
+
+const ImportTransactionsLoading = ({ onClose }: { onClose: () => void }) => (
+  <div
+    className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Preparando importador"
+    aria-busy="true"
+  >
+    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+    <div className="relative w-full sm:max-w-lg bg-white dark:bg-gray-900 sm:rounded-2xl rounded-t-2xl shadow-2xl overflow-hidden sm:my-auto">
+      <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 dark:border-gray-700 bg-muted">
+        <div>
+          <h2 className="text-base font-bold text-gray-900 dark:text-white">
+            Preparando importador
+          </h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Cargando herramientas de importación
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-2 hover:bg-white/70 dark:hover:bg-gray-700 rounded-xl transition-colors"
+          aria-label="Cerrar importador"
+        >
+          <X size={18} className="text-muted-foreground" />
+        </button>
+      </div>
+      <div className="px-4 sm:px-6 py-8 flex items-center justify-center gap-3 text-sm text-muted-foreground">
+        <Loader2 size={18} className="animate-spin text-primary" aria-hidden="true" />
+        <span>Abriendo importación...</span>
+      </div>
+    </div>
+  </div>
+);
 
 interface TransactionsViewProps {
   showForm: boolean;
@@ -128,12 +163,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   const { exportTransactionsCSV } = useCSVExport();
 
   const [showImport, setShowImport] = useState(false);
-  // importEverOpened: monta el modal solo después del primer clic en "Importar".
-  // Esto fuerza al browser a descargar el chunk solo cuando realmente se necesita.
-  const [importEverOpened, setImportEverOpened] = useState(false);
-
   const handleOpenImport = () => {
-    setImportEverOpened(true);
     setShowImport(true);
   };
 
@@ -179,7 +209,11 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   return (
     <div className="card">
       {/* S5: El modal (y sus ~600KB de deps) solo se carga tras el primer click en Importar */}
-      {importEverOpened && <ImportTransactionsModal isOpen={showImport} onClose={() => setShowImport(false)} onOpenAISettings={onOpenAISettings} />}
+      {showImport && (
+        <Suspense fallback={<ImportTransactionsLoading onClose={() => setShowImport(false)} />}>
+          <ImportTransactionsModal isOpen={showImport} onClose={() => setShowImport(false)} onOpenAISettings={onOpenAISettings} />
+        </Suspense>
+      )}
       {/* Mensaje de ayuda cuando no hay cuentas */}
       {accounts.length === 0 && <NoAccountsMessage onCreateAccount={onGoToAccounts} />}
 

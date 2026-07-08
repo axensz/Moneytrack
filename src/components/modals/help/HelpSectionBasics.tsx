@@ -103,14 +103,16 @@ export const HelpSectionBasics: React.FC = () => (
           <div className="rounded-xl border border-border overflow-hidden bg-card grid sm:grid-cols-2 divide-y sm:divide-y-0 divide-border">
             {group.items.map((item, i) => {
               const Icon = item.icon;
+              const isLastOddItem = group.items.length % 2 === 1 && i === group.items.length - 1;
               // En sm (2 col): borde izquierdo en la columna derecha y borde
-              // superior a partir de la 2ª fila; dibuja la rejilla sin solapes.
+              // superior a partir de la 2ª fila; si queda una última celda impar,
+              // ocupa ambas columnas para que la tabla cierre visualmente.
               const isRightCol = i % 2 === 1;
               const isSecondRowPlus = i >= 2;
               return (
                 <div
                   key={item.name}
-                  className={`p-4 border-border ${isRightCol ? 'sm:border-l' : ''} ${isSecondRowPlus ? 'sm:border-t' : ''}`}
+                  className={`p-4 border-border ${isLastOddItem ? 'sm:col-span-2' : ''} ${isRightCol && !isLastOddItem ? 'sm:border-l' : ''} ${isSecondRowPlus ? 'sm:border-t' : ''}`}
                 >
                   <div className="flex items-center gap-2 mb-2">
                     {/* Un solo tono neutro de marca para TODOS los iconos. */}

@@ -109,10 +109,40 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
   const [pendingAction, setPendingAction] = useState<'submit' | 'continue' | null>(null);
   const [isFetchingTrm, setIsFetchingTrm] = useState(false);
   const [officialTrmError, setOfficialTrmError] = useState('');
+  const [officialTrmApplied, setOfficialTrmApplied] = useState(false);
+
+  const trmStatusText = officialTrmError ||
+    (convertedAmount
+      ? `${officialTrmApplied ? 'TRM oficial aplicada. ' : ''}Se registra en COP: ${formatCurrency(convertedAmount)}`
+      : (officialTrmApplied ? 'TRM oficial aplicada' : 'Convierte el gasto a COP para cupo y reportes'));
+
+  const handleCurrencyChange = useCallback((currency: 'COP' | 'USD') => {
+    setOfficialTrmError('');
+    setOfficialTrmApplied(false);
+    setNewTransaction(prev => ({
+      ...prev,
+      currency,
+      exchangeRate: currency === 'COP' ? '' : prev.exchangeRate,
+    }));
+  }, [setNewTransaction]);
+
+  const handleExchangeRateChange = useCallback((value: string) => {
+    setOfficialTrmError('');
+    setOfficialTrmApplied(false);
+    setNewTransaction(prev => ({ ...prev, exchangeRate: unformatNumber(value) }));
+  }, [setNewTransaction]);
+
+  useEffect(() => {
+    if (!supportsForeignCurrency || selectedCurrency !== 'USD') {
+      setOfficialTrmError('');
+      setOfficialTrmApplied(false);
+    }
+  }, [supportsForeignCurrency, selectedCurrency]);
 
   const handleUseOfficialTrm = useCallback(async () => {
     setIsFetchingTrm(true);
     setOfficialTrmError('');
+    setOfficialTrmApplied(false);
     try {
       const response = await fetch(OFFICIAL_TRM_URL);
       if (!response.ok) throw new Error('TRM request failed');
@@ -120,12 +150,17 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
       const rate = Number(data[0]?.valor);
       if (!Number.isFinite(rate) || rate <= 0) throw new Error('Invalid TRM response');
       setNewTransaction(prev => ({ ...prev, exchangeRate: rate.toString() }));
+      setOfficialTrmApplied(true);
     } catch {
-      setOfficialTrmError('No se pudo consultar la TRM oficial');
+      const hasManualRate = parseCurrency(String(newTransaction.exchangeRate || '')) > 0;
+      setOfficialTrmError(hasManualRate
+        ? 'No se pudo consultar la TRM oficial. La tasa actual queda manual.'
+        : 'No se pudo consultar la TRM oficial. Ingresa la tasa manualmente.'
+      );
     } finally {
       setIsFetchingTrm(false);
     }
-  }, [setNewTransaction]);
+  }, [newTransaction.exchangeRate, setNewTransaction]);
 
   const checkDuplicatesAndSubmit = useCallback((action: 'submit' | 'continue') => {
     const matches = detectDuplicates(newTransaction, transactions);
@@ -236,11 +271,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                     <button
                       key={currency}
                       type="button"
-                      onClick={() => setNewTransaction({
-                        ...newTransaction,
-                        currency,
-                        exchangeRate: currency === 'COP' ? '' : newTransaction.exchangeRate,
-                      })}
+                      onClick={() => handleCurrencyChange(currency)}
                       className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${selectedCurrency === currency
                         ? 'bg-white dark:bg-gray-700 text-blue-700 dark:text-blue-300 shadow-sm'
                         : 'text-muted-foreground hover:text-foreground'
@@ -268,9 +299,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                     type="text"
                     inputMode="decimal"
                     value={formatNumberForInput(newTransaction.exchangeRate || '')}
-                    onChange={(e) =>
-                      setNewTransaction({ ...newTransaction, exchangeRate: unformatNumber(e.target.value) })
-                    }
+                    onChange={(e) => handleExchangeRateChange(e.target.value)}
                     placeholder="4.000"
                     className="input-base"
                   />
@@ -278,13 +307,17 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                     type="button"
                     onClick={handleUseOfficialTrm}
                     disabled={isFetchingTrm}
-                    className="shrink-0 px-3 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                    aria-busy={isFetchingTrm}
+                    className="shrink-0 min-w-[96px] px-3 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
                   >
-                    {isFetchingTrm ? '...' : 'Oficial'}
+                    {isFetchingTrm ? '...' : 'Usar oficial'}
                   </button>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {officialTrmError || (convertedAmount ? `Se registra en COP: ${formatCurrency(convertedAmount)}` : 'Convierte el gasto a COP para cupo y reportes')}
+                <p
+                  className={`text-xs mt-1 ${officialTrmError ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}
+                  aria-live="polite"
+                >
+                  {trmStatusText}
                 </p>
               </div>
             )}

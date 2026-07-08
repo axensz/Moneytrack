@@ -2,7 +2,7 @@ import React from 'react';
 import { Compass, Zap } from 'lucide-react';
 
 /**
- * Atajos de teclado — refleja EXACTAMENTE los registrados en finance-tracker.tsx
+ * Atajos de teclado — refleja EXACTAMENTE los registrados en AuthenticatedApp.tsx
  * (useKeyboardShortcuts). Si cambian allí, actualizar aquí. Agrupados por intención
  * (navegar vs. actuar); las teclas se muestran como <kbd> con tokens del sistema.
  */
@@ -15,21 +15,21 @@ const shortcutGroups: {
     title: 'Navegación',
     icon: Compass,
     items: [
-      { keys: ['Alt', '1'], desc: 'Ir a Transacciones' },
-      { keys: ['Alt', '2'], desc: 'Ir a Cuentas' },
-      { keys: ['Alt', '3'], desc: 'Ir a Pagos Periódicos' },
-      { keys: ['Alt', '4'], desc: 'Ir a Préstamos' },
-      { keys: ['Alt', '5'], desc: 'Ir a Presupuestos' },
-      { keys: ['Alt', '6'], desc: 'Ir a Metas' },
-      { keys: ['Alt', '7'], desc: 'Ir a Estadísticas' },
+      { keys: ['1'], desc: 'Ir a Transacciones' },
+      { keys: ['2'], desc: 'Ir a Cuentas' },
+      { keys: ['3'], desc: 'Ir a Pagos Periódicos' },
+      { keys: ['4'], desc: 'Ir a Préstamos' },
+      { keys: ['5'], desc: 'Ir a Presupuestos' },
+      { keys: ['6'], desc: 'Ir a Metas' },
+      { keys: ['7'], desc: 'Ir a Estadísticas' },
     ],
   },
   {
     title: 'Acciones',
     icon: Zap,
     items: [
-      { keys: ['Ctrl', 'N'], desc: 'Nueva transacción' },
-      { keys: ['Ctrl', 'H'], desc: 'Abrir esta ayuda' },
+      { keys: ['N'], desc: 'Nueva transacción' },
+      { keys: ['H'], desc: 'Abrir esta ayuda' },
       { keys: ['Esc'], desc: 'Cerrar ventana o formulario' },
     ],
   },

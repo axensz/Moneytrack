@@ -245,24 +245,31 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   // Memoized keyboard shortcuts (prevents array recreation each render)
   const shortcuts = useMemo(() => [
     {
-      key: 'n', modifiers: ['ctrl' as const],
+      key: 'n',
       description: 'Nueva transacción',
       action: () => { if (accounts.length > 0) { setShowForm(true); setView('transactions'); } }
     },
-    { key: '1', modifiers: ['alt' as const], description: 'Ir a Transacciones', action: () => setView('transactions') },
-    { key: '2', modifiers: ['alt' as const], description: 'Ir a Cuentas', action: () => setView('accounts') },
-    { key: '3', modifiers: ['alt' as const], description: 'Ir a Pagos Periódicos', action: () => setView('recurring') },
-    { key: '4', modifiers: ['alt' as const], description: 'Ir a Préstamos', action: () => setView('debts') },
-    { key: '5', modifiers: ['alt' as const], description: 'Ir a Presupuestos', action: () => setView('budgets') },
-    { key: '6', modifiers: ['alt' as const], description: 'Ir a Metas', action: () => setView('goals') },
-    { key: '7', modifiers: ['alt' as const], description: 'Ir a Estadísticas', action: () => setView('stats') },
-    { key: 'h', modifiers: ['ctrl' as const], description: 'Abrir ayuda', action: () => setShowHelpModal(true) },
+    { key: '1', description: 'Ir a Transacciones', action: () => setView('transactions') },
+    { key: '2', description: 'Ir a Cuentas', action: () => setView('accounts') },
+    { key: '3', description: 'Ir a Pagos Periódicos', action: () => setView('recurring') },
+    { key: '4', description: 'Ir a Préstamos', action: () => setView('debts') },
+    { key: '5', description: 'Ir a Presupuestos', action: () => setView('budgets') },
+    { key: '6', description: 'Ir a Metas', action: () => setView('goals') },
+    { key: '7', description: 'Ir a Estadísticas', action: () => setView('stats') },
+    { key: 'h', description: 'Abrir ayuda', action: () => setShowHelpModal(true) },
     {
       key: 'Escape', description: 'Cerrar modal',
       action: () => { setShowForm(false); setShowHelpModal(false); setShowCategoriesModal(false); setIsAuthModalOpen(false); },
       preventDefault: false
     }
-  ], [accounts.length]);
+  ], [
+    accounts.length,
+    setIsAuthModalOpen,
+    setShowCategoriesModal,
+    setShowForm,
+    setShowHelpModal,
+    setView,
+  ]);
 
   useKeyboardShortcuts(shortcuts, { enabled: true, announceShortcuts: true });
 
@@ -356,7 +363,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const handleGoToAccounts = useCallback(() => {
     handleDismissWelcomeModal();
     setView('accounts');
-  }, [handleDismissWelcomeModal]);
+  }, [handleDismissWelcomeModal, setView]);
 
   // Notificar al padre cuando los datos están listos
   const isDataLoading = user && (accountsLoading || transactionsLoading);

@@ -16,6 +16,7 @@ describe('parseAmount', () => {
   it('parses USD amounts without corrupting the C/O/P letters (F6)', () => {
     expect(parseAmount('USD $ 99,99')).toBeCloseTo(99.99, 2);
     expect(parseAmount('USD 1,250.50')).toBeCloseTo(1250.5, 2);
+    expect(parseAmount('US$ 99.99')).toBeCloseTo(99.99, 2);
   });
 
   it('parses simple comma decimals', () => {
@@ -127,6 +128,41 @@ describe('parseCSV multi-currency (Fase 4)', () => {
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].needsExchangeRate).toBe(true);
     expect(result.rows[0].originalCurrency).toBe('USD');
+  });
+
+  it('detects USD embedded in the amount column without a Moneda column', () => {
+    const result = parseCSV([
+      'Fecha;Descripcion;Monto',
+      '2026-05-10;Compra Amazon;USD -99,99',
+      '2026-05-11;Compra Apple;US$ -10.50',
+    ].join('\n'));
+
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows[0]).toMatchObject({
+      amount: 99.99,
+      originalCurrency: 'USD',
+      needsExchangeRate: true,
+    });
+    expect(result.rows[1]).toMatchObject({
+      amount: 10.5,
+      originalCurrency: 'USD',
+      needsExchangeRate: true,
+    });
+  });
+
+  it('converts embedded USD amount when the same row has TRM', () => {
+    const result = parseCSV([
+      'Fecha;Descripcion;Monto;TRM',
+      '2026-05-10;Compra Amazon;USD -99,99;4000',
+    ].join('\n'));
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({
+      amount: Math.round(99.99 * 4000),
+      originalAmount: 99.99,
+      originalCurrency: 'USD',
+      exchangeRate: 4000,
+    });
   });
 });
 

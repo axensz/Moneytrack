@@ -208,8 +208,9 @@ describe('Feature: card-payment-window-fix, Property 6: Balance comparison value
           // Row 2: "Sin registrar" → formatCurrency(usedCredit - projectedTotal)
           const row2Label = rows[2].querySelector('span:first-child');
           const row2Value = rows[2].querySelector('span:last-child');
-          expect(row2Label?.textContent).toBe('Sin registrar');
-          expect(row2Value?.textContent).toBe(formatCurrency(usedCredit - projectedTotal));
+          const difference = usedCredit - projectedTotal;
+          expect(row2Label?.textContent).toBe(difference < 0 ? 'Registrado de más' : 'Sin registrar');
+          expect(row2Value?.textContent).toBe(formatCurrency(difference < 0 ? Math.abs(difference) : difference));
         },
       ),
       { numRuns: 100 },
@@ -259,7 +260,8 @@ describe('Feature: balance-comparison-total-debt, Property 9: Fallback to projec
 
           // Row 2: "Sin registrar" value should be formatCurrency(usedCredit - projectedTotal)
           const row2Value = rows[2].querySelector('span:last-child');
-          expect(row2Value?.textContent).toBe(formatCurrency(usedCredit - projectedTotal));
+          const difference = usedCredit - projectedTotal;
+          expect(row2Value?.textContent).toBe(formatCurrency(difference < 0 ? Math.abs(difference) : difference));
         },
       ),
       { numRuns: 100 },
@@ -446,15 +448,17 @@ describe('Feature: balance-comparison-total-debt, Property: totalProjectedDebt o
           // Row 2: "Sin registrar" must be usedCredit - totalProjectedDebt
           const row2Label = rows[2].querySelector('span:first-child');
           const row2Value = rows[2].querySelector('span:last-child');
-          expect(row2Label?.textContent).toBe('Sin registrar');
-          expect(row2Value?.textContent).toBe(formatCurrency(usedCredit - totalProjectedDebt));
+          const difference = usedCredit - totalProjectedDebt;
+          expect(row2Label?.textContent).toBe(difference < 0 ? 'Registrado de más' : 'Sin registrar');
+          expect(row2Value?.textContent).toBe(formatCurrency(difference < 0 ? Math.abs(difference) : difference));
 
           // When projectedTotal differs from totalProjectedDebt, verify it does NOT use projectedTotal
           if (projectedTotal !== totalProjectedDebt) {
-            const wrongUnrecorded = formatCurrency(usedCredit - projectedTotal);
+            const wrongDifference = usedCredit - projectedTotal;
+            const wrongUnrecorded = formatCurrency(wrongDifference < 0 ? Math.abs(wrongDifference) : wrongDifference);
             const actualUnrecorded = row2Value?.textContent;
             // If the wrong value differs from the correct one, it must NOT match
-            if (wrongUnrecorded !== formatCurrency(usedCredit - totalProjectedDebt)) {
+            if (wrongUnrecorded !== formatCurrency(difference < 0 ? Math.abs(difference) : difference)) {
               expect(actualUnrecorded).not.toBe(wrongUnrecorded);
             }
           }

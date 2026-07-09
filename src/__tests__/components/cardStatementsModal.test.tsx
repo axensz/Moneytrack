@@ -17,7 +17,7 @@ const cardRow = {
   cycleStart: new Date(2026, 5, 16), cycleEnd: new Date(2026, 6, 15), paymentDueDate: new Date(2026, 7, 5),
 };
 const monthGroup = (over: Partial<MonthGroup> = {}): MonthGroup => ({
-  monthKey: '2026-07', label: 'julio de 2026', total: 100_000, remaining: 100_000, isCurrent: true, isFuture: false,
+  monthKey: '2026-07', label: 'julio de 2026', total: 100_000, remaining: 100_000, isCurrent: true, isFuture: false, hasActiveCycle: false,
   cards: [cardRow], ...over,
 });
 
@@ -42,6 +42,12 @@ describe('CardStatementsModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /septiembre de 2026/i }));
     expect(screen.getByText('Visa')).toBeTruthy();
     expect(screen.getByText(/cuota 2\/12/i)).toBeTruthy();
+  });
+
+  it('un ciclo activo que cierra en otro mes arranca expandido y etiquetado', () => {
+    render(<CardStatementsModal isOpen onClose={() => {}} schedule={[monthGroup({ isCurrent: false, hasActiveCycle: true })]} formatCurrency={fmt} />);
+    expect(screen.getByText('Ciclo actual')).toBeTruthy();
+    expect(screen.getByText('Visa')).toBeTruthy();
   });
 
   it('pago parcial muestra el saldo restante (lo que debes), no el total', () => {

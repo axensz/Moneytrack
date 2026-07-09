@@ -212,13 +212,25 @@ export function useAccountForm({
         if (editingAccount.type === 'credit') {
           const manualLimit = parseFloat(newAccount.monthlySpendingLimit.toString()) || 0;
           const creditLimit = parseFloat(newAccount.creditLimit.toString()) || 0;
+          const cutoffDay = parseInt(newAccount.cutoffDay.toString());
+          const paymentDay = parseInt(newAccount.paymentDay.toString());
           if (manualLimit < 0 || manualLimit > creditLimit) {
             showToast.error(ERROR_MESSAGES.INVALID_MONTHLY_SPENDING_LIMIT);
+            return;
+          }
+          if (isNaN(cutoffDay) || cutoffDay < 1 || cutoffDay > 31) {
+            showToast.error(ERROR_MESSAGES.INVALID_CUTOFF_DAY);
+            return;
+          }
+          if (isNaN(paymentDay) || paymentDay < 1 || paymentDay > 31) {
+            showToast.error(ERROR_MESSAGES.INVALID_PAYMENT_DAY);
             return;
           }
           if (newAccount.creditLimit) {
             updates.creditLimit = newAccount.creditLimit;
           }
+          updates.cutoffDay = cutoffDay;
+          updates.paymentDay = paymentDay;
           updates.interestRate = newAccount.interestRate || 0;
           updates.monthlySpendingLimit = newAccount.monthlySpendingLimit || 0;
         }

@@ -14,7 +14,7 @@
 
 import { useCallback } from 'react';
 import { isInternalTransferDescription } from '../utils/csvParser';
-import { transferImportKey, exactImportKey, importDayKey, importDescKey } from '../utils/importDuplicates';
+import { transferImportKey, importDayKey, importDescKey } from '../utils/importDuplicates';
 import type { ImportRow } from './useImportTransactions';
 import type { Transaction } from '../types/finance';
 
@@ -23,7 +23,11 @@ export interface UseImportDedupArgs {
 }
 
 export interface UseImportDedupReturn {
-  markDuplicates: (rows: ImportRow[], accountId: string) => ImportRow[];
+  markDuplicates: (
+    rows: ImportRow[],
+    accountId: string,
+    options?: { preserveIncludes?: boolean }
+  ) => ImportRow[];
 }
 
 /**
@@ -46,8 +50,10 @@ const buildExactKey = (type: string, date: Date, amount: number, description: st
 
 export function useImportDedup({ existingTransactions }: UseImportDedupArgs): UseImportDedupReturn {
   const markDuplicates = useCallback(
-    (rows: ImportRow[], accountId: string): ImportRow[] => {
-      // Construir sets de keys desde las transacciones existentes para el accountId dado.
+    (rows: ImportRow[], accountId: string, options?: { preserveIncludes?: boolean }): ImportRow[] => {
+      // Construir sets de keys desde las transacciones existentes.
+      // La cuenta se pega a la key normal porque el wizard puede re-rutar filas
+      // individuales (ej. pago TC base -> tarjeta) sin cambiar la cuenta global.
       const existingAccountKeys = new Set<string>();
       const existingTransferKeys = new Set<string>();
 
@@ -55,9 +61,9 @@ export function useImportDedup({ existingTransactions }: UseImportDedupArgs): Us
         const d = toDate(tx.date);
         if (isNaN(d.getTime())) return;
 
-        // Exact key para movimientos de la misma cuenta
-        if (tx.accountId === accountId) {
-          existingAccountKeys.add(buildExactKey(tx.type, d, tx.amount, tx.description));
+        // Exact key para movimientos normales, scoped por cuenta.
+        if (tx.accountId) {
+          existingAccountKeys.add(`${tx.accountId}|${buildExactKey(tx.type, d, tx.amount, tx.description)}`);
         }
 
         // Transfer key solo desde transacciones que SON transferencia/pago interno
@@ -78,18 +84,24 @@ export function useImportDedup({ existingTransactions }: UseImportDedupArgs): Us
 
         const duplicateInDB = isTransfer
           ? existingTransferKeys.has(key)
-          : existingAccountKeys.has(key);
+          : existingAccountKeys.has(`${row.accountId || accountId}|${key}`);
 
         const duplicateInFile = seenInFile.has(key);
         if (!duplicateInFile) seenInFile.add(key);
 
         const isDuplicate = duplicateInDB || duplicateInFile;
+        const wasDuplicate = !!row.isDuplicate;
+        const defaultInclude = !isDuplicate && !isTransfer && !row.needsExchangeRate;
+        const include = options?.preserveIncludes
+          ? !isDuplicate && !row.needsExchangeRate && (row.include || (wasDuplicate && !isTransfer))
+          : defaultInclude;
 
         return {
           ...row,
           isDuplicate,
-          // Excluir: duplicados, transferencias internas y filas con needsExchangeRate
-          include: !isDuplicate && !isTransfer && !row.needsExchangeRate,
+          // Excluir por defecto: duplicados, transferencias internas y filas sin TRM.
+          // En recálculos posteriores preservamos la selección manual.
+          include,
         };
       });
     },

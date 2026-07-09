@@ -7,6 +7,9 @@ import type { Account, Transaction } from '../../types/finance';
 const savings: Account = {
   id: 'sav', name: 'Ahorros', type: 'savings', isDefault: true, initialBalance: 0,
 };
+const credit: Account = {
+  id: 'tc', name: 'Visa', type: 'credit', isDefault: false, initialBalance: 0, creditLimit: 1_000_000,
+};
 
 function setup(currentBalance: number, balancesReady = true) {
   const addTransaction = vi.fn(async (_tx: Omit<Transaction, 'id'>) => {});
@@ -79,5 +82,21 @@ describe('useAccountForm — ajuste de saldo (repro del reporte)', () => {
     const tx = addTransaction.mock.calls[0]?.[0];
     // 563088 - 603088.11 = -40000.11 → gasto.
     expect(tx?.amount).toBeCloseTo(40000.11, 2);
+  });
+
+  it('al editar una TC guarda día de corte y día de pago', async () => {
+    const { result, updateAccount } = setup(0);
+    act(() => result.current.openEditForm(credit));
+    act(() => result.current.setNewAccount({
+      ...result.current.newAccount,
+      cutoffDay: 20,
+      paymentDay: 8,
+    }));
+    await act(async () => { await result.current.handleSubmit(); });
+
+    expect(updateAccount).toHaveBeenCalledWith('tc', expect.objectContaining({
+      cutoffDay: 20,
+      paymentDay: 8,
+    }));
   });
 });

@@ -4,7 +4,9 @@ import type { Account, Categories, Transaction } from '../../types/finance';
 import type { ImportRow } from '../../hooks/useImportTransactions';
 
 // ── Mocks de dependencias del hook ──────────────────────────────────────────
-const importTransactionsSpy = vi.fn(async (_rows: ImportRow[]) => {});
+const importTransactionsSpy = vi.fn(async (rows: ImportRow[]) => {
+  void rows;
+});
 const resetSpy = vi.fn();
 const setLearningRulesSpy = vi.fn();
 
@@ -152,6 +154,71 @@ describe('useImportWizard — caracterización de la lógica del wizard', () => 
     // La nueva: se incluye normalmente.
     expect(fresh?.isDuplicate).toBe(false);
     expect(fresh?.include).toBe(true);
+  });
+
+  it('handleDateChange recalcula duplicados y excluye la fila si ahora coincide', () => {
+    const existing: Transaction[] = [
+      { id: 't1', type: 'expense', amount: 15000, date: new Date(2026, 2, 10), description: 'COMPRA POS STARBUCKS', accountId: 'acc1', paid: true, category: 'Otros' } as Transaction,
+    ];
+    const onClose = vi.fn();
+    const { result } = renderHook(() => useImportWizard({ accounts, existingTransactions: existing, categories, onClose }));
+
+    act(() => result.current.setRows([row({ date: new Date(2026, 2, 11) })]));
+    expect(result.current.rows[0].isDuplicate).toBe(false);
+
+    act(() => result.current.handleDateChange(0, new Date(2026, 2, 10)));
+    expect(result.current.rows[0].isDuplicate).toBe(true);
+    expect(result.current.rows[0].include).toBe(false);
+  });
+
+  it('handleBulkYearChange recalcula duplicados despues de mover el ano', () => {
+    const existing: Transaction[] = [
+      { id: 't1', type: 'expense', amount: 15000, date: new Date(2025, 0, 15), description: 'COMPRA POS STARBUCKS', accountId: 'acc1', paid: true, category: 'Otros' } as Transaction,
+    ];
+    const onClose = vi.fn();
+    const { result } = renderHook(() => useImportWizard({ accounts, existingTransactions: existing, categories, onClose }));
+
+    act(() => result.current.setRows([row({ date: new Date(2026, 0, 15) })]));
+    expect(result.current.rows[0].isDuplicate).toBe(false);
+
+    act(() => result.current.handleBulkYearChange(2025));
+    expect(result.current.rows[0].isDuplicate).toBe(true);
+    expect(result.current.rows[0].include).toBe(false);
+  });
+
+  it('handleTransferDestinationChange desbloquea una transferencia seleccionada', () => {
+    const twoAccounts: Account[] = [
+      { id: 'acc1', name: 'Ahorros', type: 'savings', isDefault: true, initialBalance: 0 },
+      { id: 'acc2', name: 'Bolsillo', type: 'savings', isDefault: false, initialBalance: 0 },
+    ];
+    const onClose = vi.fn();
+    const { result } = renderHook(() => useImportWizard({ accounts: twoAccounts, existingTransactions, categories, onClose }));
+
+    act(() => result.current.setRows([row({ type: 'transfer', accountId: 'acc1', toAccountId: undefined })]));
+    expect(result.current.invalidIncludedCount).toBe(1);
+
+    act(() => result.current.handleTransferDestinationChange(0, 'acc2'));
+    expect(result.current.rows[0].toAccountId).toBe('acc2');
+    expect(result.current.invalidIncludedCount).toBe(0);
+  });
+
+  it('cambiar una transferencia de tarjeta a gasto usa la tarjeta seleccionada como origen', () => {
+    const cardAccounts: Account[] = [
+      { id: 'sav', name: 'Ahorros', type: 'savings', isDefault: true, initialBalance: 0 },
+      { id: 'cc', name: 'Visa', type: 'credit', isDefault: false, initialBalance: 0, bankAccountId: 'sav' },
+    ];
+    const onClose = vi.fn();
+    const { result } = renderHook(() => useImportWizard({ accounts: cardAccounts, existingTransactions, categories, onClose }));
+
+    act(() => result.current.handleAccountChange('cc'));
+    act(() => result.current.setRows([row({ type: 'transfer', accountId: 'sav', toAccountId: 'cc' })]));
+    act(() => result.current.handleTypeChange(0, 'expense'));
+
+    expect(result.current.rows[0]).toMatchObject({
+      type: 'expense',
+      accountId: 'cc',
+      toAccountId: undefined,
+    });
   });
 
   it('handleClose resetea el estado y llama onClose + reset', () => {

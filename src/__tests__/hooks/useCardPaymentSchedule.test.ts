@@ -54,6 +54,48 @@ describe('buildCardPaymentSchedule', () => {
     expect(future.cards[0].status).toBe('projected');
   });
 
+  it('aplica pagos tardíos al extracto abierto más antiguo', () => {
+    const latePayment: Transaction = {
+      id: 'late', type: 'transfer', amount: 300_000, category: 'Pago Crédito', description: '',
+      date: new Date(2026, 6, 20), paid: true, accountId: 'banco', toAccountId: 'tc',
+    } as Transaction;
+
+    const groups = buildCardPaymentSchedule(
+      [card],
+      [charge({ amount: 300_000, installments: 1 }), latePayment],
+      [], NOW,
+    );
+
+    const juneStatement = groups.find(g => g.monthKey === '2026-06')!;
+    expect(juneStatement.cards[0]).toMatchObject({
+      statementTotal: 300_000,
+      paidAmount: 300_000,
+      remaining: 0,
+      status: 'paid',
+    });
+  });
+
+  it('marca el ciclo activo aunque cierre en el mes siguiente al corte', () => {
+    const groups = buildCardPaymentSchedule(
+      [{ ...card, usedCredit: 200_000 }],
+      [charge({
+        id: 'current',
+        amount: 200_000,
+        installments: 1,
+        date: new Date(2026, 5, 16),
+      })],
+      [], NOW,
+    );
+
+    const julyStatement = groups.find(g => g.monthKey === '2026-07')!;
+    expect(julyStatement.isCurrent).toBe(false);
+    expect(julyStatement.hasActiveCycle).toBe(true);
+    expect(julyStatement.cards[0]).toMatchObject({
+      projectedTotal: 200_000,
+      isActiveCycle: true,
+    });
+  });
+
   it('expone projectedTotal y totalProjectedDebt en el ciclo en curso (index 0)', () => {
     // Compra 16 may a 3 cuotas de 100k → cuotas en index -1, 0, 1.
     const groups = buildCardPaymentSchedule(
@@ -70,6 +112,25 @@ describe('buildCardPaymentSchedule', () => {
     // Los ciclos pasados no llevan estos campos.
     const others = all.filter(c => c.projectedTotal === undefined);
     expect(others.every(c => c.totalProjectedDebt === undefined)).toBe(true);
+  });
+
+  it('muestra deuda real si usedCredit existe aunque no haya extracto reconstruible', () => {
+    const groups = buildCardPaymentSchedule(
+      [{ ...card, usedCredit: 250_000 }],
+      [],
+      [],
+      NOW,
+    );
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].remaining).toBe(250_000);
+    expect(groups[0].cards[0]).toMatchObject({
+      statementTotal: 0,
+      remaining: 250_000,
+      status: 'pending',
+      projectedTotal: 0,
+      totalProjectedDebt: 0,
+    });
   });
 
   it('remaining = statementTotal - pagado (saldo pendiente en pago parcial)', () => {

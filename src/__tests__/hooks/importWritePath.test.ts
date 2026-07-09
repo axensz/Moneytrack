@@ -74,6 +74,7 @@ describe('useImportTransactions — validación por fila', () => {
     mockState.updates = [];
     mockState.commits = 0;
     mockState.gen = 0;
+    localStorage.clear();
   });
 
   it('omite amount NaN y NO mete increment(NaN) en usedCredit', async () => {
@@ -86,7 +87,7 @@ describe('useImportTransactions — validación por fila', () => {
     // Solo el delta de la fila válida: +10.000, nunca NaN.
     expect(ccUpdates()).toHaveLength(1);
     expect(ccUpdates()[0].data.usedCredit).toEqual({ __increment: 10_000 });
-    expect(res.errors.some(e => e.includes('Monto inválido'))).toBe(true);
+    expect(res.errors.some(e => e.includes('Monto invalido'))).toBe(true);
   });
 
   it('omite montos ≤ 0', async () => {
@@ -124,5 +125,29 @@ describe('useImportTransactions — validación por fila', () => {
     await runImport([row({ amount: 10_000, date: statementDate })]);
     expect(mockState.sets[0].data.createdAt).toBe(statementDate);
     expect(mockState.sets[0].data.date).toBe(statementDate);
+  });
+
+  it('modo invitado importa en localStorage sin exigir usuario autenticado', async () => {
+    const { result } = renderHook(() => useImportTransactions(null, accounts));
+    let res!: Awaited<ReturnType<typeof result.current.importTransactions>>;
+
+    await act(async () => {
+      res = await result.current.importTransactions([row({ amount: 33_000 })]);
+    });
+
+    expect(res.imported).toBe(1);
+    expect(res.errors).toEqual([]);
+    expect(mockState.sets).toHaveLength(0);
+    expect(mockState.commits).toBe(0);
+
+    const saved = JSON.parse(localStorage.getItem('transactions') ?? '[]');
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({
+      type: 'expense',
+      amount: 33_000,
+      accountId: 'cc',
+      description: 'X',
+    });
+    expect(typeof saved[0].id).toBe('string');
   });
 });

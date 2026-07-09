@@ -52,6 +52,8 @@ export const BalanceComparisonSection: React.FC<BalanceComparisonSectionProps> =
   const effectiveProjected = totalProjectedDebt ?? projectedTotal;
   const unrecorded = usedCredit - effectiveProjected;
   const hasUnrecorded = unrecorded > 0;
+  const differenceLabel = unrecorded < 0 ? 'Registrado de más' : 'Sin registrar';
+  const differenceValue = unrecorded < 0 ? Math.abs(unrecorded) : unrecorded;
   const label = totalProjectedDebt != null ? 'Proyectado (total)' : 'Proyectado';
   const mask = '------';
 
@@ -73,9 +75,9 @@ export const BalanceComparisonSection: React.FC<BalanceComparisonSectionProps> =
         </span>
       </div>
 
-      {/* Sin registrar */}
+      {/* Diferencia */}
       <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">Sin registrar</span>
+        <span className="text-xs text-muted-foreground">{differenceLabel}</span>
         <span
           className={`text-xs font-medium ${
             hasUnrecorded
@@ -84,7 +86,7 @@ export const BalanceComparisonSection: React.FC<BalanceComparisonSectionProps> =
           }`}
           data-testid="unrecorded-value"
         >
-          {hideBalances ? mask : formatCurrency(unrecorded)}
+          {hideBalances ? mask : formatCurrency(differenceValue)}
         </span>
       </div>
     </div>

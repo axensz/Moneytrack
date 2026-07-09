@@ -102,6 +102,8 @@ describe('BalanceComparisonSection', () => {
     const unrecordedEl = screen.getByTestId('unrecorded-value');
     expect(unrecordedEl.className).toContain('text-foreground');
     expect(unrecordedEl.className).not.toContain('text-warning');
+    expect(screen.getByText('Registrado de más')).toBeInTheDocument();
+    expect(unrecordedEl).toHaveTextContent(formatCurrency(150000));
   });
 
   it('computes Sin registrar as usedCredit - projectedTotal', () => {

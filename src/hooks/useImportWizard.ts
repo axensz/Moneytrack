@@ -11,7 +11,7 @@
  * La escritura atómica a Firestore sigue en `useImportTransactions`.
  */
 
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback, useMemo, type SetStateAction } from 'react';
 import { useGeminiKey } from '../contexts/GeminiKeyContext';
 import { useAuth } from './useAuth';
 import { useImportTransactions, type ImportRow } from './useImportTransactions';
@@ -27,7 +27,7 @@ import {
 } from '../utils/importLearning';
 import { CREDIT_PAYMENT_CATEGORY, DEFAULT_CATEGORIES } from '../config/constants';
 import type { Account, Categories, Transaction } from '../types/finance';
-import type { WizardStep, AISuggestion } from '../types/import';
+import type { WizardStep } from '../types/import';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -168,6 +168,20 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
   const dedup = useImportDedup({ existingTransactions });
   const { markDuplicates } = dedup;
 
+  const resolveCurrentAccountId = useCallback(() => (
+    selectedAccountId || nonCreditAccounts[0]?.id || accounts[0]?.id || ''
+  ), [accounts, nonCreditAccounts, selectedAccountId]);
+
+  const setRowsAndRefresh = useCallback((updater: SetStateAction<ImportRow[]>) => {
+    setRows(prev => {
+      const next = updater instanceof Function ? updater(prev) : updater;
+      const accountId = resolveCurrentAccountId();
+      return accountId
+        ? markDuplicates(next, accountId, { preserveIncludes: true })
+        : next;
+    });
+  }, [markDuplicates, resolveCurrentAccountId]);
+
   // ─── Parse stats: merge with dedup counts ─────────────────────────────
 
   const parseStats = useMemo(() => {
@@ -236,7 +250,7 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
     setSelectedAccountId(accountId);
     setRows(prev => {
       const rerouted = routeRows(prev, accountId, learningRules, accounts, availableCategoryOptions);
-      return markDuplicates(rerouted, accountId);
+      return markDuplicates(rerouted, accountId, { preserveIncludes: true });
     });
   }, [learningRules, accounts, availableCategoryOptions, markDuplicates]);
 
@@ -257,25 +271,38 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
   }, [rows, setLearningRules]);
 
   const handleTypeChange = useCallback((index: number, type: 'income' | 'expense' | 'transfer') => {
-    setRows(prev => prev.map((r, i) => {
+    setRowsAndRefresh(prev => prev.map((r, i) => {
       if (i !== index) return r;
-      const { accountId, toAccountId } = inferTransferRoute(r.accountId, type === 'transfer', accounts);
+      const baseAccountId = type === 'transfer'
+        ? (r.accountId || resolveCurrentAccountId())
+        : resolveCurrentAccountId();
+      const { accountId, toAccountId } = inferTransferRoute(baseAccountId, type === 'transfer', accounts);
       return { ...r, type, accountId, toAccountId };
     }));
-  }, [accounts]);
+  }, [accounts, resolveCurrentAccountId, setRowsAndRefresh]);
 
   const handleDateChange = useCallback((index: number, date: Date) => {
-    setRows(prev => prev.map((r, idx) => idx === index ? { ...r, date } : r));
-  }, []);
+    setRowsAndRefresh(prev => prev.map((r, idx) => idx === index ? { ...r, date } : r));
+  }, [setRowsAndRefresh]);
 
   const handleBulkYearChange = useCallback((targetYear: number) => {
     if (!targetYear) return;
-    setRows(prev => prev.map(r => {
+    setRowsAndRefresh(prev => prev.map(r => {
       const d = new Date(r.date);
       d.setFullYear(targetYear);
       return { ...r, date: d };
     }));
-  }, []);
+  }, [setRowsAndRefresh]);
+
+  const handleTransferDestinationChange = useCallback((index: number, toAccountId: string) => {
+    setRowsAndRefresh(prev => prev.map((r, idx) => {
+      if (idx !== index) return r;
+      return {
+        ...r,
+        toAccountId: toAccountId && toAccountId !== r.accountId ? toAccountId : undefined,
+      };
+    }));
+  }, [setRowsAndRefresh]);
 
   const importingRef = useRef(false);
   const handleImport = useCallback(async () => {
@@ -296,15 +323,21 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
 
   const handleApplyAISuggestions = useCallback(() => {
     const updatedRows = aiApply(rows);
-    setRows(updatedRows);
-  }, [aiApply, rows]);
+    setRowsAndRefresh(updatedRows);
+  }, [aiApply, rows, setRowsAndRefresh]);
 
   const includedCount = rows.filter(r => r.include).length;
+  const invalidIncludedCount = rows.filter(r =>
+    r.include && (
+      r.needsExchangeRate ||
+      (r.type === 'transfer' && (!r.toAccountId || r.toAccountId === r.accountId))
+    )
+  ).length;
 
   return {
     // estado
     step, setStep,
-    rows, setRows,
+    rows, setRows: setRowsAndRefresh,
     selectedAccountId,
     parseError,
     fileName,
@@ -323,6 +356,7 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
     creditAccounts,
     availableCategoryOptions,
     includedCount,
+    invalidIncludedCount,
     aiSuggestionTransactionCount,
     aiSuggestionsByCategory,
     aiReason,
@@ -338,6 +372,7 @@ export function useImportWizard({ accounts, existingTransactions, categories, on
     handleTypeChange,
     handleDateChange,
     handleBulkYearChange,
+    handleTransferDestinationChange,
     handleImport,
     handleAICategorize,
     handleSuggestionCategoryChange,

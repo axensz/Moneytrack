@@ -49,6 +49,7 @@ export function ImportTransactionsModal({ isOpen, onClose, onOpenAISettings }: I
     creditAccounts,
     availableCategoryOptions,
     includedCount,
+    invalidIncludedCount,
     aiSuggestionTransactionCount,
     aiSuggestionsByCategory,
     aiUnavailableMessage,
@@ -60,6 +61,9 @@ export function ImportTransactionsModal({ isOpen, onClose, onOpenAISettings }: I
     handleToggleAll,
     handleCategoryChange,
     handleTypeChange,
+    handleDateChange,
+    handleBulkYearChange,
+    handleTransferDestinationChange,
     handleImport,
     handleAICategorize,
     handleSuggestionCategoryChange,
@@ -149,8 +153,9 @@ export function ImportTransactionsModal({ isOpen, onClose, onOpenAISettings }: I
           {step === 'review' && (
             <ImportReviewStep
               rows={rows}
-              setRows={setRows}
               includedCount={includedCount}
+              invalidIncludedCount={invalidIncludedCount}
+              accounts={accounts}
               availableCategoryOptions={availableCategoryOptions}
               aiCategorizing={aiCategorizing}
               aiApplied={aiApplied}
@@ -163,6 +168,9 @@ export function ImportTransactionsModal({ isOpen, onClose, onOpenAISettings }: I
               onToggleAll={handleToggleAll}
               onCategoryChange={handleCategoryChange}
               onTypeChange={handleTypeChange}
+              onDateChange={handleDateChange}
+              onBulkYearChange={handleBulkYearChange}
+              onTransferDestinationChange={handleTransferDestinationChange}
               onAICategorize={handleAICategorize}
               onSuggestionCategoryChange={handleSuggestionCategoryChange}
               onApplyAISuggestions={handleApplyAISuggestions}
@@ -214,7 +222,7 @@ export function ImportTransactionsModal({ isOpen, onClose, onOpenAISettings }: I
               </button>
               <button
                 onClick={handleImport}
-                disabled={includedCount === 0 || status === 'importing'}
+                disabled={includedCount === 0 || invalidIncludedCount > 0 || status === 'importing'}
                 className="flex-1 sm:flex-none px-5 py-2 text-sm font-semibold bg-purple-600 hover:bg-purple-700 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {status === 'importing' && <Loader2 size={14} className="animate-spin" />}

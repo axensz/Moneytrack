@@ -165,6 +165,13 @@ export const AccountsView: React.FC = () => {
   const savingsAccounts = accounts.filter((acc) => acc.type === 'savings');
 
   const creditCards = accounts.filter((acc) => acc.type === 'credit' && acc.id);
+  const cardsNeedingStatementConfig = creditCards
+    .filter((card) => !card.cutoffDay || !card.paymentDay)
+    .map((card) => ({
+      id: card.id!,
+      name: card.name,
+      usedCredit: creditUsedMap.get(card.id!) ?? 0,
+    }));
   const mergeTargetCard = creditCards.find((card) => card.id === mergeTargetCardId) || null;
   const mergeCombinedCreditLimit = (mergeSourceCard?.creditLimit || 0) + (mergeTargetCard?.creditLimit || 0);
 
@@ -497,6 +504,7 @@ export const AccountsView: React.FC = () => {
         schedule={paymentSchedule}
         formatCurrency={formatCurrency}
         usedCreditByCard={usedCreditByCard}
+        cardsNeedingStatementConfig={cardsNeedingStatementConfig}
       />
 
       <MergeCreditCardsModal

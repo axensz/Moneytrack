@@ -19,6 +19,7 @@ import {
   parseAmount,
   parseDate,
   resolveImportCurrency,
+  extractCurrencyCode,
   suggestCategory,
 } from './csvParser';
 import { detectImportProfileFromSheetData } from './importProfiles';
@@ -78,6 +79,7 @@ interface GenericColumnMapping {
   category: number | null;
   currency: number | null;
   trm: number | null;
+  installment: number | null;
 }
 
 function normalize(s: string): string {
@@ -200,6 +202,7 @@ function detectGenericColumns(headers: string[]): GenericColumnMapping {
   let category: number | null = null;
   let currency: number | null = null;
   let trm: number | null = null;
+  let installment: number | null = null;
 
   headers.forEach((header, index) => {
     if (!header) return;
@@ -214,6 +217,7 @@ function detectGenericColumns(headers: string[]): GenericColumnMapping {
     if (description === -1 && includesAny(header, DESCRIPTION_HEADER_KEYWORDS)) description = index;
     if (typeIndicator === null && includesAny(header, TYPE_HEADER_KEYWORDS)) typeIndicator = index;
     if (category === null && includesAny(header, CATEGORY_HEADER_KEYWORDS)) category = index;
+    if (installment === null && isInstallmentColumn) installment = index;
 
     if (!isBalanceColumn && !isInstallmentColumn) {
       if (debit === null && includesAny(header, DEBIT_HEADER_KEYWORDS)) debit = index;
@@ -227,7 +231,7 @@ function detectGenericColumns(headers: string[]): GenericColumnMapping {
   if (amount !== null && amount === debit) debit = null;
   if (amount !== null && amount === credit) credit = null;
 
-  return { date, description, debit, credit, amount, typeIndicator, category, currency, trm };
+  return { date, description, debit, credit, amount, typeIndicator, category, currency, trm, installment };
 }
 
 function parseDescription(row: unknown[], descriptionIndex: number): string {
@@ -256,6 +260,21 @@ function typeFromIndicator(raw: unknown): 'income' | 'expense' | null {
 
 function isPaymentLike(description: string): boolean {
   return includesAny(description, PAYMENT_DESCRIPTION_KEYWORDS);
+}
+
+function parseInstallmentsCell(raw: unknown): { installments?: number; currentInstallment?: number } {
+  if (raw === null || raw === undefined) return {};
+  const text = String(raw).trim();
+  if (!text) return {};
+
+  const fromText = detectInstallments(text);
+  if (fromText.installments) return fromText;
+
+  const total = typeof raw === 'number' ? raw : Number.parseInt(text, 10);
+  if (Number.isFinite(total) && total > 1 && total <= 60) {
+    return { installments: total };
+  }
+  return {};
 }
 
 function parseGenericXLSXRows(data: unknown[][], categories?: CategoryLookup, profile?: ImportProfile): ParseResult | null {
@@ -288,16 +307,20 @@ function parseGenericXLSXRows(data: unknown[][], categories?: CategoryLookup, pr
 
     let amount: number | null = null;
     let type: 'income' | 'expense' | null = null;
+    let rawAmountForCurrency: unknown = '';
 
     if (debitAmount !== null && Math.abs(debitAmount) > 0) {
       amount = debitAmount;
       type = 'expense';
+      rawAmountForCurrency = header.mapping.debit !== null ? row[header.mapping.debit] : '';
     } else if (creditAmount !== null && Math.abs(creditAmount) > 0) {
       amount = creditAmount;
       type = 'income';
+      rawAmountForCurrency = header.mapping.credit !== null ? row[header.mapping.credit] : '';
     } else if (unifiedAmount !== null && Math.abs(unifiedAmount) > 0) {
       amount = unifiedAmount;
       type = header.mapping.typeIndicator !== null ? typeFromIndicator(row[header.mapping.typeIndicator]) : null;
+      rawAmountForCurrency = header.mapping.amount !== null ? row[header.mapping.amount] : '';
 
       if (!type) {
         if (amount < 0) {
@@ -319,10 +342,17 @@ function parseGenericXLSXRows(data: unknown[][], categories?: CategoryLookup, pr
     const fileCategory = header.mapping.category !== null
       ? matchKnownCategory(String(row[header.mapping.category] ?? ''), categories)
       : null;
-    const installmentsInfo = detectInstallments(description);
+    const descriptionInstallments = detectInstallments(description);
+    const columnInstallments = header.mapping.installment !== null
+      ? parseInstallmentsCell(row[header.mapping.installment])
+      : {};
+    const installmentsInfo = descriptionInstallments.installments ? descriptionInstallments : columnInstallments;
+    const rawCurrency = header.mapping.currency !== null
+      ? String(row[header.mapping.currency] ?? '')
+      : extractCurrencyCode(String(rawAmountForCurrency ?? ''));
     const currencyInfo = resolveImportCurrency(
       Math.abs(amount),
-      header.mapping.currency !== null ? String(row[header.mapping.currency] ?? '') : '',
+      rawCurrency,
       header.mapping.trm !== null ? String(row[header.mapping.trm] ?? '') : ''
     );
 

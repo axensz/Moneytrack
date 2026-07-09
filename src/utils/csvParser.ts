@@ -160,7 +160,8 @@ export function detectColumns(headers: string[]): ColumnMapping {
 // ── Parser de montos (formato colombiano y estándar) ─────────────────────────
 
 // Códigos de moneda que pueden aparecer pegados al monto en un extracto.
-const CURRENCY_CODE_REGEX = /\b(COP|USD|EUR|MXN|CLP|ARS|PEN|BRL|GBP)\b/gi;
+const CURRENCY_CODE_REGEX = /\b(COP|USD|EUR|MXN|CLP|ARS|PEN|BRL|GBP|CAD)\b/gi;
+const CURRENCY_CODE_IN_TEXT_REGEX = /\b(COP|USD|EUR|MXN|CLP|ARS|PEN|BRL|GBP|CAD)\b/i;
 
 export function parseAmount(raw: string): number {
   if (raw == null) return 0;
@@ -174,6 +175,7 @@ export function parseAmount(raw: string): number {
   // paréntesis y signos. Antes se usaba [$COP\s], que borraba las letras C/O/P
   // sueltas y dejaba "USD…" intacto → los montos en USD se parseaban como 0.
   let clean = original
+    .replace(/\bU\.?S\.?\s*\$/gi, '')
     .replace(CURRENCY_CODE_REGEX, '')
     .replace(/[$€£\s ]/g, '')
     .replace(/[()]/g, '')
@@ -195,6 +197,14 @@ export function parseAmount(raw: string): number {
   const value = parseFloat(clean);
   if (isNaN(value)) return 0;
   return isNegative ? -value : value;
+}
+
+export function extractCurrencyCode(raw: string): string {
+  const value = String(raw ?? '');
+  const code = value.match(CURRENCY_CODE_IN_TEXT_REGEX)?.[1]?.toUpperCase();
+  if (code) return code;
+  if (/\bUS\s*\$/i.test(value) || /\bU\.S\.\s*\$/i.test(value)) return 'USD';
+  return '';
 }
 
 // ── Resolución de moneda / TRM ───────────────────────────────────────────────
@@ -801,6 +811,7 @@ export function parseCSV(text: string, categories?: CategoryLookup): ParseResult
     // Determinar tipo y monto
     let amount = 0;
     let type: 'income' | 'expense' = 'expense';
+    let rawAmountForCurrency = '';
 
     if (mapping.debit !== null || mapping.credit !== null) {
       // Columnas débito/crédito separadas. Acepta débito-solo o crédito-solo:
@@ -811,9 +822,11 @@ export function parseCSV(text: string, categories?: CategoryLookup): ParseResult
       if (creditAmt > 0) {
         amount = creditAmt;
         type = 'income';
+        rawAmountForCurrency = mapping.credit !== null ? (cols[mapping.credit] || '') : '';
       } else if (debitAmt > 0) {
         amount = debitAmt;
         type = 'expense';
+        rawAmountForCurrency = mapping.debit !== null ? (cols[mapping.debit] || '') : '';
       } else {
         skipped++;
         continue;
@@ -823,6 +836,7 @@ export function parseCSV(text: string, categories?: CategoryLookup): ParseResult
       const raw = cols[mapping.amount] || '';
       const parsed = parseAmount(raw);
       amount = Math.abs(parsed);
+      rawAmountForCurrency = raw;
 
       if (mapping.typeIndicator !== null) {
         // D/C indicator column
@@ -846,9 +860,12 @@ export function parseCSV(text: string, categories?: CategoryLookup): ParseResult
       ? matchKnownCategory(cols[mapping.category] || '', categories)
       : null;
     const installmentsInfo = detectInstallments(description);
+    const rawCurrency = mapping.currency !== null
+      ? (cols[mapping.currency] || '')
+      : extractCurrencyCode(rawAmountForCurrency);
     const currencyInfo = resolveImportCurrency(
       amount,
-      mapping.currency !== null ? (cols[mapping.currency] || '') : '',
+      rawCurrency,
       mapping.trm !== null ? (cols[mapping.trm] || '') : ''
     );
 

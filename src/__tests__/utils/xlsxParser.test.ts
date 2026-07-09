@@ -36,7 +36,7 @@ describe('parseXLSX', () => {
       ['Fecha de corte', '2026/05/31'],
       [],
       ['Fecha transacción', 'Fecha posteo', 'Descripción', 'Ciudad', 'Valor en pesos', 'Cuotas'],
-      ['2026/05/03', '2026/05/04', 'RESTAURANTE PRUEBA', 'MEDELLIN', '45,600.00', '1/1'],
+      ['2026/05/03', '2026/05/04', 'RESTAURANTE PRUEBA', 'MEDELLIN', '456,000.00', '3/12'],
       ['2026/05/10', '2026/05/10', 'PAGO A TARJETA DE CREDITO', '', '-200,000.00', ''],
     ]));
 
@@ -45,13 +45,32 @@ describe('parseXLSX', () => {
     expect(result.rows).toHaveLength(2);
     expect(result.rows[0]).toMatchObject({
       description: 'RESTAURANTE PRUEBA MEDELLIN',
-      amount: 45600,
+      amount: 456000,
       type: 'expense',
+      installments: 12,
+      currentInstallment: 3,
     });
     expect(result.rows[1]).toMatchObject({
       description: 'PAGO A TARJETA DE CREDITO',
       amount: 200000,
       type: 'transfer',
+    });
+  });
+
+  it('detects currency embedded in a generic XLSX amount column', () => {
+    const result = parseXLSX(workbookBuffer([
+      ['Movimientos'],
+      ['Fecha', 'Descripcion', 'Monto', 'TRM'],
+      ['2026-05-10', 'Compra Amazon', 'USD -99,99', '4000'],
+    ]));
+
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({
+      amount: Math.round(99.99 * 4000),
+      originalAmount: 99.99,
+      originalCurrency: 'USD',
+      exchangeRate: 4000,
     });
   });
 });

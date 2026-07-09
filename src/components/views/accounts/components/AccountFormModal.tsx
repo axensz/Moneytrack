@@ -255,6 +255,34 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                     Opcional. Se usa para calcular intereses en cuotas.
                   </p>
                 </div>
+                <div>
+                  <label htmlFor="af-cutoff-day-edit" className="label-base">Día de corte</label>
+                  <input
+                    id="af-cutoff-day-edit"
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={newAccount.cutoffDay}
+                    onChange={(e) =>
+                      setNewAccount({ ...newAccount, cutoffDay: clampDay(e.target.value) })
+                    }
+                    className="input-base"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="af-payment-day-edit" className="label-base">Día de pago</label>
+                  <input
+                    id="af-payment-day-edit"
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={newAccount.paymentDay}
+                    onChange={(e) =>
+                      setNewAccount({ ...newAccount, paymentDay: clampDay(e.target.value) })
+                    }
+                    className="input-base"
+                  />
+                </div>
               </>
             )}
 

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Receipt, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertTriangle, Receipt, ChevronDown, ChevronUp } from 'lucide-react';
 import { BaseModal } from '@/components/modals/BaseModal';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 import { roundMoney } from '@/utils/formatters';
@@ -15,6 +15,7 @@ interface CardStatementsModalProps {
   formatCurrency: (n: number) => string;
   /** Saldo real (usedCredit persistido) por tarjeta, para la comparación de saldos. */
   usedCreditByCard?: Record<string, number>;
+  cardsNeedingStatementConfig?: Array<{ id: string; name: string; usedCredit: number }>;
 }
 
 const STATUS_META: Record<CycleStatus, { label: string; cls: string }> = {
@@ -24,8 +25,16 @@ const STATUS_META: Record<CycleStatus, { label: string; cls: string }> = {
   projected: { label: 'Proyectado', cls: 'bg-primary/10 text-primary' },
 };
 
-export function CardStatementsModal({ isOpen, onClose, schedule, formatCurrency, usedCreditByCard }: CardStatementsModalProps) {
+export function CardStatementsModal({
+  isOpen,
+  onClose,
+  schedule,
+  formatCurrency,
+  usedCreditByCard,
+  cardsNeedingStatementConfig = [],
+}: CardStatementsModalProps) {
   const [filter, setFilter] = useState<'all' | string>('all');
+  const hasConfigIssues = cardsNeedingStatementConfig.length > 0;
 
   const cardOptions = useMemo(() => {
     const m = new Map<string, string>();
@@ -64,13 +73,41 @@ export function CardStatementsModal({ isOpen, onClose, schedule, formatCurrency,
         </div>
       )}
 
-      {view.length === 0 ? (
+      {hasConfigIssues && (
+        <div className="mb-3 rounded-lg border border-warning/40 bg-warning-muted/40 p-3 text-sm">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0 text-warning" />
+            <div className="space-y-1">
+              <p className="font-medium text-foreground">Hay tarjetas sin día de corte o de pago.</p>
+              <ul className="space-y-0.5 text-xs text-muted-foreground">
+                {cardsNeedingStatementConfig.map(card => (
+                  <li key={card.id}>
+                    {card.name}
+                    {card.usedCredit > 0 ? ` · deuda real ${formatCurrency(card.usedCredit)}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {view.length === 0 && !hasConfigIssues ? (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
           <div className="rounded-full bg-success-muted p-3 text-success">
             <Receipt size={24} />
           </div>
           <p className="text-sm text-muted-foreground">
             Todo al día: no tienes pagos de tarjeta pendientes.
+          </p>
+        </div>
+      ) : view.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 py-10 text-center">
+          <div className="rounded-full bg-warning-muted p-3 text-warning">
+            <AlertTriangle size={24} />
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Completa la configuración de esas tarjetas para calcular sus extractos.
           </p>
         </div>
       ) : (
@@ -100,13 +137,14 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
 
 function MonthPaymentRow({ group, formatCurrency, usedCreditByCard }: { group: MonthGroup; formatCurrency: (n: number) => string; usedCreditByCard?: Record<string, number> }) {
   const { hideBalances } = useUIPreferences();
-  const [open, setOpen] = useState(group.isCurrent);
+  const highlighted = group.hasActiveCycle || group.isCurrent;
+  const [open, setOpen] = useState(highlighted);
   const show = (n: number) => (hideBalances ? '••••••' : formatCurrency(n));
 
   return (
     <div
       className={`rounded-xl border ${
-        group.isCurrent
+        highlighted
           ? 'border-border-accent bg-primary/5'
           : 'border-border'
       }`}
@@ -120,8 +158,10 @@ function MonthPaymentRow({ group, formatCurrency, usedCreditByCard }: { group: M
         <span className="flex items-center gap-2">
           {open ? <ChevronUp size={16} className="text-muted-foreground" /> : <ChevronDown size={16} className="text-muted-foreground" />}
           <span className="font-semibold capitalize text-foreground">{group.label}</span>
-          {group.isCurrent && (
-            <span className="rounded-full bg-primary-solid px-2 py-0.5 text-xs font-medium text-primary-foreground">Este mes</span>
+          {highlighted && (
+            <span className="rounded-full bg-primary-solid px-2 py-0.5 text-xs font-medium text-primary-foreground">
+              {group.hasActiveCycle ? 'Ciclo actual' : 'Este mes'}
+            </span>
           )}
         </span>
         <span className="font-bold text-foreground">{show(group.remaining)}</span>

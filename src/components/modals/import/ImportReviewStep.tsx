@@ -7,11 +7,13 @@ import { formatCurrency } from '../../../utils/formatters';
 import { AISuggestionsPanel } from './AISuggestionsPanel';
 import type { ImportRow } from '../../../hooks/useImportTransactions';
 import type { AISuggestion } from '../../../types/import';
+import type { Account } from '../../../types/finance';
 
 interface ImportReviewStepProps {
   rows: ImportRow[];
-  setRows: React.Dispatch<React.SetStateAction<ImportRow[]>>;
   includedCount: number;
+  invalidIncludedCount: number;
+  accounts: Account[];
   availableCategoryOptions: string[];
   aiCategorizing: boolean;
   aiApplied: boolean;
@@ -24,6 +26,9 @@ interface ImportReviewStepProps {
   onToggleAll: (include: boolean) => void;
   onCategoryChange: (index: number, category: string) => void;
   onTypeChange: (index: number, type: 'income' | 'expense' | 'transfer') => void;
+  onDateChange: (index: number, date: Date) => void;
+  onBulkYearChange: (targetYear: number) => void;
+  onTransferDestinationChange: (index: number, toAccountId: string) => void;
   onAICategorize: () => void;
   onSuggestionCategoryChange: (suggestionId: string, category: string) => void;
   onApplyAISuggestions: () => void;
@@ -34,8 +39,9 @@ interface ImportReviewStepProps {
 /** Paso 2 del wizard: revisar/editar las transacciones a importar. */
 export function ImportReviewStep({
   rows,
-  setRows,
   includedCount,
+  invalidIncludedCount,
+  accounts,
   availableCategoryOptions,
   aiCategorizing,
   aiApplied,
@@ -48,6 +54,9 @@ export function ImportReviewStep({
   onToggleAll,
   onCategoryChange,
   onTypeChange,
+  onDateChange,
+  onBulkYearChange,
+  onTransferDestinationChange,
   onAICategorize,
   onSuggestionCategoryChange,
   onApplyAISuggestions,
@@ -106,11 +115,7 @@ export function ImportReviewStep({
           onChange={(e) => {
             const targetYear = parseInt(e.target.value);
             if (!targetYear) return;
-            setRows(prev => prev.map(r => {
-              const d = new Date(r.date);
-              d.setFullYear(targetYear);
-              return { ...r, date: d };
-            }));
+            onBulkYearChange(targetYear);
           }}
           className="text-xs px-2 py-1 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-primary"
           defaultValue=""
@@ -127,6 +132,12 @@ export function ImportReviewStep({
         <div className="flex items-center gap-2 p-2 bg-primary/10 rounded-lg text-xs text-primary">
           <Sparkles size={12} />
           Categorías actualizadas con IA. Revisa y ajusta si es necesario.
+        </div>
+      )}
+
+      {invalidIncludedCount > 0 && (
+        <div className="flex items-start gap-2 p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-xs text-amber-700 dark:text-amber-400">
+          <span>Hay {invalidIncludedCount} movimiento{invalidIncludedCount !== 1 ? 's' : ''} seleccionado{invalidIncludedCount !== 1 ? 's' : ''} que necesita destino o TRM antes de importar.</span>
         </div>
       )}
 
@@ -187,7 +198,7 @@ export function ImportReviewStep({
                       onChange={(e) => {
                         const newDate = new Date(e.target.value + 'T12:00:00');
                         if (!isNaN(newDate.getTime())) {
-                          setRows(prev => prev.map((r, idx) => idx === i ? { ...r, date: newDate } : r));
+                          onDateChange(i, newDate);
                         }
                       }}
                       disabled={!row.include}
@@ -220,6 +231,14 @@ export function ImportReviewStep({
                       </select>
                       <ChevronDown size={10} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                     </div>
+                    {row.type === 'transfer' && (
+                      <TransferDestinationSelect
+                        row={row}
+                        rowIndex={i}
+                        accounts={accounts}
+                        onChange={onTransferDestinationChange}
+                      />
+                    )}
                   </td>
 
                   {/* Tipo ingreso/gasto */}
@@ -312,12 +331,12 @@ export function ImportReviewStep({
                   <input
                     type="date"
                     value={row.date.toISOString().split('T')[0]}
-                    onChange={(e) => {
-                      const newDate = new Date(e.target.value + 'T12:00:00');
-                      if (!isNaN(newDate.getTime())) {
-                        setRows(prev => prev.map((r, idx) => idx === i ? { ...r, date: newDate } : r));
-                      }
-                    }}
+                      onChange={(e) => {
+                        const newDate = new Date(e.target.value + 'T12:00:00');
+                        if (!isNaN(newDate.getTime())) {
+                          onDateChange(i, newDate);
+                        }
+                      }}
                     disabled={!row.include}
                     className="text-xs px-1.5 py-1 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-primary w-[112px] flex-shrink-0"
                   />
@@ -335,6 +354,16 @@ export function ImportReviewStep({
                     <ChevronDown size={10} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
                 </div>
+
+                {row.type === 'transfer' && (
+                  <TransferDestinationSelect
+                    row={row}
+                    rowIndex={i}
+                    accounts={accounts}
+                    onChange={onTransferDestinationChange}
+                    compact
+                  />
+                )}
 
                 {/* Fila 3: tipo */}
                 <div className="flex gap-1">
@@ -365,6 +394,46 @@ export function ImportReviewStep({
           })}
         </div>
       </div>
+    </div>
+  );
+}
+
+function TransferDestinationSelect({
+  row,
+  rowIndex,
+  accounts,
+  onChange,
+  compact = false,
+}: {
+  row: ImportRow;
+  rowIndex: number;
+  accounts: Account[];
+  onChange: (index: number, toAccountId: string) => void;
+  compact?: boolean;
+}) {
+  const options = accounts.filter(account => account.id && account.id !== row.accountId);
+
+  return (
+    <div className={compact ? 'mt-2' : 'mt-1'}>
+      <label className="sr-only" htmlFor={`import-transfer-destination-${rowIndex}`}>
+        Cuenta destino
+      </label>
+      <select
+        id={`import-transfer-destination-${rowIndex}`}
+        value={row.toAccountId ?? ''}
+        onChange={e => onChange(rowIndex, e.target.value)}
+        disabled={!row.include}
+        className={`text-xs px-2 py-1 border rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-primary ${
+          row.include && !row.toAccountId
+            ? 'border-amber-300 dark:border-amber-700'
+            : 'border-gray-200 dark:border-gray-700'
+        } ${compact ? 'w-full' : 'w-full'}`}
+      >
+        <option value="">Destino...</option>
+        {options.map(account => (
+          <option key={account.id} value={account.id}>{account.name}</option>
+        ))}
+      </select>
     </div>
   );
 }

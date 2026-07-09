@@ -100,6 +100,7 @@ export interface CardMonthPayment {
    *  index >= 0 (actual + futuros). Se contrasta con el usedCredit real de la tarjeta
    *  para resaltar las compras "sin registrar". */
   totalProjectedDebt?: number;
+  isActiveCycle?: boolean;
 }
 
 export interface MonthGroup {
@@ -109,6 +110,7 @@ export interface MonthGroup {
   remaining: number;  // saldo pendiente del mes (Σ remaining) — "lo que debes"
   isCurrent: boolean;
   isFuture: boolean;
+  hasActiveCycle: boolean;
   cards: CardMonthPayment[];
 }
 
@@ -177,6 +179,67 @@ function computeFutureHorizon(
   return Math.min(maxIdx, MAX_FUTURE);
 }
 
+function addCardMonthToGroup(
+  groups: Map<string, MonthGroup>,
+  cycleEnd: Date,
+  currentKey: string,
+  cardMonth: CardMonthPayment,
+): void {
+  const key = monthKeyOf(cycleEnd);
+  const group = groups.get(key) ?? {
+    monthKey: key,
+    label: labelOf(cycleEnd),
+    total: 0,
+    remaining: 0,
+    isCurrent: key === currentKey,
+    isFuture: key > currentKey,
+    hasActiveCycle: false,
+    cards: [],
+  };
+  group.hasActiveCycle = group.hasActiveCycle || !!cardMonth.isActiveCycle;
+  group.total = roundMoney(group.total + cardMonth.statementTotal);
+  group.remaining = roundMoney(group.remaining + cardMonth.remaining);
+  group.cards.push(cardMonth);
+  groups.set(key, group);
+}
+
+interface CycleDraft {
+  index: number;
+  cycle: CreditCycle;
+  statementTotal: number;
+  installmentItems: InstallmentItem[];
+  recurringItems: RecurringItem[];
+}
+
+function allocatePaymentsToCycles(cycles: CycleDraft[], payments: Transaction[]): Map<number, number> {
+  const paidByIndex = new Map<number, number>();
+  const payableCycles = cycles
+    .filter(cycle => cycle.index <= 0 && cycle.statementTotal > 0)
+    .sort((a, b) => a.cycle.cycleEnd.getTime() - b.cycle.cycleEnd.getTime());
+  const paidPayments = payments
+    .filter(payment => payment.paid)
+    .sort((a, b) => ensureDate(a.date).getTime() - ensureDate(b.date).getTime());
+
+  for (const payment of paidPayments) {
+    const paidAt = ensureDate(payment.date);
+    let amountLeft = payment.amount;
+    for (const cycle of payableCycles) {
+      if (amountLeft <= 0.01) break;
+      if (paidAt <= cycle.cycle.cycleEnd) continue;
+
+      const alreadyPaid = paidByIndex.get(cycle.index) ?? 0;
+      const remaining = roundMoney(cycle.statementTotal - alreadyPaid);
+      if (remaining <= 0.01) continue;
+
+      const applied = Math.min(amountLeft, remaining);
+      paidByIndex.set(cycle.index, roundMoney(alreadyPaid + applied));
+      amountLeft = roundMoney(amountLeft - applied);
+    }
+  }
+
+  return paidByIndex;
+}
+
 export function buildCardPaymentSchedule(
   accounts: Account[],
   transactions: Transaction[],
@@ -197,22 +260,57 @@ export function buildCardPaymentSchedule(
     let totalProjectedDebt = 0;
     let currentCycleEntry: CardMonthPayment | null = null;
 
+    const cycles: CycleDraft[] = [];
+
     for (let index = -PAST_MONTHS; index <= horizon; index++) {
       const cycle = getCycleByIndex(card.cutoffDay!, card.paymentDay!, index, now);
       const stmt = cardStatementForCycle(card.cutoffDay!, index, charges, now);
       const rec = recurringForCycle(refIds, cycle, recurringPayments);
       const statementTotal = roundMoney(stmt.total + rec.total);
+      cycles.push({
+        index,
+        cycle,
+        statementTotal,
+        installmentItems: stmt.items,
+        recurringItems: rec.items,
+      });
+    }
+
+    const paidByIndex = allocatePaymentsToCycles(cycles, payments);
+
+    for (const draft of cycles) {
+      const { index, cycle, statementTotal } = draft;
       // Acumular ANTES del descarte: la deuda proyectada cuenta actual + futuros aunque
       // un ciclo intermedio quede en 0.
       if (index >= 0) totalProjectedDebt += statementTotal;
       // ponytail: si el ciclo actual queda en 0 (sin cargos este mes) la tarjeta no aparece
       // y no se muestra la comparación de saldos; cubre el caso común. Upgrade path: diferir
       // e insertar el ciclo-0 vacío cuando la tarjeta tiene deuda (Req 3.3 del spec original).
+      if (index === 0 && statementTotal <= 0 && (card.usedCredit ?? 0) > 0) {
+        const realDebt = roundMoney(card.usedCredit ?? 0);
+        const cardMonth: CardMonthPayment = {
+          cardId: card.id!,
+          cardName: card.name,
+          statementTotal: 0,
+          paidAmount: 0,
+          remaining: realDebt,
+          status: 'pending',
+          installmentItems: [],
+          recurringItems: [],
+          cycleStart: cycle.cycleStart,
+          cycleEnd: cycle.cycleEnd,
+          paymentDueDate: cycle.paymentDueDate,
+          projectedTotal: 0,
+          totalProjectedDebt: roundMoney(totalProjectedDebt),
+          isActiveCycle: true,
+        };
+        currentCycleEntry = cardMonth;
+        addCardMonthToGroup(groups, cycle.cycleEnd, currentKey, cardMonth);
+        continue;
+      }
       if (statementTotal <= 0) continue;
 
-      const paid = index <= 0
-        ? paidForCycle(card.cutoffDay!, card.paymentDay!, index, payments, now)
-        : 0;
+      const paid = index <= 0 ? (paidByIndex.get(index) ?? 0) : 0;
       const remaining = roundMoney(Math.max(0, statementTotal - paid));
 
       const cardMonth: CardMonthPayment = {
@@ -222,32 +320,20 @@ export function buildCardPaymentSchedule(
         paidAmount: paid,
         remaining,
         status: cycleStatus(index, statementTotal, paid),
-        installmentItems: stmt.items,
-        recurringItems: rec.items,
+        installmentItems: draft.installmentItems,
+        recurringItems: draft.recurringItems,
         cycleStart: cycle.cycleStart,
         cycleEnd: cycle.cycleEnd,
         paymentDueDate: cycle.paymentDueDate,
         ...(index === 0 && { projectedTotal: statementTotal }),
+        ...(index === 0 && { isActiveCycle: true }),
       };
       if (index === 0) currentCycleEntry = cardMonth;
 
       // Agrupar por el mes del CORTE (cycleEnd) = el extracto al que pertenece el
       // cargo, no por la fecha de pago. Agrupar por pago corría las compras un mes
       // hacia adelante (una compra de junio aparecía en julio/agosto).
-      const key = monthKeyOf(cycle.cycleEnd);
-      const group = groups.get(key) ?? {
-        monthKey: key,
-        label: labelOf(cycle.cycleEnd),
-        total: 0,
-        remaining: 0,
-        isCurrent: key === currentKey,
-        isFuture: key > currentKey,
-        cards: [],
-      };
-      group.total = roundMoney(group.total + statementTotal);
-      group.remaining = roundMoney(group.remaining + remaining);
-      group.cards.push(cardMonth);
-      groups.set(key, group);
+      addCardMonthToGroup(groups, cycle.cycleEnd, currentKey, cardMonth);
     }
 
     // Colgar la deuda total proyectada en la entrada del ciclo actual (si existe).

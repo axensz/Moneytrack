@@ -53,17 +53,18 @@ export const UpcomingPaymentsAlert: React.FC<PaymentsAlertProps> = ({
         {payments.map((payment) => (
           <div
             key={payment.id}
-            className="flex items-center justify-between bg-white dark:bg-gray-800 rounded-lg p-3"
+            className="flex items-center justify-between gap-3 bg-white dark:bg-gray-800 rounded-lg p-3"
           >
-            <div>
-              <span className="font-medium text-gray-900 dark:text-gray-100">
+            <div className="min-w-0">
+              <span className="break-words font-medium text-gray-900 dark:text-gray-100">
                 {payment.name}
               </span>
-              <span className="ml-2 text-sm text-muted-foreground">
+              <span className="text-sm text-muted-foreground">
+                {' '}
                 {getLabel(payment)}
               </span>
             </div>
-            <span className="font-semibold text-gray-900 dark:text-gray-100">
+            <span className="shrink-0 font-semibold text-gray-900 dark:text-gray-100">
               {formatCurrency(payment.amount)}
             </span>
           </div>

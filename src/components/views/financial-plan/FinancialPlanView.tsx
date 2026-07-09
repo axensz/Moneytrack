@@ -71,13 +71,42 @@ export const FinancialPlanView: React.FC<FinancialPlanViewProps> = ({ onUseBudge
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [planMinimized, setPlanMinimized] = useState(false);
   const [setupForm, setSetupForm] = useState({ startMonth: new Date().toISOString().slice(0, 7), income: '' });
+  const [showIncomeEditor, setShowIncomeEditor] = useState(false);
+  const [incomeEdit, setIncomeEdit] = useState('');
 
   const plan = useFinancialPlan(planTransactions, planConfig, planLiveContext);
 
-  const budgetAnalysis = useBudgetRecommendations(planTransactions, budgets);
+  const budgetAnalysis = useBudgetRecommendations(planTransactions, budgets, planConfig?.declaredIncome);
   const visibleRecommendations = budgetAnalysis?.recommendations.slice(0, 3) ?? [];
+  const salaryActions = planConfig ? [
+    {
+      key: 'savings',
+      label: 'Aparta para ahorro',
+      message: 'Meta mensual del 20% de tu sueldo.',
+      amount: planConfig.declaredIncome * 0.2,
+    },
+    {
+      key: 'needs',
+      label: 'Reserva para necesidades',
+      message: 'Límite mensual del 50% para vivienda, salud y demás gastos esenciales.',
+      amount: planConfig.declaredIncome * 0.5,
+    },
+    {
+      key: 'wants',
+      label: 'Reserva para gustos',
+      message: 'Límite mensual del 30% para compras personales y otros gastos discrecionales.',
+      amount: planConfig.declaredIncome * 0.3,
+    },
+  ] : [];
 
   const displayAmount = (amount: number) => hideBalances ? '\u2022\u2022\u2022\u2022\u2022\u2022' : formatCurrency(amount);
+  const formatCoverageMonths = (months: number) => {
+    const floored = Math.floor(months * 10) / 10;
+    return floored.toLocaleString('es-CO', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    });
+  };
 
   const planEmptyState = useMemo(() => {
     if (!planConfig) return null;
@@ -115,7 +144,26 @@ export const FinancialPlanView: React.FC<FinancialPlanViewProps> = ({ onUseBudge
     await clearConfig();
     setShowCloseConfirm(false);
     setShowSetup(false);
+    setShowIncomeEditor(false);
     showToast.success('Plan financiero cerrado');
+  };
+
+  const handleOpenIncomeEditor = () => {
+    if (!planConfig) return;
+    setIncomeEdit(String(planConfig.declaredIncome));
+    setShowIncomeEditor(true);
+  };
+
+  const handleIncomeUpdate = async () => {
+    if (!planConfig) return;
+    const income = parseCurrency(incomeEdit);
+    if (isNaN(income) || income <= 0) {
+      showToast.error('Ingresa un sueldo mensual v\u00e1lido');
+      return;
+    }
+    await saveConfig({ ...planConfig, declaredIncome: income });
+    setShowIncomeEditor(false);
+    showToast.success('Sueldo mensual actualizado');
   };
 
   const handleUseRecommendation = (category: string, suggestedLimit: number) => {
@@ -132,6 +180,35 @@ export const FinancialPlanView: React.FC<FinancialPlanViewProps> = ({ onUseBudge
   const trendLabel = plan?.trend === 'improving' ? 'Mejorando' : plan?.trend === 'declining' ? 'Empeorando' : 'Estable';
   const TrendIcon = plan?.trend === 'improving' ? TrendingUp : plan?.trend === 'declining' ? TrendingDown : Minus;
   const trendColor = plan?.trend === 'improving' ? 'text-success' : plan?.trend === 'declining' ? 'text-destructive' : 'text-muted-foreground';
+  const incomeEditor = showIncomeEditor && planConfig ? (
+    <form
+      onSubmit={event => {
+        event.preventDefault();
+        void handleIncomeUpdate();
+      }}
+      className="mb-4 rounded-xl border border-primary/15 bg-primary/5 p-3"
+    >
+      <label htmlFor="financial-plan-income" className="label-base">Sueldo mensual</label>
+      <div className="mt-1.5 flex flex-col gap-2 sm:flex-row">
+        <input
+          id="financial-plan-income"
+          type="text"
+          inputMode="numeric"
+          value={formatNumberForInput(incomeEdit)}
+          onChange={event => setIncomeEdit(unformatNumber(event.target.value))}
+          className="input-base flex-1"
+          aria-label="Sueldo mensual"
+        />
+        <div className="flex gap-2 sm:shrink-0">
+          <button type="submit" className="btn-submit flex-1 sm:flex-none">Guardar</button>
+          <button type="button" onClick={() => setShowIncomeEditor(false)} className="btn-cancel flex-1 sm:flex-none">
+            {UI_TEXT.actions.cancel}
+          </button>
+        </div>
+      </div>
+      <p className="mt-2 text-[11px] text-muted-foreground">Las metas y sugerencias se recalcular\u00e1n con este sueldo.</p>
+    </form>
+  ) : null;
 
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
@@ -149,21 +226,21 @@ export const FinancialPlanView: React.FC<FinancialPlanViewProps> = ({ onUseBudge
         <div className="space-y-4 animate-in fade-in duration-300">
         {!planConfig ? (
         <div className="card">
-          <div className="text-center py-6">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
-              <Target size={28} className="text-primary" />
+          <div className="text-center py-4 sm:py-6">
+            <div className="mx-auto mb-3 sm:mb-4 flex h-12 w-12 sm:h-16 sm:w-16 items-center justify-center rounded-2xl bg-primary/10">
+              <Target size={24} className="text-primary" />
             </div>
-            <h2 className="text-2xl font-black text-gray-900 dark:text-gray-100">{sectionTitle('financial-plan')}</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-sm mx-auto leading-relaxed">
+            <h2 className="text-xl sm:text-2xl font-black text-gray-900 dark:text-gray-100">{sectionTitle('financial-plan')}</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1.5 sm:mt-2 max-w-sm mx-auto leading-relaxed">
               Analiza tus hábitos, obtén un score personalizado y proyecta tu ahorro con IA
             </p>
 
             {!showSetup ? (
-              <button onClick={() => setShowSetup(true)} className="btn-primary mt-5 mx-auto">
+              <button onClick={() => setShowSetup(true)} className="btn-primary mt-4 sm:mt-5 mx-auto">
                 <Sparkles size={18} /> Iniciar plan
               </button>
             ) : (
-              <div className="mt-5 max-w-sm mx-auto space-y-3 text-left p-5 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-200 dark:border-gray-700">
+              <div className="mt-4 sm:mt-5 max-w-sm mx-auto space-y-3 text-left p-4 sm:p-5 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-200 dark:border-gray-700">
                 <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400 justify-center mb-1">
                   <Shield size={12} className="text-gray-400" />
                   Se guarda en tu cuenta para que persista entre sesiones.
@@ -225,6 +302,7 @@ export const FinancialPlanView: React.FC<FinancialPlanViewProps> = ({ onUseBudge
                 </button>
                 <button
                   onClick={() => setShowCloseConfirm(true)}
+                  aria-label="Cerrar plan"
                   className="p-2 text-gray-400 hover:text-destructive rounded-xl hover:bg-destructive-muted transition-colors"
                   title="Cerrar plan"
                 >
@@ -324,10 +402,20 @@ export const FinancialPlanView: React.FC<FinancialPlanViewProps> = ({ onUseBudge
           <div className="card">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">Distribución mensual</h3>
-              <span className="text-[10px] text-muted-foreground font-medium">
-                de {displayAmount(planConfig.declaredIncome)} · {plan.analysisLabel}
-              </span>
+              <div className="flex items-center gap-2 text-right">
+                <span className="text-[10px] text-muted-foreground font-medium">
+                  de {displayAmount(planConfig.declaredIncome)} · {plan.analysisLabel}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleOpenIncomeEditor}
+                  className="text-[11px] font-semibold text-primary hover:underline"
+                >
+                  Editar sueldo
+                </button>
+              </div>
             </div>
+            {incomeEditor}
             <div className="space-y-5">
               {[
                 { label: 'Necesidades', pct: plan.rule503020.needsPct, target: 50, amount: plan.rule503020.needs, targetAmount: plan.needsGap.target, gap: plan.needsGap, Icon: Home },
@@ -453,18 +541,16 @@ export const FinancialPlanView: React.FC<FinancialPlanViewProps> = ({ onUseBudge
             </div>
           )}
 
-          {(plan.actionItems.length > 0 || visibleRecommendations.length > 0) && (
+          {(salaryActions.length > 0 || visibleRecommendations.length > 0) && (
             <div className="card">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">Acciones recomendadas</h3>
-                {budgetAnalysis && (
-                  <span className="text-[10px] text-muted-foreground font-medium">basado en {budgetAnalysis.monthLabel}</span>
-                )}
+                <span className="text-[10px] text-muted-foreground font-medium">sobre tu sueldo mensual</span>
               </div>
-              {plan.actionItems.length > 0 && (
+              {salaryActions.length > 0 && (
                 <div className="space-y-2 mb-4">
-                  {plan.actionItems.map((item, index) => (
-                    <div key={`${item.kind}-${item.category ?? index}`} className="flex items-start justify-between gap-3 rounded-xl bg-gray-50 dark:bg-gray-800/50 p-3">
+                  {salaryActions.map(item => (
+                    <div key={item.key} className="flex items-start justify-between gap-3 rounded-xl bg-gray-50 dark:bg-gray-800/50 p-3">
                       <div className="min-w-0">
                         <p className="text-xs font-bold text-gray-900 dark:text-gray-100">{item.label}</p>
                         <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{item.message}</p>
@@ -530,7 +616,7 @@ export const FinancialPlanView: React.FC<FinancialPlanViewProps> = ({ onUseBudge
                   <span className="text-xs font-bold text-gray-900 dark:text-gray-100">
                     {/* Floor a 1 decimal: nunca redondear hacia arriba cruzando un umbral
                         de estado (2.96 mostraría "3.0" con el estado aún en "building"). */}
-                    {(Math.floor(plan.emergencyFund.coverageMonths * 10) / 10).toFixed(1)} <span className="font-normal text-muted-foreground">meses cubiertos</span>
+                    {formatCoverageMonths(plan.emergencyFund.coverageMonths)} <span className="font-normal text-muted-foreground">meses cubiertos</span>
                   </span>
                 )}
               </div>
@@ -630,7 +716,11 @@ export const FinancialPlanView: React.FC<FinancialPlanViewProps> = ({ onUseBudge
           <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto leading-relaxed">
             {planEmptyState?.message ?? `No hay suficientes datos desde ${planConfig.startMonth} para generar el plan.`}
           </p>
-          <button onClick={() => setShowCloseConfirm(true)} className="text-xs text-purple-600 mt-2 hover:underline">Reconfigurar</button>
+          <div className="mt-3 flex justify-center gap-3">
+            <button onClick={handleOpenIncomeEditor} className="text-xs text-primary hover:underline">Editar sueldo</button>
+            <button onClick={() => setShowCloseConfirm(true)} className="text-xs text-purple-600 hover:underline">Reconfigurar</button>
+          </div>
+          <div className="mt-4 text-left">{incomeEditor}</div>
         </div>
       )}
         </div>

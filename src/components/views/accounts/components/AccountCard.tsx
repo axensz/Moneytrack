@@ -135,7 +135,7 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
       <div>
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 sm:gap-4">
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2">
               <GripVertical
                 size={isAssociated ? 16 : 20}
@@ -171,9 +171,9 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
                     className: 'text-primary',
                   })}
               </div>
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex min-w-0 flex-1 items-center gap-2 flex-wrap">
                 <h4
-                  className={`font-semibold text-foreground ${isAssociated ? 'text-sm sm:text-base' : ''
+                  className={`min-w-0 max-w-full break-words font-semibold text-foreground ${isAssociated ? 'text-sm sm:text-base' : ''
                     }`}
                 >
                   {account.name}

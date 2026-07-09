@@ -77,6 +77,14 @@ describe('AccountCard alternativa de teclado (WCAG 2.1.1)', () => {
     expect(screen.getByRole('button', { name: /hacia abajo/i })).not.toBeDisabled();
   });
 
+  it('permite partir nombres largos dentro del card', () => {
+    const longName = 'Cuenta larguisima de pruebas con nombre absurdamente largo 1234567890 ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+    renderCard({ account: { ...account, name: longName } });
+
+    expect(screen.getByRole('heading', { name: longName })).toHaveClass('break-words');
+  });
+
   it('no renderiza los botones sin callbacks (compatibilidad)', () => {
     renderCard({ onMoveUp: undefined, onMoveDown: undefined });
     expect(screen.queryByRole('button', { name: /hacia arriba/i })).not.toBeInTheDocument();

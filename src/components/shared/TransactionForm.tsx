@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, memo, useState, useCallback } from 'react';
-import { Repeat, Zap, AlertTriangle } from 'lucide-react';
+import { ChevronDown, CreditCard, Repeat, Zap, AlertTriangle } from 'lucide-react';
 import { BaseModal } from '@/components/modals/BaseModal';
 import { UI_LABELS, TRANSFER_CATEGORY } from '@/config/constants';
 import { UI_TEXT } from '@/config/ui';
@@ -110,6 +110,40 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
   const [isFetchingTrm, setIsFetchingTrm] = useState(false);
   const [officialTrmError, setOfficialTrmError] = useState('');
   const [officialTrmApplied, setOfficialTrmApplied] = useState(false);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isInstallmentOpen, setIsInstallmentOpen] = useState(false);
+
+  const hasAdditionalDetails = Boolean(
+    newTransaction.beneficiary ||
+    newTransaction.recurringPaymentId
+  );
+
+  const detailsDateLabel = useMemo(() => {
+    const [year, month, day] = newTransaction.date.split('-').map(Number);
+    if (!year || !month || !day) return 'Sin fecha';
+
+    const today = new Date();
+    if (
+      year === today.getFullYear() &&
+      month === today.getMonth() + 1 &&
+      day === today.getDate()
+    ) {
+      return 'Hoy';
+    }
+
+    return new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'short' })
+      .format(new Date(year, month - 1, day));
+  }, [newTransaction.date]);
+
+  useEffect(() => {
+    if (hasAdditionalDetails) setIsDetailsOpen(true);
+  }, [hasAdditionalDetails]);
+
+  useEffect(() => {
+    if (newTransaction.installments > 1 || newTransaction.hasInterest) {
+      setIsInstallmentOpen(true);
+    }
+  }, [newTransaction.hasInterest, newTransaction.installments]);
 
   const trmStatusText = officialTrmError ||
     (convertedAmount
@@ -198,7 +232,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
         <div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div>
+            <div className="order-4">
               <label htmlFor="tx-form-account" className="label-base">Cuenta</label>
               <select
                 id="tx-form-account"
@@ -214,7 +248,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
               </select>
             </div>
 
-            <div>
+            <div className="order-1 lg:col-span-3">
               <span className="label-base" id="tx-form-type-label">Tipo</span>
               <div className="flex gap-2" role="group" aria-labelledby="tx-form-type-label">
                 <button
@@ -252,7 +286,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
               </div>
             </div>
 
-            <div>
+            <div className="order-2">
               <label htmlFor="tx-form-amount" className="label-base">Monto</label>
               <input
                 id="tx-form-amount"
@@ -291,7 +325,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
             </div>
 
             {supportsForeignCurrency && selectedCurrency === 'USD' && (
-              <div>
+              <div className="order-5">
                 <label htmlFor="tx-form-exchange-rate" className="label-base">TRM (Tasa Representativa del Mercado)</label>
                 <div className="flex gap-2">
                   <input
@@ -322,7 +356,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
               </div>
             )}
 
-            <div>
+            <div className="order-3">
               <label htmlFor="tx-form-target" className="label-base">
                 {newTransaction.type === 'transfer' ? 'Cuenta Destino'
                   : (isCreditCard && newTransaction.type === 'income') ? 'Desde qué cuenta'
@@ -376,31 +410,6 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
               )}
             </div>
 
-            <div>
-              <label htmlFor="tx-form-date" className="label-base">Fecha</label>
-              <input
-                id="tx-form-date"
-                type="date"
-                value={newTransaction.date}
-                onChange={(e) => setNewTransaction({ ...newTransaction, date: e.target.value })}
-                className="input-base"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="tx-form-beneficiary" className="label-base">Persona / Beneficiario</label>
-              <select
-                id="tx-form-beneficiary"
-                value={newTransaction.beneficiary || ''}
-                onChange={(e) => setNewTransaction({ ...newTransaction, beneficiary: e.target.value })}
-                className="input-base"
-              >
-                <option value="">Sin persona</option>
-                {beneficiaries.map((beneficiary) => (
-                  <option key={beneficiary} value={beneficiary}>{beneficiary}</option>
-                ))}
-              </select>
-            </div>
           </div>
 
           <div className="mt-4">
@@ -415,12 +424,84 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
             />
           </div>
 
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={() => setIsDetailsOpen((open) => !open)}
+              aria-expanded={isDetailsOpen}
+              aria-controls="tx-form-additional-details"
+              className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-200 dark:hover:border-gray-600 dark:hover:bg-gray-800"
+            >
+              <span className="flex items-center gap-2">
+                <span>Más detalles</span>
+                <span className="text-xs font-normal text-muted-foreground">{detailsDateLabel}</span>
+              </span>
+              <ChevronDown
+                size={18}
+                aria-hidden="true"
+                className={`transition-transform ${isDetailsOpen ? 'rotate-180' : ''}`}
+              />
+            </button>
+          </div>
+
+          {isDetailsOpen && (
+            <div id="tx-form-additional-details" className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="tx-form-date" className="label-base">Fecha</label>
+                  <input
+                    id="tx-form-date"
+                    type="date"
+                    value={newTransaction.date}
+                    onChange={(e) => setNewTransaction({ ...newTransaction, date: e.target.value })}
+                    className="input-base"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="tx-form-beneficiary" className="label-base">Persona / Beneficiario</label>
+                  <select
+                    id="tx-form-beneficiary"
+                    value={newTransaction.beneficiary || ''}
+                    onChange={(e) => setNewTransaction({ ...newTransaction, beneficiary: e.target.value })}
+                    className="input-base"
+                  >
+                    <option value="">Sin persona</option>
+                    {beneficiaries.map((beneficiary) => (
+                      <option key={beneficiary} value={beneficiary}>{beneficiary}</option>
+                    ))}
+                  </select>
+                </div>
+            </div>
+          )}
+
           {/* Campos de cuotas e intereses - solo para gastos en TC */}
           {isCreditCard && newTransaction.type === 'expense' && (
-            <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-              <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-3">
+            <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/60">
+              <button
+                type="button"
+                onClick={() => setIsInstallmentOpen((open) => !open)}
+                aria-expanded={isInstallmentOpen}
+                aria-controls="tx-form-installment-details"
+                className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-200"
+              >
+                <span className="flex items-center gap-2">
+                  <CreditCard size={18} aria-hidden="true" className="text-blue-600 dark:text-blue-400" />
+                  <span>
                 Configuración de cuotas
-              </h4>
+                  </span>
+                </span>
+                <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+                  <span>{newTransaction.installments === 1 ? '1 cuota' : `${newTransaction.installments} cuotas`}</span>
+                  <ChevronDown
+                    size={18}
+                    aria-hidden="true"
+                    className={`transition-transform ${isInstallmentOpen ? 'rotate-180' : ''}`}
+                  />
+                </span>
+              </button>
+
+              {isInstallmentOpen && (
+                <div id="tx-form-installment-details" className="border-t border-gray-200 px-4 pb-4 pt-3 dark:border-gray-700">
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -485,14 +566,16 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                   </p>
                 </div>
               ) : null}
+                </div>
+              )}
             </div>
           )}
 
           {/* 🆕 Asociar a pago periódico - Destacado visualmente */}
-          {newTransaction.type === 'expense' && recurringPayments.length > 0 && (
-            <div className={`mt-4 p-4 rounded-xl border-2 transition-colors ${newTransaction.recurringPaymentId
+          {isDetailsOpen && newTransaction.type === 'expense' && recurringPayments.length > 0 && (
+            <div className={`mt-4 rounded-lg border p-3 transition-colors ${newTransaction.recurringPaymentId
               ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-700'
-              : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 border-dashed'
+              : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700'
               }`}>
               <label htmlFor="tx-form-recurring" className="label-base flex items-center gap-2 mb-2">
                 <Repeat size={18} className={newTransaction.recurringPaymentId ? 'text-purple-600' : 'text-gray-400'} />
@@ -532,7 +615,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
               </select>
               {newTransaction.recurringPaymentId && (
                 <div className="mt-2 flex items-center gap-2 text-sm text-purple-600 dark:text-purple-400">
-                  <span className="inline-block w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
+                  <span className="inline-block h-2 w-2 rounded-full bg-purple-500"></span>
                   Se marcará como pagado para este mes
                 </div>
               )}
@@ -598,11 +681,11 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
           {onSubmitAndContinue && (
             <button
               onClick={() => checkDuplicatesAndSubmit('continue')}
-              className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-semibold bg-amber-500 hover:bg-amber-600 text-white transition-colors shadow-sm"
+              aria-label="Agregar y continuar"
               title="Agregar y seguir ingresando (mantiene cuenta y fecha)"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-white shadow-sm transition-colors hover:bg-amber-600"
             >
-              <Zap size={16} />
-              Agregar y continuar
+              <Zap size={18} aria-hidden="true" />
             </button>
           )}
           <button onClick={onCancel} className="btn-cancel">

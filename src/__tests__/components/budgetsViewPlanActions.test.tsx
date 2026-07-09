@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { RecurringPayment, Transaction } from '../../types/finance';
+import type { Account, RecurringPayment, Transaction } from '../../types/finance';
 import { BudgetsView } from '../../components/views/budgets/BudgetsView';
 import { FinancialPlanView } from '../../components/views/financial-plan/FinancialPlanView';
 
@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   openPlan: vi.fn(),
   transactions: [] as Transaction[],
   recurringPayments: [] as RecurringPayment[],
+  accounts: [] as Account[],
   hideBalances: false,
 }));
 
@@ -47,8 +48,8 @@ vi.mock('../../hooks/useFinanceSelectors', () => ({
   }),
   useTransactionDomain: () => ({ transactions: mocks.transactions, balanceTransactions: mocks.transactions }),
   useAccountDomain: () => ({
-    accounts: [],
-    getAccountBalance: () => 0,
+    accounts: mocks.accounts,
+    getAccountBalance: (accountId: string) => mocks.accounts.find(account => account.id === accountId)?.initialBalance ?? 0,
     getCreditUsed: () => 0,
     balancesReady: true,
   }),
@@ -84,6 +85,7 @@ describe('FinancialPlanView — plan financiero accionable', () => {
     vi.setSystemTime(new Date('2026-07-15T12:00:00'));
     mocks.hideBalances = false;
     mocks.recurringPayments = [];
+    mocks.accounts = [];
     mocks.transactions = [
       tx({ type: 'income', amount: 1_000_000, category: 'Salario' }),
       tx({ amount: 600_000, category: 'Alimentación' }),
@@ -119,13 +121,42 @@ describe('FinancialPlanView — plan financiero accionable', () => {
     expect(screen.queryByText('Distribución mensual')).not.toBeInTheDocument();
   });
 
+  it('nombra el cierre del plan y formatea meses de fondo en formato local', () => {
+    mocks.accounts = [{
+      id: 'acc-liquid',
+      name: 'Cuenta liquida',
+      type: 'savings',
+      isDefault: true,
+      initialBalance: 999_999_934_999,
+    }];
+
+    render(<FinancialPlanView />);
+
+    expect(screen.getByRole('button', { name: 'Cerrar plan' })).toHaveAttribute('aria-label', 'Cerrar plan');
+    expect(screen.getByText(/1\.176\.470,5/)).toBeInTheDocument();
+  });
+
   it('envía una sugerencia de presupuesto sin abrir formularios propios del plan', () => {
     render(<FinancialPlanView onUseBudgetSuggestion={mocks.applyBudgetSuggestion} />);
 
     fireEvent.click(screen.getAllByText('Usar sugerencia')[0]);
 
-    expect(mocks.applyBudgetSuggestion).toHaveBeenCalledWith('Alimentación', 540_000);
+    expect(mocks.applyBudgetSuggestion).toHaveBeenCalledWith('Alimentación', 500_000);
     expect(screen.queryByText('Nuevo presupuesto')).not.toBeInTheDocument();
+  });
+
+  it('permite editar el sueldo sin reiniciar el plan', async () => {
+    render(<FinancialPlanView />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Editar sueldo' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Sueldo mensual' }), { target: { value: '1200000' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+      await Promise.resolve();
+    });
+
+    expect(mocks.saveConfig).toHaveBeenCalledWith({ startMonth: '2026-06', declaredIncome: 1_200_000 });
+    expect(screen.queryByRole('textbox', { name: 'Sueldo mensual' })).not.toBeInTheDocument();
   });
 
   it('oculta montos de brechas y acciones cuando balances ocultos esta activo', () => {

@@ -66,4 +66,26 @@ describe('useBudgetRecommendations', () => {
       reason: 'Gasto fijo — margen del 5%',
     });
   });
+
+  it('calcula los límites del plan desde el sueldo declarado, no desde el gasto analizado', () => {
+    const transactions: Transaction[] = [
+      tx({ type: 'income', amount: 1_000_000, category: 'Salario' }),
+      tx({ amount: 100_000, category: 'Alimentación' }),
+      tx({ amount: 8_000_000, category: 'Salud' }),
+      tx({ amount: 50_000, category: 'Compras Personales' }),
+    ];
+
+    const { result } = renderHook(() => useBudgetRecommendations(transactions, budgets, 10_000_000));
+    const byCategory = new Map(result.current!.recommendations.map(recommendation => [recommendation.category, recommendation]));
+
+    expect(byCategory.get('Alimentación')).toMatchObject({
+      suggestedLimit: 2_500_000,
+      reason: '50% de tu sueldo, distribuido entre 2 categorías de necesidades',
+    });
+    expect(byCategory.get('Salud')).toMatchObject({ suggestedLimit: 2_500_000 });
+    expect(byCategory.get('Compras Personales')).toMatchObject({
+      suggestedLimit: 3_000_000,
+      reason: '30% de tu sueldo, distribuido entre 1 categoría de gustos',
+    });
+  });
 });

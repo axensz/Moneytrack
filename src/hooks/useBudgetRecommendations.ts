@@ -173,6 +173,7 @@ function generateTips(
 export function useBudgetRecommendations(
     transactions: Transaction[],
     existingBudgets: Budget[],
+    declaredIncome?: number,
 ): BudgetAnalysis | null {
     return useMemo(() => {
         const now = new Date();
@@ -228,15 +229,47 @@ export function useBudgetRecommendations(
             savingsTarget: Math.round(base * 0.2),
         };
 
-        // Recomendaciones por categoría
+        // Recomendaciones por categoría. En la vista de presupuestos se
+        // conserva el comportamiento histórico; el plan financiero puede pasar
+        // el sueldo declarado para que los topes salgan de la regla 50/30/20 y
+        // no del gasto de un mes concreto.
         const recommendations: BudgetRecommendation[] = [];
-        byCategory.forEach((spent, category) => {
-            if (existingCategories.has(category)) return;
+        const recommendationCandidates = Array.from(byCategory.entries())
+            .filter(([category]) => !existingCategories.has(category))
+            .map(([category, spent]) => ({
+                category,
+                spent,
+                group: classifyBudgetCategory(category),
+            }));
+        const usesDeclaredIncome = typeof declaredIncome === 'number' && declaredIncome > 0;
+        const candidatesByGroup = {
+            need: recommendationCandidates.filter(candidate => candidate.group === 'need'),
+            want: recommendationCandidates.filter(candidate => candidate.group === 'want'),
+        };
+        const activeBudgetedByGroup = existingBudgets
+            .filter(budget => budget.isActive)
+            .reduce<Record<'need' | 'want', number>>((totals, budget) => {
+                totals[classifyBudgetCategory(budget.category)] += budget.monthlyLimit;
+                return totals;
+            }, { need: 0, want: 0 });
 
+        recommendationCandidates.forEach(({ category, spent, group }) => {
             let suggestedLimit: number;
             let reason: string;
 
-            if (isFixedBudgetCategory(category)) {
+            if (usesDeclaredIncome) {
+                const target = declaredIncome * (group === 'need' ? 0.5 : 0.3);
+                const available = Math.max(0, target - activeBudgetedByGroup[group]);
+                const categoryCount = candidatesByGroup[group].length;
+
+                // Si los presupuestos existentes ya consumen toda la bolsa, no
+                // ofrecemos un tope artificial que la sobrepase.
+                if (available <= 0 || categoryCount === 0) return;
+
+                suggestedLimit = Math.round((available / categoryCount) / 1000) * 1000;
+                const percentage = group === 'need' ? 50 : 30;
+                reason = `${percentage}% de tu sueldo, distribuido entre ${categoryCount} ${categoryCount === 1 ? 'categoría' : 'categorías'} de ${group === 'need' ? 'necesidades' : 'gustos'}`;
+            } else if (isFixedBudgetCategory(category)) {
                 suggestedLimit = Math.ceil(spent * 1.05 / 1000) * 1000;
                 reason = 'Gasto fijo — margen del 5%';
             } else if (classifyBudgetCategory(category) === 'need') {
@@ -294,5 +327,5 @@ export function useBudgetRecommendations(
             monthLabel: lastMonth.toLocaleDateString('es-CO', { month: 'long', year: 'numeric' }),
             healthLevel, rule503020, tips, method,
         };
-    }, [transactions, existingBudgets]);
+    }, [transactions, existingBudgets, declaredIncome]);
 }

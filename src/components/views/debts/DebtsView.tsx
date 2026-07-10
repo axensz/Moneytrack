@@ -828,14 +828,14 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
 
   return (
     <div className={`border rounded-xl p-3 bg-white dark:bg-gray-800 ${isDebtOverdue || isPaymentOverdue ? 'border-rose-300 dark:border-rose-800' : 'border-gray-200 dark:border-gray-700'}`}>
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-0">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:gap-2">
             <span className="text-sm font-semibold text-gray-900 dark:text-white">
               {debt.personName}
             </span>
             {debt.description && (
-              <span className="text-xs text-gray-500 dark:text-gray-400 truncate">
+              <span className="max-w-full truncate text-xs text-gray-500 dark:text-gray-400">
                 — {debt.description}
               </span>
             )}
@@ -903,7 +903,7 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
           </div>
         </div>
 
-        <div className="flex items-center gap-1 ml-2">
+        <div className="flex w-full items-center justify-end gap-1 border-t border-gray-100 pt-2 dark:border-gray-700 sm:ml-2 sm:w-auto sm:border-t-0 sm:pt-0">
           <button
             onClick={() => onOpenPaymentSchedule(debt)}
             className="p-1.5 rounded-lg hover:bg-sky-50 dark:hover:bg-sky-900/30 text-sky-600 dark:text-sky-400"
@@ -989,14 +989,14 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
 
       {/* Payment form */}
       {showPaymentForm === debt.id && (
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2">
           <input
             type="text"
             inputMode="numeric"
             value={formatNumberForInput(paymentAmount)}
             onChange={e => setPaymentAmount(unformatNumber(e.target.value))}
             placeholder="Monto del pago"
-            className="input-base flex-1 text-sm"
+            className="input-base min-w-0 text-sm"
             autoFocus
           />
           <button
@@ -1037,14 +1037,14 @@ const DebtCard: React.FC<DebtCardProps> = React.memo(({
               Restar
             </button>
           </div>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2">
             <input
               type="text"
               inputMode="numeric"
               value={formatNumberForInput(modifierAmount)}
               onChange={e => setModifierAmount(unformatNumber(e.target.value))}
               placeholder="Monto"
-              className="input-base flex-1 text-sm"
+              className="input-base min-w-0 text-sm"
               autoFocus
             />
             <button

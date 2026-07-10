@@ -25,11 +25,11 @@ describe('OnboardingChecklist (P-onboarding)', () => {
     expect(p.onGoToAccounts).toHaveBeenCalled();
   });
 
-  it('flota sin ocupar espacio en el contenido principal', () => {
+  it('ocupa su lugar en mobile y solo flota desde desktop', () => {
     render(<OnboardingChecklist {...props()} />);
     const checklist = screen.getByRole('region', { name: /Primeros pasos/i });
-    expect(checklist).toHaveClass('fixed');
-    expect(checklist).not.toHaveClass('mb-4');
+    expect(checklist).toHaveClass('relative', 'mb-4', 'sm:fixed', 'sm:mb-0');
+    expect(checklist).not.toHaveClass('fixed');
   });
 
   it('no captura clics con el fondo flotante, pero mantiene sus CTAs activos', () => {
@@ -50,6 +50,7 @@ describe('OnboardingChecklist (P-onboarding)', () => {
   it('marca como completado el paso cuyo estado ya esta hecho (sin CTA)', () => {
     render(<OnboardingChecklist {...props({ hasAccounts: true })} />);
     expect(screen.getByText('1 de 3 completados')).toBeInTheDocument();
+    expect(screen.getByText('Crea tu primera cuenta').closest('li')).toHaveClass('hidden', 'sm:flex');
     // El paso de cuenta hecho ya no muestra su CTA.
     expect(screen.queryByRole('button', { name: /Ir a Cuentas/i })).not.toBeInTheDocument();
   });

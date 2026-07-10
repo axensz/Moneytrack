@@ -40,7 +40,7 @@ export function OnboardingChecklist({
   return (
     <section
       aria-label="Primeros pasos"
-      className="pointer-events-none fixed bottom-[156px] left-4 right-4 z-40 rounded-2xl border border-border-accent bg-card/95 p-4 shadow-2xl backdrop-blur-sm sm:bottom-6 sm:left-6 sm:right-auto sm:w-[360px] sm:p-5"
+      className="pointer-events-none relative z-10 mb-4 rounded-2xl border border-border-accent bg-card/95 p-4 shadow-lg backdrop-blur-sm sm:fixed sm:bottom-6 sm:left-6 sm:right-auto sm:z-40 sm:mb-0 sm:w-[360px] sm:p-5 sm:shadow-2xl"
     >
       <div className="mb-3">
         <h2 className="text-sm font-bold text-foreground">Primeros pasos</h2>
@@ -53,7 +53,7 @@ export function OnboardingChecklist({
         {steps.map(step => (
           <li
             key={step.key}
-            className="flex items-center gap-3 rounded-xl bg-card px-3 py-2"
+            className={`${step.done ? 'hidden sm:flex' : 'flex'} items-center gap-3 rounded-xl bg-card px-3 py-2`}
           >
             {step.done
               ? <CheckCircle2 size={18} className="shrink-0 text-success" aria-hidden="true" />

@@ -453,4 +453,3 @@ export const DebtsView: React.FC = () => {
     </div>
   );
 };
-

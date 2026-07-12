@@ -2,7 +2,6 @@ import type { Debt } from '../types/finance';
 import { ensureDate } from './dateUtils';
 
 export type DebtPaymentSource = 'direct' | 'monthly';
-
 export interface DebtNextPaymentInfo {
   date: Date;
   source: DebtPaymentSource;

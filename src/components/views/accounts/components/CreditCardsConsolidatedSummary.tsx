@@ -39,7 +39,10 @@ export const CreditCardsConsolidatedSummary: React.FC<CreditCardsConsolidatedSum
   if (cards.length === 0) return null;
 
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
-  const isHighUsage = totalLimit > 0 && totalUsed > totalLimit * 0.8;
+  const displayPercent = (percentage: number) => hideBalances
+    ? '••••••'
+    : `${percentage.toFixed(1).replace('.', ',')}%`;
+  const isHighUsage = !hideBalances && totalLimit > 0 && totalUsed > totalLimit * 0.8;
   const cardsWithUsage = cards.filter((card) => card.used > 0).length;
   const highestUsageCard = [...cards]
     .filter((card) => card.creditLimit > 0 && card.used > 0)
@@ -79,25 +82,25 @@ export const CreditCardsConsolidatedSummary: React.FC<CreditCardsConsolidatedSum
         <SummaryMetric label="Cupo total" value={displayAmount(totalLimit)} tone="primary" />
         <SummaryMetric label="Cupo utilizado" value={displayAmount(totalUsed)} tone={isHighUsage ? 'warning' : 'foreground'} />
         <SummaryMetric label="Disponible total" value={displayAmount(totalAvailable)} tone="success" />
-        <SummaryMetric label="Tarjetas con deuda" value={`${cardsWithUsage}/${cards.length}`} tone="foreground" />
+        <SummaryMetric label="Tarjetas con deuda" value={hideBalances ? '••••••' : `${cardsWithUsage}/${cards.length}`} tone="foreground" />
       </div>
 
       <div className="mt-5">
         <div className="mb-1.5 flex justify-between text-sm">
           <span className="text-muted-foreground">Uso consolidado</span>
           <span className="font-semibold text-foreground">
-            {totalLimit > 0 ? `${usagePercentage.toFixed(1).replace('.', ',')}%` : 'Sin cupo definido'}
+            {totalLimit > 0 ? displayPercent(usagePercentage) : 'Sin cupo definido'}
           </span>
         </div>
         <div className="h-3 w-full overflow-hidden rounded-full bg-muted">
           <div
             className={`h-full transition-[width] ${isHighUsage ? 'bg-warning' : 'bg-primary'}`}
-            style={{ width: `${usagePercentage}%` }}
+            style={{ width: hideBalances ? '0%' : `${usagePercentage}%` }}
           />
         </div>
       </div>
 
-      {highestUsageCard && (
+      {!hideBalances && highestUsageCard && (
         <div className="mt-4 flex items-start gap-2 rounded-xl bg-card px-3 py-2 text-sm text-muted-foreground ring-1 ring-border">
           <Info size={17} className="mt-0.5 flex-shrink-0 text-primary" />
           <span>

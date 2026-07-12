@@ -394,7 +394,7 @@ describe('Import Pipeline Integration', () => {
         {
           date: new Date(2024, 5, 20),
           description: 'Pago TC desde ahorros',
-          amount: 300000,
+          amount: 150000,
           type: 'transfer',
           category: 'Pago Tarjeta',
           accountId: 'savings-1',
@@ -411,7 +411,27 @@ describe('Import Pipeline Integration', () => {
       await result.current.importTransactions(transferRows);
 
       // Transfer to credit card reduces its usedCredit
-      expect(mockIncrement).toHaveBeenCalledWith(-300000);
+      expect(mockIncrement).toHaveBeenCalledWith(-150000);
+    });
+
+    it('skips a card payment that would make usedCredit negative', async () => {
+      const rows: ImportRow[] = [{
+        date: new Date(2024, 5, 20),
+        description: 'Abono excesivo',
+        amount: 250000,
+        type: 'income',
+        category: 'Pago Crédito',
+        accountId: 'credit-1',
+        include: true,
+      }];
+      const { result } = renderHook(() => useImportTransactions('user-123', ACCOUNTS));
+
+      const imported = await result.current.importTransactions(rows);
+
+      expect(imported.imported).toBe(0);
+      expect(imported.skipped).toBe(1);
+      expect(imported.errors.join(' ')).toMatch(/superior a la deuda/i);
+      expect(mockIncrement).not.toHaveBeenCalled();
     });
   });
 

@@ -7,8 +7,8 @@
  * Ahora crea ambas transacciones del par atómico en localStorage.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
-import type { Transaction } from '../../types/finance';
+import { renderHook, act, waitFor } from '@testing-library/react';
+import type { Account, Transaction } from '../../types/finance';
 
 vi.mock('../../contexts/FirestoreContext', () => ({
   useFirestoreData: () => ({
@@ -40,5 +40,44 @@ describe('useTransactions.addCreditPaymentAtomic — modo invitado (#tx-1)', () 
     expect(txs.some(t => t.accountId === 'sav' && t.type === 'expense' && t.amount === 50_000)).toBe(true);
     // Ambas con id + createdAt asignados.
     expect(txs.every(t => t.id && t.createdAt)).toBe(true);
+    expect(txs[0].linkedTransactionId).toBe(txs[1].id);
+    expect(txs[1].linkedTransactionId).toBe(txs[0].id);
+  });
+
+  it('editar o borrar una mitad mantiene el par consistente', async () => {
+    const { result } = renderHook(() => useTransactions(null));
+    await act(async () => { await result.current.addCreditPaymentAtomic(creditTx, sourceTx); });
+    const card = result.current.transactions.find(transaction => transaction.accountId === 'tc')!;
+    const bank = result.current.transactions.find(transaction => transaction.accountId === 'sav')!;
+
+    await act(async () => {
+      await result.current.updateTransaction(bank.id!, { amount: 75_000, category: 'Comida' });
+    });
+    expect(result.current.transactions.find(transaction => transaction.id === bank.id)?.amount).toBe(75_000);
+    expect(result.current.transactions.find(transaction => transaction.id === card.id)?.amount).toBe(75_000);
+    expect(result.current.transactions.find(transaction => transaction.id === bank.id)?.category).toBe('Pago');
+
+    await act(async () => { await result.current.deleteTransaction(card.id!); });
+    expect(result.current.transactions).toHaveLength(0);
+  });
+
+  it('reconcilia usedCredit local incluyendo intereses financiados', async () => {
+    localStorage.setItem('accounts', JSON.stringify([{
+      id: 'tc', name: 'Visa', type: 'credit', isDefault: true, initialBalance: 0,
+      creditLimit: 500_000, usedCredit: 0,
+    }] as Account[]));
+    const { result } = renderHook(() => useTransactions(null));
+
+    await act(async () => {
+      await result.current.addTransaction({
+        type: 'expense', amount: 120_000, totalInterestAmount: 3_265.49,
+        category: 'Compras', description: 'Cuotas', date: new Date(), paid: true, accountId: 'tc',
+      });
+    });
+
+    await waitFor(() => {
+      const accounts = JSON.parse(localStorage.getItem('accounts')!) as Account[];
+      expect(accounts[0].usedCredit).toBe(123_265.49);
+    });
   });
 });

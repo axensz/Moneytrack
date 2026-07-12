@@ -9,8 +9,9 @@ import { db } from '../lib/firebaseDb';
 import { logger } from '../utils/logger';
 import { stripUndefined } from '../utils/firestoreHelpers';
 import { setBatchImporting, registerImportedIds } from '../utils/importBatchFlag';
-import { getCreditDelta } from '../utils/creditDeltas';
-import { generateId } from '../utils/formatters';
+import { getCreditDelta, reconcileUsedCredit } from '../utils/creditDeltas';
+import { generateId, roundMoney } from '../utils/formatters';
+import { getAccountReferenceIds } from '../utils/accountTransactions';
 import { useLocalStorage } from './useLocalStorage';
 import type { Account, Transaction } from '../types/finance';
 
@@ -77,7 +78,7 @@ export function useImportTransactions(userId: string | null, accounts: Account[]
   const [status, setStatus] = useState<ImportStatus>('idle');
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<ImportResult | null>(null);
-  const [, setLocalTransactions] = useLocalStorage<Transaction[]>('transactions', []);
+  const [localTransactions, setLocalTransactions] = useLocalStorage<Transaction[]>('transactions', []);
 
   const importTransactions = useCallback(
     async (rows: ImportRow[]): Promise<ImportResult> => {
@@ -153,9 +154,39 @@ export function useImportTransactions(userId: string | null, accounts: Account[]
         return true;
       };
 
+      const structurallyValid = selected.filter(isValidRow);
+      const rejectedForDebt = new Set<ImportRow>();
+
+      // Reservar primero todos los cargos del mismo archivo y luego aplicar los
+      // abonos. Así el orden del extracto no altera el resultado, pero ningún
+      // conjunto importado puede dejar deuda negativa ni ocultar compras futuras.
+      creditAccounts.forEach(account => {
+        const initialDebt = account.usedCredit != null
+          ? Math.max(0, account.usedCredit)
+          : reconcileUsedCredit(getAccountReferenceIds(account), localTransactions);
+        const deltas = structurallyValid.map(row => ({ row, delta: getCreditDelta(row, account.id!) }));
+        let availableDebt = roundMoney(
+          initialDebt + deltas.reduce((sum, entry) => sum + Math.max(0, entry.delta), 0)
+        );
+
+        deltas.filter(entry => entry.delta < 0).forEach(({ row, delta }) => {
+          if (Math.abs(delta) > availableDebt + 0.01) {
+            rejectedForDebt.add(row);
+            invalidSkipped++;
+            errors.push(
+              `Abono a ${account.name} superior a la deuda omitido: ${row.description || '(sin descripcion)'}`
+            );
+            return;
+          }
+          availableDebt = roundMoney(availableDebt + delta);
+        });
+      });
+
+      const validSelected = structurallyValid.filter(row => !rejectedForDebt.has(row));
+
       try {
         if (!userId) {
-          const validRows = selected.filter(isValidRow);
+          const validRows = validSelected;
           const localImported = validRows.map(row => {
             const id = generateId();
             importedDocIds.push(id);
@@ -188,12 +219,12 @@ export function useImportTransactions(userId: string | null, accounts: Account[]
         const creditAccountWriteReserve = creditAccounts.length;
         const batchSize = Math.max(1, FIRESTORE_BATCH_LIMIT - creditAccountWriteReserve);
 
-        for (let chunkStart = 0; chunkStart < selected.length; chunkStart += batchSize) {
-          const chunk = selected.slice(chunkStart, chunkStart + batchSize);
-          const validRows = chunk.filter(isValidRow);
+        for (let chunkStart = 0; chunkStart < validSelected.length; chunkStart += batchSize) {
+          const chunk = validSelected.slice(chunkStart, chunkStart + batchSize);
+          const validRows = chunk;
 
           if (validRows.length === 0) {
-            setProgress(Math.round(((chunkStart + chunk.length) / selected.length) * 100));
+            setProgress(Math.round(((chunkStart + chunk.length) / validSelected.length) * 100));
             continue;
           }
 
@@ -226,8 +257,8 @@ export function useImportTransactions(userId: string | null, accounts: Account[]
           await batch.commit();
           imported += validRows.length;
           importedDocIds.push(...chunkDocIds);
-          setProgress(Math.round(((chunkStart + chunk.length) / selected.length) * 100));
-          logger.info(`Import batch committed: ${chunkStart + chunk.length}/${selected.length}`);
+          setProgress(Math.round(((chunkStart + chunk.length) / validSelected.length) * 100));
+          logger.info(`Import batch committed: ${chunkStart + chunk.length}/${validSelected.length}`);
         }
 
         const importResult: ImportResult = {
@@ -253,7 +284,7 @@ export function useImportTransactions(userId: string | null, accounts: Account[]
         return importResult;
       }
     },
-    [userId, accounts, setLocalTransactions]
+    [userId, accounts, localTransactions, setLocalTransactions]
   );
 
   const reset = useCallback(() => {

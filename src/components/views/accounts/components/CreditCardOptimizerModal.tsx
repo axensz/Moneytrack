@@ -3,6 +3,7 @@
 import React from 'react';
 import { AlertTriangle, CheckCircle2, Sparkles } from 'lucide-react';
 import { BaseModal } from '../../../modals/BaseModal';
+import { useUIPreferences } from '../../../../contexts/UIPreferencesContext';
 import {
   getRecommendedCreditCardUsagePlan,
   type CreditCardUsagePlan,
@@ -27,6 +28,7 @@ export const CreditCardOptimizerModal: React.FC<CreditCardOptimizerModalProps> =
   plans,
   formatCurrency,
 }) => {
+  const { hideBalances } = useUIPreferences();
   const recommended = getRecommendedCreditCardUsagePlan(plans);
   const priorityWarnings = plans
     .flatMap((plan) => plan.warnings.map((warning) => ({ ...warning, cardName: plan.cardName })))
@@ -34,7 +36,11 @@ export const CreditCardOptimizerModal: React.FC<CreditCardOptimizerModalProps> =
     .slice(0, 2);
 
   const formatDate = (date: Date) => date.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
-  const formatPercent = (ratio: number | null) => ratio == null ? 'Analizando' : `${Math.round(ratio * 100)}%`;
+  const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
+  const formatPercent = (ratio: number | null) => {
+    if (ratio == null) return 'Analizando';
+    return hideBalances ? '••••••' : `${Math.round(ratio * 100)}%`;
+  };
 
   return (
     <BaseModal
@@ -107,7 +113,9 @@ export const CreditCardOptimizerModal: React.FC<CreditCardOptimizerModalProps> =
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
             {plans.map((plan) => {
               const cycleCapDetail = plan.monthlyLimit > 0
-                ? `${formatCurrency(plan.currentStatementTotal)} / ${formatCurrency(plan.monthlyLimit)}`
+                ? hideBalances
+                  ? '••••••'
+                  : `${formatCurrency(plan.currentStatementTotal)} / ${formatCurrency(plan.monthlyLimit)}`
                 : 'Sin historial suficiente';
 
               return (
@@ -132,12 +140,12 @@ export const CreditCardOptimizerModal: React.FC<CreditCardOptimizerModalProps> =
                   <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                     <OptimizerMetric
                       label="Disponible"
-                      value={formatCurrency(plan.availableCredit)}
+                      value={displayAmount(plan.availableCredit)}
                     />
                     <OptimizerMetric
                       label="Uso cupo"
                       value={formatPercent(plan.creditUsageRatio)}
-                      detail={formatCurrency(plan.usedCredit)}
+                      detail={displayAmount(plan.usedCredit)}
                     />
                     <OptimizerMetric
                       label="Tope ciclo"
@@ -147,7 +155,7 @@ export const CreditCardOptimizerModal: React.FC<CreditCardOptimizerModalProps> =
                     {plan.futureInstallmentTotal > 0 && (
                       <OptimizerMetric
                         label="Cuotas futuras"
-                        value={formatCurrency(plan.futureInstallmentTotal)}
+                        value={displayAmount(plan.futureInstallmentTotal)}
                         detail={`${plan.futureInstallmentCycles} ciclo${plan.futureInstallmentCycles === 1 ? '' : 's'}`}
                       />
                     )}

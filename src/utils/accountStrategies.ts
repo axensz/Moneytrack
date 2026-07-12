@@ -85,11 +85,11 @@ export class SavingsAccountStrategy {
  *
  * LÓGICA:
  * - Balance mostrado = Cupo Disponible = Límite - Cupo Utilizado
- * - Cupo Utilizado = Capital pendiente = Σ compras - Σ pagos (ingresos + transferencias)
+ * - Cupo Utilizado = Deuda contractual pendiente = Σ (principal + interés financiado) - Σ pagos
  * - NO se incluye en balance total (es deuda, no activo)
  *
  * MODELO DE CUOTAS (decisión de negocio):
- * Una compra a cuotas ocupa el CUPO COMPLETO desde el momento de la compra
+ * Una compra a cuotas ocupa la DEUDA CONTRACTUAL completa desde el momento de la compra
  * (igual que los bancos reservan el total contra el cupo disponible) y se libera
  * a medida que se registran pagos hacia la TC. El monto por cuota mensual NO se
  * usa aquí; eso pertenece al estado de cuenta del ciclo (useCreditCardStatement),
@@ -104,7 +104,7 @@ export class CreditCardStrategy {
    * Calcula el cupo utilizado (capital pendiente por pagar)
    *
    * REGLA DE NEGOCIO:
-   * Cupo Usado = Σ compras (monto completo) - Σ pagos (ingresos + transferencias)
+ * Cupo Usado = Σ compras (principal + interés financiado) - Σ pagos
    */
   private calculateUsedCredit(account: Account, transactions: Transaction[]): number {
     // RUTA DE DISPLAY/BALANCE: preferir el campo persistido (no depende de

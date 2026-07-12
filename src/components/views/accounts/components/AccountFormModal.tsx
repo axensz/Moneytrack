@@ -39,6 +39,17 @@ interface AccountFormModalProps {
   getCreditUsed: (id: string) => number;
 }
 
+export function parseInterestRateInput(value: string): { display: string; rate: number } {
+  const normalized = value.replace('.', ',').replace(/[^0-9,]/g, '');
+  const [whole = '', ...decimalParts] = normalized.split(',');
+  const wholePart = whole.slice(0, 3);
+  const decimalPart = decimalParts.join('').slice(0, 2);
+  const display = normalized.includes(',') ? `${wholePart},${decimalPart}` : wholePart;
+  const parsed = Number.parseFloat(display.replace(',', '.'));
+
+  return { display, rate: Number.isFinite(parsed) ? parsed : 0 };
+}
+
 /**
  * Modal para crear o editar una cuenta
  */
@@ -154,20 +165,9 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
   };
 
   const handleInterestRateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    const numericOnly = value.replace(/[^0-9]/g, '');
-    const limited = numericOnly.slice(0, 4);
-    let formatted = limited;
-    if (limited.length > 2) {
-      formatted = limited.slice(0, -2) + ',' + limited.slice(-2);
-    }
-    setInterestRateInput(formatted);
-    if (limited === '') {
-      setNewAccount({ ...newAccount, interestRate: 0 });
-    } else {
-      const decimalValue = parseInt(limited, 10) / 100;
-      setNewAccount({ ...newAccount, interestRate: decimalValue });
-    }
+    const { display, rate } = parseInterestRateInput(e.target.value);
+    setInterestRateInput(display);
+    setNewAccount({ ...newAccount, interestRate: rate });
   };
 
   return (
@@ -245,7 +245,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                   <input
                     id="af-interest-rate-edit"
                     type="text"
-                    inputMode="numeric"
+                    inputMode="decimal"
                     value={interestRateInput}
                     onChange={handleInterestRateChange}
                     placeholder="23,99"
@@ -442,7 +442,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                       <input
                         id="af-interest-rate"
                         type="text"
-                        inputMode="numeric"
+                        inputMode="decimal"
                         value={interestRateInput}
                         onChange={handleInterestRateChange}
                         placeholder="23,99"

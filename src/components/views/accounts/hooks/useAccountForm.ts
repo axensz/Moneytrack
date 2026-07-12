@@ -144,6 +144,14 @@ export function useAccountForm({
       return;
     }
 
+    if (
+      newAccount.type === 'credit' &&
+      (!Number.isFinite(newAccount.interestRate) || newAccount.interestRate < 0 || newAccount.interestRate > 200)
+    ) {
+      showToast.error('La tasa E.A. debe estar entre 0% y 200%');
+      return;
+    }
+
     try {
       if (editingAccount) {
         // EDITAR cuenta existente

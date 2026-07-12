@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { ShimmerSkeleton } from '@/components/unlumen-ui/shimmer-skeleton';
 
 /**
  * Skeleton de carga para la lista de transacciones.
@@ -15,26 +16,27 @@ export const TransactionsListSkeleton: React.FC = () => {
       {[1, 2, 3].map((i) => (
         <div
           key={i}
-          className="border rounded-xl p-3.5 sm:p-4 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-sm animate-pulse"
+          className="border rounded-xl p-3.5 sm:p-4 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-sm"
+          aria-hidden="true"
         >
           <div className="flex items-start gap-3">
             {/* Ícono guía — mismas dimensiones que el ícono de TransactionItem */}
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-200 dark:bg-gray-700" />
+            <ShimmerSkeleton className="h-10 w-10 shrink-0" rounded="lg" />
 
             {/* Contenido */}
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2">
                 <div className="space-y-2">
-                  <div className="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded" />
-                  <div className="h-3 w-24 bg-gray-100 dark:bg-gray-700 rounded" />
+                  <ShimmerSkeleton className="h-4 w-32" />
+                  <ShimmerSkeleton className="h-3 w-24 opacity-70" />
                 </div>
-                <div className="h-5 w-20 bg-gray-200 dark:bg-gray-700 rounded shrink-0" />
+                <ShimmerSkeleton className="h-5 w-20 shrink-0" />
               </div>
 
               {/* Fila de info (chips + fecha) */}
               <div className="flex items-center gap-1.5 mt-2">
-                <div className="h-4 w-16 bg-gray-100 dark:bg-gray-700 rounded" />
-                <div className="h-3 w-20 bg-gray-100 dark:bg-gray-700 rounded" />
+                <ShimmerSkeleton className="h-4 w-16 opacity-70" />
+                <ShimmerSkeleton className="h-3 w-20 opacity-70" />
               </div>
             </div>
           </div>

@@ -71,6 +71,14 @@ describe('AccountCard alternativa de teclado (WCAG 2.1.1)', () => {
     expect(onMoveDown).toHaveBeenCalledTimes(1);
   });
 
+  it('nombra de forma accesible la accion de eliminar', () => {
+    const onDelete = vi.fn();
+    renderCard({ onDelete });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar Cuenta Ahorros' }));
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
   it('deshabilita subir en el primer elemento y bajar en el último', () => {
     renderCard({ canMoveUp: false, canMoveDown: true });
     expect(screen.getByRole('button', { name: /hacia arriba/i })).toBeDisabled();

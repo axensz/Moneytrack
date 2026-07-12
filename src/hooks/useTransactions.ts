@@ -13,12 +13,32 @@
  * RESPONSABILIDAD: Gestión de transacciones (CRUD + operaciones)
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useFirestoreData } from '../contexts/FirestoreContext';
 import { useLocalStorage } from './useLocalStorage';
 import { generateId } from '../utils/formatters';
 import { ensureDate } from '../utils/dateUtils';
-import type { Transaction } from '../types/finance';
+import { getAccountReferenceIds } from '../utils/accountTransactions';
+import { reconcileUsedCredit } from '../utils/creditDeltas';
+import type { Account, Transaction } from '../types/finance';
+
+const linkedPaymentUpdates = (updates: Partial<Transaction>): Partial<Transaction> => {
+  const linked: Partial<Transaction> = {};
+  for (const field of ['amount', 'date', 'beneficiary', 'paid'] as const) {
+    if (field in updates) Object.assign(linked, { [field]: updates[field] });
+  }
+  return linked;
+};
+
+const safePaymentUpdates = (updates: Partial<Transaction>): Partial<Transaction> => {
+  const safe = { ...updates };
+  delete safe.type;
+  delete safe.accountId;
+  delete safe.toAccountId;
+  delete safe.linkedTransactionId;
+  delete safe.category;
+  return safe;
+};
 
 /**
  * Orden de la lista de transacciones: fecha descendente y, como DESEMPATE,
@@ -51,6 +71,25 @@ export function useTransactions(userId: string | null) {
   } = useFirestoreData();
 
   const [localTransactions, setLocalTransactions] = useLocalStorage<Transaction[]>('transactions', []);
+  const [, setLocalAccounts] = useLocalStorage<Account[]>('accounts', []);
+
+  // En invitado no existe el trigger atómico de Firestore: reconciliar el campo
+  // persistido desde el historial local evita que un usedCredit inicial/mergeado
+  // quede congelado después de altas, ediciones o borrados.
+  useEffect(() => {
+    if (userId) return;
+    setLocalAccounts(previous => {
+      let changed = false;
+      const next = previous.map(account => {
+        if (account.type !== 'credit' || !account.id) return account;
+        const usedCredit = reconcileUsedCredit(getAccountReferenceIds(account), localTransactions);
+        if (account.usedCredit === usedCredit) return account;
+        changed = true;
+        return { ...account, usedCredit };
+      });
+      return changed ? next : previous;
+    });
+  }, [userId, localTransactions, setLocalAccounts]);
 
   // Usar Firebase si hay usuario, localStorage si no.
   // Firestore ya viene ordenado por fecha DESC; reordenamos con el desempate por
@@ -87,8 +126,14 @@ export function useTransactions(userId: string | null) {
       await firestoreAddCreditPaymentAtomic(creditTx, sourceTx);
     } else {
       const now = new Date();
-      const credit: Transaction = { ...creditTx, id: generateId(), createdAt: now };
-      const source: Transaction = { ...sourceTx, id: generateId(), createdAt: now };
+      const creditId = generateId();
+      const sourceId = generateId();
+      const credit: Transaction = {
+        ...creditTx, id: creditId, linkedTransactionId: sourceId, createdAt: now,
+      };
+      const source: Transaction = {
+        ...sourceTx, id: sourceId, linkedTransactionId: creditId, createdAt: now,
+      };
       setLocalTransactions(prev => [credit, source, ...prev]);
     }
   };
@@ -97,7 +142,11 @@ export function useTransactions(userId: string | null) {
     if (userId) {
       await firestoreDeleteTransaction(id);
     } else {
-      setLocalTransactions(prev => prev.filter(t => t.id !== id));
+      setLocalTransactions(prev => {
+        const transaction = prev.find(t => t.id === id);
+        const ids = new Set([id, transaction?.linkedTransactionId].filter(Boolean));
+        return prev.filter(t => !t.id || !ids.has(t.id));
+      });
     }
   };
 
@@ -107,9 +156,11 @@ export function useTransactions(userId: string | null) {
       if (userId) {
         await firestoreUpdateTransaction(id, { paid: !transaction.paid });
       } else {
-        setLocalTransactions(prev =>
-          prev.map(t => t.id === id ? { ...t, paid: !t.paid } : t)
-        );
+        setLocalTransactions(prev => prev.map(t => (
+          t.id === id || t.id === transaction.linkedTransactionId
+            ? { ...t, paid: !transaction.paid }
+            : t
+        )));
       }
     }
   };
@@ -118,9 +169,20 @@ export function useTransactions(userId: string | null) {
     if (userId) {
       await firestoreUpdateTransaction(id, updates);
     } else {
-      setLocalTransactions(prev =>
-        prev.map(t => t.id === id ? { ...t, ...updates } : t)
-      );
+      setLocalTransactions(prev => {
+        const transaction = prev.find(t => t.id === id);
+        if (!transaction?.linkedTransactionId) {
+          return prev.map(t => t.id === id ? { ...t, ...updates } : t);
+        }
+
+        const safeUpdates = safePaymentUpdates(updates);
+        const linkedUpdates = linkedPaymentUpdates(safeUpdates);
+        return prev.map(t => {
+          if (t.id === id) return { ...t, ...safeUpdates };
+          if (t.id === transaction.linkedTransactionId) return { ...t, ...linkedUpdates };
+          return t;
+        });
+      });
     }
   };
 

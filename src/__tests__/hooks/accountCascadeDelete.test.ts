@@ -45,8 +45,10 @@ vi.mock('firebase/firestore', () => ({
     const matched = [...M.txStore.values()].filter(t => cons.every(c => t[c.field] === c.value));
     return { docs: matched.map(t => ({ id: t.id as string, data: () => t })) };
   },
-  getDoc: async (ref: { __id: string }) => {
-    const data = M.acctStore.get(ref.__id);
+  getDoc: async (ref: { __id: string; __path: string }) => {
+    const data = ref.__path.endsWith('/transactions')
+      ? M.txStore.get(ref.__id)
+      : M.acctStore.get(ref.__id);
     return { exists: () => data !== undefined, data: () => data };
   },
   updateDoc: async (ref: { __key: string; __id: string }, data: Record<string, unknown>) => {
@@ -154,6 +156,23 @@ describe('useAccounts.deleteAccount — cascade + reconciliación (A2)', () => {
     expect(deletedIds()).toEqual(expect.arrayContaining(['t-cash', 'sav']));
     // La TC no fue tocada por ninguna tx borrada → no se reconcilia.
     expect(updateDocsOn('cc')).toHaveLength(0);
+  });
+
+  it('al borrar una TC también elimina el egreso bancario vinculado', async () => {
+    seedFirestoreData([sav, cc]);
+    seedTx({
+      id: 'pay-card', linkedTransactionId: 'pay-bank', type: 'income', amount: 200_000,
+      accountId: 'cc', category: 'Pago Crédito', paid: true,
+    });
+    seedTx({
+      id: 'pay-bank', linkedTransactionId: 'pay-card', type: 'expense', amount: 200_000,
+      accountId: 'sav', category: 'Pago Crédito', paid: true,
+    });
+
+    const acc = renderAccounts();
+    await acc.current.deleteAccount('cc');
+
+    expect(deletedIds()).toEqual(expect.arrayContaining(['pay-card', 'pay-bank', 'cc']));
   });
 
   it('protege la cuenta por defecto: lanza sin borrar nada', async () => {

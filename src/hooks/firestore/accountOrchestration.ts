@@ -85,6 +85,24 @@ export async function deleteAccountCascade(
         [...bySource.docs, ...byDestination.docs].forEach(snap => {
           txDeletes.set(snap.id, { id: snap.id, ...(snap.data() as Transaction) });
         });
+
+        // Los pagos de TC son pares recíprocos. Si cualquiera de sus cuentas se
+        // elimina, incluir también el movimiento espejo para no dejar dinero
+        // huérfano ni una deuda reducida sin salida bancaria (o viceversa).
+        const linkedIds = Array.from(new Set(
+          Array.from(txDeletes.values())
+            .map(transaction => transaction.linkedTransactionId)
+            .filter((value): value is string => value !== undefined && !txDeletes.has(value))
+        ));
+        const linkedSnaps = await Promise.all(
+          linkedIds.map(linkedId => getDoc(doc(db, `users/${userId}/transactions`, linkedId)))
+        );
+        linkedSnaps.forEach((snap, index) => {
+          if (snap.exists()) {
+            const linkedId = linkedIds[index];
+            txDeletes.set(linkedId, { id: linkedId, ...(snap.data() as Transaction) });
+          }
+        });
       }
 
       // Identificar el conjunto de TC AFECTADAS por el borrado: cuentas tipo

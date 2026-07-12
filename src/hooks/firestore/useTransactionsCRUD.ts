@@ -25,6 +25,34 @@ import { validateTransactionUpdate } from '../../utils/transactionValidation';
 // lo muestra el caller). La lectura offline sigue disponible vía persistentLocalCache.
 const OFFLINE_WRITE_ERROR = 'Sin conexión a internet. Conéctate para guardar los cambios.';
 
+const linkedPaymentUpdates = (updates: Partial<Transaction>): Partial<Transaction> => {
+  const linked: Partial<Transaction> = {};
+  for (const field of ['amount', 'date', 'beneficiary', 'paid'] as const) {
+    if (field in updates) Object.assign(linked, { [field]: updates[field] });
+  }
+  return linked;
+};
+
+const safePaymentUpdates = (updates: Partial<Transaction>): Partial<Transaction> => {
+  const safe = { ...updates };
+  delete safe.type;
+  delete safe.accountId;
+  delete safe.toAccountId;
+  delete safe.linkedTransactionId;
+  delete safe.category;
+  return safe;
+};
+
+const sumCreditDeltas = (transactions: Transaction[], accounts: Account[]): Map<string, number> => {
+  const totals = new Map<string, number>();
+  transactions.forEach(transaction => {
+    creditDeltasByAccount(transaction, accounts).forEach((delta, accountId) => {
+      totals.set(accountId, (totals.get(accountId) ?? 0) + delta);
+    });
+  });
+  return totals;
+};
+
 /**
  * Valida el esquema básico de una transacción antes de guardar
  * Última línea de defensa - la validación principal ocurre en useAddTransaction
@@ -126,6 +154,14 @@ export function useTransactionsCRUD(
         if (fromAccountData.type === 'credit') {
           throw new Error('No se puede transferir desde una tarjeta de crédito');
         }
+        const toAccountData = toAccountSnap.data() as Account;
+        if (
+          toAccountData.type === 'credit' &&
+          toAccountData.usedCredit != null &&
+          amount > Math.max(0, toAccountData.usedCredit) + 0.01
+        ) {
+          throw new Error('No puedes pagar más de lo que debes en la tarjeta');
+        }
 
         // Crear documento de transacción
         const transactionRef = doc(
@@ -145,7 +181,6 @@ export function useTransactionsCRUD(
 
         // Actualizar usedCredit en cuentas TC afectadas (destino: la transferencia
         // hacia una TC es un pago que reduce la deuda).
-        const toAccountData = toAccountSnap.data() as Account;
         if (toAccountData.type === 'credit') {
           firestoreTransaction.update(toAccountRef, { usedCredit: increment(-amount) });
         }
@@ -179,6 +214,10 @@ export function useTransactionsCRUD(
 
         if (!creditSnap.exists()) throw new Error('La cuenta de crédito no existe');
         if (!sourceSnap.exists()) throw new Error('La cuenta origen no existe');
+        const persistedDebt = (creditSnap.data() as Account).usedCredit;
+        if (persistedDebt != null && creditTx.amount > Math.max(0, persistedDebt) + 0.01) {
+          throw new Error('No puedes pagar más de lo que debes en la tarjeta');
+        }
 
         // Crear ambas transacciones atómicamente
         const creditTxRef = doc(collection(db, `users/${userId}/transactions`));
@@ -187,8 +226,16 @@ export function useTransactionsCRUD(
         const cleanCredit = stripUndefined(creditTx);
         const cleanSource = stripUndefined(sourceTx);
 
-        firestoreTransaction.set(creditTxRef, { ...cleanCredit, createdAt: new Date() });
-        firestoreTransaction.set(sourceTxRef, { ...cleanSource, createdAt: new Date() });
+        firestoreTransaction.set(creditTxRef, {
+          ...cleanCredit,
+          linkedTransactionId: sourceTxRef.id,
+          createdAt: new Date(),
+        });
+        firestoreTransaction.set(sourceTxRef, {
+          ...cleanSource,
+          linkedTransactionId: creditTxRef.id,
+          createdAt: new Date(),
+        });
 
         // Actualizar usedCredit en la TC (el creditTx es un ingreso que reduce deuda)
         const creditDelta = getCreditDelta(creditTx, creditTx.accountId);
@@ -244,6 +291,12 @@ export function useTransactionsCRUD(
         snaps.forEach(snap => {
           if (!snap.exists()) throw new Error('La cuenta de la transacción no existe');
         });
+        Array.from(deltas.entries()).forEach(([accountId, delta], index) => {
+          const currentDebt = (snaps[index].data() as Account).usedCredit;
+          if (currentDebt != null && currentDebt + delta < -0.01) {
+            throw new Error(`El movimiento dejaría deuda negativa en la tarjeta ${accountId}`);
+          }
+        });
 
         const txRef = doc(collection(db, `users/${userId}/transactions`));
         firestoreTransaction.set(txRef, { ...cleanTransaction, createdAt: new Date() });
@@ -270,10 +323,21 @@ export function useTransactionsCRUD(
         const txRef = doc(db, `users/${userId}/transactions`, id);
         const txSnap = await firestoreTransaction.get(txRef);
         if (!txSnap.exists()) return;
-        const txData = txSnap.data() as Transaction;
+        const txData = { id, ...(txSnap.data() as Transaction) } as Transaction;
+
+        const linkedRef = txData.linkedTransactionId
+          ? doc(db, `users/${userId}/transactions`, txData.linkedTransactionId)
+          : null;
+        const linkedSnap = linkedRef ? await firestoreTransaction.get(linkedRef) : null;
+        const transactionsToDelete = [
+          txData,
+          ...(linkedSnap?.exists()
+            ? [{ id: linkedRef!.id, ...(linkedSnap.data() as Transaction) } as Transaction]
+            : []),
+        ];
 
         // Lecturas primero (requisito de Firestore): leer las TC afectadas.
-        const deltas = creditDeltasByAccount(txData, accountsRef.current);
+        const deltas = sumCreditDeltas(transactionsToDelete, accountsRef.current);
         const accountEntries = Array.from(deltas.entries()).map(([accountId, delta]) => ({
           accountId,
           delta,
@@ -285,6 +349,7 @@ export function useTransactionsCRUD(
 
         // Escrituras después.
         firestoreTransaction.delete(txRef);
+        if (linkedRef && linkedSnap?.exists()) firestoreTransaction.delete(linkedRef);
         accountEntries.forEach((entry, index) => {
           if (snaps[index].exists() && entry.delta !== 0) {
             firestoreTransaction.update(entry.ref, { usedCredit: increment(-entry.delta) });
@@ -318,14 +383,31 @@ export function useTransactionsCRUD(
         await runTransaction(db, async (firestoreTransaction) => {
           const txRef = doc(db, `users/${userId}/transactions`, id);
           const txSnap = await firestoreTransaction.get(txRef);
-          const oldData = txSnap.exists() ? (txSnap.data() as Transaction) : null;
+          const oldData = txSnap.exists() ? ({ id, ...(txSnap.data() as Transaction) } as Transaction) : null;
+
+          const linkedRef = oldData?.linkedTransactionId
+            ? doc(db, `users/${userId}/transactions`, oldData.linkedTransactionId)
+            : null;
+          const linkedSnap = linkedRef ? await firestoreTransaction.get(linkedRef) : null;
+          const oldLinked = linkedSnap?.exists()
+            ? ({ id: linkedRef!.id, ...(linkedSnap.data() as Transaction) } as Transaction)
+            : null;
+
+          const primaryUpdates = oldData?.linkedTransactionId
+            ? safePaymentUpdates(cleanUpdates as Partial<Transaction>)
+            : cleanUpdates;
+          const counterpartUpdates = linkedPaymentUpdates(primaryUpdates as Partial<Transaction>);
 
           // Lecturas primero (requisito de Firestore): leer todas las TC afectadas.
           let affectedAccounts: { accountId: string; diff: number; ref: ReturnType<typeof doc> }[] = [];
           if (oldData) {
-            const oldDeltas = creditDeltasByAccount(oldData, accountsRef.current);
-            const newData = { ...oldData, ...updates } as Transaction;
-            const newDeltas = creditDeltasByAccount(newData, accountsRef.current);
+            const oldTransactions = [oldData, ...(oldLinked ? [oldLinked] : [])];
+            const newTransactions = [
+              { ...oldData, ...primaryUpdates } as Transaction,
+              ...(oldLinked ? [{ ...oldLinked, ...counterpartUpdates } as Transaction] : []),
+            ];
+            const oldDeltas = sumCreditDeltas(oldTransactions, accountsRef.current);
+            const newDeltas = sumCreditDeltas(newTransactions, accountsRef.current);
             const affectedAccountIds = new Set([...oldDeltas.keys(), ...newDeltas.keys()]);
             affectedAccounts = Array.from(affectedAccountIds).map(accountId => ({
               accountId,
@@ -336,9 +418,19 @@ export function useTransactionsCRUD(
           const snaps = await Promise.all(
             affectedAccounts.map(entry => firestoreTransaction.get(entry.ref))
           );
+          affectedAccounts.forEach((entry, index) => {
+            if (!snaps[index].exists()) return;
+            const currentDebt = (snaps[index].data() as Account).usedCredit;
+            if (currentDebt != null && currentDebt + entry.diff < -0.01) {
+              throw new Error('La actualización dejaría deuda negativa en la tarjeta');
+            }
+          });
 
           // Escrituras después.
-          firestoreTransaction.update(txRef, cleanUpdates);
+          firestoreTransaction.update(txRef, primaryUpdates);
+          if (linkedRef && oldLinked && Object.keys(counterpartUpdates).length > 0) {
+            firestoreTransaction.update(linkedRef, counterpartUpdates);
+          }
           affectedAccounts.forEach((entry, index) => {
             if (snaps[index].exists() && entry.diff !== 0) {
               firestoreTransaction.update(entry.ref, { usedCredit: increment(entry.diff) });

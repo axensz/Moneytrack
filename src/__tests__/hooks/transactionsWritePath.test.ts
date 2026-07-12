@@ -37,10 +37,10 @@ vi.mock('firebase/firestore', () => ({
       const col = first.__collection as string;
       mockState.gen += 1;
       const newId = `__new${mockState.gen}`;
-      return { __key: `${col}/${newId}`, __path: col, __id: newId, __isNew: true };
+      return { id: newId, __key: `${col}/${newId}`, __path: col, __id: newId, __isNew: true };
     }
     // doc(db, path, id)
-    return { __key: `${path}/${id}`, __path: path, __id: id };
+    return { id, __key: `${path}/${id}`, __path: path, __id: id };
   },
   addDoc: async (col: { __collection: string }, data: Record<string, unknown>) => {
     mockState.writeLog.push({ op: 'addDoc', key: col.__collection, data });
@@ -130,6 +130,17 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
       expect(ccUpdates[0].data!.usedCredit).toEqual({ __increment: 300_000 });
     });
 
+    it('gasto financiado suma principal más interés a usedCredit', async () => {
+      seedAccount(credit);
+      const crud = renderCRUD([credit]);
+
+      await crud.current.addTransaction(makeTx({
+        type: 'expense', amount: 120_000, totalInterestAmount: 3_265.49, accountId: 'cc',
+      }));
+
+      expect(updatesOn(acctKey('cc'))[0].data!.usedCredit).toEqual({ __increment: 123_265.49 });
+    });
+
     it('gasto en cuenta de ahorro (sin TC): escritura simple con addDoc, sin tocar usedCredit', async () => {
       seedAccount(savings);
       const crud = renderCRUD([savings]);
@@ -167,6 +178,8 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
 
       // Dos sets (ambas tx) en una sola operación atómica.
       expect(sets()).toHaveLength(2);
+      expect(sets()[0].data!.linkedTransactionId).toBe('__new2');
+      expect(sets()[1].data!.linkedTransactionId).toBe('__new1');
       // La deuda de la TC baja 400_000 (income → -amount).
       const ccUpdates = updatesOn(acctKey('cc'));
       expect(ccUpdates).toHaveLength(1);
@@ -180,6 +193,18 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
       const sourceTx = makeTx({ type: 'expense', amount: 100_000, accountId: 'sav', category: 'Pago Crédito' });
 
       await expect(crud.current.addCreditPaymentAtomic(creditTx, sourceTx)).rejects.toThrow(/no existe/i);
+    });
+
+    it('aborta si el pago supera la deuda persistida', async () => {
+      seedAccount(savings);
+      seedAccount({ ...credit, usedCredit: 100_000 });
+      const crud = renderCRUD([savings, credit]);
+
+      await expect(crud.current.addCreditPaymentAtomic(
+        makeTx({ type: 'income', amount: 150_000, accountId: 'cc', category: 'Pago Crédito' }),
+        makeTx({ type: 'expense', amount: 150_000, accountId: 'sav', category: 'Pago Crédito' })
+      )).rejects.toThrow(/pagar más/i);
+      expect(sets()).toHaveLength(0);
     });
   });
 
@@ -239,6 +264,38 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
       expect(deletes()).toHaveLength(0);
       expect(mockState.writeLog.filter(w => w.op === 'update')).toHaveLength(0);
     });
+
+    it('transferencia hacia TC no puede superar la deuda', async () => {
+      seedAccount(savings);
+      seedAccount({ ...credit, usedCredit: 100_000 });
+      const crud = renderCRUD([savings, credit]);
+
+      await expect(crud.current.addTransaction(makeTx({
+        type: 'transfer', amount: 150_000, accountId: 'sav', toAccountId: 'cc', category: 'Transferencia',
+      }))).rejects.toThrow(/pagar más/i);
+      expect(sets()).toHaveLength(0);
+    });
+
+    it('borra las DOS mitades de un pago vinculado y revierte la deuda una sola vez', async () => {
+      seedAccount(savings);
+      seedAccount(credit);
+      seedTx('pay-card', {
+        type: 'income', amount: 200_000, accountId: 'cc', category: 'Pago Crédito',
+        paid: true, linkedTransactionId: 'pay-bank',
+      });
+      seedTx('pay-bank', {
+        type: 'expense', amount: 200_000, accountId: 'sav', category: 'Pago Crédito',
+        paid: true, linkedTransactionId: 'pay-card',
+      });
+      const crud = renderCRUD([savings, credit]);
+
+      await crud.current.deleteTransaction('pay-bank');
+
+      expect(deletes().map(entry => entry.key)).toEqual(expect.arrayContaining([
+        txKey('pay-bank'), txKey('pay-card'),
+      ]));
+      expect(updatesOn(acctKey('cc'))[0].data!.usedCredit).toEqual({ __increment: 200_000 });
+    });
   });
 
   describe('updateTransaction', () => {
@@ -257,6 +314,34 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
       const ccUpdates = updatesOn(acctKey('cc'));
       expect(ccUpdates).toHaveLength(1);
       expect(ccUpdates[0].data!.usedCredit).toEqual({ __increment: 50_000 });
+    });
+
+    it('sincroniza monto y fecha de ambas mitades sin permitir cambiar su categoría', async () => {
+      seedAccount(savings);
+      seedAccount(credit);
+      seedTx('pay-card', {
+        type: 'income', amount: 100_000, accountId: 'cc', category: 'Pago Crédito',
+        paid: true, linkedTransactionId: 'pay-bank', date: new Date('2026-06-01'),
+      });
+      seedTx('pay-bank', {
+        type: 'expense', amount: 100_000, accountId: 'sav', category: 'Pago Crédito',
+        paid: true, linkedTransactionId: 'pay-card', date: new Date('2026-06-01'),
+      });
+      const crud = renderCRUD([savings, credit]);
+      const newDate = new Date('2026-06-02');
+
+      await crud.current.updateTransaction('pay-bank', {
+        amount: 150_000, date: newDate, category: 'Comida',
+      });
+
+      expect(updatesOn(txKey('pay-bank'))[0].data).toEqual(expect.objectContaining({
+        amount: 150_000, date: newDate,
+      }));
+      expect(updatesOn(txKey('pay-bank'))[0].data).not.toHaveProperty('category');
+      expect(updatesOn(txKey('pay-card'))[0].data).toEqual(expect.objectContaining({
+        amount: 150_000, date: newDate,
+      }));
+      expect(updatesOn(acctKey('cc'))[0].data!.usedCredit).toEqual({ __increment: -50_000 });
     });
   });
 });

@@ -2,6 +2,7 @@ import React, { memo } from 'react';
 import { TrendingUp, TrendingDown, Wallet, Calendar, Eye, EyeOff, Info } from 'lucide-react';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 import { BalanceSettling } from './BalanceSettling';
+import { AnimateDigits } from '@/components/unlumen-ui/animate-digits';
 
 interface StatsCardsProps {
   totalBalance: number;
@@ -35,6 +36,10 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
   const { hideBalances, setHideBalances } = useUIPreferences();
 
   const displayValue = (value: number) => hideBalances ? '••••••' : formatCurrency(value);
+  const animatedValue = (value: number) => {
+    const display = displayValue(value);
+    return hideBalances ? display : <AnimateDigits value={display} />;
+  };
 
   return (
     <div className="mb-4 sm:mb-5 md:mb-6">
@@ -65,7 +70,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
             {balanceSettling ? (
               <BalanceSettling className="text-balance-accent-foreground" />
             ) : (
-              displayValue(totalBalance)
+              animatedValue(totalBalance)
             )}
           </div>
         </div>
@@ -79,7 +84,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
             </div>
           </div>
           <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-gray-100 break-words">
-            {displayValue(totalIncome)}
+            {animatedValue(totalIncome)}
           </div>
         </div>
 
@@ -92,7 +97,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
             </div>
           </div>
           <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-gray-100 break-words">
-            {displayValue(totalExpenses)}
+            {animatedValue(totalExpenses)}
           </div>
         </div>
 
@@ -111,7 +116,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
             </div>
           </div>
           <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-gray-100 break-words">
-            {displayValue(pendingExpenses)}
+            {animatedValue(pendingExpenses)}
           </div>
         </div>
       </div>

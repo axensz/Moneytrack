@@ -38,6 +38,21 @@ describe('cardStatementForCycle', () => {
     expect(cardStatementForCycle(CUTOFF, -1, charges, NOW).total).toBe(100_000);
   });
 
+  it('la última cuota absorbe el residuo y suma exactamente principal más interés', () => {
+    const charges = [tx({
+      amount: 120_000,
+      installments: 2,
+      monthlyInstallmentAmount: 61_632.75,
+      totalInterestAmount: 3_265.49,
+    })];
+
+    const first = cardStatementForCycle(CUTOFF, -1, charges, NOW).total;
+    const last = cardStatementForCycle(CUTOFF, 0, charges, NOW).total;
+    expect(first).toBe(61_632.75);
+    expect(last).toBe(61_632.74);
+    expect(first + last).toBeCloseTo(123_265.49, 2);
+  });
+
   it('total === suma de items.amount con división no exacta (dos cargos mismo ciclo)', () => {
     // 100.000 / 3 = 33.333,33… → dos cargos en el mismo ciclo (-1) no deben descuadrar.
     const charges = [

@@ -25,6 +25,26 @@
   padding-top: env(safe-area-inset-top);
 }
 
+/* Unlumen UI: barrido sutil para skeletons. Se apaga si el usuario solicita
+   menos movimiento y usa los tokens del tema para funcionar en claro/oscuro. */
+.unlumen-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--foreground) 7%, transparent) 50%,
+    transparent 100%
+  );
+  animation: unlumen-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes unlumen-shimmer {
+  to { transform: translateX(200%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .unlumen-shimmer { animation: none; }
+}
+
 /* Focus visible mejorado para accesibilidad.
    Usa --primary (violet de marca, cambia solo entre claro/oscuro) → un único
    anillo de foco consistente con .header-icon y los ring-primary de Tailwind.

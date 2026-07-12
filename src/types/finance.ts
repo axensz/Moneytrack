@@ -8,6 +8,8 @@ export interface Transaction {
   paid: boolean;
   accountId: string; // Cambio a string
   toAccountId?: string; // Cambio a string
+  /** Movimiento espejo de un pago de TC (ingreso en TC <-> egreso bancario). */
+  linkedTransactionId?: string;
   createdAt?: Date;
   beneficiary?: TransactionBeneficiary;
 
@@ -124,6 +126,8 @@ export interface Account {
 
   // 🆕 Cupo utilizado persistido (se actualiza atómicamente en cada transacción)
   usedCredit?: number;
+  /** Versión del modelo de deuda: v2 incluye intereses financiados pendientes. */
+  creditDebtModelVersion?: number;
 }
 
 export interface Category {

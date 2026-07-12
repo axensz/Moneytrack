@@ -261,6 +261,7 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
               </button>
               <button
                 onClick={onDelete}
+                aria-label={`Eliminar ${account.name}`}
                 className="flex items-center justify-center p-2 min-h-[44px] min-w-[44px] text-muted-foreground hover:text-destructive hover:bg-destructive-muted rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <Trash2 size={16} />

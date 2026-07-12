@@ -11,7 +11,20 @@ import type { Account } from '../types/finance';
 import { findAccountForTransaction } from './accountTransactions';
 import { roundMoney } from './formatters';
 
-export type CreditEffect = { type: string; amount: number; accountId: string; toAccountId?: string };
+export const CURRENT_CREDIT_DEBT_MODEL_VERSION = 2;
+
+export type CreditEffect = {
+  type: string;
+  amount: number;
+  accountId: string;
+  toAccountId?: string;
+  totalInterestAmount?: number;
+};
+
+/** Deuda contractual que origina una compra financiada (principal + interés). */
+export function getCreditChargeAmount(tx: Pick<CreditEffect, 'amount' | 'totalInterestAmount'>): number {
+  return roundMoney(tx.amount + Math.max(0, tx.totalInterestAmount ?? 0));
+}
 
 /**
  * Calcula el delta de usedCredit que una transacción aporta a una cuenta TC.
@@ -21,7 +34,7 @@ export type CreditEffect = { type: string; amount: number; accountId: string; to
  * compras a cuotas); el cupo se libera con cada pago, no por cuota vencida.
  */
 export function getCreditDelta(tx: CreditEffect, accountId: string): number {
-  if (tx.type === 'expense' && tx.accountId === accountId) return tx.amount;
+  if (tx.type === 'expense' && tx.accountId === accountId) return getCreditChargeAmount(tx);
   if (tx.type === 'income' && tx.accountId === accountId) return -tx.amount;
   if (tx.type === 'transfer' && tx.toAccountId === accountId) return -tx.amount;
   return 0;
@@ -42,7 +55,7 @@ export function creditDeltasByAccount(tx: CreditEffect, accounts: Account[]): Ma
     deltas.set(account.id, (deltas.get(account.id) ?? 0) + delta);
   };
 
-  if (tx.type === 'expense') addEffect(tx.accountId, tx.amount);
+  if (tx.type === 'expense') addEffect(tx.accountId, getCreditChargeAmount(tx));
   else if (tx.type === 'income') addEffect(tx.accountId, -tx.amount);
   else if (tx.type === 'transfer') addEffect(tx.toAccountId, -tx.amount);
 

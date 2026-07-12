@@ -170,3 +170,60 @@ describe('useAddTransaction — gate de balancesReady (#3)', () => {
     expect(params.addTransaction).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('useAddTransaction — pagos y deuda contractual de TC', () => {
+  it('rechaza pagar la TC desde una cuenta sin saldo suficiente', async () => {
+    const bank = { ...savings, initialBalance: 50_000 };
+    const card = { ...credit, usedCredit: 200_000 };
+    const params = makeParams({ accounts: [bank, card], defaultAccount: bank });
+    const { result } = renderHook(() => useAddTransaction(params));
+
+    await act(async () => {
+      await result.current.handleAddTransaction({
+        type: 'income', amount: '100000', category: '', description: 'Pago',
+        date: '2026-06-15', paid: true, accountId: 'tc', toAccountId: 'sav',
+        hasInterest: false, installments: 0,
+      });
+    });
+
+    expect(params.addCreditPaymentAtomic).not.toHaveBeenCalled();
+    expect(M.toastErrors.join(' ')).toMatch(/saldo insuficiente/i);
+  });
+
+  it('incluye los intereses financiados al validar cupo y al guardar la compra', async () => {
+    const card = { ...credit, creditLimit: 124_000, interestRate: 24 };
+    const params = makeParams({ accounts: [card], defaultAccount: card });
+    const { result } = renderHook(() => useAddTransaction(params));
+
+    await act(async () => {
+      await result.current.handleAddTransaction({
+        type: 'expense', amount: '120000', category: 'Compras', description: 'Cuotas',
+        date: '2026-06-15', paid: true, accountId: 'tc', toAccountId: '',
+        hasInterest: true, installments: 2,
+      });
+    });
+
+    expect(params.addTransaction).toHaveBeenCalledWith(expect.objectContaining({
+      amount: 120_000,
+      monthlyInstallmentAmount: 61_632.75,
+      totalInterestAmount: 3_265.49,
+    }));
+  });
+
+  it('rechaza la compra si principal más intereses supera el cupo', async () => {
+    const card = { ...credit, creditLimit: 123_000, interestRate: 24 };
+    const params = makeParams({ accounts: [card], defaultAccount: card });
+    const { result } = renderHook(() => useAddTransaction(params));
+
+    await act(async () => {
+      await result.current.handleAddTransaction({
+        type: 'expense', amount: '120000', category: 'Compras', description: 'Cuotas',
+        date: '2026-06-15', paid: true, accountId: 'tc', toAccountId: '',
+        hasInterest: true, installments: 2,
+      });
+    });
+
+    expect(params.addTransaction).not.toHaveBeenCalled();
+    expect(M.toastErrors.join(' ')).toMatch(/cupo insuficiente/i);
+  });
+});

@@ -122,10 +122,10 @@ describe('mergeCreditCards consumers', () => {
       ]);
 
       const mergedCard = merged.destinationCard;
-      // Cupo utilizado = capital pendiente: la compra a cuotas (1.200.000) ocupa el
-      // cupo completo desde la compra, no solo la cuota vencida.
-      // 300.000 (gasto) + 1.200.000 (cuotas) - 120.000 (transfer) - 50.000 (ingreso) = 1.330.000
-      expect(getCreditCardUsedCredit(mergedCard, merged.transactions)).toBe(1_330_000);
+      // Deuda contractual: la compra a cuotas incluye 1.200.000 de principal
+      // + 120.000 de interés financiado.
+      // 300.000 + 1.320.000 - 120.000 (transfer) - 50.000 (ingreso) = 1.450.000
+      expect(getCreditCardUsedCredit(mergedCard, merged.transactions)).toBe(1_450_000);
 
       const statement = renderHook(() => useCreditCardStatement(merged.accounts, merged.transactions)).result.current;
       expect(statement).toHaveLength(1);
@@ -137,7 +137,7 @@ describe('mergeCreditCards consumers', () => {
       );
 
       const globalStats = renderHook(() => useGlobalStats(merged.transactions, merged.accounts)).result.current;
-      expect(globalStats.pendingExpenses).toBe(1_330_000);
+      expect(globalStats.pendingExpenses).toBe(1_450_000);
 
       const filtered = renderHook(() => useFilteredData({
         transactions: merged.transactions,
@@ -148,7 +148,7 @@ describe('mergeCreditCards consumers', () => {
         getAccountBalance: () => BalanceCalculator.calculateAccountBalance(mergedCard, merged.transactions),
       })).result.current;
       expect(filtered.filteredTransactions).toHaveLength(4);
-      expect(filtered.dynamicStats.pendingExpenses).toBe(1_330_000);
+      expect(filtered.dynamicStats.pendingExpenses).toBe(1_450_000);
 
       const interests = renderHook(() => useCreditCardInterests(merged.accounts, merged.transactions)).result.current;
       expect(interests.creditCardInterests).toEqual([
@@ -157,7 +157,7 @@ describe('mergeCreditCards consumers', () => {
 
       const context = buildFinancialContext(merged.transactions, merged.accounts, categories);
       expect(context).toContain('[ID:card-dest] Visa Destino (Crédito): Usado');
-      expect(context).toContain('1.330.000');
+      expect(context).toContain('1.450.000');
       expect(context).toContain('Visa Destino [ACC:card-dest]');
       expect(context).not.toContain('Visa Origen Eliminada');
     } finally {

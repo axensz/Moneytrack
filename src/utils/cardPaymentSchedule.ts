@@ -31,7 +31,16 @@ export function cardStatementForCycle(
     const n = tx.installments && tx.installments > 1 ? tx.installments : 1;
     const k = index - first; // offset 0-based de la cuota
     if (k < 0 || k >= n) continue;
-    const amount = n > 1 ? (tx.monthlyInstallmentAmount ?? tx.amount / n) : tx.amount;
+    let amount = tx.amount;
+    if (n > 1) {
+      const regularInstallment = roundMoney(tx.monthlyInstallmentAmount ?? tx.amount / n);
+      const contractualTotal = roundMoney(tx.amount + Math.max(0, tx.totalInterestAmount ?? 0));
+      // La última cuota absorbe el residuo de centavos para que la suma sea
+      // exactamente igual a principal + interés, no n * cuota redondeada.
+      amount = k === n - 1
+        ? roundMoney(contractualTotal - regularInstallment * (n - 1))
+        : regularInstallment;
+    }
     const rounded = roundMoney(amount);
     total += rounded;
     items.push({

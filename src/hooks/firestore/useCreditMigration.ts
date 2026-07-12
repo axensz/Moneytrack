@@ -9,6 +9,10 @@ import { collection, getDocs, doc, updateDoc, query, where } from 'firebase/fire
 import { db } from '../../lib/firebaseDb';
 import type { Account, Transaction } from '../../types/finance';
 import { logger } from '../../utils/logger';
+import {
+  CURRENT_CREDIT_DEBT_MODEL_VERSION,
+  reconcileUsedCredit,
+} from '../../utils/creditDeltas';
 
 export function calculateCreditUsedFromTransactions(
   account: Pick<Account, 'id' | 'mergedAccountIds'>,
@@ -16,21 +20,7 @@ export function calculateCreditUsedFromTransactions(
 ): number {
   if (!account.id) return 0;
 
-  const allIds = [account.id, ...(account.mergedAccountIds ?? [])];
-
-  const expenses = transactions
-    .filter(t => t.type === 'expense' && allIds.includes(t.accountId))
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const incomes = transactions
-    .filter(t => t.type === 'income' && allIds.includes(t.accountId))
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const transfersIn = transactions
-    .filter(t => t.type === 'transfer' && t.toAccountId && allIds.includes(t.toAccountId))
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  return Math.max(0, expenses - incomes - transfersIn);
+  return reconcileUsedCredit([account.id, ...(account.mergedAccountIds ?? [])], transactions);
 }
 
 export function useCreditMigration(userId: string | null, accounts: Account[]) {
@@ -39,13 +29,12 @@ export function useCreditMigration(userId: string | null, accounts: Account[]) {
   useEffect(() => {
     if (!userId || accounts.length === 0) return;
 
-    // Solo cuentas SIN usedCredit persistido (legacy, anteriores al campo). Una
-    // vez fijado, el valor lo mantienen las escrituras incrementales y la
-    // reconciliación en borrado/fusión; re-migrar en cada montaje re-consultaba
-    // toda la colección y podía pisar un valor fresco escrito atómicamente por
-    // otra vía (carrera). Backfill-once por campo nulo = idempotente (#accounts-7).
+    // v2 incorpora intereses financiados en la deuda contractual. Cada cuenta
+    // legacy se recalcula una sola vez desde su historial completo.
     const creditAccountsNeedingMigration = accounts.filter(
-      a => a.type === 'credit' && a.id && a.usedCredit == null && !migratedRef.current.has(a.id)
+      a => a.type === 'credit' && a.id &&
+        a.creditDebtModelVersion !== CURRENT_CREDIT_DEBT_MODEL_VERSION &&
+        !migratedRef.current.has(a.id)
     );
 
     if (creditAccountsNeedingMigration.length === 0) return;
@@ -86,7 +75,10 @@ export function useCreditMigration(userId: string | null, accounts: Account[]) {
           // Siempre persistir (incluso 0): así el campo deja de ser null y la
           // cuenta no se vuelve a evaluar en el próximo montaje (idempotente).
           const usedCredit = calculateCreditUsedFromTransactions(account, allTxs);
-          await updateDoc(doc(db, `${base}/accounts`, account.id), { usedCredit });
+          await updateDoc(doc(db, `${base}/accounts`, account.id), {
+            usedCredit,
+            creditDebtModelVersion: CURRENT_CREDIT_DEBT_MODEL_VERSION,
+          });
           logger.info(`Backfilled usedCredit for ${account.name}: ${usedCredit}`);
         } catch (err) {
           logger.error(`Error migrating usedCredit for ${account.name}`, err);

@@ -51,4 +51,11 @@ describe('calculateCreditUsedFromTransactions', () => {
 
     expect(calculateCreditUsedFromTransactions(mergedGold, transactions)).toBe(125_000);
   });
+
+  it('migrates financed purchases with principal plus pending interest', () => {
+    expect(calculateCreditUsedFromTransactions(gold, [
+      tx({ amount: 120_000, totalInterestAmount: 3_265.49 }),
+      tx({ id: 'payment', type: 'income', amount: 61_632.75, category: 'Pago Crédito' }),
+    ])).toBe(61_632.74);
+  });
 });

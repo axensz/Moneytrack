@@ -74,6 +74,18 @@ describe('useLocalStorage', () => {
     expect(JSON.parse(localStorage.getItem('chain-key')!)).toEqual([1, 2]);
   });
 
+  it('synchronizes separate hook instances for the same key in this tab', () => {
+    const first = renderHook(() => useLocalStorage<number[]>('same-tab-key', []));
+    const second = renderHook(() => useLocalStorage<number[]>('same-tab-key', []));
+
+    act(() => first.result.current[1]([1, 2]));
+    expect(second.result.current[0]).toEqual([1, 2]);
+
+    act(() => second.result.current[1](prev => [...prev, 3]));
+    expect(first.result.current[0]).toEqual([1, 2, 3]);
+    expect(JSON.parse(localStorage.getItem('same-tab-key')!)).toEqual([1, 2, 3]);
+  });
+
   // S11 — cross-tab sync
   // #29 — QuotaExceededError no debe tragarse silenciosamente
   describe('QuotaExceededError (#29)', () => {

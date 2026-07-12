@@ -159,8 +159,28 @@ export function useAddTransaction({
         ? roundMoney(typedAmount * exchangeRate!)
         : typedAmount;
 
+      const creditInterestResult = selectedAccount.type === 'credit' &&
+        newTransaction.type === 'expense' &&
+        newTransaction.installments && newTransaction.installments > 0 &&
+        amount > 0
+        ? calculateInterest(
+            amount,
+            selectedAccount.interestRate || 0,
+            newTransaction.installments,
+            !!newTransaction.hasInterest
+          )
+        : null;
+      const validationAmount = roundMoney(
+        amount + (creditInterestResult?.totalInterestAmount ?? 0)
+      );
+
+      if (selectedAccount.type === 'credit' && newTransaction.type === 'income' && !balancesReady) {
+        showToast.error('Los saldos aún se están calculando. Intenta el pago nuevamente en unos segundos.');
+        return false;
+      }
+
       const validation = TransactionValidator.validate(
-        { ...newTransaction, amount: amount.toString() },
+        { ...newTransaction, amount: validationAmount.toString() },
         selectedAccount,
         balancesReady ? transactions : undefined
       );
@@ -168,6 +188,30 @@ export function useAddTransaction({
       if (!validation.isValid) {
         validation.errors.forEach((error) => showToast.error(error));
         return false;
+      }
+
+      if (newTransaction.type === 'transfer' && newTransaction.toAccountId) {
+        const destination = accounts.find(account => account.id === newTransaction.toAccountId);
+        if (destination?.type === 'credit') {
+          if (!balancesReady) {
+            showToast.error('Los saldos aún se están calculando. Intenta la transferencia nuevamente en unos segundos.');
+            return false;
+          }
+          const destinationValidation = TransactionValidator.validate(
+            {
+              ...newTransaction,
+              type: 'income',
+              amount: amount.toString(),
+              accountId: destination.id!,
+            },
+            destination,
+            balancesReady ? transactions : undefined
+          );
+          if (!destinationValidation.isValid) {
+            destinationValidation.errors.forEach((error) => showToast.error(error));
+            return false;
+          }
+        }
       }
 
       try {
@@ -241,12 +285,7 @@ export function useAddTransaction({
           newTransaction.installments > 0
         ) {
           const annualRate = selectedAccount.interestRate || 0;
-          const interestResult = calculateInterest(
-            amount,
-            annualRate,
-            newTransaction.installments,
-            newTransaction.hasInterest
-          );
+          const interestResult = creditInterestResult!;
 
           transactionData.hasInterest = newTransaction.hasInterest;
           transactionData.installments = newTransaction.installments;
@@ -266,6 +305,26 @@ export function useAddTransaction({
         ) {
           const sourceAccount = accounts.find(acc => acc.id === newTransaction.toAccountId);
           if (sourceAccount) {
+            if (!balancesReady) {
+              showToast.error('Los saldos aún se están calculando. Intenta el pago nuevamente en unos segundos.');
+              return false;
+            }
+            const sourceValidation = TransactionValidator.validate(
+              {
+                type: 'expense',
+                amount: amount.toString(),
+                category: CREDIT_PAYMENT_CATEGORY,
+                description: newTransaction.description,
+                accountId: sourceAccount.id!,
+                beneficiary: newTransaction.beneficiary,
+              } as NewTransaction,
+              sourceAccount,
+              balancesReady ? transactions : undefined
+            );
+            if (!sourceValidation.isValid) {
+              sourceValidation.errors.forEach((error) => showToast.error(error));
+              return false;
+            }
             const sourceTx: Omit<Transaction, 'id' | 'createdAt'> = {
               type: 'expense',
               amount: amount,

@@ -6,6 +6,7 @@ import { safeFirestoreOperation, checkNetworkConnection } from '../utils/firesto
 import { generateId } from '../utils/formatters';
 import { transactionUsesAccount } from '../utils/accountTransactions';
 import { getCreditCardUsedCredit } from '../utils/accountStrategies';
+import { CURRENT_CREDIT_DEBT_MODEL_VERSION } from '../utils/creditDeltas';
 import { deleteAccountCascade, mergeCreditCardsOrchestrated, setDefaultAccountAtomic } from './firestore/accountOrchestration';
 import type { Account, Transaction, RecurringPayment, Debt } from '../types/finance';
 
@@ -57,7 +58,11 @@ export function useAccounts(
   const getTransactionCountForAccount = useCallback((accountId: string): number => {
     const account = accounts.find(a => a.id === accountId);
     if (!account) return 0;
-    return transactions.filter(t => transactionUsesAccount(t, account)).length;
+    const direct = transactions.filter(t => transactionUsesAccount(t, account));
+    const relatedIds = new Set(direct.flatMap(t => [t.id, t.linkedTransactionId]).filter(
+      (value): value is string => Boolean(value)
+    ));
+    return transactions.filter(t => t.id && relatedIds.has(t.id)).length;
   }, [accounts, transactions]);
 
   // Cupo usado (deuda pendiente) de una TC. Centralizado aquí —como
@@ -79,6 +84,10 @@ export function useAccounts(
     const isFirst = accounts.length === 0;
     const accountData = {
       ...newAcc,
+      ...(newAcc.type === 'credit' && {
+        usedCredit: newAcc.usedCredit ?? 0,
+        creditDebtModelVersion: CURRENT_CREDIT_DEBT_MODEL_VERSION,
+      }),
       isDefault: isFirst
     };
 
@@ -144,7 +153,13 @@ export function useAccounts(
       // la invariante de "exactamente una cuenta por defecto". Antes solo
       // quitaba la cuenta y corrompía saldos/stats con referencias colgantes.
       if (!options.preserveTransactions) {
-        setLocalTransactions(prev => prev.filter(t => t.accountId !== id && t.toAccountId !== id));
+        setLocalTransactions(prev => {
+          const direct = prev.filter(t => t.accountId === id || t.toAccountId === id);
+          const deleteIds = new Set(direct.flatMap(t => [t.id, t.linkedTransactionId]).filter(
+            (value): value is string => Boolean(value)
+          ));
+          return prev.filter(t => !t.id || !deleteIds.has(t.id));
+        });
       }
       setLocalDebts(prev => prev.filter(d => d.accountId !== id));
       setLocalRecurringPayments(prev => prev.filter(p => p.accountId !== id));
@@ -264,6 +279,7 @@ export function useAccounts(
       isDefault: shouldMakeDestinationDefault,
       createdAt: existingDestination?.createdAt ?? new Date(),
       usedCredit: mergedUsedCredit,
+      creditDebtModelVersion: CURRENT_CREDIT_DEBT_MODEL_VERSION,
     };
 
     const migrateAccountReference = (accountId?: string): string | undefined => (

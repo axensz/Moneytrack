@@ -225,6 +225,25 @@ export const useTransactionsView = ({
       const amount = parseCurrency(editForm.amount);
       const original = transactions.find((t) => t.id === id);
       const account = original ? accountsById.get(original.accountId) : undefined;
+      if (original?.linkedTransactionId && !balancesReady) {
+        showToast.error('Los saldos aún se están calculando. Intenta editar el pago nuevamente en unos segundos.');
+        return;
+      }
+      const amountChanged = original
+        ? roundMoney(amount) !== roundMoney(original.amount)
+        : false;
+      const recalculatedInterest = original?.type === 'expense' &&
+        original.installments && original.installments > 1 && amount > 0
+        ? calculateInterest(
+            amount,
+            original.interestRate ?? account?.interestRate ?? 0,
+            original.installments,
+            !!original.hasInterest
+          )
+        : null;
+      const validationAmount = roundMoney(
+        amount + (recalculatedInterest?.totalInterestAmount ?? original?.totalInterestAmount ?? 0)
+      );
 
       // Validación unificada con el alta (#10): el MISMO TransactionValidator
       // valida monto/categoría y saldo/cupo. `original` excluye la tx editada del
@@ -235,8 +254,8 @@ export const useTransactionsView = ({
       const validation = TransactionValidator.validate(
         {
           type: original?.type ?? 'expense',
-          amount: editForm.amount,
-          category: editForm.category,
+          amount: validationAmount.toString(),
+          category: original?.linkedTransactionId ? original.category : editForm.category,
           description: editForm.description,
           accountId: original?.accountId ?? '',
           toAccountId: original?.toAccountId ?? '',
@@ -251,6 +270,32 @@ export const useTransactionsView = ({
         return;
       }
 
+      // Un pago de TC mueve dos cuentas. Editar cualquiera de las mitades debe
+      // seguir siendo válido para la contraparte que se sincronizará.
+      const counterpart = original?.linkedTransactionId
+        ? balanceTransactions.find(transaction => transaction.id === original.linkedTransactionId)
+        : undefined;
+      if (counterpart) {
+        const counterpartValidation = TransactionValidator.validate(
+          {
+            type: counterpart.type,
+            amount: amount.toString(),
+            category: counterpart.category,
+            description: counterpart.description,
+            accountId: counterpart.accountId,
+            toAccountId: counterpart.toAccountId ?? '',
+            beneficiary: editForm.beneficiary.trim() || undefined,
+          } as NewTransaction,
+          accountsById.get(counterpart.accountId),
+          balancesReady ? balanceTransactions : undefined,
+          counterpart
+        );
+        if (!counterpartValidation.isValid) {
+          counterpartValidation.errors.forEach((error) => showToast.error(error));
+          return;
+        }
+      }
+
       try {
         const updates: TransactionEditUpdates = {
           description: editForm.description.trim(),
@@ -259,32 +304,21 @@ export const useTransactionsView = ({
           date: original
             ? parseDateWithTime(editForm.date, ensureDate(original.date))
             : parseDateWithTime(editForm.date),
-          category: editForm.category,
+          category: original?.linkedTransactionId ? original.category : editForm.category,
           beneficiary: editForm.beneficiary.trim() || null,
         };
-
-        const amountChanged = original
-          ? roundMoney(amount) !== roundMoney(original.amount)
-          : false;
 
         if (original && amountChanged) {
           if (original.originalCurrency || original.originalAmount || original.exchangeRate) {
             Object.assign(updates, nullDerivedForeignCurrencyFields);
           }
 
-          if (original.type === 'expense' && original.installments && original.installments > 1) {
+          if (recalculatedInterest) {
             const annualRate = original.interestRate ?? account?.interestRate ?? 0;
-            const interestResult = calculateInterest(
-              amount,
-              annualRate,
-              original.installments,
-              !!original.hasInterest
-            );
-
             updates.hasInterest = !!original.hasInterest;
             updates.installments = original.installments;
-            updates.monthlyInstallmentAmount = interestResult.monthlyInstallmentAmount;
-            updates.totalInterestAmount = interestResult.totalInterestAmount;
+            updates.monthlyInstallmentAmount = recalculatedInterest.monthlyInstallmentAmount;
+            updates.totalInterestAmount = recalculatedInterest.totalInterestAmount;
             updates.interestRate = annualRate;
           }
         }
@@ -327,7 +361,7 @@ export const useTransactionsView = ({
           (t) => (
             <div className="flex items-center gap-2">
               <span>Eliminado</span>
-              {onRestore && (
+              {onRestore && !transaction.linkedTransactionId && (
                 <button
                   onClick={async () => {
                     if (isRestoring) return;

@@ -217,3 +217,26 @@ describe('#2 — editar un PAGO de TC (income) también valida la deuda', () => 
     expect(params.updateTransaction).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('editar pagos vinculados valida ambas cuentas', () => {
+  const cardPayment: Transaction = {
+    id: 'pay-card', linkedTransactionId: 'pay-bank', type: 'income', amount: 100_000,
+    category: 'Pago Crédito', description: 'pago', date: new Date('2026-06-03T12:00:00'),
+    paid: true, accountId: 'tc',
+  };
+  const bankPayment: Transaction = {
+    id: 'pay-bank', linkedTransactionId: 'pay-card', type: 'expense', amount: 100_000,
+    category: 'Pago Crédito', description: 'salida', date: new Date('2026-06-03T12:00:00'),
+    paid: true, accountId: 'sav',
+  };
+
+  it('rechaza ampliar la mitad de la TC si sobregiraría la cuenta bancaria espejo', async () => {
+    const txs = [cardPayment, bankPayment];
+    const params = makeParams({ transactions: txs, balanceTransactions: txs });
+
+    await editAndSave(params, cardPayment, '150000');
+
+    expect(params.updateTransaction).not.toHaveBeenCalled();
+    expect(M.toastErrors.join(' ')).toMatch(/saldo insuficiente/i);
+  });
+});

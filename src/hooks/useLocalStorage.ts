@@ -27,6 +27,17 @@ function isQuotaExceededError(error: unknown): boolean {
 const QUOTA_TOAST_MESSAGE =
   'El almacenamiento del navegador está lleno. Inicia sesión para no perder tus datos.';
 
+type SameTabSubscriber = (value: unknown) => void;
+
+// The native `storage` event only fires in OTHER tabs. MoneyTrack can mount
+// this hook more than once for the same key, so same-tab instances also need a
+// shared channel to avoid persisting a stale private copy.
+const sameTabSubscribers = new Map<string, Set<SameTabSubscriber>>();
+
+function publishSameTabValue<T>(key: string, value: T): void {
+  sameTabSubscribers.get(key)?.forEach((subscriber) => subscriber(value));
+}
+
 export function useLocalStorage<T>(key: string, initialValue: T) {
   const [value, setValue] = useState<T>(initialValue);
   const isInitialized = useRef(false);
@@ -55,12 +66,33 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
     try {
       const stored = localStorage.getItem(key);
       if (stored) {
-        setValue(JSON.parse(stored));
+        const parsed = JSON.parse(stored) as T;
+        pendingValueRef.current = parsed;
+        setValue(parsed);
       }
     } catch {
       // Si falla, mantener initialValue
     }
     isInitialized.current = true;
+  }, [key]);
+
+  // Keep hook instances for the same key synchronized in this tab. Updating
+  // the synchronous mirror matters when another functional update runs before
+  // React has committed the rerender.
+  useEffect(() => {
+    const subscriber: SameTabSubscriber = (nextValue) => {
+      const typedValue = nextValue as T;
+      pendingValueRef.current = typedValue;
+      setValue(typedValue);
+    };
+    const subscribers = sameTabSubscribers.get(key) ?? new Set<SameTabSubscriber>();
+    subscribers.add(subscriber);
+    sameTabSubscribers.set(key, subscribers);
+
+    return () => {
+      subscribers.delete(subscriber);
+      if (subscribers.size === 0) sameTabSubscribers.delete(key);
+    };
   }, [key]);
 
   // S11: Sincronización entre pestañas.
@@ -102,6 +134,7 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
 
     try {
       localStorage.setItem(key, JSON.stringify(valueToStore));
+      publishSameTabValue(key, valueToStore);
       // Guardado exitoso → rearmar el aviso de cuota para futuros eventos.
       quotaToastShown.current = false;
     } catch (error) {

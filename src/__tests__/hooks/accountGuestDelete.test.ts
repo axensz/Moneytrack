@@ -25,6 +25,7 @@ vi.mock('../../contexts/FirestoreContext', () => ({
 }));
 
 import { useAccounts } from '../../hooks/useAccounts';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
 
 const seed = () => {
   localStorage.setItem('accounts', JSON.stringify([
@@ -74,5 +75,28 @@ describe('useAccounts.deleteAccount — modo invitado (#accounts-1)', () => {
     // Invariante de default: exactamente una, ya no la borrada.
     expect(accounts.filter(a => a.isDefault)).toHaveLength(1);
     expect(accounts.find(a => a.isDefault)?.id).toBe('b');
+  });
+
+  it('preserva transacciones ajenas creadas despues de montar los hooks', async () => {
+    localStorage.setItem('accounts', JSON.stringify([
+      { id: 'bank', name: 'Banco', type: 'savings', isDefault: true, initialBalance: 0 },
+      { id: 'card', name: 'Visa', type: 'credit', isDefault: false, initialBalance: 0, creditLimit: 1_000_000 },
+    ] as Account[]));
+
+    const accountsHook = renderHook(() => useAccounts(null, [], vi.fn()));
+    const transactionStore = renderHook(() => useLocalStorage<Transaction[]>('transactions', []));
+    await waitFor(() => expect(accountsHook.result.current.accounts).toHaveLength(2));
+
+    act(() => transactionStore.result.current[1]([
+      { id: 'card-payment', linkedTransactionId: 'bank-payment', type: 'income', amount: 100, category: 'Pago Crédito', description: '', date: new Date(), paid: true, accountId: 'card' },
+      { id: 'bank-payment', linkedTransactionId: 'card-payment', type: 'expense', amount: 100, category: 'Pago Crédito', description: '', date: new Date(), paid: true, accountId: 'bank' },
+      { id: 'bank-income', type: 'income', amount: 500, category: 'x', description: '', date: new Date(), paid: true, accountId: 'bank' },
+    ]));
+
+    await act(async () => { await accountsHook.result.current.deleteAccount('card'); });
+
+    const persisted = JSON.parse(localStorage.getItem('transactions')!) as Transaction[];
+    expect(persisted.map(transaction => transaction.id)).toEqual(['bank-income']);
+    expect(transactionStore.result.current[0].map(transaction => transaction.id)).toEqual(['bank-income']);
   });
 });

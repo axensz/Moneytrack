@@ -51,6 +51,12 @@ describe('getCreditDelta', () => {
     expect(getCreditDelta({ type: 'expense', amount: 100, accountId: 'cc-1' }, 'cc-1')).toBe(100);
   });
 
+  it('financed expense includes its contractual interest in the debt', () => {
+    expect(getCreditDelta({
+      type: 'expense', amount: 120_000, totalInterestAmount: 3_265.49, accountId: 'cc-1',
+    }, 'cc-1')).toBe(123_265.49);
+  });
+
   it('income on the account reduces debt (-amount)', () => {
     expect(getCreditDelta({ type: 'income', amount: 100, accountId: 'cc-1' }, 'cc-1')).toBe(-100);
   });

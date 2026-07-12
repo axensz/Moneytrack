@@ -6,7 +6,9 @@ import { useDebtsDomain, useAccountDomain } from '../../../hooks/useFinanceSelec
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { formatCurrency, formatNumberForInput, unformatNumber, parseCurrency, formatDateForInput, parseDateFromInput, formatDate, formatRelativeTime } from '../../../utils/formatters';
 import { ensureDate } from '../../../utils/dateUtils';
-import { addMonthsClamped, compareDebtsByNextPayment, getDebtNextPaymentInfo, normalizePaymentDay } from '../../../utils/debtPaymentSchedule';
+import { compareDebtsByNextPayment, getDebtNextPaymentInfo, normalizePaymentDay } from '../../../utils/debtPaymentSchedule';
+import { buildPaymentScheduleUpdates } from './paymentScheduleForm';
+import type { PaymentScheduleFormState, PaymentScheduleMode } from './paymentScheduleForm';
 import { showToast } from '../../../utils/toastHelpers';
 import { ConfirmDialog } from '../../modals/ConfirmDialog';
 import { ACTION_ICONS, sectionTitle, UI_TEXT } from '../../../config/ui';
@@ -19,15 +21,6 @@ const FORGIVEN_LABELS: Record<NonNullable<Debt['forgivenReason']>, string> = {
 };
 const EditIcon = ACTION_ICONS.edit;
 const NewIcon = ACTION_ICONS.new;
-
-type PaymentScheduleMode = 'none' | 'monthly' | 'date' | 'months';
-
-interface PaymentScheduleFormState {
-  mode: PaymentScheduleMode;
-  expectedPaymentDay: string;
-  nextPaymentDate: string;
-  monthsFromNow: string;
-}
 
 const PAYMENT_SCHEDULE_MODES: { mode: PaymentScheduleMode; label: string }[] = [
   { mode: 'none', label: 'Sin fecha' },
@@ -67,61 +60,6 @@ const createPaymentScheduleFormFromDebt = (debt: Debt): PaymentScheduleFormState
   };
 };
 
-const isDateInput = (value: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(value);
-
-const buildPaymentScheduleUpdates = (
-  form: PaymentScheduleFormState,
-): { updates?: Pick<Debt, 'expectedPaymentDay' | 'nextPaymentDate'>; error?: string } => {
-  if (form.mode === 'none') {
-    return { updates: { expectedPaymentDay: undefined, nextPaymentDate: undefined } };
-  }
-
-  if (form.mode === 'monthly') {
-    const expectedPaymentDay = Number(form.expectedPaymentDay);
-    if (!Number.isInteger(expectedPaymentDay) || expectedPaymentDay < 1 || expectedPaymentDay > 31) {
-      return { error: 'El día mensual debe estar entre 1 y 31' };
-    }
-
-    return {
-      updates: {
-        expectedPaymentDay,
-        nextPaymentDate: form.nextPaymentDate && isDateInput(form.nextPaymentDate)
-          ? parseDateFromInput(form.nextPaymentDate)
-          : undefined,
-      },
-    };
-  }
-
-  if (form.mode === 'date') {
-    if (!isDateInput(form.nextPaymentDate)) {
-      return { error: 'Elige una fecha de próximo pago' };
-    }
-
-    return {
-      updates: {
-        expectedPaymentDay: undefined,
-        nextPaymentDate: parseDateFromInput(form.nextPaymentDate),
-      },
-    };
-  }
-
-  const monthsFromNow = Number(form.monthsFromNow);
-  if (!Number.isInteger(monthsFromNow) || monthsFromNow < 1 || monthsFromNow > 120) {
-    return { error: 'Los meses deben estar entre 1 y 120' };
-  }
-
-  return {
-    updates: {
-      expectedPaymentDay: undefined,
-      nextPaymentDate: addMonthsClamped(new Date(), monthsFromNow),
-    },
-  };
-};
-
-/**
- * Vista de préstamos y deudas
- * Permite trackear dinero prestado y recibido con pagos parciales
- */
 export const DebtsView: React.FC = () => {
   const {
     debts,

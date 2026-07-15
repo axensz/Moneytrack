@@ -68,7 +68,8 @@ export const metadata: Metadata = {
  *   de Google Sign-In.
  * - connect: *.googleapis.com cubre Firestore/Auth/Installations/Gemini BYOK;
  *   google-analytics/googletagmanager = Analytics; firebaseio = RTDB (config
- *   presente); *.firebaseapp.com = iframe helper de auth.
+ *   presente); *.firebaseapp.com = iframe helper de auth; datos.gov.co = TRM
+ *   oficial.
  * - img: googleusercontent = avatar de la cuenta Google.
  */
 const csp = [
@@ -77,7 +78,7 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://*.googleusercontent.com",
   "font-src 'self' data:",
-  "connect-src 'self' https://*.googleapis.com https://*.google-analytics.com https://*.googletagmanager.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebaseapp.com",
+  "connect-src 'self' https://*.googleapis.com https://*.google-analytics.com https://*.googletagmanager.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebaseapp.com https://www.datos.gov.co",
   "frame-src https://*.firebaseapp.com https://accounts.google.com",
   "worker-src 'self'",
   "manifest-src 'self'",

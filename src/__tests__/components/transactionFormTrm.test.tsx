@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { TransactionForm } from '@/components/shared/TransactionForm';
@@ -78,6 +80,21 @@ afterEach(() => {
 });
 
 describe('TransactionForm TRM oficial', () => {
+  it('allows the official TRM origin in the production CSP', () => {
+    const transactionFormSource = readFileSync(
+      resolve(process.cwd(), 'src/components/shared/TransactionForm.tsx'),
+      'utf8',
+    );
+    const layoutSource = readFileSync(resolve(process.cwd(), 'app/layout.tsx'), 'utf8');
+    const officialTrmUrl = transactionFormSource.match(
+      /const OFFICIAL_TRM_URL = '([^']+)'/,
+    )?.[1];
+    const connectSources = layoutSource.match(/"connect-src ([^"]+)"/)?.[1].split(/\s+/);
+
+    expect(officialTrmUrl).toBeDefined();
+    expect(connectSources).toContain(new URL(officialTrmUrl!).origin);
+  });
+
   it('clears the official lookup error after entering a manual TRM', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
 

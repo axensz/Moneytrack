@@ -47,7 +47,7 @@ Aplicación de finanzas personales construida con **Next.js** y **Firebase**. Ll
 **Datos**
 - **Sincronización en la nube** con Firestore al iniciar sesión (Google o correo).
 - **Modo invitado offline** con `localStorage` y **migración asistida** a la nube al registrarse.
-- **Importación** desde CSV, XLSX y PDF (perfiles para Bancolombia, Nu y genérico) y **exportación** a CSV.
+- **Exportación** de transacciones a CSV para consulta en Excel o Google Sheets.
 
 **Experiencia**
 - **PWA instalable** con service worker e indicador offline.
@@ -77,7 +77,7 @@ Aplicación de finanzas personales construida con **Next.js** y **Firebase**. Ll
 Algunas decisiones clave que conviene conocer antes de tocar el dominio:
 
 - **Saldos derivados vs. campo persistido.** El saldo de cuentas de ahorro/efectivo se **calcula a partir de las transacciones** (`BalanceCalculator` + estrategias en `src/utils/accountStrategies.ts`), por lo que se autocorrige. La **deuda de tarjeta de crédito** vive en un campo persistido y autoritativo, `account.usedCredit`.
-- **Mutaciones atómicas de `usedCredit`.** Toda alta/baja/edición de transacción que afecta una tarjeta ajusta `usedCredit` dentro de una `runTransaction` de Firestore (ver `src/hooks/firestore/useTransactionsCRUD.ts`). El borrado de cuenta **reconcilia** `usedCredit` de forma idempotente (`reconcileUsedCredit` en `src/utils/creditDeltas.ts`) para sobrevivir a fallos parciales.
+- **Mutaciones atómicas de `usedCredit`.** Toda alta/baja/edición de transacción que afecta una tarjeta ajusta `usedCredit` dentro de una `runTransaction` de Firestore. Borrar/fusionar cuentas y borrar deudas usan un único batch, reconcilian `usedCredit` desde el historial del servidor y mantienen un lock por usuario con lease basado en la hora del servidor. La liberación deja un tombstone con el mismo identificador para que un commit retrasado no pueda liberar otra operación. Las reglas rechazan relaciones nuevas hacia cuentas o deudas inexistentes, incluidas escrituras offline tardías. Las rutas complejas que actualizan transacciones se limitan a 15 escrituras y las rutas simples a 40 para conservar margen frente a las 1.000 expresiones máximas de reglas; volúmenes mayores se rechazan sin tocar datos y requieren una migración administrada.
 - **Estrategias de cuenta.** El comportamiento por tipo de cuenta (incluir en patrimonio, calcular saldo/cupo, validar) está encapsulado en estrategias (`accountStrategies.ts`), no esparcido por la UI.
 - **Modo invitado.** Sin sesión, los datos viven en `localStorage` bajo claves con prefijo `guest_`; al iniciar sesión se ofrece migrarlos a Firestore (`src/utils/guestMigration.ts`).
 - **Caché Firestore.** Se usa `persistentLocalCache` + `persistentMultipleTabManager` para lectura offline y sincronización entre pestañas.
@@ -144,7 +144,7 @@ npm run test:run     # Suite de tests una sola vez (CI)
 
 ## Calidad y tests
 
-- **442 tests** (Vitest + Testing Library) sobre la lógica de dominio: cálculo de saldos e intereses, deltas de `usedCredit`, reconciliación, validación de transacciones, fechas de pagos periódicos, filtros, importación y accesibilidad.
+- Suite de pruebas con Vitest y Testing Library sobre la lógica de dominio: cálculo de saldos e intereses, deltas de `usedCredit`, reconciliación, validación de transacciones, fechas de pagos periódicos, filtros y accesibilidad.
 - Verificación de tipos estricta con `npm run typecheck`.
 
 Antes de abrir un PR, ejecuta:
@@ -200,6 +200,11 @@ Para rotarlas:
 4. Haz push a `main` para que el nuevo despliegue use las claves actualizadas.
 
 > Las claves `NEXT_PUBLIC_*` de Firebase son públicas por diseño (se incluyen en el bundle del cliente). La seguridad real se gestiona desde las **Reglas de Firestore** (`firestore.rules`) y la **configuración de Auth**.
+>
+> El workflow valida la sintaxis de las reglas con el emulador, pero no las
+> publica. Después de modificar `firestore.rules`, despliega explícitamente con
+> `firebase deploy --only firestore:rules`; de lo contrario, el código nuevo del
+> cliente funcionará con las reglas antiguas.
 
 ---
 
@@ -207,19 +212,15 @@ Para rotarlas:
 
 ### De modo invitado a cuenta registrada
 
-Al iniciar sesión con Google o correo, la app detecta automáticamente si tienes datos de invitado y ofrece migrarlos a tu cuenta en la nube. Acepta el diálogo de migración y tus transacciones, cuentas y categorías se copiarán a Firestore.
+Al iniciar sesión con Google o correo, la app detecta automáticamente si tienes datos de invitado y ofrece migrarlos a tu cuenta en la nube. Acepta el diálogo y tus cuentas, deudas, transacciones, pagos recurrentes, presupuestos, metas, categorías y configuración del plan se copiarán a Firestore en lotes compatibles con las reglas.
 
 > Los datos de invitado se almacenan en `localStorage` bajo claves con el prefijo `guest_`. Después de migrar, esas claves se eliminan automáticamente. Si **rechazas** la migración, esos datos se borran al cerrar sesión — la app te lo confirma antes.
 
 ### Entre cuentas de usuario distintas
 
-No existe una migración directa entre dos cuentas registradas. El flujo recomendado es:
-
-1. Con la cuenta de **origen** activa, exporta tus transacciones en **Transacciones → Exportar CSV**.
-2. Inicia sesión con la cuenta de **destino**.
-3. Importa el CSV desde **Transacciones → Importar**.
-
-> Cuentas, categorías y pagos periódicos deben recrearse manualmente en la cuenta de destino.
+No existe una migración directa entre dos cuentas registradas. La exportación CSV sirve como
+copia de consulta, pero no puede cargarse nuevamente en MoneyTrack. Las transacciones, cuentas,
+categorías y pagos periódicos deben recrearse manualmente en la cuenta de destino.
 
 ### Eliminar todos los datos de un usuario
 
@@ -264,10 +265,5 @@ El `persistentMultipleTabManager` requiere IndexedDB con soporte de locks. En Fi
 ### Los cambios no se reflejan en otras pestañas
 
 La sincronización de datos de UI (filtros, tema, preferencias) entre pestañas usa el evento `storage` del navegador. Asegúrate de que la app no esté abierta en un iframe, que puede bloquear ese evento.
-
-### Error al importar CSV
-
-- El archivo debe estar codificado en **UTF-8** (sin BOM). Guárdalo desde Excel con "CSV UTF-8".
-- Las columnas mínimas requeridas dependen del perfil detectado (Bancolombia, Nu, genérico). Revisa el encabezado del CSV con un editor de texto si la importación falla.
 
 ---

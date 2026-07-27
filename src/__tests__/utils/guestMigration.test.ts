@@ -4,6 +4,7 @@ import {
   countGuestData,
   hasGuestData,
   buildMigrationWrites,
+  planMigrationWriteBatches,
   migrateGuestData,
   type GuestData,
   type WriteOp,
@@ -138,6 +139,58 @@ describe('buildMigrationWrites (S1)', () => {
 
   it('returns no writes for empty data', () => {
     expect(buildMigrationWrites(emptyData(), UID)).toHaveLength(0);
+  });
+
+  it('separa cuentas y limita referencias distintas por batch de migración', () => {
+    const accountWrites: WriteOp[] = Array.from({ length: 20 }, (_, index) => ({
+      path: `users/${UID}/accounts/account-${index}`,
+      data: { name: `Cuenta ${index}` },
+    }));
+    const transactionWrites: WriteOp[] = Array.from({ length: 20 }, (_, index) => ({
+      path: `users/${UID}/transactions/transaction-${index}`,
+      data: { accountId: `account-${index}` },
+    }));
+
+    const batches = planMigrationWriteBatches([
+      ...accountWrites,
+      ...transactionWrites,
+    ]);
+
+    expect(batches.slice(0, 2).flat()).toEqual(accountWrites);
+    expect(batches.slice(0, 2).every(batch => batch.length <= 15)).toBe(true);
+    expect(batches.slice(2)).toHaveLength(2);
+    batches.slice(2).forEach(batch => {
+      const accountIds = new Set(batch.map(write => write.data.accountId));
+      expect(accountIds.size).toBeLessThanOrEqual(16);
+      expect(batch.length).toBeLessThanOrEqual(15);
+    });
+  });
+
+  it('confirma deudas antes de las transacciones que las referencian', () => {
+    const accountWrite: WriteOp = {
+      path: `users/${UID}/accounts/account-1`,
+      data: { name: 'Cuenta' },
+    };
+    const debtWrite: WriteOp = {
+      path: `users/${UID}/debts/debt-1`,
+      data: { accountId: 'account-1' },
+    };
+    const transactionWrite: WriteOp = {
+      path: `users/${UID}/transactions/transaction-1`,
+      data: { accountId: 'account-1', debtId: 'debt-1' },
+    };
+
+    const batches = planMigrationWriteBatches([
+      transactionWrite,
+      debtWrite,
+      accountWrite,
+    ]);
+
+    expect(batches).toEqual([
+      [accountWrite],
+      [debtWrite],
+      [transactionWrite],
+    ]);
   });
 });
 

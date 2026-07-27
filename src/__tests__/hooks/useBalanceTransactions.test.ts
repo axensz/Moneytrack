@@ -1,33 +1,54 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
-import type { Transaction } from '../../types/finance';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import type { Account, Transaction } from '../../types/finance';
 
-// ─── Mock firebase/firestore: getDocs sirve el "historial completo" ──
-let getDocsCalls = 0;
-let storeDocs: { id: string; data: Record<string, unknown> }[] = [];
-let resolveFetch: (() => void) | null = null;
-let holdFetch = false;
-let throwFetch = false;
+type FakeDocument = {
+  id: string;
+  data: () => Record<string, unknown>;
+};
+
+type FakeSnapshot = {
+  docs: FakeDocument[];
+  metadata: { fromCache: boolean; hasPendingWrites: boolean };
+  docChanges: () => [];
+};
+
+type SnapshotListener = {
+  next: (snapshot: FakeSnapshot) => void;
+  error: (error: Error) => void;
+  unsubscribed: boolean;
+};
+
+let subscriptionCount = 0;
+let unsubscribeCount = 0;
+let listeners: SnapshotListener[] = [];
 
 vi.mock('firebase/firestore', () => ({
-  collection: () => ({ __c: true }),
-  query: (...args: unknown[]) => args,
-  orderBy: (...args: unknown[]) => ({ __orderBy: args }),
-  getDocs: vi.fn(async () => {
-    getDocsCalls += 1;
-    if (holdFetch) {
-      await new Promise<void>((resolve) => { resolveFetch = resolve; });
-    }
-    if (throwFetch) throw new Error('network down');
-    return { docs: storeDocs.map((d) => ({ id: d.id, data: () => d.data })) };
+  collection: (...args: unknown[]) => ({ type: 'collection', args }),
+  query: (...args: unknown[]) => ({ type: 'query', args }),
+  orderBy: (...args: unknown[]) => ({ type: 'orderBy', args }),
+  onSnapshot: vi.fn((...args: unknown[]) => {
+    subscriptionCount += 1;
+    const listener: SnapshotListener = {
+      next: args[2] as SnapshotListener['next'],
+      error: args[3] as SnapshotListener['error'],
+      unsubscribed: false,
+    };
+    listeners.push(listener);
+
+    return () => {
+      if (listener.unsubscribed) return;
+      listener.unsubscribed = true;
+      unsubscribeCount += 1;
+    };
   }),
 }));
 
 vi.mock('../../lib/firebaseDb', () => ({ db: {} }));
+vi.mock('../../utils/logger', () => ({ logger: { error: vi.fn() } }));
 
 import { useBalanceTransactions } from '../../hooks/useBalanceTransactions';
 import { BalanceCalculator } from '../../utils/balanceCalculator';
-import type { Account } from '../../types/finance';
 
 const tx = (id: string, overrides: Partial<Transaction> = {}): Transaction => ({
   id,
@@ -41,98 +62,173 @@ const tx = (id: string, overrides: Partial<Transaction> = {}): Transaction => ({
   ...overrides,
 } as Transaction);
 
+function documentFor(transaction: Transaction): FakeDocument {
+  const { id, ...data } = transaction;
+  if (!id) throw new Error('La prueba requiere una transacción con id');
+  return { id, data: () => data };
+}
+
+function emitSnapshot(
+  transactions: Transaction[],
+  options: { fromCache?: boolean; listenerIndex?: number } = {},
+) {
+  const listener = listeners[options.listenerIndex ?? listeners.length - 1];
+  if (!listener) throw new Error('No hay una suscripción activa');
+
+  act(() => {
+    listener.next({
+      docs: transactions.map(documentFor),
+      metadata: {
+        fromCache: options.fromCache ?? false,
+        hasPendingWrites: false,
+      },
+      docChanges: () => [],
+    });
+  });
+}
+
 describe('useBalanceTransactions — fuente de saldos bajo paginación', () => {
   beforeEach(() => {
-    getDocsCalls = 0;
-    storeDocs = [];
-    holdFetch = false;
-    resolveFetch = null;
-    throwFetch = false;
+    subscriptionCount = 0;
+    unsubscribeCount = 0;
+    listeners = [];
   });
 
-  it('ventana NO saturada (hasMore=false): no fetchea, devuelve el array live, ready=true', async () => {
+  it('ventana no saturada: no se suscribe, devuelve live y ready=true', async () => {
     const live = [tx('t1')];
     const { result } = renderHook(() => useBalanceTransactions('user1', live, false));
-    await new Promise((r) => setTimeout(r, 20));
-    expect(getDocsCalls).toBe(0);
+    await Promise.resolve();
+
+    expect(subscriptionCount).toBe(0);
     expect(result.current.transactions).toEqual(live);
     expect(result.current.ready).toBe(true);
   });
 
-  it('modo invitado: no fetchea aunque hasMore sea true, ready=true', async () => {
+  it('modo invitado: no se suscribe aunque hasMore sea true', async () => {
     const live = [tx('t1')];
     const { result } = renderHook(() => useBalanceTransactions(null, live, true));
-    await new Promise((r) => setTimeout(r, 20));
-    expect(getDocsCalls).toBe(0);
+    await Promise.resolve();
+
+    expect(subscriptionCount).toBe(0);
+    expect(result.current.transactions).toEqual(live);
     expect(result.current.ready).toBe(true);
   });
 
-  it('ventana saturada: fusiona el historial completo y el saldo incluye txs fuera de la ventana', async () => {
-    // Historial completo en Firestore: incluye un ingreso ANTIGUO de 337.520
-    // que NO está en la ventana live (el mecanismo del escenario A del reporte).
-    storeDocs = [
-      { id: 'old1', data: { type: 'income', amount: 337_520, date: new Date('2025-01-01'), category: 'Otros', paid: true, accountId: 'sav' } },
-      { id: 't1', data: { type: 'income', amount: 1000, date: new Date('2026-06-01'), category: 'Otros', paid: true, accountId: 'sav' } },
-    ];
-    const live = [tx('t1')];
-    const { result } = renderHook(() => useBalanceTransactions('user1', live, true));
+  it('ventana saturada: el primer snapshot completo incluye movimientos antiguos', async () => {
+    const old = tx('old1', {
+      amount: 337_520,
+      date: new Date('2025-01-01'),
+    });
+    const recent = tx('t1');
+    const { result } = renderHook(
+      () => useBalanceTransactions('user1', [recent], true),
+    );
 
-    await waitFor(() => expect(result.current.transactions).toHaveLength(2));
-    expect(getDocsCalls).toBe(1);
-    expect(result.current.ready).toBe(true);
-
-    const account: Account = { id: 'sav', name: 'A', type: 'savings', isDefault: true, initialBalance: 0 };
-    expect(BalanceCalculator.calculateAccountBalance(account, result.current.transactions)).toBeCloseTo(338_520, 2);
-  });
-
-  it('ready=false MIENTRAS el primer fetch está en vuelo (flash de saldo de ventana), true al resolver', async () => {
-    holdFetch = true;
-    storeDocs = [
-      { id: 'old1', data: { type: 'income', amount: 500_000, date: new Date('2025-01-01'), category: 'Otros', paid: true, accountId: 'sav' } },
-    ];
-    const live = [tx('t1')];
-    const { result } = renderHook(() => useBalanceTransactions('user1', live, true));
-
-    // Fetch en vuelo: NO asentado — la UI debe mostrar "Calculando…" y bloquear ajustes.
-    await waitFor(() => expect(getDocsCalls).toBe(1));
     expect(result.current.ready).toBe(false);
-    expect(result.current.transactions).toEqual(live); // solo ventana, incompleto
+    emitSnapshot([recent, old]);
 
-    resolveFetch!();
     await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(subscriptionCount).toBe(1);
     expect(result.current.transactions).toHaveLength(2);
+
+    const account: Account = {
+      id: 'sav',
+      name: 'A',
+      type: 'savings',
+      isDefault: true,
+      initialBalance: 0,
+    };
+    expect(
+      BalanceCalculator.calculateAccountBalance(account, result.current.transactions)
+    ).toBeCloseTo(338_520, 2);
   });
 
-  it('fetch fallido sobre ventana saturada: ready queda FALSE (no da luz verde a saldos sobre la ventana truncada)', async () => {
-    // C2 regresión: antes el fetch fallido asentaba igual (ready=true) y los
-    // saldos se calculaban contra la ventana paginada de 500 → corrupción al
-    // ajustar. Ahora en error NO se asienta: la UI sigue en "Calculando…" y los
-    // ajustes quedan bloqueados hasta una recarga / refetch exitoso.
-    throwFetch = true;
-    const live = [tx('t1')];
-    const { result } = renderHook(() => useBalanceTransactions('user1', live, true));
+  it('solo marca ready tras el primer snapshot confirmado por el servidor', async () => {
+    const old = tx('old1', {
+      amount: 500_000,
+      date: new Date('2025-01-01'),
+    });
+    const recent = tx('t1');
+    const { result } = renderHook(
+      () => useBalanceTransactions('user1', [recent], true),
+    );
 
-    await waitFor(() => expect(getDocsCalls).toBe(1));
-    await new Promise((r) => setTimeout(r, 20));
     expect(result.current.ready).toBe(false);
-    expect(result.current.transactions).toEqual(live); // solo la ventana, incompleto
+
+    // La caché puede no contener todo el historial: se muestra, pero no habilita saldos.
+    emitSnapshot([recent, old], { fromCache: true });
+    expect(result.current.transactions).toHaveLength(2);
+    expect(result.current.ready).toBe(false);
+
+    // El cambio metadata-only confirma que el mismo snapshot ya viene del servidor.
+    emitSnapshot([recent, old]);
+    await waitFor(() => expect(result.current.ready).toBe(true));
   });
 
-  it('refetch posterior (alta/baja) NO vuelve a des-asentar: ready permanece true', async () => {
-    storeDocs = [
-      { id: 't1', data: { type: 'income', amount: 1000, date: new Date('2026-06-01'), category: 'Otros', paid: true, accountId: 'sav' } },
-    ];
+  it('un error antes del primer snapshot del servidor mantiene ready=false', () => {
+    const recent = tx('t1');
+    const { result } = renderHook(
+      () => useBalanceTransactions('user1', [recent], true),
+    );
+
+    act(() => {
+      listeners[0].error(new Error('network down'));
+    });
+
+    expect(result.current.ready).toBe(false);
+    expect(result.current.transactions).toEqual([recent]);
+  });
+
+  it('un cambio del array live no resuscribe ni pisa el historial autoritativo', async () => {
+    const recent = tx('t1');
     const { result, rerender } = renderHook(
       ({ live }) => useBalanceTransactions('user1', live, true),
-      { initialProps: { live: [tx('t1')] } },
+      { initialProps: { live: [recent] } },
     );
+    emitSnapshot([recent]);
     await waitFor(() => expect(result.current.ready).toBe(true));
 
-    // Alta de una tx → cambia la firma de ids → refetch; ready no debe parpadear.
-    holdFetch = true;
-    rerender({ live: [tx('t1'), tx('t2')] });
-    await waitFor(() => expect(getDocsCalls).toBe(2));
+    rerender({ live: [recent, tx('t2')] });
+
+    expect(subscriptionCount).toBe(1);
+    expect(unsubscribeCount).toBe(0);
     expect(result.current.ready).toBe(true);
-    resolveFetch!();
+    expect(result.current.transactions).toEqual([recent]);
+  });
+
+  it('mantiene la suscripción al terminar de paginar un historial grande', async () => {
+    const loadedHistory = Array.from(
+      { length: 500 },
+      (_, index) => tx(`t${index}`),
+    );
+    const { result, rerender } = renderHook(
+      ({ hasMore }) => useBalanceTransactions('user1', loadedHistory, hasMore),
+      { initialProps: { hasMore: true } },
+    );
+    emitSnapshot(loadedHistory);
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    rerender({ hasMore: false });
+
+    expect(subscriptionCount).toBe(1);
+    expect(unsubscribeCount).toBe(0);
+    expect(result.current.ready).toBe(true);
+    expect(result.current.transactions).toHaveLength(500);
+  });
+
+  it('cancela la suscripción completa cuando la ventana deja de estar saturada', async () => {
+    const recent = tx('t1');
+    const { result, rerender } = renderHook(
+      ({ hasMore }) => useBalanceTransactions('user1', [recent], hasMore),
+      { initialProps: { hasMore: true } },
+    );
+    emitSnapshot([recent]);
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    rerender({ hasMore: false });
+
+    expect(unsubscribeCount).toBe(1);
+    expect(result.current.transactions).toEqual([recent]);
+    expect(result.current.ready).toBe(true);
   });
 });

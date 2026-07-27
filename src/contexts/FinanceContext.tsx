@@ -268,7 +268,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
   } = useDebts(userId, transactions, userId ? firestoreData.debts : undefined, {
     addTransaction,
     deleteTransaction,
-  }, accounts);
+  });
 
   // Borrado de transacciones con sincronización de préstamos.
   //
@@ -296,17 +296,20 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
         // Pago/cobro del préstamo → revertir el saldo pendiente y borrar la tx.
         if (tx.category === LOAN_PAYMENT_CATEGORY) {
           await deleteTransaction(id);
-          await updateDebt(debt.id!, {
-            remainingAmount: debt.remainingAmount + tx.amount,
-            isSettled: false,
-          });
+          if (!userId) {
+            await updateDebt(debt.id!, {
+              remainingAmount: debt.remainingAmount + tx.amount,
+              isSettled: false,
+              settledAt: undefined,
+            });
+          }
           return;
         }
       }
 
       await deleteTransaction(id);
     },
-    [transactions, debts, deleteTransaction, deleteDebt, updateDebt]
+    [transactions, debts, userId, deleteTransaction, deleteDebt, updateDebt]
   );
 
   // 6. Presupuestos — uses centralized data when authenticated

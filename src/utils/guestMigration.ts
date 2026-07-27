@@ -34,6 +34,10 @@ import type {
   SavingsGoal,
   Categories,
 } from '../types/finance';
+import {
+  RULE_SAFE_COMPLEX_WRITE_LIMIT,
+  RULE_SAFE_REFERENCE_LIMIT,
+} from '../config/firestoreLimits';
 
 /** Config del plan financiero guardada en local (key 'financialPlanConfig'). */
 interface StoredPlanConfig {
@@ -95,8 +99,11 @@ const DATE_FIELDS: Record<string, readonly string[]> = {
   savingsGoals: ['targetDate', 'createdAt', 'completedAt'],
 };
 
-// Firestore permite hasta 500 operaciones por batch; dejamos margen.
-const BATCH_SIZE = 450;
+// El límite bruto de Firestore es 500 escrituras, pero las reglas también
+// permiten como máximo 1.000 expresiones evaluadas por solicitud. Esta cota
+// conservadora deja margen a las validaciones de cada entidad.
+// Las reglas permiten 20 accesos a documentos por batch. Cada escritura de una
+// relación consulta el root y las cuentas/deudas referenciadas.
 
 function emptyGuestData(): GuestData {
   return {
@@ -283,11 +290,90 @@ async function defaultPlanConfigExists(userId: string): Promise<boolean> {
   return snap.exists();
 }
 
-/** Commit real a Firestore en batches de tamaño seguro. */
+const referencedDocumentKeys = (write: WriteOp): string[] => {
+  const references = [write.data.accountId, write.data.toAccountId]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .map(accountId => `account:${accountId}`);
+
+  if (
+    write.path.includes('/transactions/')
+    && typeof write.data.debtId === 'string'
+    && write.data.debtId.length > 0
+  ) {
+    references.push(`debt:${write.data.debtId}`);
+  }
+
+  return references;
+};
+
+/**
+ * Separa primero las cuentas y limita las referencias distintas de los batches
+ * posteriores. Esto mantiene `existsAfter(account)` dentro del tope de accesos
+ * de las reglas incluso en migraciones con muchas cuentas.
+ */
+export function planMigrationWriteBatches(writes: WriteOp[]): WriteOp[][] {
+  const accountWrites = writes.filter(write => write.path.includes('/accounts/'));
+  const debtWrites = writes.filter(write => write.path.includes('/debts/'));
+  const remainingWrites = writes.filter(
+    write => !write.path.includes('/accounts/') && !write.path.includes('/debts/')
+  );
+  const batches: WriteOp[][] = [];
+
+  for (
+    let index = 0;
+    index < accountWrites.length;
+    index += RULE_SAFE_COMPLEX_WRITE_LIMIT
+  ) {
+    batches.push(
+      accountWrites.slice(index, index + RULE_SAFE_COMPLEX_WRITE_LIMIT)
+    );
+  }
+
+  let currentBatch: WriteOp[] = [];
+  let currentDocumentReferences = new Set<string>();
+  const flush = () => {
+    if (currentBatch.length === 0) return;
+    batches.push(currentBatch);
+    currentBatch = [];
+    currentDocumentReferences = new Set<string>();
+  };
+
+  const appendReferenceAwareWrites = (group: WriteOp[]) => {
+    group.forEach(write => {
+      const nextReferences = referencedDocumentKeys(write);
+      const combinedReferences = new Set([
+        ...currentDocumentReferences,
+        ...nextReferences,
+      ]);
+      if (
+        currentBatch.length >= RULE_SAFE_COMPLEX_WRITE_LIMIT ||
+        (
+          currentBatch.length > 0 &&
+          combinedReferences.size > RULE_SAFE_REFERENCE_LIMIT
+        )
+      ) {
+        flush();
+      }
+
+      currentBatch.push(write);
+      nextReferences.forEach(reference => currentDocumentReferences.add(reference));
+    });
+  };
+
+  // Las deudas deben existir antes de crear transacciones que las referencien.
+  appendReferenceAwareWrites(debtWrites);
+  flush();
+  appendReferenceAwareWrites(remainingWrites);
+  flush();
+
+  return batches;
+}
+
+/** Commit real a Firestore en batches compatibles con límites de escritura y reglas. */
 export async function commitWrites(writes: WriteOp[]): Promise<void> {
-  for (let i = 0; i < writes.length; i += BATCH_SIZE) {
+  for (const writeGroup of planMigrationWriteBatches(writes)) {
     const batch = writeBatch(db);
-    for (const write of writes.slice(i, i + BATCH_SIZE)) {
+    for (const write of writeGroup) {
       batch.set(doc(db, write.path), write.data);
     }
     await batch.commit();

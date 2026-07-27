@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useViewRouting } from '../../hooks/useViewRouting';
+import {
+  actionUrlToView,
+  canonicalizeActionUrl,
+  navigateToActionUrl,
+  useViewRouting,
+  viewActionUrl,
+} from '../../hooks/useViewRouting';
 
 function setSearch(search: string) {
   // jsdom allows direct assignment of window.location properties via history API
@@ -71,5 +77,23 @@ describe('useViewRouting (S6)', () => {
     });
 
     expect(result.current.view).toBe('goals');
+  });
+
+  it('genera actionUrl canonica y convierte rutas legacy', () => {
+    expect(viewActionUrl('budgets')).toBe('/?view=budgets');
+    expect(viewActionUrl('transactions')).toBe('/');
+    expect(actionUrlToView('/debts')).toBe('debts');
+    expect(canonicalizeActionUrl('/Moneytrack/accounts')).toBe('/?view=accounts');
+  });
+
+  it('navega una actionUrl y notifica al hook mediante popstate', () => {
+    const { result } = renderHook(() => useViewRouting());
+
+    act(() => {
+      expect(navigateToActionUrl('/budgets')).toBe(true);
+    });
+
+    expect(result.current.view).toBe('budgets');
+    expect(new URLSearchParams(window.location.search).get('view')).toBe('budgets');
   });
 });

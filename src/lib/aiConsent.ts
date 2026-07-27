@@ -1,7 +1,7 @@
 /**
  * Consentimiento de IA (S4) — estado central en memoria.
  *
- * Antes de enviar datos financieros (descripciones, montos, PDFs) a Google Gemini,
+ * Antes de enviar datos financieros a Google Gemini,
  * el usuario debe autorizarlo explícitamente. Por defecto está DESACTIVADO: la app
  * funciona normal sin IA y nada sale del dispositivo sin consentimiento.
  *

@@ -6,6 +6,7 @@
 import { logger } from '../utils/logger';
 import { formatCurrency } from '../utils/formatters';
 import type { Debt, Notification } from '../types/finance';
+import { viewActionUrl } from '../hooks/useViewRouting';
 
 interface DebtMonitorDeps {
     createNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => Promise<void>;
@@ -63,7 +64,7 @@ export class DebtMonitor {
                             message: `Debes ${formatCurrency(debt.remainingAmount)} a ${debt.personName} desde hace ${daysOutstanding} días`,
                             severity: 'warning',
                             isRead: false,
-                            actionUrl: `/debts`,
+                            actionUrl: viewActionUrl('debts'),
                             metadata: {
                                 debtId: debt.id,
                                 amount: debt.remainingAmount,
@@ -77,7 +78,7 @@ export class DebtMonitor {
                             message: `Debes ${formatCurrency(debt.remainingAmount)} a ${debt.personName} desde hace ${daysOutstanding} días`,
                             severity: 'info',
                             isRead: false,
-                            actionUrl: `/debts`,
+                            actionUrl: viewActionUrl('debts'),
                             metadata: {
                                 debtId: debt.id,
                                 amount: debt.remainingAmount,
@@ -94,7 +95,7 @@ export class DebtMonitor {
                             message: `${debt.personName} te debe ${formatCurrency(debt.remainingAmount)} desde hace ${daysOutstanding} días`,
                             severity: 'info',
                             isRead: false,
-                            actionUrl: `/debts`,
+                            actionUrl: viewActionUrl('debts'),
                             metadata: {
                                 debtId: debt.id,
                                 amount: debt.remainingAmount,

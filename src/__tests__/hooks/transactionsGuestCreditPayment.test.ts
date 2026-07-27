@@ -80,4 +80,25 @@ describe('useTransactions.addCreditPaymentAtomic — modo invitado (#tx-1)', () 
       expect(accounts[0].usedCredit).toBe(123_265.49);
     });
   });
+
+  it('enlaza una sola vez los pares históricos inequívocos del invitado', async () => {
+    const date = new Date('2026-06-15T14:30:00.000Z');
+    localStorage.setItem('accounts', JSON.stringify([{
+      id: 'tc', name: 'Visa', type: 'credit', isDefault: false, initialBalance: 0, usedCredit: 50_000,
+    }] as Account[]));
+    localStorage.setItem('transactions', JSON.stringify([
+      { id: 'credit-old', type: 'income', amount: 50_000, category: 'Pago Crédito', description: 'Junio', date, paid: true, accountId: 'tc' },
+      { id: 'bank-old', type: 'expense', amount: 50_000, category: 'Pago Crédito', description: 'Pago a Visa: Junio', date, paid: true, accountId: 'sav' },
+    ] as Transaction[]));
+
+    renderHook(() => useTransactions(null));
+
+    await waitFor(() => {
+      const transactions = JSON.parse(localStorage.getItem('transactions')!) as Transaction[];
+      expect(transactions.find(item => item.id === 'credit-old')?.linkedTransactionId).toBe('bank-old');
+      expect(transactions.find(item => item.id === 'bank-old')?.linkedTransactionId).toBe('credit-old');
+      const accounts = JSON.parse(localStorage.getItem('accounts')!) as Account[];
+      expect(accounts[0].paymentPairModelVersion).toBe(1);
+    });
+  });
 });

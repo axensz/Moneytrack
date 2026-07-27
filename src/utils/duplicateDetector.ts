@@ -1,5 +1,5 @@
 import type { Transaction, NewTransaction } from '../types/finance';
-import { parseAmount } from './csvParser';
+import { parseAmount } from './amountParser';
 import { ensureDate } from './dateUtils';
 import { roundMoney } from './formatters';
 

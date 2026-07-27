@@ -7,23 +7,192 @@
  * IDÉNTICA a la versión previa en useAccounts (solo se relocalizó).
  *
  * INVARIANTES (no alterar):
- *  - usedCredit se RECONCILIA por SET idempotente (no increment) desde los
- *    sobrevivientes, porque writeBatch multi-batch (>490 ops) NO es atómico.
- *  - BATCH_LIMIT=490 con flush incremental.
+ *  - Cada operación destructiva se confirma en UN solo writeBatch atómico.
+ *  - Si el cascade supera su límite seguro, se rechaza ANTES de escribir.
+ *  - usedCredit se RECONCILIA dentro del mismo batch desde el historial real.
  *  - Reconciliación sobre getAccountReferenceIds (cubre mergedAccountIds).
  */
 
 import {
-  doc, runTransaction, collection, writeBatch, getDocs, getDoc, updateDoc, deleteDoc, query, where, deleteField,
+  doc,
+  runTransaction,
+  collection,
+  writeBatch,
+  getDocsFromServer,
+  getDocFromServer,
+  query,
+  where,
+  deleteField,
+  serverTimestamp,
   type DocumentReference,
 } from 'firebase/firestore';
 import { db } from '../../lib/firebaseDb';
 import { safeFirestoreOperation, checkNetworkConnection, stripUndefined } from '../../utils/firestoreHelpers';
 import { getAccountReferenceIds } from '../../utils/accountTransactions';
 import { creditDeltasByAccount, reconcileUsedCredit } from '../../utils/creditDeltas';
-import type { Account, Transaction, RecurringPayment, Debt } from '../../types/finance';
+import type { Account, Transaction } from '../../types/finance';
+import {
+  RULE_SAFE_COMPLEX_WRITE_LIMIT,
+  RULE_SAFE_SIMPLE_WRITE_LIMIT,
+} from '../../config/firestoreLimits';
+import { publishTransactionCacheMutation } from './transactionPaginationCache';
 
-const BATCH_LIMIT = 490; // Leave room for account + recurring + debts
+const ACCOUNT_OPERATION_LEASE_MS = 5 * 60 * 1000;
+
+export type AccountOperationKind =
+  | 'delete-account'
+  | 'merge-credit-cards'
+  | 'set-default-account'
+  | 'delete-debt';
+
+interface AccountOperationLock {
+  id: string;
+  kind: AccountOperationKind;
+  acquiredAt?: Date;
+  releasedAt?: Date;
+  /** Compatibilidad de lectura con locks creados antes del lease server-side. */
+  expiresAt?: Date;
+}
+
+export const createAccountOperationId = (kind: AccountOperationKind): string => {
+  const randomId = globalThis.crypto?.randomUUID?.()
+    ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${kind}:${randomId}`;
+};
+
+const getTimestampMs = (value: unknown): number => {
+  const timestamp = value as Date & { toMillis?: () => number };
+  if (typeof timestamp?.toMillis === 'function') return timestamp.toMillis();
+  return timestamp instanceof Date ? timestamp.getTime() : 0;
+};
+
+const getLockExpirationMs = (lock: Partial<AccountOperationLock> | undefined): number => {
+  if (getTimestampMs(lock?.releasedAt) > 0) return 0;
+  const acquiredAtMs = getTimestampMs(lock?.acquiredAt);
+  if (acquiredAtMs > 0) return acquiredAtMs + ACCOUNT_OPERATION_LEASE_MS;
+  return getTimestampMs(lock?.expiresAt);
+};
+
+export const createAccountOperationRelease = (
+  operationId: string,
+  kind: AccountOperationKind
+) => ({
+  accountOperationLock: {
+    id: operationId,
+    kind,
+    releasedAt: serverTimestamp(),
+  },
+});
+
+/**
+ * Serializa cualquier escritura de cuentas/transacciones/recurrentes/deudas.
+ * Las reglas de Firestore consultan este mismo lock en el documento raíz del
+ * usuario, por lo que también cubre otras pestañas, dispositivos y clientes
+ * antiguos durante la ventana entre las consultas y el batch final.
+ */
+export async function acquireAccountOperationLock(
+  userId: string,
+  operationId: string,
+  kind: AccountOperationKind
+): Promise<void> {
+  const userRef = doc(db, 'users', userId);
+  await runTransaction(db, async transaction => {
+    const userSnap = await transaction.get(userRef);
+    const currentLock = userSnap.exists()
+      ? (userSnap.data().accountOperationLock as Partial<AccountOperationLock> | undefined)
+      : undefined;
+    const currentLockIsActive =
+      Boolean(currentLock?.id) && getLockExpirationMs(currentLock) > Date.now();
+
+    if (currentLockIsActive && currentLock?.id !== operationId) {
+      throw new Error(
+        'Ya hay otra operación de cuentas o deudas en curso. Espera unos segundos y vuelve a intentarlo.'
+      );
+    }
+
+    transaction.set(
+      userRef,
+      {
+        accountOperationLock: {
+          id: operationId,
+          kind,
+          acquiredAt: serverTimestamp(),
+        },
+      },
+      { merge: true }
+    );
+  });
+}
+
+export async function releaseAccountOperationLock(
+  userId: string,
+  operationId: string,
+  kind: AccountOperationKind
+): Promise<void> {
+  const userRef = doc(db, 'users', userId);
+  await runTransaction(db, async transaction => {
+    const userSnap = await transaction.get(userRef);
+    if (!userSnap.exists()) return;
+
+    const currentLock = userSnap.data().accountOperationLock as
+      | Partial<AccountOperationLock>
+      | undefined;
+    if (currentLock?.id === operationId) {
+      transaction.set(
+        userRef,
+        createAccountOperationRelease(operationId, kind),
+        { merge: true }
+      );
+    }
+  });
+}
+
+export async function renewAccountOperationLock(
+  userId: string,
+  operationId: string,
+  kind: AccountOperationKind
+): Promise<void> {
+  const userRef = doc(db, 'users', userId);
+  await runTransaction(db, async transaction => {
+    const userSnap = await transaction.get(userRef);
+    const currentLock = userSnap.exists()
+      ? (userSnap.data().accountOperationLock as Partial<AccountOperationLock> | undefined)
+      : undefined;
+
+    if (
+      currentLock?.id !== operationId
+    ) {
+      throw new Error(
+        'La operación de cuentas tardó demasiado y perdió su bloqueo seguro. Vuelve a intentarlo.'
+      );
+    }
+
+    transaction.set(
+      userRef,
+      {
+        accountOperationLock: {
+          id: operationId,
+          kind,
+          acquiredAt: serverTimestamp(),
+        },
+      },
+      { merge: true }
+    );
+  });
+}
+
+export const assertAtomicBatchCapacity = (
+  operation: string,
+  operationCount: number,
+  limit = RULE_SAFE_SIMPLE_WRITE_LIMIT
+): void => {
+  if (operationCount <= limit) return;
+
+  throw new Error(
+    `No se puede ${operation} de forma segura desde el navegador: requiere ${operationCount} cambios ` +
+    `y el límite atómico es ${limit}. Reduce primero el historial asociado o solicita una migración administrada.`
+  );
+};
 
 type BatchOperation = {
   type: 'set' | 'update' | 'delete';
@@ -31,15 +200,9 @@ type BatchOperation = {
   data?: Record<string, unknown>;
 };
 
-interface DeleteAccountDeps {
-  accounts: Account[];
-  recurringPayments: RecurringPayment[];
-  debts: Debt[];
-}
-
 /**
  * Cascade delete de una cuenta (autenticado): borra la cuenta + sus
- * transacciones/recurrentes/deudas vinculadas (writeBatch multi-batch 490-op) y
+ * transacciones/recurrentes/deudas vinculadas en un único writeBatch atómico y
  * RECONCILIA el usedCredit de las TC afectadas recomputándolo desde los
  * sobrevivientes (SET idempotente). Limpia el bankAccountId colgante de TC
  * huérfanas (#23). El llamador valida la protección de cuenta default.
@@ -47,171 +210,207 @@ interface DeleteAccountDeps {
 export async function deleteAccountCascade(
   userId: string,
   id: string,
-  { accounts, recurringPayments, debts }: DeleteAccountDeps,
   options: { preserveTransactions?: boolean; allowDefaultDelete?: boolean } = {}
 ): Promise<void> {
   if (!checkNetworkConnection()) {
     throw new Error('Sin conexión a internet');
   }
 
-  // Find recurring payments and debts linked to this account
-  const relatedRecurring = recurringPayments.filter(p => p.accountId === id);
-  const relatedDebts = debts.filter(d => d.accountId === id);
-
-  // #23: TC asociadas a la cuenta que se borra (bankAccountId === id). NO se
-  // borran: solo se les limpia el bankAccountId colgante para que vuelvan a
-  // aparecer como TC de nivel superior en vez de quedar huérfanas referenciando
-  // una cuenta inexistente.
-  const orphanedCardIds = accounts
-    .filter(a => a.type === 'credit' && a.bankAccountId === id && a.id && a.id !== id)
-    .map(a => a.id!);
-
   await safeFirestoreOperation(
     async () => {
-      const recurringIds = relatedRecurring.map(p => p.id!);
-      const debtIds = relatedDebts.map(d => d.id!);
+      // Cada reintento necesita un id nuevo porque el intento anterior deja un
+      // tombstone inactivo para impedir liberaciones ABA.
+      const operationId = createAccountOperationId('delete-account');
+      let committed = false;
 
-      // Consultar Firestore (no solo memoria) por TODAS las transacciones que
-      // referencian la cuenta, tanto como origen (accountId) como destino
-      // (toAccountId), y deduplicar por id. Esto garantiza que la reconciliación
-      // de usedCredit cubra transacciones que aún no estén en el estado en memoria.
-      const txCollection = collection(db, `users/${userId}/transactions`);
-      const txDeletes = new Map<string, Transaction>();
-      if (!options.preserveTransactions) {
-        const [bySource, byDestination] = await Promise.all([
-          getDocs(query(txCollection, where('accountId', '==', id))),
-          getDocs(query(txCollection, where('toAccountId', '==', id))),
-        ]);
-        [...bySource.docs, ...byDestination.docs].forEach(snap => {
-          txDeletes.set(snap.id, { id: snap.id, ...(snap.data() as Transaction) });
-        });
-
-        // Los pagos de TC son pares recíprocos. Si cualquiera de sus cuentas se
-        // elimina, incluir también el movimiento espejo para no dejar dinero
-        // huérfano ni una deuda reducida sin salida bancaria (o viceversa).
-        const linkedIds = Array.from(new Set(
-          Array.from(txDeletes.values())
-            .map(transaction => transaction.linkedTransactionId)
-            .filter((value): value is string => value !== undefined && !txDeletes.has(value))
-        ));
-        const linkedSnaps = await Promise.all(
-          linkedIds.map(linkedId => getDoc(doc(db, `users/${userId}/transactions`, linkedId)))
-        );
-        linkedSnaps.forEach((snap, index) => {
-          if (snap.exists()) {
-            const linkedId = linkedIds[index];
-            txDeletes.set(linkedId, { id: linkedId, ...(snap.data() as Transaction) });
-          }
-        });
-      }
-
-      // Identificar el conjunto de TC AFECTADAS por el borrado: cuentas tipo
-      // credit, distintas de la que se borra, que estas transacciones tocaban
-      // (gasto/ingreso por accountId, o transferencia por toAccountId). NO se
-      // calcula aquí ningún delta de reversión: la deuda se reconcilia DESPUÉS
-      // recomputando usedCredit desde las transacciones sobrevivientes.
-      const affectedCardIds = new Set<string>();
-      for (const tx of txDeletes.values()) {
-        const deltas = creditDeltasByAccount(tx, accounts);
-        for (const accId of deltas.keys()) {
-          if (accId === id) continue; // la TC que se borra desaparece con su usedCredit
-          affectedCardIds.add(accId);
+      try {
+        await acquireAccountOperationLock(userId, operationId, 'delete-account');
+        // Todas las relaciones se descubren desde el servidor DESPUÉS del lock.
+        // Los arrays de React pueden ir detrás de una escritura remota ya
+        // confirmada y no son una fuente segura para un cascade destructivo.
+        const accountCollection = collection(db, `users/${userId}/accounts`);
+        const recurringCollection = collection(db, `users/${userId}/recurringPayments`);
+        const debtCollection = collection(db, `users/${userId}/debts`);
+        const accountSnapshot = await getDocsFromServer(accountCollection);
+        const currentAccounts = accountSnapshot.docs.map(snapshot => ({
+          id: snapshot.id,
+          ...(snapshot.data() as Omit<Account, 'id'>),
+        } as Account));
+        const currentTarget = currentAccounts.find(account => account.id === id);
+        if (currentTarget?.isDefault && !options.allowDefaultDelete) {
+          throw new Error('No puedes eliminar la cuenta por defecto');
         }
-      }
 
-      const allDeletes = [
-        ...Array.from(txDeletes.keys()).map(txId => doc(db, `users/${userId}/transactions`, txId)),
-        ...recurringIds.map(rId => doc(db, `users/${userId}/recurringPayments`, rId)),
-        ...debtIds.map(dId => doc(db, `users/${userId}/debts`, dId)),
-      ];
-
-      // Operaciones totales del borrado: borrados + limpieza de TC huérfanas
-      // (#23) + el account.
-      const totalOps = allDeletes.length + orphanedCardIds.length + 1;
-
-      if (totalOps === 1) {
-        // Nada que cascada: solo borrar la cuenta.
-        await deleteDoc(doc(db, `users/${userId}/accounts`, id));
-        return;
-      }
-
-      // FASE 1 — Borrado. Acumular operaciones en writeBatch respetando
-      // BATCH_LIMIT. Solo borrados (tx + recurrentes + deudas + la cuenta);
-      // sin tocar usedCredit de otras TC aquí.
-      let batch = writeBatch(db);
-      let opCount = 0;
-      const flush = async () => {
-        if (opCount > 0) {
-          await batch.commit();
-          batch = writeBatch(db);
-          opCount = 0;
-        }
-      };
-      const enqueue = async (fn: (b: ReturnType<typeof writeBatch>) => void) => {
-        if (opCount >= BATCH_LIMIT) await flush();
-        fn(batch);
-        opCount++;
-      };
-
-      for (const ref of allDeletes) {
-        await enqueue(b => b.delete(ref));
-      }
-      // #23: limpiar el bankAccountId colgante de las TC asociadas en el mismo
-      // flujo de borrado (mismo esquema multi-batch). Se hace ANTES de borrar la
-      // cuenta; usar deleteField() las devuelve a TC de nivel superior.
-      for (const cardId of orphanedCardIds) {
-        await enqueue(b => b.update(
-          doc(db, `users/${userId}/accounts`, cardId),
-          { bankAccountId: deleteField() }
-        ));
-      }
-      // El borrado de la cuenta va al final.
-      await enqueue(b => b.delete(doc(db, `users/${userId}/accounts`, id)));
-      await flush();
-
-      // FASE 2 — Reconciliación de usedCredit de las TC afectadas.
-      //
-      // Por qué reconciliar con SET (valor recomputado) y no revertir con
-      // increment(-delta) dentro del batch: el borrado puede requerir varios
-      // batches (>490 ops) y un writeBatch multi-batch NO es atómico. Si un
-      // increment(-delta) se aplica y luego otro batch falla — o se reintenta
-      // la operación completa — el increment se aplicaría de nuevo y corrompería
-      // la deuda (doble resta). Recomputar usedCredit = max(0, suma de deltas de
-      // las transacciones SOBREVIVIENTES) es idempotente: reejecutar deleteAccount
-      // o reintentar tras un fallo parcial siempre converge al valor correcto,
-      // porque no depende del estado previo del campo.
-      for (const cardId of affectedCardIds) {
-        const cardRef = doc(db, `users/${userId}/accounts`, cardId);
-        const cardSnap = await getDoc(cardRef);
-        if (!cardSnap.exists()) continue; // la TC ya no existe: nada que reconciliar
-
-        // Si la TC es una tarjeta fusionada, las transacciones pueden
-        // referenciarla por cualquiera de sus mergedAccountIds además del id
-        // literal. Reconciliar contra TODAS las referencias para no subestimar
-        // usedCredit (mismas referencias que usa el recompute de display).
-        const cardAccount = { id: cardId, ...(cardSnap.data() as Omit<Account, 'id'>) } as Account;
-        const referenceIds = getAccountReferenceIds(cardAccount);
-
-        const queries = referenceIds.flatMap(refId => [
-          getDocs(query(txCollection, where('accountId', '==', refId))),
-          getDocs(query(txCollection, where('toAccountId', '==', refId))),
+        const targetReferenceIds = currentTarget
+          ? getAccountReferenceIds(currentTarget)
+          : [id];
+        const [recurringSnapshots, debtSnapshots] = await Promise.all([
+          Promise.all(targetReferenceIds.map(referenceId =>
+            getDocsFromServer(
+              query(recurringCollection, where('accountId', '==', referenceId))
+            )
+          )),
+          Promise.all(targetReferenceIds.map(referenceId =>
+            getDocsFromServer(
+              query(debtCollection, where('accountId', '==', referenceId))
+            )
+          )),
         ]);
-        const snapshots = await Promise.all(queries);
-        const survivors = new Map<string, Transaction>();
-        snapshots.forEach(snapshot => {
-          snapshot.docs.forEach(snap => {
-            survivors.set(snap.id, { id: snap.id, ...(snap.data() as Transaction) });
+        const recurringIds = Array.from(new Set(
+          recurringSnapshots.flatMap(snapshot => snapshot.docs.map(document => document.id))
+        ));
+        const debtIds = Array.from(new Set(
+          debtSnapshots.flatMap(snapshot => snapshot.docs.map(document => document.id))
+        ));
+        // #23: las TC asociadas no se borran; se limpia su bankAccountId para
+        // que no queden huérfanas al eliminar la cuenta bancaria.
+        const orphanedCardIds = currentAccounts
+          .filter(account =>
+            account.type === 'credit' &&
+            account.bankAccountId === id &&
+            account.id &&
+            account.id !== id
+          )
+          .map(account => account.id!);
+
+        // Consultar Firestore (no solo memoria) por TODAS las transacciones que
+        // referencian la cuenta, tanto como origen (accountId) como destino
+        // (toAccountId), y deduplicar por id. El lock global impide que aparezcan
+        // nuevas referencias mientras se prepara el batch final.
+        const txCollection = collection(db, `users/${userId}/transactions`);
+        const txDeletes = new Map<string, Transaction>();
+        if (!options.preserveTransactions) {
+          const transactionSnapshots = await Promise.all(
+            targetReferenceIds.flatMap(referenceId => [
+              getDocsFromServer(
+                query(txCollection, where('accountId', '==', referenceId))
+              ),
+              getDocsFromServer(
+                query(txCollection, where('toAccountId', '==', referenceId))
+              ),
+            ])
+          );
+          transactionSnapshots.forEach(snapshot => {
+            snapshot.docs.forEach(document => {
+              txDeletes.set(document.id, {
+                id: document.id,
+                ...(document.data() as Transaction),
+              });
+            });
           });
+
+          // Los pagos de TC son pares recíprocos. Si cualquiera de sus cuentas se
+          // elimina, incluir también el movimiento espejo para no dejar dinero
+          // huérfano ni una deuda reducida sin salida bancaria (o viceversa).
+          const linkedIds = Array.from(new Set(
+            Array.from(txDeletes.values())
+              .map(transaction => transaction.linkedTransactionId)
+              .filter((value): value is string => value !== undefined && !txDeletes.has(value))
+          ));
+          const linkedSnaps = await Promise.all(
+            linkedIds.map(linkedId =>
+              getDocFromServer(doc(db, `users/${userId}/transactions`, linkedId))
+            )
+          );
+          linkedSnaps.forEach((snap, index) => {
+            if (snap.exists()) {
+              const linkedId = linkedIds[index];
+              txDeletes.set(linkedId, { id: linkedId, ...(snap.data() as Transaction) });
+            }
+          });
+        }
+
+        // Identificar el conjunto de TC AFECTADAS por el borrado.
+        const affectedCardIds = new Set<string>();
+        for (const tx of txDeletes.values()) {
+          const deltas = creditDeltasByAccount(tx, currentAccounts);
+          for (const accId of deltas.keys()) {
+            if (accId === id) continue;
+            affectedCardIds.add(accId);
+          }
+        }
+
+        // Preparar TODAS las actualizaciones de cuenta antes de escribir. Una TC
+        // puede necesitar simultáneamente limpiar bankAccountId y reconciliar su
+        // usedCredit; el Map garantiza una sola escritura por documento.
+        const accountUpdates = new Map<string, Record<string, unknown>>();
+        orphanedCardIds.forEach(cardId => {
+          accountUpdates.set(cardId, { bankAccountId: deleteField() });
         });
 
-        // Reconciliación pura (idempotente): suma getCreditDelta sobre todas
-        // las referencias de la TC, clampea a >= 0 y redondea centavos.
-        const usedCredit = reconcileUsedCredit(
-          referenceIds,
-          Array.from(survivors.values())
-        );
+        for (const cardId of affectedCardIds) {
+          const cardRef = doc(db, `users/${userId}/accounts`, cardId);
+          const cardSnap = await getDocFromServer(cardRef);
+          if (!cardSnap.exists()) continue;
 
-        await updateDoc(cardRef, { usedCredit });
+          const cardAccount = { id: cardId, ...(cardSnap.data() as Omit<Account, 'id'>) } as Account;
+          const referenceIds = getAccountReferenceIds(cardAccount);
+          const snapshots = await Promise.all(
+            referenceIds.flatMap(refId => [
+              getDocsFromServer(query(txCollection, where('accountId', '==', refId))),
+              getDocsFromServer(query(txCollection, where('toAccountId', '==', refId))),
+            ])
+          );
+          const survivors = new Map<string, Transaction>();
+          snapshots.forEach(snapshot => {
+            snapshot.docs.forEach(snap => {
+              if (!txDeletes.has(snap.id)) {
+                survivors.set(snap.id, { id: snap.id, ...(snap.data() as Transaction) });
+              }
+            });
+          });
+
+          accountUpdates.set(cardId, {
+            ...accountUpdates.get(cardId),
+            usedCredit: reconcileUsedCredit(referenceIds, Array.from(survivors.values())),
+          });
+        }
+
+        const allDeletes = [
+          ...Array.from(txDeletes.keys()).map(txId => doc(db, `users/${userId}/transactions`, txId)),
+          ...recurringIds.map(rId => doc(db, `users/${userId}/recurringPayments`, rId)),
+          ...debtIds.map(dId => doc(db, `users/${userId}/debts`, dId)),
+        ];
+
+        // +1 libera el lock global en el mismo commit. Si todo no cabe, se
+        // rechaza y el finally libera el lock sin tocar datos de dominio.
+        const totalOps = allDeletes.length + accountUpdates.size + 2;
+        assertAtomicBatchCapacity('eliminar esta cuenta', totalOps);
+
+        // Renovar la concesión justo antes del commit por si las lecturas fueron
+        // lentas. Las reglas siguen bloqueando escrituras concurrentes.
+        await renewAccountOperationLock(userId, operationId, 'delete-account');
+
+        const batch = writeBatch(db);
+        allDeletes.forEach(ref => batch.delete(ref));
+        accountUpdates.forEach((data, cardId) => {
+          batch.update(doc(db, `users/${userId}/accounts`, cardId), data);
+        });
+        batch.delete(doc(db, `users/${userId}/accounts`, id));
+        batch.set(
+          doc(db, 'users', userId),
+          createAccountOperationRelease(operationId, 'delete-account'),
+          { merge: true }
+        );
+        await batch.commit();
+        committed = true;
+
+        const deletedTransactionIds = Array.from(txDeletes.keys());
+        if (deletedTransactionIds.length > 0) {
+          publishTransactionCacheMutation({
+            userId,
+            type: 'delete',
+            transactionIds: deletedTransactionIds,
+          });
+        }
+      } finally {
+        if (!committed) {
+          await releaseAccountOperationLock(
+            userId,
+            operationId,
+            'delete-account'
+          ).catch(() => undefined);
+        }
       }
     },
     'deleteAccount',
@@ -223,18 +422,29 @@ interface MergeCreditCardsPlan {
   destinationId: string;
   destinationAccount: Account;
   existingDestination: Account | undefined;
-  shouldMakeDestinationDefault: boolean;
-  sourceIdSet: Set<string>;
   uniqueSourceIds: string[];
-  accounts: Account[];
-  recurringPayments: RecurringPayment[];
-  debts: Debt[];
 }
+
+const accountMergeRevision = (account: Account): string => JSON.stringify({
+  name: account.name,
+  type: account.type,
+  isDefault: account.isDefault,
+  initialBalance: account.initialBalance,
+  creditLimit: account.creditLimit ?? null,
+  cutoffDay: account.cutoffDay ?? null,
+  paymentDay: account.paymentDay ?? null,
+  monthlySpendingLimit: account.monthlySpendingLimit ?? null,
+  bankAccountId: account.bankAccountId ?? null,
+  mergedAccountIds: [...(account.mergedAccountIds ?? [])].sort(),
+  order: account.order ?? null,
+  interestRate: account.interestRate ?? null,
+  paymentPairModelVersion: account.paymentPairModelVersion ?? null,
+});
 
 /**
  * Fusión de TC (autenticado): upsert del destino con el usedCredit consolidado,
  * reapunta tx/recurring/debts de los orígenes al destino y borra los orígenes,
- * en writeBatch multi-batch (490-op). El llamador hace la validación y computa
+ * en un único writeBatch atómico. El llamador hace la validación y computa
  * el plan (destinationAccount, mergedUsedCredit, etc.).
  */
 export async function mergeCreditCardsOrchestrated(
@@ -242,8 +452,8 @@ export async function mergeCreditCardsOrchestrated(
   plan: MergeCreditCardsPlan
 ): Promise<void> {
   const {
-    destinationId, destinationAccount, existingDestination, shouldMakeDestinationDefault,
-    sourceIdSet, uniqueSourceIds, accounts, recurringPayments, debts,
+    destinationId, destinationAccount, existingDestination,
+    uniqueSourceIds,
   } = plan;
 
   if (!checkNetworkConnection()) {
@@ -252,21 +462,88 @@ export async function mergeCreditCardsOrchestrated(
 
   await safeFirestoreOperation(
     async () => {
+      const operationId = createAccountOperationId('merge-credit-cards');
+      let committed = false;
+
+      try {
+        await acquireAccountOperationLock(userId, operationId, 'merge-credit-cards');
       const accountCollection = collection(db, `users/${userId}/accounts`);
+      const accountSnapshot = await getDocsFromServer(accountCollection);
+      const currentAccounts = accountSnapshot.docs.map(snapshot => ({
+        id: snapshot.id,
+        ...(snapshot.data() as Omit<Account, 'id'>),
+      } as Account));
+      const currentAccountsById = new Map(
+        currentAccounts.flatMap(account => account.id ? [[account.id, account] as const] : [])
+      );
+      const currentSourceAccounts = uniqueSourceIds.map(sourceId =>
+        currentAccountsById.get(sourceId)
+      );
+      const missingSourceId = uniqueSourceIds.find(
+        (_, index) => !currentSourceAccounts[index]
+      );
+      if (missingSourceId) {
+        throw new Error(
+          `La tarjeta origen ${missingSourceId} cambió o ya no existe. Actualiza e intenta de nuevo.`
+        );
+      }
+      if (currentSourceAccounts.some(account => account?.type !== 'credit')) {
+        throw new Error('Todas las cuentas origen deben ser tarjetas de crédito');
+      }
+
+      const currentExistingDestination = currentAccountsById.get(destinationId);
+      if (Boolean(existingDestination) !== Boolean(currentExistingDestination)) {
+        throw new Error(
+          'La tarjeta destino cambió mientras preparabas la operación. Actualiza e intenta de nuevo.'
+        );
+      }
+      if (currentExistingDestination && currentExistingDestination.type !== 'credit') {
+        throw new Error('La cuenta destino debe ser una tarjeta de crédito');
+      }
+      if (
+        currentExistingDestination &&
+        existingDestination &&
+        accountMergeRevision(currentExistingDestination) !==
+          accountMergeRevision(existingDestination)
+      ) {
+        throw new Error(
+          'La tarjeta destino cambió en otro dispositivo. Actualiza e intenta de nuevo para no sobrescribir esos cambios.'
+        );
+      }
+
+      const sourceIdSet = new Set(uniqueSourceIds);
+      const resolvedSourceAccounts = currentSourceAccounts as Account[];
+      const sourceBankIds = resolvedSourceAccounts
+        .map(account => account.bankAccountId)
+        .filter((bankId): bankId is string => Boolean(bankId));
+      if (
+        sourceBankIds.length !== resolvedSourceAccounts.length ||
+        new Set(sourceBankIds).size !== 1
+      ) {
+        throw new Error('Solo se pueden unificar tarjetas de crédito del mismo banco');
+      }
+      const sourceBankId = sourceBankIds[0];
+      const destinationBankId =
+        destinationAccount.bankAccountId ?? currentExistingDestination?.bankAccountId;
+      if (destinationBankId && destinationBankId !== sourceBankId) {
+        throw new Error('Solo se pueden unificar tarjetas de crédito del mismo banco');
+      }
+      const effectiveDestinationAccount = {
+        ...(currentExistingDestination ?? {}),
+        ...destinationAccount,
+        id: destinationId,
+        type: 'credit' as const,
+        bankAccountId: destinationBankId ?? sourceBankId,
+      } as Account;
+
+      const makeDestinationDefault =
+        Boolean(currentExistingDestination?.isDefault) ||
+        resolvedSourceAccounts.some(account => account.isDefault) ||
+        (!currentExistingDestination && Boolean(destinationAccount.isDefault));
       const operations: BatchOperation[] = [];
 
-      const destinationData = stripUndefined({
-        ...destinationAccount,
-        id: undefined,
-      } as Record<string, unknown>);
-      operations.push({
-        type: existingDestination ? 'update' : 'set',
-        ref: doc(accountCollection, destinationId),
-        data: destinationData,
-      });
-
-      if (shouldMakeDestinationDefault) {
-        accounts
+      if (makeDestinationDefault) {
+        currentAccounts
           .filter(account => account.id && account.id !== destinationId && !sourceIdSet.has(account.id) && account.isDefault)
           .forEach(account => {
             operations.push({
@@ -281,19 +558,88 @@ export async function mergeCreditCardsOrchestrated(
       // paginada (500) puede omitir transacciones antiguas, que quedarían
       // huérfanas apuntando a una tarjeta borrada (mismo patrón que el cascade).
       const txCollection = collection(db, `users/${userId}/transactions`);
+      const sourceReferenceIds = new Set(
+        resolvedSourceAccounts.flatMap(getAccountReferenceIds)
+      );
+      uniqueSourceIds.forEach(sourceId => sourceReferenceIds.add(sourceId));
+
+      const destinationReferenceIds = Array.from(new Set([
+        ...getAccountReferenceIds(effectiveDestinationAccount),
+        ...(currentExistingDestination
+          ? getAccountReferenceIds(currentExistingDestination)
+          : []),
+      ]));
+      const allReferenceIds = Array.from(new Set([
+        ...destinationReferenceIds,
+        ...sourceReferenceIds,
+      ]));
+      const recurringCollection = collection(db, `users/${userId}/recurringPayments`);
+      const debtCollection = collection(db, `users/${userId}/debts`);
+      const [snapshots, recurringSnapshots, debtSnapshots] = await Promise.all([
+        Promise.all(allReferenceIds.flatMap(refId => [
+          getDocsFromServer(query(txCollection, where('accountId', '==', refId))),
+          getDocsFromServer(query(txCollection, where('toAccountId', '==', refId))),
+        ])),
+        Promise.all(Array.from(sourceReferenceIds).map(referenceId =>
+          getDocsFromServer(
+            query(recurringCollection, where('accountId', '==', referenceId))
+          )
+        )),
+        Promise.all(Array.from(sourceReferenceIds).map(referenceId =>
+          getDocsFromServer(
+            query(debtCollection, where('accountId', '==', referenceId))
+          )
+        )),
+      ]);
+      const recurringIds = Array.from(new Set(
+        recurringSnapshots.flatMap(snapshot => snapshot.docs.map(document => document.id))
+      ));
+      const debtIds = Array.from(new Set(
+        debtSnapshots.flatMap(snapshot => snapshot.docs.map(document => document.id))
+      ));
+      const relevantTransactions = new Map<string, Transaction>();
+      snapshots.forEach(snapshot => {
+        snapshot.docs.forEach(snap => {
+          relevantTransactions.set(snap.id, { id: snap.id, ...(snap.data() as Transaction) });
+        });
+      });
+
       const txUpdates = new Map<string, Record<string, unknown>>();
-      for (const sourceId of uniqueSourceIds) {
-        const [byAccount, byDestinationRef] = await Promise.all([
-          getDocs(query(txCollection, where('accountId', '==', sourceId))),
-          getDocs(query(txCollection, where('toAccountId', '==', sourceId))),
-        ]);
-        byAccount.docs.forEach(snapshot => {
-          txUpdates.set(snapshot.id, { ...txUpdates.get(snapshot.id), accountId: destinationId });
-        });
-        byDestinationRef.docs.forEach(snapshot => {
-          txUpdates.set(snapshot.id, { ...txUpdates.get(snapshot.id), toAccountId: destinationId });
-        });
-      }
+      const rewrittenTransactions: Transaction[] = [];
+      const updatedTransactionsForCache: Transaction[] = [];
+      relevantTransactions.forEach(transaction => {
+        const updates: Record<string, unknown> = {};
+        if (sourceReferenceIds.has(transaction.accountId)) updates.accountId = destinationId;
+        if (transaction.toAccountId && sourceReferenceIds.has(transaction.toAccountId)) {
+          updates.toAccountId = destinationId;
+        }
+        const rewrittenTransaction = { ...transaction, ...updates } as Transaction;
+        if (Object.keys(updates).length > 0) {
+          txUpdates.set(transaction.id!, updates);
+          updatedTransactionsForCache.push(rewrittenTransaction);
+        }
+        rewrittenTransactions.push(rewrittenTransaction);
+      });
+
+      // El valor exacto queda en el mismo commit que el reapunte y los borrados;
+      // no existe una segunda fase capaz de fallar y dejar la deuda desalineada.
+      // Conservamos también las referencias históricas: una escritura offline
+      // creada por un cliente antiguo puede llegar después de liberar el lock.
+      const destinationData = stripUndefined({
+        ...effectiveDestinationAccount,
+        id: undefined,
+        isDefault: makeDestinationDefault,
+        mergedAccountIds: Array.from(
+          new Set([...destinationReferenceIds, ...sourceReferenceIds])
+        ).filter(referenceId => referenceId !== destinationId),
+        usedCredit: reconcileUsedCredit(destinationReferenceIds, rewrittenTransactions),
+      } as Record<string, unknown>);
+      operations.unshift({
+        type: currentExistingDestination ? 'update' : 'set',
+        ref: doc(accountCollection, destinationId),
+        data: destinationData,
+      });
+
       txUpdates.forEach((updates, transactionId) => {
         operations.push({
           type: 'update',
@@ -302,22 +648,18 @@ export async function mergeCreditCardsOrchestrated(
         });
       });
 
-      recurringPayments.forEach(payment => {
-        if (!payment.id || !payment.accountId || !sourceIdSet.has(payment.accountId)) return;
-
+      recurringIds.forEach(paymentId => {
         operations.push({
           type: 'update',
-          ref: doc(db, `users/${userId}/recurringPayments`, payment.id),
+          ref: doc(db, `users/${userId}/recurringPayments`, paymentId),
           data: { accountId: destinationId },
         });
       });
 
-      debts.forEach(debt => {
-        if (!debt.id || !debt.accountId || !sourceIdSet.has(debt.accountId)) return;
-
+      debtIds.forEach(debtId => {
         operations.push({
           type: 'update',
-          ref: doc(db, `users/${userId}/debts`, debt.id),
+          ref: doc(db, `users/${userId}/debts`, debtId),
           data: { accountId: destinationId },
         });
       });
@@ -329,47 +671,51 @@ export async function mergeCreditCardsOrchestrated(
         });
       });
 
-      for (let i = 0; i < operations.length; i += BATCH_LIMIT) {
-        const batch = writeBatch(db);
-        operations.slice(i, i + BATCH_LIMIT).forEach(operation => {
-          if (operation.type === 'delete') {
-            batch.delete(operation.ref);
-          } else if (operation.type === 'set') {
-            batch.set(operation.ref, operation.data ?? {});
-          } else {
-            batch.update(operation.ref, operation.data ?? {});
-          }
-        });
-        await batch.commit();
-      }
+      // +1 libera el lock en el mismo batch. Una operación grande no se
+      // fragmenta porque eso volvería a introducir estados parciales.
+      // Las actualizaciones de transacciones ejecutan la validación de reglas
+      // más extensa del dominio; su cota debe ser menor que la de deletes.
+      assertAtomicBatchCapacity(
+        'unificar estas tarjetas',
+        operations.length + 1,
+        RULE_SAFE_COMPLEX_WRITE_LIMIT
+      );
 
-      // FASE 2 — Reconciliar usedCredit del destino desde las transacciones YA
-      // reapuntadas (idempotente; mismo patrón y motivo que deleteAccountCascade).
-      // El plan fija usedCredit sumando los valores PERSISTIDOS de cada tarjeta,
-      // que pueden estar stale (una compra reciente aún no reflejada en el campo)
-      // → la deuda consolidada quedaría mal y, al borrar los orígenes, ese error
-      // se vuelve permanente. Recomputar desde las transacciones reales que ahora
-      // referencian el destino converge al valor correcto y es seguro ante
-      // reintentos / commits multi-batch no atómicos.
-      const destinationRef = doc(accountCollection, destinationId);
-      const destSnap = await getDoc(destinationRef);
-      if (destSnap.exists()) {
-        const destAccount = { id: destinationId, ...(destSnap.data() as Omit<Account, 'id'>) } as Account;
-        const referenceIds = getAccountReferenceIds(destAccount);
-        const snapshots = await Promise.all(
-          referenceIds.flatMap(refId => [
-            getDocs(query(txCollection, where('accountId', '==', refId))),
-            getDocs(query(txCollection, where('toAccountId', '==', refId))),
-          ])
-        );
-        const survivors = new Map<string, Transaction>();
-        snapshots.forEach(snapshot => {
-          snapshot.docs.forEach(snap => {
-            survivors.set(snap.id, { id: snap.id, ...(snap.data() as Transaction) });
-          });
+      await renewAccountOperationLock(userId, operationId, 'merge-credit-cards');
+
+      const batch = writeBatch(db);
+      operations.forEach(operation => {
+        if (operation.type === 'delete') {
+          batch.delete(operation.ref);
+        } else if (operation.type === 'set') {
+          batch.set(operation.ref, operation.data ?? {});
+        } else {
+          batch.update(operation.ref, operation.data ?? {});
+        }
+      });
+      batch.set(
+        doc(db, 'users', userId),
+        createAccountOperationRelease(operationId, 'merge-credit-cards'),
+        { merge: true }
+      );
+      await batch.commit();
+      committed = true;
+
+      if (updatedTransactionsForCache.length > 0) {
+        publishTransactionCacheMutation({
+          userId,
+          type: 'update',
+          transactions: updatedTransactionsForCache,
         });
-        const usedCredit = reconcileUsedCredit(referenceIds, Array.from(survivors.values()));
-        await updateDoc(destinationRef, { usedCredit });
+      }
+      } finally {
+        if (!committed) {
+          await releaseAccountOperationLock(
+            userId,
+            operationId,
+            'merge-credit-cards'
+          ).catch(() => undefined);
+        }
       }
     },
     'mergeCreditCards',
@@ -378,13 +724,14 @@ export async function mergeCreditCardsOrchestrated(
 }
 
 /**
- * Define la cuenta default (autenticado): runTransaction atómico que pone
- * isDefault=true solo en la elegida y false en el resto.
+ * Define la cuenta default (autenticado): bloquea escrituras del dominio,
+ * consulta el conjunto actual desde el servidor y cambia todas las cuentas en
+ * un único batch. Así otra pestaña no puede dejar dos defaults por usar un
+ * snapshot React incompleto u obsoleto.
  */
 export async function setDefaultAccountAtomic(
   userId: string,
-  id: string,
-  accounts: Account[]
+  id: string
 ): Promise<void> {
   if (!checkNetworkConnection()) {
     throw new Error('Sin conexión a internet');
@@ -392,19 +739,56 @@ export async function setDefaultAccountAtomic(
 
   await safeFirestoreOperation(
     async () => {
-      await runTransaction(db, async (transaction) => {
-        // Leer antes de escribir (requisito de runTransaction) y saltar cuentas
-        // que ya no existan en Firestore: un transaction.update ciego sobre una
-        // cuenta borrada/fusionada (array en memoria rezagado) lanza NOT_FOUND y
-        // aborta TODA la operación → el usuario no podría cambiar su default (#accounts-6).
-        const refs = accounts.map(account => doc(db, `users/${userId}/accounts`, account.id!));
-        const snaps = await Promise.all(refs.map(ref => transaction.get(ref)));
-        snaps.forEach((snap, i) => {
-          if (snap.exists()) {
-            transaction.update(refs[i], { isDefault: accounts[i].id === id });
-          }
+      const operationId = createAccountOperationId('set-default-account');
+      let committed = false;
+
+      try {
+        await acquireAccountOperationLock(
+          userId,
+          operationId,
+          'set-default-account'
+        );
+        const accountCollection = collection(db, `users/${userId}/accounts`);
+        const accountSnapshot = await getDocsFromServer(accountCollection);
+        if (!accountSnapshot.docs.some(account => account.id === id)) {
+          throw new Error(
+            'La cuenta elegida cambió o ya no existe. Actualiza e intenta de nuevo.'
+          );
+        }
+
+        assertAtomicBatchCapacity(
+          'cambiar la cuenta por defecto',
+          accountSnapshot.docs.length + 1
+        );
+        await renewAccountOperationLock(
+          userId,
+          operationId,
+          'set-default-account'
+        );
+
+        const batch = writeBatch(db);
+        accountSnapshot.docs.forEach(account => {
+          batch.update(
+            doc(accountCollection, account.id),
+            { isDefault: account.id === id }
+          );
         });
-      });
+        batch.set(
+          doc(db, 'users', userId),
+          createAccountOperationRelease(operationId, 'set-default-account'),
+          { merge: true }
+        );
+        await batch.commit();
+        committed = true;
+      } finally {
+        if (!committed) {
+          await releaseAccountOperationLock(
+            userId,
+            operationId,
+            'set-default-account'
+          ).catch(() => undefined);
+        }
+      }
     },
     'setDefaultAccount',
     { maxRetries: 2 }

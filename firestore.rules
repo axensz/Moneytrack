@@ -19,6 +19,140 @@ service cloud.firestore {
       return str is string && str.size() >= minLength && str.size() <= maxLength;
     }
 
+    // Las operaciones coordinadas de cuentas consultan varias colecciones antes
+    // de confirmar un único batch. El lease usa request.time del servidor; así
+    // un reloj de dispositivo desajustado no puede crear un lock ya vencido.
+    function accountOperationLockIsActive(data) {
+      return 'accountOperationLock' in data.keys()
+        && data.accountOperationLock is map
+        && !('releasedAt' in data.accountOperationLock.keys())
+        && (
+          (
+            'acquiredAt' in data.accountOperationLock.keys()
+            && data.accountOperationLock.acquiredAt is timestamp
+            && data.accountOperationLock.acquiredAt + duration.value(5, 'm') > request.time
+          )
+          // Compatibilidad temporal con locks creados por versiones anteriores.
+          || (
+            !('acquiredAt' in data.accountOperationLock.keys())
+            && 'expiresAt' in data.accountOperationLock.keys()
+            && data.accountOperationLock.expiresAt is timestamp
+            && data.accountOperationLock.expiresAt > request.time
+          )
+        );
+    }
+
+    function isValidAccountOperationLock(lock) {
+      return lock is map
+        && lock.keys().hasOnly(['id', 'kind', 'acquiredAt'])
+        && lock.id is string
+        && lock.id.size() > 0
+        && lock.id.size() <= 200
+        && lock.kind in [
+          'delete-account',
+          'merge-credit-cards',
+          'set-default-account',
+          'delete-debt'
+        ]
+        && lock.acquiredAt is timestamp
+        && lock.acquiredAt == request.time;
+    }
+
+    function isValidAccountOperationRelease(nextLock, previousLock) {
+      return nextLock is map
+        && previousLock is map
+        && nextLock.keys().hasOnly(['id', 'kind', 'releasedAt'])
+        && nextLock.id == previousLock.id
+        && nextLock.kind == previousLock.kind
+        && nextLock.releasedAt is timestamp
+        && nextLock.releasedAt == request.time;
+    }
+
+    function accountOperationRootUpdateAllowed() {
+      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+      let nextHasLock = 'accountOperationLock' in request.resource.data.keys();
+      let previousHasLock = 'accountOperationLock' in resource.data.keys();
+      return changedKeys.hasOnly(['accountOperationLock'])
+        && nextHasLock
+        && (
+          (
+            isValidAccountOperationLock(request.resource.data.accountOperationLock)
+            && (
+              (
+                accountOperationLockIsActive(resource.data)
+                && previousHasLock
+                && request.resource.data.accountOperationLock.id
+                  == resource.data.accountOperationLock.id
+              )
+              || (
+                !accountOperationLockIsActive(resource.data)
+                && (
+                  !previousHasLock
+                  || request.resource.data.accountOperationLock.id
+                    != resource.data.accountOperationLock.id
+                )
+              )
+            )
+          )
+          // El commit final deja un tombstone con el mismo id. Un batch viejo
+          // no puede liberar un lease más nuevo adquirido tras su expiración.
+          || (
+            previousHasLock
+            && accountOperationLockIsActive(resource.data)
+            && isValidAccountOperationRelease(
+              request.resource.data.accountOperationLock,
+              resource.data.accountOperationLock
+            )
+          )
+        );
+    }
+
+    function accountOperationAllowsWrite(userId) {
+      let userPath = /databases/$(database)/documents/users/$(userId);
+      return !existsAfter(userPath)
+        || !accountOperationLockIsActive(getAfter(userPath).data);
+    }
+
+    function accountExistsAfter(userId, accountId) {
+      return accountId is string
+        && existsAfter(
+          /databases/$(database)/documents/users/$(userId)/accounts/$(accountId)
+        );
+    }
+
+    function debtExistsAfter(userId, debtId) {
+      return debtId is string
+        && existsAfter(
+          /databases/$(database)/documents/users/$(userId)/debts/$(debtId)
+        );
+    }
+
+    function hasValidOptionalAccountReference(userId, data, field) {
+      return !(field in data.keys())
+        || accountExistsAfter(userId, data[field]);
+    }
+
+    function updatedAccountReferenceIsValid(userId, field) {
+      return request.resource.data.get(field, null)
+          == resource.data.get(field, null)
+        || hasValidOptionalAccountReference(
+          userId,
+          request.resource.data,
+          field
+        );
+    }
+
+    function hasValidOptionalDebtReference(userId, data) {
+      return !('debtId' in data.keys())
+        || debtExistsAfter(userId, data.debtId);
+    }
+
+    function updatedDebtReferenceIsValid(userId) {
+      return request.resource.data.get('debtId', null)
+          == resource.data.get('debtId', null)
+        || hasValidOptionalDebtReference(userId, request.resource.data);
+    }
+
     // Helper: validate optional installment fields on transactions
     function hasValidInstallments(data) {
       // If no installments field, it's a regular transaction — valid
@@ -56,8 +190,16 @@ service cloud.firestore {
 
     // User data collections
     match /users/{userId} {
-      // Only authenticated users can read/write their own data
-      allow read, write: if isOwner(userId);
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && request.resource.data.keys().hasOnly(['accountOperationLock'])
+        && isValidAccountOperationLock(
+          request.resource.data.accountOperationLock
+        );
+      allow update: if isOwner(userId)
+        && accountOperationRootUpdateAllowed();
+      allow delete: if isOwner(userId)
+        && !accountOperationLockIsActive(resource.data);
 
       // Transactions subcollection
       match /transactions/{transactionId} {
@@ -65,6 +207,7 @@ service cloud.firestore {
 
         // Description is optional but if provided must be valid
         allow create: if isOwner(userId)
+          && accountOperationAllowsWrite(userId)
           && request.resource.data.type in ['income', 'expense', 'transfer']
           && isValidAmount(request.resource.data.amount)
           && request.resource.data.description is string
@@ -72,6 +215,13 @@ service cloud.firestore {
           && request.resource.data.category is string
           && request.resource.data.paid is bool
           && request.resource.data.accountId is string
+          && accountExistsAfter(userId, request.resource.data.accountId)
+          && hasValidOptionalAccountReference(
+            userId,
+            request.resource.data,
+            'toAccountId'
+          )
+          && hasValidOptionalDebtReference(userId, request.resource.data)
           && request.resource.data.date is timestamp
           && request.resource.data.createdAt is timestamp
           && hasValidInstallments(request.resource.data)
@@ -95,8 +245,12 @@ service cloud.firestore {
         //  - paid bool.
         //  - cuotas, intereses y multimoneda: si están presentes, dentro de rango.
         allow update: if isOwner(userId)
+          && accountOperationAllowsWrite(userId)
           && request.resource.data.type == resource.data.type
           && request.resource.data.accountId is string
+          && updatedAccountReferenceIsValid(userId, 'accountId')
+          && updatedAccountReferenceIsValid(userId, 'toAccountId')
+          && updatedDebtReferenceIsValid(userId)
           && isValidAmount(request.resource.data.amount)
           && request.resource.data.description is string
           && request.resource.data.description.size() <= 500
@@ -107,7 +261,8 @@ service cloud.firestore {
           && hasValidInterestFields(request.resource.data)
           && hasValidCurrencyFields(request.resource.data);
 
-        allow delete: if isOwner(userId);
+        allow delete: if isOwner(userId)
+          && accountOperationAllowsWrite(userId);
       }
 
       // Accounts subcollection
@@ -115,6 +270,7 @@ service cloud.firestore {
         allow read: if isOwner(userId);
 
         allow create: if isOwner(userId)
+          && accountOperationAllowsWrite(userId)
           && request.resource.data.name is string
           && request.resource.data.name.size() > 0
           && request.resource.data.type in ['savings', 'credit', 'cash']
@@ -125,11 +281,13 @@ service cloud.firestore {
 
         // AUDIT-FIX: update valida que type sea inmutable y name sea válido
         allow update: if isOwner(userId)
+          && accountOperationAllowsWrite(userId)
           && request.resource.data.type == resource.data.type
           && request.resource.data.name is string
           && request.resource.data.name.size() > 0;
 
-        allow delete: if isOwner(userId);
+        allow delete: if isOwner(userId)
+          && accountOperationAllowsWrite(userId);
       }
 
       // Categories subcollection
@@ -160,6 +318,7 @@ service cloud.firestore {
         allow read: if isOwner(userId);
 
         allow create: if isOwner(userId)
+          && accountOperationAllowsWrite(userId)
           && request.resource.data.name is string
           && request.resource.data.name.size() > 0
           && request.resource.data.name.size() <= 200
@@ -170,6 +329,11 @@ service cloud.firestore {
           && request.resource.data.dueDay <= 31
           && request.resource.data.frequency in ['monthly', 'yearly']
           && request.resource.data.isActive is bool
+          && hasValidOptionalAccountReference(
+            userId,
+            request.resource.data,
+            'accountId'
+          )
           && request.resource.data.createdAt is timestamp;
 
         // AUDIT-FIX (#30): update endurecido (espeja create). La app hace updates
@@ -187,6 +351,7 @@ service cloud.firestore {
         //  - lastPaidDate (opcional): si está, timestamp.
         //  - lastPaidAmount (opcional): si está, number >= 0.
         allow update: if isOwner(userId)
+          && accountOperationAllowsWrite(userId)
           && request.resource.data.name is string
           && request.resource.data.name.size() > 0
           && request.resource.data.name.size() <= 200
@@ -197,12 +362,14 @@ service cloud.firestore {
           && request.resource.data.dueDay <= 31
           && request.resource.data.frequency in ['monthly', 'yearly']
           && request.resource.data.isActive is bool
+          && updatedAccountReferenceIsValid(userId, 'accountId')
           && (!('lastPaidDate' in request.resource.data.keys())
               || request.resource.data.lastPaidDate is timestamp)
           && (!('lastPaidAmount' in request.resource.data.keys())
               || (request.resource.data.lastPaidAmount is number
                   && request.resource.data.lastPaidAmount >= 0));
-        allow delete: if isOwner(userId);
+        allow delete: if isOwner(userId)
+          && accountOperationAllowsWrite(userId);
       }
 
       // Debts / Loans subcollection
@@ -210,6 +377,7 @@ service cloud.firestore {
         allow read: if isOwner(userId);
 
         allow create: if isOwner(userId)
+          && accountOperationAllowsWrite(userId)
           && request.resource.data.personName is string
           && request.resource.data.personName.size() > 0
           && request.resource.data.personName.size() <= 200
@@ -220,9 +388,15 @@ service cloud.firestore {
           && request.resource.data.remainingAmount <= request.resource.data.originalAmount
           && request.resource.data.isSettled is bool
           && request.resource.data.createdAt is timestamp
+          && hasValidOptionalAccountReference(
+            userId,
+            request.resource.data,
+            'accountId'
+          )
           && hasValidDebtPaymentSchedule(request.resource.data);
 
         allow update: if isOwner(userId)
+          && accountOperationAllowsWrite(userId)
           && request.resource.data.type == resource.data.type
           && request.resource.data.personName is string
           && request.resource.data.personName.size() > 0
@@ -230,9 +404,11 @@ service cloud.firestore {
           && request.resource.data.remainingAmount is number
           && request.resource.data.remainingAmount >= 0
           && request.resource.data.remainingAmount <= request.resource.data.originalAmount
+          && updatedAccountReferenceIsValid(userId, 'accountId')
           && hasValidDebtPaymentSchedule(request.resource.data);
 
-        allow delete: if isOwner(userId);
+        allow delete: if isOwner(userId)
+          && accountOperationAllowsWrite(userId);
       }
 
       // Budgets subcollection

@@ -44,6 +44,107 @@ type TransactionEditUpdates = {
   [K in keyof Transaction]?: Transaction[K] | null;
 } & Record<string, unknown>;
 
+interface TransactionViewFilterOptions {
+  accounts: Account[];
+  recurringPayments: RecurringPayment[];
+  filterCategory: FilterValue;
+  filterAccount: FilterValue;
+  searchQuery: string;
+  dateRangePreset: DateRangePreset;
+  customStartDate: string;
+  customEndDate: string;
+}
+
+/**
+ * Pure equivalent of the view filter, used to apply the visible criteria to
+ * the full transaction history during export.
+ */
+export function filterTransactionsForView(
+  transactions: Transaction[],
+  {
+    accounts,
+    recurringPayments,
+    filterCategory,
+    filterAccount,
+    searchQuery,
+    dateRangePreset,
+    customStartDate,
+    customEndDate,
+  }: TransactionViewFilterOptions
+): Transaction[] {
+  const selectedAccount =
+    filterAccount === 'all' ? null : accounts.find((account) => account.id === filterAccount);
+  const accountsById = new Map(accounts.map((account) => [account.id, account]));
+  const recurringPaymentsById = new Map(
+    recurringPayments.map((payment) => [payment.id, payment])
+  );
+  const normalizedQuery = searchQuery.trim().toLocaleLowerCase('es-CO');
+
+  return transactions.filter((transaction) => {
+    if (filterCategory !== 'all' && transaction.category !== filterCategory) return false;
+
+    if (filterAccount !== 'all') {
+      if (!selectedAccount || !transactionUsesAccount(transaction, selectedAccount)) return false;
+    }
+
+    if (normalizedQuery) {
+      const sourceAccount = accountsById.get(transaction.accountId);
+      const destinationAccount = transaction.toAccountId
+        ? accountsById.get(transaction.toAccountId)
+        : null;
+      const recurringPayment = transaction.recurringPaymentId
+        ? recurringPaymentsById.get(transaction.recurringPaymentId)
+        : null;
+      const typeLabel =
+        transaction.type === 'income'
+          ? 'ingreso'
+          : transaction.type === 'expense'
+            ? 'gasto'
+            : 'transferencia';
+      const searchableText = [
+        transaction.description,
+        transaction.category,
+        transaction.beneficiary,
+        typeLabel,
+        sourceAccount?.name,
+        destinationAccount?.name,
+        recurringPayment?.name,
+        transaction.amount.toString(),
+        transaction.amount.toLocaleString('es-CO'),
+        new Date(transaction.date).toLocaleDateString('es-CO'),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLocaleLowerCase('es-CO');
+
+      if (!searchableText.includes(normalizedQuery)) return false;
+    }
+
+    if (dateRangePreset !== 'all') {
+      const transactionDate = new Date(transaction.date);
+
+      if (dateRangePreset === 'custom') {
+        if (customStartDate) {
+          const start = parseDateFromInput(customStartDate);
+          start.setHours(0, 0, 0, 0);
+          if (transactionDate < start) return false;
+        }
+        if (customEndDate) {
+          const end = parseDateFromInput(customEndDate);
+          end.setHours(23, 59, 59, 999);
+          if (transactionDate > end) return false;
+        }
+      } else {
+        const { start, end } = getDateRangeFromPreset(dateRangePreset);
+        if (start && transactionDate < start) return false;
+        if (end && transactionDate > end) return false;
+      }
+    }
+
+    return true;
+  });
+}
+
 const nullDerivedForeignCurrencyFields: TransactionEditUpdates = {
   currency: null,
   originalAmount: null,
@@ -101,90 +202,37 @@ export const useTransactionsView = ({
     return new Map(accounts.map((account) => [account.id, account]));
   }, [accounts]);
 
-  const recurringPaymentsById = useMemo(() => {
-    return new Map(recurringPayments.map((payment) => [payment.id, payment]));
-  }, [recurringPayments]);
-
-  // Filtrado con rango de fecha y búsqueda de texto
-  const filteredTransactions = useMemo(() => {
-    const selectedAccount =
-      filterAccount === 'all' ? null : accounts.find((account) => account.id === filterAccount);
-    const normalizedQuery = searchQuery.trim().toLocaleLowerCase('es-CO');
-
-    return transactions.filter((t) => {
-      // Filtro por categoría
-      if (filterCategory !== 'all' && t.category !== filterCategory) return false;
-      // Filtro por cuenta
-      if (filterAccount !== 'all') {
-        if (!selectedAccount || !transactionUsesAccount(t, selectedAccount)) return false;
-      }
-
-      // 🆕 Filtro por texto (búsqueda en descripción)
-      if (normalizedQuery) {
-        const sourceAccount = accountsById.get(t.accountId);
-        const destinationAccount = t.toAccountId ? accountsById.get(t.toAccountId) : null;
-        const recurringPayment = t.recurringPaymentId
-          ? recurringPaymentsById.get(t.recurringPaymentId)
-          : null;
-        const typeLabel =
-          t.type === 'income' ? 'ingreso' : t.type === 'expense' ? 'gasto' : 'transferencia';
-        const searchableText = [
-          t.description,
-          t.category,
-          t.beneficiary,
-          typeLabel,
-          sourceAccount?.name,
-          destinationAccount?.name,
-          recurringPayment?.name,
-          t.amount.toString(),
-          t.amount.toLocaleString('es-CO'),
-          new Date(t.date).toLocaleDateString('es-CO'),
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLocaleLowerCase('es-CO');
-
-        if (!searchableText.includes(normalizedQuery)) {
-          return false;
-        }
-      }
-
-      // Filtro por rango de fecha
-      if (dateRangePreset !== 'all') {
-        const transactionDate = new Date(t.date);
-
-        if (dateRangePreset === 'custom') {
-          if (customStartDate) {
-            const start = parseDateFromInput(customStartDate);
-            start.setHours(0, 0, 0, 0);
-            if (transactionDate < start) return false;
-          }
-          if (customEndDate) {
-            const end = parseDateFromInput(customEndDate);
-            end.setHours(23, 59, 59, 999);
-            if (transactionDate > end) return false;
-          }
-        } else {
-          const { start, end } = getDateRangeFromPreset(dateRangePreset);
-          if (start && transactionDate < start) return false;
-          if (end && transactionDate > end) return false;
-        }
-      }
-
-      return true;
-    });
-  }, [
-    transactions,
-    accounts,
-    accountsById,
-    recurringPaymentsById,
-    filterCategory,
-    filterAccount,
-    searchQuery,
-    dateRangePreset,
-    customStartDate,
-    customEndDate,
-  ]);
+  const applyCurrentFilters = useCallback(
+    (sourceTransactions: Transaction[]) =>
+      filterTransactionsForView(sourceTransactions, {
+        accounts,
+        recurringPayments,
+        filterCategory,
+        filterAccount,
+        searchQuery,
+        dateRangePreset,
+        customStartDate,
+        customEndDate,
+      }),
+    [
+      accounts,
+      recurringPayments,
+      filterCategory,
+      filterAccount,
+      searchQuery,
+      dateRangePreset,
+      customStartDate,
+      customEndDate,
+    ]
+  );
+  const filteredTransactions = useMemo(
+    () => applyCurrentFilters(transactions),
+    [applyCurrentFilters, transactions]
+  );
+  const filteredBalanceTransactions = useMemo(
+    () => applyCurrentFilters(balanceTransactions),
+    [applyCurrentFilters, balanceTransactions]
+  );
 
   // Verificar si hay filtros activos
   const isMetadataFiltersActive =
@@ -412,6 +460,7 @@ export const useTransactionsView = ({
   return {
     // Filtered data
     filteredTransactions,
+    filteredBalanceTransactions,
     isMetadataFiltersActive,
 
     // Date filter state

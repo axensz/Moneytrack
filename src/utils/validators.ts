@@ -10,8 +10,7 @@
 import {
   TRANSACTION_VALIDATION,
   ACCOUNT_VALIDATION,
-  ERROR_MESSAGES,
-  TRANSFER_CATEGORY
+  ERROR_MESSAGES
 } from '../config/constants';
 import { AccountStrategyFactory } from './accountStrategies';
 import { getCreditDelta } from './creditDeltas';
@@ -140,7 +139,7 @@ export class TransactionValidator {
         if (!validation.valid && validation.error) {
           errors.push(validation.error);
         }
-      } catch (error) {
+      } catch {
         // Si no existe estrategia (tipo inválido), agregar error genérico
         errors.push('Tipo de cuenta no válido');
       }

@@ -25,6 +25,7 @@ const mockState = vi.hoisted(() => ({
   store: new Map<string, Record<string, unknown>>(),
   writeLog: [] as Array<{ op: string; key: string; data?: Record<string, unknown> }>,
   gen: 0,
+  transactionCalls: 0,
 }));
 
 vi.mock('../../lib/firebaseDb', () => ({ db: { __db: true } }));
@@ -47,10 +48,12 @@ vi.mock('firebase/firestore', () => ({
     return { id: `addDoc-${(mockState.gen += 1)}` };
   },
   increment: (n: number) => ({ __increment: n }),
+  deleteField: () => ({ __deleteField: true }),
   runTransaction: async (
     _db: unknown,
     fn: (t: unknown) => Promise<unknown>
   ) => {
+    mockState.transactionCalls += 1;
     const txn = {
       get: async (ref: { __key: string }) => ({
         exists: () => mockState.store.has(ref.__key),
@@ -69,10 +72,15 @@ vi.mock('firebase/firestore', () => ({
 
 // Import DESPUÉS de los mocks.
 import { useTransactionsCRUD } from '../../hooks/firestore/useTransactionsCRUD';
+import {
+  subscribeTransactionCacheMutations,
+  type TransactionCacheMutation,
+} from '../../hooks/firestore/transactionPaginationCache';
 
 const UID = 'u1';
 const acctKey = (id: string) => `users/${UID}/accounts/${id}`;
 const txKey = (id: string) => `users/${UID}/transactions/${id}`;
+const debtKey = (id: string) => `users/${UID}/debts/${id}`;
 
 const savings: Account = {
   id: 'sav', name: 'Ahorros', type: 'savings', isDefault: true, initialBalance: 1_000_000,
@@ -90,6 +98,8 @@ const updatesOn = (key: string) => mockState.writeLog.filter(w => w.op === 'upda
 const sets = () => mockState.writeLog.filter(w => w.op === 'set');
 const deletes = () => mockState.writeLog.filter(w => w.op === 'delete');
 const addDocs = () => mockState.writeLog.filter(w => w.op === 'addDoc');
+const cacheMutations: TransactionCacheMutation[] = [];
+let unsubscribeCacheMutations = () => {};
 
 const makeTx = (o: Partial<Transaction>): Omit<Transaction, 'id' | 'createdAt'> => ({
   type: 'expense',
@@ -109,10 +119,18 @@ beforeEach(() => {
   mockState.store.clear();
   mockState.writeLog.length = 0;
   mockState.gen = 0;
+  mockState.transactionCalls = 0;
+  cacheMutations.length = 0;
+  unsubscribeCacheMutations = subscribeTransactionCacheMutations(mutation => {
+    cacheMutations.push(mutation);
+  });
   Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
 });
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  unsubscribeCacheMutations();
+  vi.restoreAllMocks();
+});
 
 describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
   describe('addTransaction', () => {
@@ -149,6 +167,15 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
 
       expect(addDocs()).toHaveLength(1);
       expect(addDocs()[0].key).toBe(`users/${UID}/transactions`);
+      expect(cacheMutations).toContainEqual(expect.objectContaining({
+        userId: UID,
+        type: 'update',
+        transactions: [expect.objectContaining({
+          id: 'addDoc-1',
+          amount: 200_000,
+          accountId: 'sav',
+        })],
+      }));
       // Ninguna actualización de cuenta (no hay TC implicada).
       expect(mockState.writeLog.filter(w => w.op === 'update')).toHaveLength(0);
     });
@@ -184,6 +211,14 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
       const ccUpdates = updatesOn(acctKey('cc'));
       expect(ccUpdates).toHaveLength(1);
       expect(ccUpdates[0].data!.usedCredit).toEqual({ __increment: -400_000 });
+      expect(cacheMutations).toContainEqual(expect.objectContaining({
+        userId: UID,
+        type: 'update',
+        transactions: expect.arrayContaining([
+          expect.objectContaining({ id: '__new1', linkedTransactionId: '__new2' }),
+          expect.objectContaining({ id: '__new2', linkedTransactionId: '__new1' }),
+        ]),
+      }));
     });
 
     it('aborta si la cuenta de crédito no existe', async () => {
@@ -224,6 +259,15 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
       const ccUpdates = updatesOn(acctKey('cc'));
       expect(ccUpdates).toHaveLength(1);
       expect(ccUpdates[0].data!.usedCredit).toEqual({ __increment: -250_000 });
+      expect(cacheMutations).toContainEqual(expect.objectContaining({
+        userId: UID,
+        type: 'update',
+        transactions: [expect.objectContaining({
+          id: '__new1',
+          type: 'transfer',
+          amount: 250_000,
+        })],
+      }));
     });
 
     it('transferencia DESDE una TC se bloquea ANTES de escribir nada', async () => {
@@ -256,6 +300,35 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
       const ccUpdates = updatesOn(acctKey('cc'));
       expect(ccUpdates).toHaveLength(1);
       expect(ccUpdates[0].data!.usedCredit).toEqual({ __increment: -150_000 });
+      expect(cacheMutations).toContainEqual({
+        userId: UID,
+        type: 'delete',
+        transactionIds: ['tx-del'],
+      });
+    });
+
+    it('al borrar un pago de deuda reabre desde el saldo persistido en la misma transacción', async () => {
+      seedTx('debt-payment', {
+        type: 'income', amount: 200_000, accountId: 'sav', category: 'Cobro Préstamo',
+        debtId: 'debt-1', paid: true,
+      });
+      mockState.store.set(debtKey('debt-1'), {
+        remainingAmount: 700_000,
+        isSettled: true,
+        settledAt: new Date('2026-07-01'),
+      });
+      const crud = renderCRUD([savings]);
+
+      await crud.current.deleteTransaction('debt-payment');
+
+      expect(mockState.transactionCalls).toBe(1);
+      const debtUpdates = updatesOn(debtKey('debt-1'));
+      expect(debtUpdates).toHaveLength(1);
+      expect(debtUpdates[0].data).toMatchObject({
+        remainingAmount: 900_000,
+        isSettled: false,
+      });
+      expect(debtUpdates[0].data!.settledAt).toEqual({ __deleteField: true });
     });
 
     it('si la transacción no existe es un no-op (no borra ni actualiza)', async () => {
@@ -314,6 +387,15 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
       const ccUpdates = updatesOn(acctKey('cc'));
       expect(ccUpdates).toHaveLength(1);
       expect(ccUpdates[0].data!.usedCredit).toEqual({ __increment: 50_000 });
+      expect(cacheMutations).toHaveLength(1);
+      expect(cacheMutations[0]).toEqual(expect.objectContaining({
+        userId: UID,
+        type: 'update',
+        transactions: [expect.objectContaining({
+          id: 'tx-upd',
+          amount: 150_000,
+        })],
+      }));
     });
 
     it('sincroniza monto y fecha de ambas mitades sin permitir cambiar su categoría', async () => {

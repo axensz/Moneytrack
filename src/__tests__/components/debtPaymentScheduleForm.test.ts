@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildPaymentScheduleUpdates, type PaymentScheduleFormState } from '../../components/views/debts/paymentScheduleForm';
+import {
+  buildPaymentScheduleUpdates,
+  type PaymentScheduleFormState,
+} from '../../components/views/debts/utils/paymentScheduleForm';
 
 const baseForm: PaymentScheduleFormState = {
   mode: 'none',

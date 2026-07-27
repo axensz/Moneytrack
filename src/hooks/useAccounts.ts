@@ -7,6 +7,7 @@ import { generateId } from '../utils/formatters';
 import { transactionUsesAccount } from '../utils/accountTransactions';
 import { getCreditCardUsedCredit } from '../utils/accountStrategies';
 import { CURRENT_CREDIT_DEBT_MODEL_VERSION } from '../utils/creditDeltas';
+import { CURRENT_PAYMENT_PAIR_MODEL_VERSION } from '../utils/creditPaymentPairs';
 import { deleteAccountCascade, mergeCreditCardsOrchestrated, setDefaultAccountAtomic } from './firestore/accountOrchestration';
 import type { Account, Transaction, RecurringPayment, Debt } from '../types/finance';
 
@@ -29,8 +30,6 @@ export function useAccounts(
 ) {
   const {
     accounts: firestoreAccounts,
-    recurringPayments: firestoreRecurringPayments,
-    debts: firestoreDebts,
     loading: firestoreLoading,
     addAccount: firestoreAddAccount,
     updateAccount: firestoreUpdateAccount
@@ -48,12 +47,19 @@ export function useAccounts(
   // Importante: confiar en el loading de useFirestore que ahora espera a que los datos lleguen
   const loading = userId ? firestoreLoading : false;
 
-  const getAccountBalance = useCallback((accountId: string): number => {
-    const account = accounts.find(a => a.id === accountId);
-    if (!account) return 0;
+  const accountsById = useMemo(
+    () => new Map(accounts.flatMap(account => account.id ? [[account.id, account] as const] : [])),
+    [accounts]
+  );
 
-    return BalanceCalculator.calculateAccountBalance(account, transactions);
-  }, [accounts, transactions]);
+  const balanceSnapshot = useMemo(
+    () => BalanceCalculator.calculateBalanceSnapshot(accounts, transactions),
+    [accounts, transactions]
+  );
+
+  const getAccountBalance = useCallback((accountId: string): number => {
+    return balanceSnapshot.balancesByAccountId.get(accountId) ?? 0;
+  }, [balanceSnapshot]);
 
   const getTransactionCountForAccount = useCallback((accountId: string): number => {
     const account = accounts.find(a => a.id === accountId);
@@ -71,14 +77,12 @@ export function useAccounts(
   // completo, no la ventana paginada), que para una TC legacy sin usedCredit
   // persistido evita subcontar la deuda (#4a/#11).
   const getCreditUsed = useCallback((accountId: string): number => {
-    const account = accounts.find(a => a.id === accountId);
+    const account = accountsById.get(accountId);
     if (!account || account.type !== 'credit') return 0;
-    return getCreditCardUsedCredit(account, transactions);
-  }, [accounts, transactions]);
+    return balanceSnapshot.creditUsedByAccountId.get(accountId) ?? 0;
+  }, [accountsById, balanceSnapshot]);
 
-  const totalBalance = useMemo(() => {
-    return BalanceCalculator.calculateTotalBalance(accounts, transactions);
-  }, [accounts, transactions]);
+  const totalBalance = balanceSnapshot.totalBalance;
 
   const addAccount = async (newAcc: Omit<Account, 'id' | 'createdAt'>) => {
     const isFirst = accounts.length === 0;
@@ -87,6 +91,7 @@ export function useAccounts(
       ...(newAcc.type === 'credit' && {
         usedCredit: newAcc.usedCredit ?? 0,
         creditDebtModelVersion: CURRENT_CREDIT_DEBT_MODEL_VERSION,
+        paymentPairModelVersion: CURRENT_PAYMENT_PAIR_MODEL_VERSION,
       }),
       isDefault: isFirst
     };
@@ -139,11 +144,6 @@ export function useAccounts(
       await deleteAccountCascade(
         userId,
         id,
-        {
-          accounts: firestoreAccounts,
-          recurringPayments: firestoreRecurringPayments,
-          debts: firestoreDebts,
-        },
         options
       );
     } else {
@@ -291,12 +291,7 @@ export function useAccounts(
         destinationId,
         destinationAccount,
         existingDestination,
-        shouldMakeDestinationDefault,
-        sourceIdSet,
         uniqueSourceIds,
-        accounts,
-        recurringPayments: firestoreRecurringPayments,
-        debts: firestoreDebts,
       });
     } else {
       setLocalAccounts(prev => {
@@ -340,7 +335,7 @@ export function useAccounts(
 
   const setDefaultAccount = async (id: string) => {
     if (userId) {
-      await setDefaultAccountAtomic(userId, id, accounts);
+      await setDefaultAccountAtomic(userId, id);
     } else {
       setLocalAccounts(prev =>
         prev.map(acc => ({ ...acc, isDefault: acc.id === id }))

@@ -2,8 +2,6 @@
 
 import React from 'react';
 import { useTransactionDomain, useAccountDomain, useFormatCurrency } from '../../../hooks/useFinanceSelectors';
-import { useAuth } from '../../../hooks/useAuth';
-import { useAllTransactions } from '../../../hooks/useAllTransactions';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { CashFlowChart } from './components/CashFlowChart';
 import { MonthlyComparisonChart } from './components/MonthlyComparisonChart';
@@ -26,14 +24,13 @@ import { useStatsData } from './hooks/useStatsData';
  * @author Refactored following Clean Code principles
  */
 export const StatsView: React.FC = () => {
-  const { transactions } = useTransactionDomain();
+  const { balanceTransactions } = useTransactionDomain();
   const { accounts } = useAccountDomain();
   const formatCurrency = useFormatCurrency();
-  const { user } = useAuth();
   const { hideBalances } = useUIPreferences();
-  // Historial COMPLETO (todas las cuentas, independiente de la paginación de 500)
-  // para que gráficos, intereses y resumen por periodo no subreporten lo antiguo.
-  const allTransactions = useAllTransactions(user?.uid ?? null, transactions);
+  // El provider ya mantiene el historial completo para saldos. Reutilizarlo evita
+  // una segunda lectura y una segunda copia completa exclusiva de estadísticas.
+  const allTransactions = balanceTransactions;
   // Custom hooks para procesamiento de datos
   const { monthlyData, yearlyData, categoryData } = useStatsData(allTransactions);
   const { creditCardInterests, totals } = useCreditCardInterests(accounts, allTransactions);

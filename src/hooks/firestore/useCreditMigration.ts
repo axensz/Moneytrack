@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { collection, getDocs, doc, updateDoc, query, where } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, query, where, runTransaction } from 'firebase/firestore';
 import { db } from '../../lib/firebaseDb';
 import type { Account, Transaction } from '../../types/finance';
 import { logger } from '../../utils/logger';
@@ -13,6 +13,11 @@ import {
   CURRENT_CREDIT_DEBT_MODEL_VERSION,
   reconcileUsedCredit,
 } from '../../utils/creditDeltas';
+import {
+  CURRENT_PAYMENT_PAIR_MODEL_VERSION,
+  findHistoricalCreditPaymentPairs,
+  isHistoricalCreditPaymentPair,
+} from '../../utils/creditPaymentPairs';
 
 export function calculateCreditUsedFromTransactions(
   account: Pick<Account, 'id' | 'mergedAccountIds'>,
@@ -25,6 +30,7 @@ export function calculateCreditUsedFromTransactions(
 
 export function useCreditMigration(userId: string | null, accounts: Account[]) {
   const migratedRef = useRef<Set<string>>(new Set());
+  const paymentPairsMigratedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!userId || accounts.length === 0) return;
@@ -87,5 +93,63 @@ export function useCreditMigration(userId: string | null, accounts: Account[]) {
     };
 
     migrate();
+  }, [userId, accounts]);
+
+  useEffect(() => {
+    if (!userId || accounts.length === 0) return;
+
+    const creditAccountsNeedingPairMigration = accounts.filter(
+      account => account.type === 'credit' && account.id &&
+        account.paymentPairModelVersion !== CURRENT_PAYMENT_PAIR_MODEL_VERSION &&
+        !paymentPairsMigratedRef.current.has(account.id)
+    );
+    if (creditAccountsNeedingPairMigration.length === 0) return;
+
+    const migratePaymentPairs = async () => {
+      const base = `users/${userId}`;
+      try {
+        creditAccountsNeedingPairMigration.forEach(account => paymentPairsMigratedRef.current.add(account.id!));
+        const snapshot = await getDocs(collection(db, `${base}/transactions`));
+        const allTransactions = snapshot.docs.map(item => ({ id: item.id, ...item.data() } as Transaction));
+
+        for (const account of creditAccountsNeedingPairMigration) {
+          const pairs = findHistoricalCreditPaymentPairs(account, allTransactions);
+          for (const pair of pairs) {
+            await runTransaction(db, async firestoreTransaction => {
+              const creditRef = doc(db, `${base}/transactions`, pair.creditTransactionId);
+              const sourceRef = doc(db, `${base}/transactions`, pair.sourceTransactionId);
+              const [creditSnapshot, sourceSnapshot] = await Promise.all([
+                firestoreTransaction.get(creditRef),
+                firestoreTransaction.get(sourceRef),
+              ]);
+              if (!creditSnapshot.exists() || !sourceSnapshot.exists()) return;
+
+              const creditTransaction = {
+                id: creditSnapshot.id,
+                ...creditSnapshot.data(),
+              } as Transaction;
+              const sourceTransaction = {
+                id: sourceSnapshot.id,
+                ...sourceSnapshot.data(),
+              } as Transaction;
+              if (!isHistoricalCreditPaymentPair(creditTransaction, sourceTransaction, account)) return;
+
+              firestoreTransaction.update(creditRef, { linkedTransactionId: sourceRef.id });
+              firestoreTransaction.update(sourceRef, { linkedTransactionId: creditRef.id });
+            });
+          }
+
+          await updateDoc(doc(db, `${base}/accounts`, account.id!), {
+            paymentPairModelVersion: CURRENT_PAYMENT_PAIR_MODEL_VERSION,
+          });
+          logger.info(`Linked ${pairs.length} historical card payment pair(s) for ${account.name}`);
+        }
+      } catch (err) {
+        creditAccountsNeedingPairMigration.forEach(account => paymentPairsMigratedRef.current.delete(account.id!));
+        logger.error('Error migrating historical card payment pairs', err);
+      }
+    };
+
+    void migratePaymentPairs();
   }, [userId, accounts]);
 }

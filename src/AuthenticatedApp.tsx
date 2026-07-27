@@ -2,11 +2,13 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
-import { MoreHorizontal } from 'lucide-react';
 import { Header } from './components/layout/Header';
 import { TabNavigation } from './components/layout/TabNavigation';
 import { LoadingScreen } from './components/layout/LoadingScreen';
 import { FirestoreErrorBanner } from './components/layout/FirestoreErrorBanner';
+import { FinanceNotificationBridge } from './components/layout/FinanceNotificationBridge';
+import { FinanceViewRouter } from './components/layout/FinanceViewRouter';
+import { MobileNavigation } from './components/layout/MobileNavigation';
 import { StatsCards, TransactionForm } from './components/shared';
 import { AuthModal } from './components/modals/AuthModal';
 import { WelcomeModal } from './components/modals/WelcomeModal';
@@ -19,25 +21,31 @@ import { clearGuestFinanceData } from './utils/localData';
 import { hasGuestData, readGuestData } from './utils/guestMigration';
 import { NotificationPreferencesModal } from './components/modals/NotificationPreferencesModal';
 import { FirestoreProvider } from './contexts/FirestoreContext';
-import { FinanceProvider, useFinance } from './contexts/FinanceContext';
+import { FinanceProvider } from './contexts/FinanceContext';
 import { TransactionsView } from './components/views/transactions';
 import { useAddTransaction } from './hooks/useAddTransaction';
 import { useFilteredData } from './hooks/useFilteredData';
 import { useWelcomeModal } from './hooks/useWelcomeModal';
-import { useNotificationMonitoring } from './hooks';
-import { useDailyExpenseReminder } from './hooks/useDailyExpenseReminder';
 import { useGuestMigration } from './hooks/useGuestMigration';
-import { NotificationProvider, useNotificationContext } from './contexts/NotificationContext';
+import { NotificationProvider } from './contexts/NotificationContext';
 import { UIPreferencesProvider } from './contexts/UIPreferencesContext';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useViewRouting } from './hooks/useViewRouting';
-import { useDismissable } from './hooks/useDismissable';
+import {
+  useAccountDomain,
+  useBeneficiaryDomain,
+  useCategoryDomain,
+  useFinanceStatus,
+  useFormatCurrency,
+  useRecurringDomain,
+  useTransactionDomain,
+} from './hooks/useFinanceSelectors';
 import { TOAST_CONFIG, createInitialTransaction } from './config/constants';
-import { NAV_TABS, UI_TEXT, VIEW_SHORTCUTS } from './config/ui';
+import { UI_TEXT, VIEW_SHORTCUTS } from './config/ui';
 import { DATE_PRESETS } from './utils/dateUtils';
 import { parseDateFromInput } from './utils/formatters';
 import { logger } from './utils/logger';
-import type { NewTransaction, ViewType, FilterValue, DateRange, DateRangePreset } from './types/finance';
+import type { NewTransaction, FilterValue, DateRange, DateRangePreset } from './types/finance';
 import { logoutFirebase } from './lib/firebase';
 import { clearFirestorePersistence } from './lib/firebaseDb';
 import type { User } from 'firebase/auth';
@@ -48,49 +56,7 @@ const AIChatBot = lazy(() =>
 );
 import { AITeaserButton } from './components/chat/AITeaserButton';
 import { OnboardingChecklist } from './components/onboarding/OnboardingChecklist';
-import { PlanSkeleton } from './components/views/financial-plan/PlanSkeleton';
 import type { BudgetDraft } from './components/views/budgets/BudgetsView';
-
-// Lazy-loaded secondary views
-const StatsView = lazy(() =>
-  import('./components/views/stats/StatsView').then(m => ({ default: m.StatsView }))
-);
-const AccountsView = lazy(() =>
-  import('./components/views/accounts/AccountsView').then(m => ({ default: m.AccountsView }))
-);
-const RecurringPaymentsView = lazy(() =>
-  import('./components/views/recurring/RecurringPaymentsView').then(m => ({ default: m.RecurringPaymentsView }))
-);
-const DebtsView = lazy(() =>
-  import('./components/views/debts/DebtsView').then(m => ({ default: m.DebtsView }))
-);
-const BudgetsView = lazy(() =>
-  import('./components/views/budgets/BudgetsView').then(m => ({ default: m.BudgetsView }))
-);
-const FinancialPlanView = lazy(() =>
-  import('./components/views/financial-plan/FinancialPlanView').then(m => ({ default: m.FinancialPlanView }))
-);
-const GoalsView = lazy(() =>
-  import('./components/views/goals/GoalsView').then(m => ({ default: m.GoalsView }))
-);
-
-// Barra inferior móvil: subconjunto curado de pestañas (orden propio) + un menú
-// "Más" con el resto. Las etiquetas/iconos salen de NAV_TABS para no divergir de
-// la barra de escritorio (misma palabra por vista en ambas).
-const MOBILE_PRIMARY_KEYS: ViewType[] = ['transactions', 'accounts', 'goals', 'stats'];
-const MOBILE_MORE_KEYS: ViewType[] = ['recurring', 'debts', 'budgets', 'financial-plan'];
-const tabsFor = (keys: ViewType[]) =>
-  keys.map((key) => NAV_TABS.find((t) => t.key === key)!).filter(Boolean);
-const MOBILE_PRIMARY_TABS = tabsFor(MOBILE_PRIMARY_KEYS);
-const MOBILE_MORE_TABS = tabsFor(MOBILE_MORE_KEYS);
-
-const ViewFallback = () => (
-  <div className="space-y-4 animate-pulse">
-    <div className="h-24 bg-muted rounded-xl" />
-    <div className="h-16 bg-muted rounded-xl" />
-    <div className="h-16 bg-muted rounded-xl" />
-  </div>
-);
 
 /**
  * Subárbol autenticado (cargado lazy desde el boot shell `finance-tracker`).
@@ -127,28 +93,36 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     transactions,
     balanceTransactions,
     balancesReady,
-    accounts,
-    categories,
-    transactionBeneficiaries,
-    recurringPayments,
-    budgets,
-    debts,
-    defaultAccount,
-    totalBalance,
-    transactionsLoading,
-    accountsLoading,
     addTransaction,
     addCreditPaymentAtomic,
-    deleteCategory,
-    addCategory,
-    deleteTransactionBeneficiary,
-    addTransactionBeneficiary,
-    updateRecurringPayment,
+  } = useTransactionDomain();
+  const {
+    accounts,
+    defaultAccount,
+    totalBalance,
     getAccountBalance,
-    formatCurrency,
+  } = useAccountDomain();
+  const {
+    categories,
+    addCategory,
+    deleteCategory,
+  } = useCategoryDomain();
+  const {
+    beneficiaries: transactionBeneficiaries,
+    addBeneficiary: addTransactionBeneficiary,
+    deleteBeneficiary: deleteTransactionBeneficiary,
+  } = useBeneficiaryDomain();
+  const {
+    recurringPayments,
+    updateRecurringPayment,
+  } = useRecurringDomain();
+  const {
+    transactionsLoading,
+    accountsLoading,
     firestoreError,
     retryLoad,
-  } = useFinance();
+  } = useFinanceStatus();
+  const formatCurrency = useFormatCurrency();
 
   // Estado de IA (BYOK): si hay key pero falta autorizar el consentimiento,
   // mostramos un badge de "pendiente" sobre el botón de configuración.
@@ -156,29 +130,9 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const aiAuthPending = aiKeyConfigured && !aiHasConsent;
   const pendingSettingsCount = aiAuthPending ? 1 : 0;
 
-  // Initialize notification system
-  const { notificationManager, preferences: notificationPreferences } = useNotificationContext();
-
-  // Set up notification monitoring
-  useNotificationMonitoring({
-    userId: user?.uid || null,
-    transactions,
-    balanceTransactions,
-    budgets,
-    recurringPayments,
-    accounts,
-    debts,
-    notificationManager,
-  });
-  useDailyExpenseReminder(notificationManager, notificationPreferences);
-
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const newTransactionRef = useRef<NewTransaction>({ ...createInitialTransaction() });
-  // Menú "Más" (móvil): refs para cierre unificado y restauración de foco.
-  const moreMenuRef = useRef<HTMLDivElement>(null);
-  const moreButtonRef = useRef<HTMLButtonElement>(null);
-
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showCategoriesModal, setShowCategoriesModal] = useState(false);
@@ -192,7 +146,6 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const [batchCount, setBatchCount] = useState(0);
   // S6: sincroniza la vista con ?view=<name> en la URL (back/forward funciona).
   const { view, setView } = useViewRouting();
-  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [filterCategory, setFilterCategory] = useState<FilterValue>('all');
   const [filterAccount, setFilterAccount] = useState<FilterValue>('all');
   const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>('this-month');
@@ -298,23 +251,6 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     setPendingBudgetDraft(null);
   }, []);
 
-  // Menú "Más" (móvil): cierre unificado (clic fuera + Escape, con restauración
-  // de foco al disparador) — mismo patrón que el menú de Configuración y el
-  // panel de Notificaciones en Header.
-  const closeMoreMenu = useCallback(() => setShowMoreMenu(false), [setShowMoreMenu]);
-  useDismissable({
-    isOpen: showMoreMenu,
-    onClose: closeMoreMenu,
-    ref: moreMenuRef,
-    triggerRef: moreButtonRef,
-  });
-  // Al abrir, enfocar el primer ítem del menú (WCAG 2.4.3 — foco gestionado).
-  useEffect(() => {
-    if (!showMoreMenu) return;
-    const first = moreMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]');
-    first?.focus();
-  }, [showMoreMenu]);
-
   // C-FIX (paginación + saldos): la validación de "Saldo insuficiente" de
   // useAddTransaction deriva el saldo sumando transacciones; debe usar el
   // historial completo (balanceTransactions), no la ventana paginada de 500.
@@ -407,103 +343,13 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
       {/* Install PWA Banner (mobile only) */}
       <InstallPrompt variant="banner" />
 
-      {/* Overlay para cerrar menú "Más" - FUERA del nav para cubrir toda la
-          pantalla. El cierre por clic/Escape lo gestiona useDismissable; este
-          overlay aporta el "scrim" táctil que captura el toque en móvil. */}
-      {showMoreMenu && (
-        <div className="sm:hidden fixed inset-0 z-[60]" aria-hidden="true" onClick={closeMoreMenu} onTouchStart={closeMoreMenu} />
-      )}
+      <FinanceNotificationBridge userId={user?.uid ?? null} />
 
-      {/* Popover de "Más" - posicionado fixed para evitar conflictos de z-index.
-          --shell-nav-h ata el offset del popover a la altura de la barra inferior. */}
-      {showMoreMenu && (
-        <div
-          ref={moreMenuRef}
-          role="menu"
-          aria-label={UI_TEXT.aria.moreSections}
-          className="sm:hidden fixed right-3 z-[70] bg-card text-card-foreground rounded-xl shadow-xl border border-border overflow-hidden min-w-[var(--shell-more-menu-w,170px)] animate-in slide-in-from-bottom-2 duration-150 fade-in [bottom:var(--shell-nav-h,72px)]"
-        >
-          {MOBILE_MORE_TABS.map(tab => (
-            <button
-              key={tab.key}
-              role="menuitem"
-              onClick={() => {
-                scrollContainerRef.current?.scrollTo({ top: 0 });
-                setView(tab.key);
-                closeMoreMenu();
-                moreButtonRef.current?.focus();
-              }}
-              className={`flex items-center gap-3 w-full px-4 py-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${view === tab.key
-                ? 'text-primary bg-muted'
-                : 'text-foreground hover:bg-muted active:bg-muted'
-                }`}
-            >
-              <tab.icon size={18} aria-hidden="true" />
-              <span>{tab.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Mobile Bottom Navigation - Fixed at bottom, FUERA del contenedor scrollable */}
-      <nav
-        className="sm:hidden fixed bottom-0 left-0 right-0 z-[100] bg-card/95 backdrop-blur-md border-t border-border shadow-lg safe-area-bottom"
-        aria-label={UI_TEXT.aria.mainNavigation}
-        role="navigation"
-      >
-        <div className="flex justify-around items-center px-2 py-1.5 pb-2" role="tablist">
-          {MOBILE_PRIMARY_TABS.map(tab => (
-            <button
-              key={tab.key}
-              id={`tab-${tab.key}-mobile`}
-              role="tab"
-              aria-selected={view === tab.key}
-              aria-controls={`panel-${tab.key}`}
-              onClick={() => {
-                if (view === tab.key) {
-                  scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-                } else {
-                  scrollContainerRef.current?.scrollTo({ top: 0 });
-                  setView(tab.key);
-                }
-                setShowMoreMenu(false);
-              }}
-              className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 min-w-[56px] rounded-xl transition-[background-color,color,transform] ${view === tab.key
-                ? 'text-primary bg-muted scale-105'
-                : 'text-muted-foreground active:scale-95 active:bg-muted'
-                }`}
-            >
-              <tab.icon size={20} strokeWidth={view === tab.key ? 2.5 : 2} aria-hidden="true" />
-              <span className="text-[10px] font-semibold leading-tight">{tab.label}</span>
-            </button>
-          ))}
-          {/* Botón "Más" */}
-          <div className="relative">
-            <button
-              ref={moreButtonRef}
-              onClick={() => {
-                if (showMoreMenu) {
-                  closeMoreMenu();
-                } else {
-                  setShowMoreMenu(true);
-                }
-              }}
-              className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 min-w-[56px] rounded-xl transition-[background-color,color,transform] ${MOBILE_MORE_KEYS.includes(view)
-                ? 'text-primary bg-muted scale-105'
-                : showMoreMenu
-                  ? 'text-primary'
-                  : 'text-muted-foreground active:scale-95 active:bg-muted'
-                }`}
-              aria-haspopup="menu"
-              aria-expanded={showMoreMenu}
-              aria-label={UI_TEXT.aria.moreSections}
-            >
-              <MoreHorizontal size={20} strokeWidth={MOBILE_MORE_KEYS.includes(view) ? 2.5 : 2} aria-hidden="true" />
-              <span className="text-[10px] font-semibold leading-tight">Más</span>
-            </button>
-          </div>
-        </div>
-      </nav>
+      <MobileNavigation
+        view={view}
+        setView={setView}
+        scrollContainerRef={scrollContainerRef}
+      />
 
       <Toaster
         position={TOAST_CONFIG.position}
@@ -630,98 +476,44 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
               setView={setView}
             />
 
-            {view === 'transactions' && (
-              <div id="panel-transactions" role="tabpanel" aria-labelledby="tab-transactions">
-                <TransactionForm
-                  isOpen={showForm}
-                  newTransaction={newTransaction}
-                  setNewTransaction={setNewTransaction}
-                  onSubmit={handleSubmit}
-                  onSubmitAndContinue={handleSubmitAndContinue}
-                  onCancel={handleCloseForm}
-                  batchCount={batchCount}
-                />
-
-                <TransactionsView
-                  showForm={showForm}
-                  setShowForm={setShowForm}
-                  filterCategory={filterCategory}
-                  setFilterCategory={setFilterCategory}
-                  filterAccount={filterAccount}
-                  setFilterAccount={setFilterAccount}
-                  dateRangePreset={dateRangePreset}
-                  setDateRangePreset={setDateRangePreset}
-                  customStartDate={customStartDate}
-                  setCustomStartDate={setCustomStartDate}
-                  customEndDate={customEndDate}
-                  setCustomEndDate={setCustomEndDate}
-                  loading={transactionsLoading || accountsLoading}
-                  onRestore={handleRestoreTransaction}
-                  onGoToAccounts={() => setView('accounts')}
-                  onOpenAISettings={() => setShowAISettingsModal(true)}
-                />
-              </div>
-            )}
-
-            {view === 'recurring' && (
-              <div id="panel-recurring" role="tabpanel" aria-labelledby="tab-recurring">
-                <Suspense fallback={<ViewFallback />}>
-                  <RecurringPaymentsView />
-                </Suspense>
-              </div>
-            )}
-
-            {view === 'stats' && (
-              <div id="panel-stats" role="tabpanel" aria-labelledby="tab-stats">
-                <Suspense fallback={<ViewFallback />}>
-                  <StatsView />
-                </Suspense>
-              </div>
-            )}
-
-            {view === 'accounts' && (
-              <div id="panel-accounts" role="tabpanel" aria-labelledby="tab-accounts">
-                <Suspense fallback={<ViewFallback />}>
-                  <AccountsView />
-                </Suspense>
-              </div>
-            )}
-
-            {view === 'debts' && (
-              <div id="panel-debts" role="tabpanel" aria-labelledby="tab-debts">
-                <Suspense fallback={<ViewFallback />}>
-                  <DebtsView />
-                </Suspense>
-              </div>
-            )}
-
-            {view === 'budgets' && (
-              <div id="panel-budgets" role="tabpanel" aria-labelledby="tab-budgets">
-                <Suspense fallback={<ViewFallback />}>
-                  <BudgetsView
-                    initialDraft={pendingBudgetDraft}
-                    onInitialDraftApplied={handleBudgetDraftApplied}
-                    onOpenFinancialPlan={() => setView('financial-plan')}
+            <FinanceViewRouter
+              view={view}
+              transactionsPanel={(
+                <>
+                  <TransactionForm
+                    isOpen={showForm}
+                    newTransaction={newTransaction}
+                    setNewTransaction={setNewTransaction}
+                    onSubmit={handleSubmit}
+                    onSubmitAndContinue={handleSubmitAndContinue}
+                    onCancel={handleCloseForm}
+                    batchCount={batchCount}
                   />
-                </Suspense>
-              </div>
-            )}
 
-            {view === 'financial-plan' && (
-              <div id="panel-financial-plan" role="tabpanel" aria-labelledby="tab-financial-plan">
-                <Suspense fallback={<PlanSkeleton />}>
-                  <FinancialPlanView onUseBudgetSuggestion={handleUseBudgetSuggestion} />
-                </Suspense>
-              </div>
-            )}
-
-            {view === 'goals' && (
-              <div id="panel-goals" role="tabpanel" aria-labelledby="tab-goals">
-                <Suspense fallback={<ViewFallback />}>
-                  <GoalsView />
-                </Suspense>
-              </div>
-            )}
+                  <TransactionsView
+                    showForm={showForm}
+                    setShowForm={setShowForm}
+                    filterCategory={filterCategory}
+                    setFilterCategory={setFilterCategory}
+                    filterAccount={filterAccount}
+                    setFilterAccount={setFilterAccount}
+                    dateRangePreset={dateRangePreset}
+                    setDateRangePreset={setDateRangePreset}
+                    customStartDate={customStartDate}
+                    setCustomStartDate={setCustomStartDate}
+                    customEndDate={customEndDate}
+                    setCustomEndDate={setCustomEndDate}
+                    loading={transactionsLoading || accountsLoading}
+                    onRestore={handleRestoreTransaction}
+                    onGoToAccounts={() => setView('accounts')}
+                  />
+                </>
+              )}
+              pendingBudgetDraft={pendingBudgetDraft}
+              onBudgetDraftApplied={handleBudgetDraftApplied}
+              onOpenFinancialPlan={() => setView('financial-plan')}
+              onUseBudgetSuggestion={handleUseBudgetSuggestion}
+            />
           </div>
         </div>
       </div>

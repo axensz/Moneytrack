@@ -96,7 +96,7 @@ export class SavingsAccountStrategy {
  * que responde una pregunta distinta: "cuánto debo pagar este mes".
  *
  * Esta regla mantiene consistencia con el valor persistido (account.usedCredit),
- * la migración (useCreditMigration) y la importación (useImportTransactions),
+ * la migración (useCreditMigration) y las escrituras normales de transacciones,
  * que también acumulan el monto completo de cada compra.
  */
 export class CreditCardStrategy {

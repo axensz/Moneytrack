@@ -10,14 +10,16 @@ import {
   addDoc,
   runTransaction,
   increment,
+  deleteField,
 } from 'firebase/firestore';
 import { db } from '../../lib/firebaseDb';
-import { TRANSFER_CATEGORY } from '../../config/constants';
+import { LOAN_PAYMENT_CATEGORY, TRANSFER_CATEGORY } from '../../config/constants';
 import type { Transaction, Account } from '../../types/finance';
 import { isOffline, stripUndefined } from '../../utils/firestoreHelpers';
 import { getCreditDelta, creditDeltasByAccount } from '../../utils/creditDeltas';
 import { logger } from '../../utils/logger';
 import { validateTransactionUpdate } from '../../utils/transactionValidation';
+import { publishTransactionCacheMutation } from './transactionPaginationCache';
 
 // Las escrituras de transacciones requieren conexión: las que ajustan usedCredit
 // usan runTransaction (no funciona offline) y queremos evitar estados optimistas
@@ -113,8 +115,11 @@ export function useTransactionsCRUD(
     async (
       uid: string,
       transaction: Omit<Transaction, 'id' | 'createdAt'>
-    ): Promise<void> => {
+    ): Promise<Transaction> => {
       const { accountId, toAccountId, amount, description, date } = transaction;
+      const createdAt = new Date();
+      const transactionDate = date || createdAt;
+      let createdTransaction: Transaction | null = null;
 
       if (!accountId || !toAccountId) {
         throw new Error(
@@ -174,10 +179,22 @@ export function useTransactionsCRUD(
           toAccountId,
           category: TRANSFER_CATEGORY,
           description: description || 'Transferencia entre cuentas',
-          date: date || new Date(),
+          date: transactionDate,
           paid: true,
-          createdAt: new Date(),
+          createdAt,
         });
+        createdTransaction = {
+          id: transactionRef.id,
+          type: 'transfer',
+          amount,
+          accountId,
+          toAccountId,
+          category: TRANSFER_CATEGORY,
+          description: description || 'Transferencia entre cuentas',
+          date: transactionDate,
+          paid: true,
+          createdAt,
+        } as Transaction;
 
         // Actualizar usedCredit en cuentas TC afectadas (destino: la transferencia
         // hacia una TC es un pago que reduce la deuda).
@@ -185,6 +202,8 @@ export function useTransactionsCRUD(
           firestoreTransaction.update(toAccountRef, { usedCredit: increment(-amount) });
         }
       });
+      if (!createdTransaction) throw new Error('No se pudo crear la transferencia');
+      return createdTransaction;
     },
     []
   );
@@ -203,6 +222,8 @@ export function useTransactionsCRUD(
 
       validateTransactionSchema(creditTx);
       validateTransactionSchema(sourceTx);
+      const createdAt = new Date();
+      let createdTransactions: Transaction[] = [];
 
       await runTransaction(db, async (firestoreTransaction) => {
         // Verificar que ambas cuentas existan
@@ -229,19 +250,28 @@ export function useTransactionsCRUD(
         firestoreTransaction.set(creditTxRef, {
           ...cleanCredit,
           linkedTransactionId: sourceTxRef.id,
-          createdAt: new Date(),
+          createdAt,
         });
         firestoreTransaction.set(sourceTxRef, {
           ...cleanSource,
           linkedTransactionId: creditTxRef.id,
-          createdAt: new Date(),
+          createdAt,
         });
+        createdTransactions = [
+          { id: creditTxRef.id, ...cleanCredit, linkedTransactionId: sourceTxRef.id, createdAt },
+          { id: sourceTxRef.id, ...cleanSource, linkedTransactionId: creditTxRef.id, createdAt },
+        ] as Transaction[];
 
         // Actualizar usedCredit en la TC (el creditTx es un ingreso que reduce deuda)
         const creditDelta = getCreditDelta(creditTx, creditTx.accountId);
         if (creditDelta !== 0) {
           firestoreTransaction.update(creditAccountRef, { usedCredit: increment(creditDelta) });
         }
+      });
+      publishTransactionCacheMutation({
+        userId,
+        type: 'update',
+        transactions: createdTransactions,
       });
     },
     [userId]
@@ -260,7 +290,12 @@ export function useTransactionsCRUD(
 
       // Transferencias usan atomicidad
       if (transaction.type === 'transfer' && transaction.toAccountId) {
-        await addTransferAtomic(userId, transaction);
+        const createdTransaction = await addTransferAtomic(userId, transaction);
+        publishTransactionCacheMutation({
+          userId,
+          type: 'update',
+          transactions: [createdTransaction],
+        });
         return;
       }
 
@@ -271,15 +306,23 @@ export function useTransactionsCRUD(
 
       // Si no afecta ninguna TC, basta una escritura simple
       if (deltas.size === 0) {
-        await addDoc(collection(db, `users/${userId}/transactions`), {
+        const createdAt = new Date();
+        const transactionRef = await addDoc(collection(db, `users/${userId}/transactions`), {
           ...cleanTransaction,
-          createdAt: new Date(),
+          createdAt,
+        });
+        publishTransactionCacheMutation({
+          userId,
+          type: 'update',
+          transactions: [{ id: transactionRef.id, ...cleanTransaction, createdAt } as Transaction],
         });
         return;
       }
 
       // Afecta una TC: crear la transacción y ajustar usedCredit ATÓMICAMENTE,
       // para que nunca queden desincronizados si una de las dos escrituras falla.
+      const createdAt = new Date();
+      let createdTransaction: Transaction | null = null;
       await runTransaction(db, async (firestoreTransaction) => {
         // Lecturas primero (requisito de Firestore): validar que las TC existan
         const accountRefs = Array.from(deltas.keys()).map(accountId =>
@@ -299,13 +342,20 @@ export function useTransactionsCRUD(
         });
 
         const txRef = doc(collection(db, `users/${userId}/transactions`));
-        firestoreTransaction.set(txRef, { ...cleanTransaction, createdAt: new Date() });
+        firestoreTransaction.set(txRef, { ...cleanTransaction, createdAt });
+        createdTransaction = { id: txRef.id, ...cleanTransaction, createdAt } as Transaction;
 
         for (const [accountId, delta] of deltas) {
           firestoreTransaction.update(doc(db, `users/${userId}/accounts`, accountId), {
             usedCredit: increment(delta),
           });
         }
+      });
+      if (!createdTransaction) throw new Error('No se pudo crear la transacción');
+      publishTransactionCacheMutation({
+        userId,
+        type: 'update',
+        transactions: [createdTransaction],
       });
     },
     [userId, addTransferAtomic]
@@ -315,6 +365,7 @@ export function useTransactionsCRUD(
     async (id: string) => {
       if (!userId) return;
       if (isOffline()) throw new Error(OFFLINE_WRITE_ERROR);
+      let deletedTransactionIds: string[] = [];
 
       // Borrar la transacción y revertir usedCredit en las TC afectadas
       // ATÓMICAMENTE: si una de las escrituras falla, ninguna se aplica y
@@ -324,6 +375,14 @@ export function useTransactionsCRUD(
         const txSnap = await firestoreTransaction.get(txRef);
         if (!txSnap.exists()) return;
         const txData = { id, ...(txSnap.data() as Transaction) } as Transaction;
+
+        const debtRef = txData.category === LOAN_PAYMENT_CATEGORY && txData.debtId
+          ? doc(db, `users/${userId}/debts`, txData.debtId)
+          : null;
+        const debtSnap = debtRef ? await firestoreTransaction.get(debtRef) : null;
+        if (debtRef && !debtSnap?.exists()) {
+          throw new Error('La deuda del pago ya no existe. Actualiza e intenta de nuevo.');
+        }
 
         const linkedRef = txData.linkedTransactionId
           ? doc(db, `users/${userId}/transactions`, txData.linkedTransactionId)
@@ -335,6 +394,9 @@ export function useTransactionsCRUD(
             ? [{ id: linkedRef!.id, ...(linkedSnap.data() as Transaction) } as Transaction]
             : []),
         ];
+        deletedTransactionIds = transactionsToDelete
+          .map(transaction => transaction.id)
+          .filter((transactionId): transactionId is string => Boolean(transactionId));
 
         // Lecturas primero (requisito de Firestore): leer las TC afectadas.
         const deltas = sumCreditDeltas(transactionsToDelete, accountsRef.current);
@@ -350,12 +412,28 @@ export function useTransactionsCRUD(
         // Escrituras después.
         firestoreTransaction.delete(txRef);
         if (linkedRef && linkedSnap?.exists()) firestoreTransaction.delete(linkedRef);
+        if (debtRef && debtSnap?.exists()) {
+          const debt = debtSnap.data() as { remainingAmount: number };
+          firestoreTransaction.update(debtRef, {
+            remainingAmount: debt.remainingAmount + txData.amount,
+            isSettled: false,
+            settledAt: deleteField(),
+          });
+        }
         accountEntries.forEach((entry, index) => {
           if (snaps[index].exists() && entry.delta !== 0) {
             firestoreTransaction.update(entry.ref, { usedCredit: increment(-entry.delta) });
           }
         });
       });
+
+      if (deletedTransactionIds.length > 0) {
+        publishTransactionCacheMutation({
+          userId,
+          type: 'delete',
+          transactionIds: deletedTransactionIds,
+        });
+      }
     },
     [userId]
   );
@@ -376,6 +454,8 @@ export function useTransactionsCRUD(
       const cleanUpdates = stripUndefined(updates);
 
       try {
+        let updatedTransactions: Transaction[] = [];
+
         // Actualizar la transacción y ajustar usedCredit ATÓMICAMENTE comparando
         // el efecto antes/después por cada TC. Cubre cambios de monto, tipo,
         // cuenta origen y cuenta destino (transferencias). Si algo falla, nada
@@ -406,6 +486,7 @@ export function useTransactionsCRUD(
               { ...oldData, ...primaryUpdates } as Transaction,
               ...(oldLinked ? [{ ...oldLinked, ...counterpartUpdates } as Transaction] : []),
             ];
+            updatedTransactions = newTransactions;
             const oldDeltas = sumCreditDeltas(oldTransactions, accountsRef.current);
             const newDeltas = sumCreditDeltas(newTransactions, accountsRef.current);
             const affectedAccountIds = new Set([...oldDeltas.keys(), ...newDeltas.keys()]);
@@ -437,6 +518,14 @@ export function useTransactionsCRUD(
             }
           });
         });
+
+        if (updatedTransactions.length > 0) {
+          publishTransactionCacheMutation({
+            userId,
+            type: 'update',
+            transactions: updatedTransactions,
+          });
+        }
       } catch (error) {
         logger.error('Firestore error updating transaction:', error);
         throw new Error('Error al actualizar la transacción. Por favor intenta de nuevo.');

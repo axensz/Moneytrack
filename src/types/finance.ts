@@ -128,6 +128,8 @@ export interface Account {
   usedCredit?: number;
   /** Versión del modelo de deuda: v2 incluye intereses financiados pendientes. */
   creditDebtModelVersion?: number;
+  /** Versión de la migración que enlaza los dos movimientos de cada pago de TC. */
+  paymentPairModelVersion?: number;
 }
 
 export interface Category {

@@ -30,10 +30,11 @@ export function useBudgets(userId: string | null, transactions: Transaction[], e
   const [firestoreBudgets, setFirestoreBudgets] = useState<Budget[]>([]);
   const [loading, setLoading] = useState(true);
   const [localBudgets, setLocalBudgets] = useLocalStorage<Budget[]>('budgets', []);
+  const hasExternalBudgets = externalBudgets !== undefined;
 
   // Firestore subscription — skip if data provided externally (centralized)
   useEffect(() => {
-    if (externalBudgets !== undefined) {
+    if (hasExternalBudgets) {
       setLoading(false);
       return;
     }
@@ -65,7 +66,7 @@ export function useBudgets(userId: string | null, transactions: Transaction[], e
     );
 
     return () => unsubscribe();
-  }, [userId, externalBudgets !== undefined]);
+  }, [userId, hasExternalBudgets]);
 
   const budgets = externalBudgets ?? (userId ? firestoreBudgets : localBudgets);
 

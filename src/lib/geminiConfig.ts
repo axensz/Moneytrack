@@ -2,7 +2,6 @@ export const GEMINI_MODELS = {
   chat: 'gemini-3.5-flash',
   planning: 'gemini-3.5-flash',
   structured: 'gemini-3.5-flash',
-  document: 'gemini-3.5-flash',
 } as const;
 
 export const GEMINI_JSON_MIME_TYPE = 'application/json';
@@ -58,36 +57,4 @@ export const dateRangeResponseSchema = {
     },
   },
   required: ['startDate', 'endDate'],
-};
-
-export const dateAssignmentsResponseSchema = {
-  type: 'array',
-  items: {
-    type: 'object',
-    additionalProperties: false,
-    properties: {
-      index: { type: 'integer', minimum: 0 },
-      date: {
-        type: 'string',
-      },
-    },
-    required: ['index', 'date'],
-  },
-};
-
-export const pdfTransactionsResponseSchema = {
-  type: 'array',
-  items: {
-    type: 'object',
-    additionalProperties: false,
-    properties: {
-      date: {
-        type: 'string',
-      },
-      description: { type: 'string' },
-      amount: { type: 'number', minimum: 0.000001 },
-      type: { type: 'string', enum: ['income', 'expense'] },
-    },
-    required: ['date', 'description', 'amount', 'type'],
-  },
 };

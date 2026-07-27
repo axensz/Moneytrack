@@ -13,6 +13,7 @@ import { useNotificationContext } from '../../contexts/NotificationContext';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Notification } from '../../types/finance';
+import { navigateToActionUrl } from '../../hooks/useViewRouting';
 
 interface NotificationCenterProps {
     isOpen: boolean;
@@ -33,8 +34,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
         if (!notification.isRead && notification.id) {
             await markAsRead(notification.id);
         }
-        // Fix #11: actionUrls are internal paths — no need to navigate in a SPA
-        // The app uses tab-based navigation, not routes, so actionUrl is informational only
+        navigateToActionUrl(notification.actionUrl);
         onClose();
     };
 
@@ -167,8 +167,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                                     toast.error('Error al marcar notificaciones como leídas');
                                 }
                             }}
-                            disabled={unreadCount === 0}
-                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-foreground bg-card border border-border hover:bg-muted rounded-xl transition-[box-shadow,background-color] shadow-sm hover:shadow disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm"
+                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-foreground bg-card border border-border hover:bg-muted rounded-xl transition-[box-shadow,background-color] shadow-sm hover:shadow"
                         >
                             <CheckCheck className="w-4 h-4" />
                             <span className="hidden sm:inline">Marcar leídas</span>

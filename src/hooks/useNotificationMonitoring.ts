@@ -14,7 +14,6 @@ import { BalanceMonitor } from '../services/BalanceMonitor';
 import { DebtMonitor } from '../services/DebtMonitor';
 import { NotificationManager } from '../services/NotificationManager';
 import { logger } from '../utils/logger';
-import { shouldSuppressNotification } from '../utils/importBatchFlag';
 import { ensureDate } from '../utils/dateUtils';
 
 // Ventana de "recién creada": una transacción cuyo createdAt es más viejo que
@@ -130,7 +129,15 @@ export function useNotificationMonitoring({
 
         monitorsInitializedRef.current = true;
         logger.info('Notification monitors initialized');
-    }, [notificationManager]);
+    }, [
+        notificationManager,
+        accounts,
+        budgets,
+        debts,
+        recurringPayments,
+        transactions,
+        txsForBalance,
+    ]);
 
     // Fix #2: Keep monitor deps in sync with current data
     useEffect(() => {
@@ -140,12 +147,12 @@ export function useNotificationMonitoring({
         const preferences = notificationManager?.deps?.preferences;
         if (!preferences) return;
 
-        m.budgetMonitor.deps = {
+        m.budgetMonitor.updateDeps({
             ...m.budgetMonitor.deps,
             budgets,
             transactions: txsForBalance, // historial completo (#6)
             preferences,
-        };
+        });
         m.paymentMonitor!.deps = {
             ...m.paymentMonitor!.deps,
             recurringPayments,
@@ -219,12 +226,6 @@ export function useNotificationMonitoring({
         const newIds = [...currentIds].filter(id => !prevIds.has(id));
 
         if (newIds.length > 0) {
-            // Skip individual alerts during batch import or grace period after import
-            if (shouldSuppressNotification()) {
-                prevTransactionIdsRef.current = currentIds;
-                return;
-            }
-
             // Solo alertar sobre transacciones recién CREADAS por el usuario
             // (createdAt fresco). Un id "nuevo" en el array también aparece cuando
             // la PAGINACIÓN carga transacciones antiguas ("Cargar más" añade cientos
@@ -239,9 +240,6 @@ export function useNotificationMonitoring({
             });
 
             newTransactions.forEach(async (transaction) => {
-                // Double-check per transaction in case only some are from import
-                if (shouldSuppressNotification(transaction.id)) return;
-
                 try {
                     if (monitorsRef.current.budgetMonitor) {
                         await monitorsRef.current.budgetMonitor.evaluateBudgetAlerts(transaction);

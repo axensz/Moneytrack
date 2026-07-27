@@ -1,19 +1,52 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { Transaction } from '../../types/finance';
 
-// ─── Mock firebase/firestore: getDocs registra cada lectura de la colección ──
-const getDocsCalls: number[] = [];
-let storeDocs: { id: string; data: Record<string, unknown> }[] = [];
+type FakeDocument = {
+  id: string;
+  data: () => Record<string, unknown>;
+};
+
+type FakeChange = {
+  type: 'added' | 'modified' | 'removed';
+  doc: FakeDocument;
+  oldIndex: number;
+  newIndex: number;
+};
+
+type FakeSnapshot = {
+  docs: FakeDocument[];
+  metadata: { fromCache: boolean; hasPendingWrites: boolean };
+  docChanges: () => FakeChange[];
+};
+
+type SnapshotListener = {
+  next: (snapshot: FakeSnapshot) => void;
+  error: (error: Error) => void;
+  unsubscribed: boolean;
+};
+
+let subscriptionCount = 0;
+let unsubscribeCount = 0;
+let listeners: SnapshotListener[] = [];
 
 vi.mock('firebase/firestore', () => ({
-  collection: (..._args: unknown[]) => ({ __c: true }),
-  query: (...args: unknown[]) => args,
-  orderBy: (...args: unknown[]) => ({ __orderBy: args }),
-  getDocs: vi.fn(async () => {
-    getDocsCalls.push(Date.now());
-    return {
-      docs: storeDocs.map((d) => ({ id: d.id, data: () => d.data })),
+  collection: (...args: unknown[]) => ({ type: 'collection', args }),
+  query: (...args: unknown[]) => ({ type: 'query', args }),
+  orderBy: (...args: unknown[]) => ({ type: 'orderBy', args }),
+  onSnapshot: vi.fn((...args: unknown[]) => {
+    subscriptionCount += 1;
+    const listener: SnapshotListener = {
+      next: args[2] as SnapshotListener['next'],
+      error: args[3] as SnapshotListener['error'],
+      unsubscribed: false,
+    };
+    listeners.push(listener);
+
+    return () => {
+      if (listener.unsubscribed) return;
+      listener.unsubscribed = true;
+      unsubscribeCount += 1;
     };
   }),
 }));
@@ -21,6 +54,10 @@ vi.mock('firebase/firestore', () => ({
 vi.mock('../../lib/firebaseDb', () => ({ db: {} }));
 
 import { useAllTransactions } from '../../hooks/useAllTransactions';
+import {
+  subscribeTransactionCacheMutations,
+  type TransactionCacheMutation,
+} from '../../hooks/firestore/transactionPaginationCache';
 
 const tx = (overrides: Partial<Transaction>): Transaction => ({
   id: 't1',
@@ -34,67 +71,234 @@ const tx = (overrides: Partial<Transaction>): Transaction => ({
   ...overrides,
 });
 
-describe('useAllTransactions — R-allTx-refetch', () => {
+function documentFor(transaction: Transaction): FakeDocument {
+  const { id, ...data } = transaction;
+  if (!id) throw new Error('La prueba requiere una transacción con id');
+  return { id, data: () => data };
+}
+
+function changeFor(
+  type: FakeChange['type'],
+  transaction: Transaction,
+  oldIndex: number,
+  newIndex: number,
+): FakeChange {
+  return {
+    type,
+    doc: documentFor(transaction),
+    oldIndex,
+    newIndex,
+  };
+}
+
+function emitSnapshot(
+  transactions: Transaction[],
+  changes: FakeChange[] = [],
+  options: {
+    fromCache?: boolean;
+    hasPendingWrites?: boolean;
+    listenerIndex?: number;
+  } = {},
+) {
+  const listener = listeners[options.listenerIndex ?? listeners.length - 1];
+  if (!listener) throw new Error('No hay una suscripción activa');
+
+  act(() => {
+    listener.next({
+      docs: transactions.map(documentFor),
+      metadata: {
+        fromCache: options.fromCache ?? false,
+        hasPendingWrites: options.hasPendingWrites ?? false,
+      },
+      docChanges: () => changes,
+    });
+  });
+}
+
+describe('useAllTransactions — historial realtime completo', () => {
   beforeEach(() => {
-    getDocsCalls.length = 0;
-    storeDocs = [{ id: 't1', data: { amount: 1000, date: new Date('2026-06-01'), category: 'Comida', type: 'expense', paid: true, accountId: 'acc1' } }];
+    subscriptionCount = 0;
+    unsubscribeCount = 0;
+    listeners = [];
   });
 
-  it('hace UN solo fetch al montar (usuario autenticado)', async () => {
+  it('crea una sola suscripción completa al montar un usuario autenticado', () => {
+    renderHook(() => useAllTransactions('user1', [tx({ id: 't1' })]));
+    expect(subscriptionCount).toBe(1);
+  });
+
+  it('no se resuscribe por cambios live y conserva como autoridad el snapshot completo', async () => {
+    const initial = tx({ id: 't1', amount: 1000 });
+    const { result, rerender } = renderHook(
+      ({ live }) => useAllTransactions('user1', live),
+      { initialProps: { live: [initial] } },
+    );
+    emitSnapshot([initial]);
+
+    const edited = tx({ id: 't1', amount: 77_777, category: 'Otro' });
+    const added = tx({ id: 't2', amount: 2000 });
+    rerender({ live: [edited, added] });
+
+    // Una versión paginada obsoleta no puede pisar ni ampliar el snapshot
+    // completo ya confirmado por el servidor.
+    expect(result.current.find((transaction) => transaction.id === 't1')?.amount).toBe(1000);
+    expect(result.current.some((transaction) => transaction.id === 't2')).toBe(false);
+
+    emitSnapshot(
+      [edited, added],
+      [
+        changeFor('modified', edited, 0, 0),
+        changeFor('added', added, -1, 1),
+      ],
+    );
+
+    await waitFor(() => {
+      expect(result.current.find((transaction) => transaction.id === 't1')?.amount)
+        .toBe(77_777);
+      expect(result.current.some((transaction) => transaction.id === 't2')).toBe(true);
+    });
+    expect(subscriptionCount).toBe(1);
+    expect(unsubscribeCount).toBe(0);
+  });
+
+  it('incorpora en tiempo real una alta antigua fuera de la ventana live', async () => {
+    const recent = tx({ id: 'recent', date: new Date('2026-06-01') });
+    const old = tx({ id: 'old', amount: 5000, date: new Date('2024-01-01') });
+    const { result } = renderHook(() => useAllTransactions('user1', [recent]));
+    emitSnapshot([recent]);
+
+    emitSnapshot(
+      [recent, old],
+      [changeFor('added', old, -1, 1)],
+    );
+
+    await waitFor(() => {
+      expect(result.current.find((transaction) => transaction.id === 'old')?.amount)
+        .toBe(5000);
+    });
+    expect(subscriptionCount).toBe(1);
+  });
+
+  it('propaga una eliminación remota confirmada a la caché paginada', () => {
+    const recent = tx({ id: 'recent', date: new Date('2026-06-01') });
+    const old = tx({ id: 'old', date: new Date('2024-01-01') });
+    const mutations: TransactionCacheMutation[] = [];
+    const unsubscribe = subscribeTransactionCacheMutations((mutation) => {
+      mutations.push(mutation);
+    });
+
+    try {
+      renderHook(() => useAllTransactions('user1', [recent]));
+      emitSnapshot([recent, old]);
+      emitSnapshot(
+        [recent],
+        [changeFor('removed', old, 1, -1)],
+      );
+
+      expect(mutations).toContainEqual({
+        userId: 'user1',
+        type: 'delete',
+        transactionIds: ['old'],
+      });
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it('no propaga una eliminación local todavía pendiente', () => {
+    const recent = tx({ id: 'recent', date: new Date('2026-06-01') });
+    const old = tx({ id: 'old', date: new Date('2024-01-01') });
+    const mutations: TransactionCacheMutation[] = [];
+    const unsubscribe = subscribeTransactionCacheMutations((mutation) => {
+      mutations.push(mutation);
+    });
+
+    try {
+      renderHook(() => useAllTransactions('user1', [recent]));
+      emitSnapshot([recent, old]);
+      emitSnapshot(
+        [recent],
+        [changeFor('removed', old, 1, -1)],
+        { hasPendingWrites: true },
+      );
+
+      expect(mutations).toHaveLength(0);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it('aplica una edición remota de una transacción histórica', async () => {
+    const recent = tx({ id: 'recent', date: new Date('2026-06-01') });
+    const old = tx({ id: 'old', amount: 5000, date: new Date('2024-01-01') });
+    const updatedOld = tx({ ...old, amount: 7500, category: 'Casa' });
+    const { result } = renderHook(() => useAllTransactions('user1', [recent]));
+    emitSnapshot([recent, old]);
+
+    emitSnapshot(
+      [recent, updatedOld],
+      [changeFor('modified', updatedOld, 1, 1)],
+    );
+
+    await waitFor(() => {
+      expect(result.current.find((transaction) => transaction.id === 'old')?.amount)
+        .toBe(7500);
+    });
+    expect(subscriptionCount).toBe(1);
+  });
+
+  it('aplica una eliminación remota de una transacción histórica', async () => {
+    const recent = tx({ id: 'recent', date: new Date('2026-06-01') });
+    const old = tx({ id: 'old', amount: 5000, date: new Date('2024-01-01') });
+    const { result } = renderHook(() => useAllTransactions('user1', [recent]));
+    emitSnapshot([recent, old]);
+    expect(result.current.some((transaction) => transaction.id === 'old')).toBe(true);
+
+    emitSnapshot(
+      [recent],
+      [changeFor('removed', old, 1, -1)],
+    );
+
+    await waitFor(() => {
+      expect(result.current.some((transaction) => transaction.id === 'old')).toBe(false);
+    });
+    expect(subscriptionCount).toBe(1);
+  });
+
+  it('aísla el historial y cancela la suscripción al cambiar de usuario', async () => {
+    const user1Recent = tx({ id: 'u1-recent' });
+    const user1Old = tx({ id: 'u1-private', date: new Date('2024-01-01') });
+    const user2Recent = tx({ id: 'u2-recent' });
+    const { result, rerender } = renderHook(
+      ({ userId, live }) => useAllTransactions(userId, live),
+      { initialProps: { userId: 'user1', live: [user1Recent] } },
+    );
+    emitSnapshot([user1Recent, user1Old]);
+
+    rerender({ userId: 'user2', live: [user2Recent] });
+    expect(subscriptionCount).toBe(2);
+    expect(unsubscribeCount).toBe(1);
+    expect(result.current.map((transaction) => transaction.id)).toEqual(['u2-recent']);
+
+    // Aunque un callback viejo llegara tarde, el guard de la suscripción lo ignora.
+    emitSnapshot(
+      [user1Recent, user1Old],
+      [changeFor('modified', tx({ ...user1Old, amount: 99_999 }), 1, 1)],
+      { listenerIndex: 0 },
+    );
+    emitSnapshot([user2Recent], [], { listenerIndex: 1 });
+
+    await waitFor(() => {
+      expect(result.current.map((transaction) => transaction.id)).toEqual(['u2-recent']);
+    });
+  });
+
+  it('modo invitado no abre una suscripción', async () => {
     const live = [tx({ id: 't1' })];
-    renderHook(() => useAllTransactions('user1', live));
-    await waitFor(() => expect(getDocsCalls.length).toBe(1));
-  });
+    const { result } = renderHook(() => useAllTransactions(null, live));
+    await Promise.resolve();
 
-  it('NO refetchea al EDITAR campos (mismo set de IDs)', async () => {
-    const live = [tx({ id: 't1', amount: 1000 })];
-    const { rerender } = renderHook(({ t }) => useAllTransactions('user1', t), {
-      initialProps: { t: live },
-    });
-    await waitFor(() => expect(getDocsCalls.length).toBe(1));
-
-    // Edición: cambia monto/categoría pero NO el id → no debe refetchear.
-    rerender({ t: [tx({ id: 't1', amount: 99999, category: 'Otro' })] });
-    // Pequeña espera para detectar un refetch indebido.
-    await new Promise((r) => setTimeout(r, 20));
-    expect(getDocsCalls.length).toBe(1);
-  });
-
-  it('refetchea al AGREGAR una transacción (cambia el set de IDs)', async () => {
-    const { rerender } = renderHook(({ t }) => useAllTransactions('user1', t), {
-      initialProps: { t: [tx({ id: 't1' })] },
-    });
-    await waitFor(() => expect(getDocsCalls.length).toBe(1));
-
-    rerender({ t: [tx({ id: 't1' }), tx({ id: 't2' })] });
-    await waitFor(() => expect(getDocsCalls.length).toBe(2));
-  });
-
-  it('refetchea al ELIMINAR (purga la copia stale de fullTxs)', async () => {
-    const { rerender } = renderHook(({ t }) => useAllTransactions('user1', t), {
-      initialProps: { t: [tx({ id: 't1' }), tx({ id: 't2' })] },
-    });
-    await waitFor(() => expect(getDocsCalls.length).toBe(1));
-
-    rerender({ t: [tx({ id: 't1' })] });
-    await waitFor(() => expect(getDocsCalls.length).toBe(2));
-  });
-
-  it('la edición de una tx live se refleja en el resultado sin refetch (precedencia live)', async () => {
-    const { result, rerender } = renderHook(({ t }) => useAllTransactions('user1', t), {
-      initialProps: { t: [tx({ id: 't1', amount: 1000 })] },
-    });
-    await waitFor(() => expect(getDocsCalls.length).toBe(1));
-
-    rerender({ t: [tx({ id: 't1', amount: 77777 })] });
-    const merged = result.current.find((m) => m.id === 't1');
-    expect(merged?.amount).toBe(77777);
-    expect(getDocsCalls.length).toBe(1);
-  });
-
-  it('modo invitado (sin userId) no fetchea', async () => {
-    renderHook(() => useAllTransactions(null, [tx({ id: 't1' })]));
-    await new Promise((r) => setTimeout(r, 20));
-    expect(getDocsCalls.length).toBe(0);
+    expect(subscriptionCount).toBe(0);
+    expect(result.current).toEqual(live);
   });
 });

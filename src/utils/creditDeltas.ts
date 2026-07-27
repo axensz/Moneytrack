@@ -69,10 +69,9 @@ export function creditDeltasByAccount(tx: CreditEffect, accounts: Account[]): Ma
  * cada referencia cubre las transacciones que apuntan a la TC por un id fusionado.
  *
  * Es idempotente: el resultado no depende del valor previo del campo, así que
- * reejecutarla siempre converge al mismo valor. Por eso la cascada de borrado de
- * cuentas (deleteAccount) la usa para revertir deuda de forma segura ante un
- * writeBatch multi-batch NO atómico (un increment podría aplicarse dos veces tras
- * un fallo parcial o reintento; un SET reconciliado no).
+ * reejecutarla siempre converge al mismo valor. Las operaciones destructivas la
+ * calculan antes de escribir y guardan ese SET dentro del mismo batch atómico;
+ * así un reintento tampoco puede duplicar un incremento.
  *
  * @param referenceIds  id de la TC + sus mergedAccountIds
  * @param survivors     transacciones que siguen existiendo tras el borrado

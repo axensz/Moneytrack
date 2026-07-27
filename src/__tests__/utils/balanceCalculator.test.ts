@@ -89,6 +89,70 @@ describe('BalanceCalculator.calculateTotalBalance', () => {
   });
 });
 
+describe('BalanceCalculator.calculateBalanceSnapshot', () => {
+  it('calcula todos los saldos desde un índice y conserva transferencias, pendientes y total', () => {
+    const allAccounts = [savings, cash, credit];
+    const txs = [
+      makeTx({ id: 'income', accountId: savings.id!, type: 'income', amount: 500_000 }),
+      makeTx({
+        id: 'transfer',
+        accountId: savings.id!,
+        toAccountId: cash.id!,
+        type: 'transfer',
+        amount: 200_000,
+      }),
+      makeTx({
+        id: 'pending',
+        accountId: cash.id!,
+        type: 'expense',
+        amount: 999_999,
+        paid: false,
+      }),
+      makeTx({ id: 'credit-expense', accountId: credit.id!, type: 'expense', amount: 750_000 }),
+    ];
+
+    const snapshot = BalanceCalculator.calculateBalanceSnapshot(allAccounts, txs);
+
+    allAccounts.forEach(account => {
+      expect(snapshot.balancesByAccountId.get(account.id!)).toBe(
+        BalanceCalculator.calculateAccountBalance(account, txs)
+      );
+    });
+    expect(snapshot.creditUsedByAccountId.get(credit.id!)).toBe(750_000);
+    expect(snapshot.totalBalance).toBe(
+      BalanceCalculator.calculateTotalBalance(allAccounts, txs)
+    );
+  });
+
+  it('conserva las referencias históricas de una tarjeta fusionada', () => {
+    const mergedCredit: Account = {
+      ...credit,
+      id: 'merged-credit',
+      mergedAccountIds: ['legacy-credit'],
+    };
+    const txs = [
+      makeTx({
+        id: 'legacy-expense',
+        accountId: 'legacy-credit',
+        type: 'expense',
+        amount: 600_000,
+      }),
+      makeTx({
+        id: 'legacy-payment',
+        accountId: savings.id!,
+        toAccountId: 'legacy-credit',
+        type: 'transfer',
+        amount: 100_000,
+      }),
+    ];
+
+    const snapshot = BalanceCalculator.calculateBalanceSnapshot([mergedCredit], txs);
+
+    expect(snapshot.creditUsedByAccountId.get(mergedCredit.id!)).toBe(500_000);
+    expect(snapshot.balancesByAccountId.get(mergedCredit.id!)).toBe(4_500_000);
+  });
+});
+
 // ─── getCreditCardUsedCredit (API viva, reemplaza CreditCardCalculator) ──
 // (canMakeExpense/calculateAvailableCredit eran API muerta; su comportamiento ya
 //  está cubierto por accountStrategies.test: validateTransaction y calculateBalance.)

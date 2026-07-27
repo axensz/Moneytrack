@@ -7,6 +7,7 @@ import { logger } from '../utils/logger';
 import { BalanceCalculator } from '../utils/balanceCalculator';
 import { formatCurrency } from '../utils/formatters';
 import type { Account, Transaction, Notification, NotificationPreferences } from '../types/finance';
+import { viewActionUrl } from '../hooks/useViewRouting';
 
 interface BalanceMonitorDeps {
     createNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => Promise<void>;
@@ -58,7 +59,7 @@ export class BalanceMonitor {
                         : `El saldo de ${formatCurrency(balance)} está por debajo del umbral de ${formatCurrency(threshold)}`,
                     severity: 'warning',
                     isRead: false,
-                    actionUrl: `/accounts`,
+                    actionUrl: viewActionUrl('accounts'),
                     metadata: {
                         accountId,
                         amount: balance,

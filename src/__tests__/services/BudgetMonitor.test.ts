@@ -80,4 +80,17 @@ describe('BudgetMonitor — umbrales de presupuesto (A3)', () => {
     await monitor.evaluateBudgetAlerts(tx(1));
     expect(createNotification).not.toHaveBeenCalled();
   });
+
+  it('invalida la cache cuando cambian las transacciones de sus dependencias', () => {
+    const { monitor } = setup([budget()], [tx(79_000)]);
+
+    expect(monitor.calculateBudgetUtilization('b1').spent).toBe(79_000);
+
+    monitor.updateDeps({
+      ...monitor.deps,
+      transactions: [tx(81_000)],
+    });
+
+    expect(monitor.calculateBudgetUtilization('b1').spent).toBe(81_000);
+  });
 });

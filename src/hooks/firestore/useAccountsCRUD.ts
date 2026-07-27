@@ -8,6 +8,7 @@ import { db } from '../../lib/firebaseDb';
 import { stripUndefined } from '../../utils/firestoreHelpers';
 import type { Account } from '../../types/finance';
 import { CURRENT_CREDIT_DEBT_MODEL_VERSION } from '../../utils/creditDeltas';
+import { CURRENT_PAYMENT_PAIR_MODEL_VERSION } from '../../utils/creditPaymentPairs';
 
 interface UseAccountsCRUDReturn {
   addAccount: (account: Omit<Account, 'id'>) => Promise<void>;
@@ -34,6 +35,7 @@ export function useAccountsCRUD(userId: string | null): UseAccountsCRUDReturn {
           accountData.usedCredit = 0;
         }
         accountData.creditDebtModelVersion = CURRENT_CREDIT_DEBT_MODEL_VERSION;
+        accountData.paymentPairModelVersion = CURRENT_PAYMENT_PAIR_MODEL_VERSION;
       }
 
       const cleanAccount = stripUndefined(accountData);

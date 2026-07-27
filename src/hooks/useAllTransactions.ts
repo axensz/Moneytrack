@@ -4,9 +4,9 @@
  * anual, distribución por categoría) y el resumen por periodo personalizado— que
  * de otro modo solo verían las 500 transacciones recientes del listener paginado.
  *
- * Es un fetch ÚNICO y PEREZOSO: la vista de Estadísticas es lazy, así que esto
- * solo corre cuando el usuario la abre, sin tocar el listener siempre-activo.
- * Se fusiona con el array live para reflejar cambios recientes al instante.
+ * Es una suscripción PEREZOSA: solo se activa cuando el consumidor necesita el
+ * historial completo. El primer snapshot carga todo; después Firestore entrega
+ * deltas, incluidos cambios hechos desde otra pestaña o dispositivo.
  *
  * Escala: para un uso personal (miles de transacciones) traer todo una vez al
  * abrir Stats es aceptable. Para escala extrema (decenas de miles), el siguiente
@@ -15,16 +15,38 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebaseDb';
 import { ensureDate } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 import type { Transaction } from '../types/finance';
 import { mergeTransactionsById } from './useCreditCardTransactions';
+import { publishTransactionCacheMutation } from './firestore/transactionPaginationCache';
+
+interface FullHistoryState {
+  userId: string;
+  transactions: Transaction[];
+  settled: boolean;
+}
+
+type TransactionDocument = {
+  id: string;
+  data: () => Record<string, unknown>;
+};
+
+const transactionFromDocument = (document: TransactionDocument): Transaction => {
+  const data = document.data();
+  return {
+    ...data,
+    id: document.id,
+    date: ensureDate(data.date),
+  } as Transaction;
+};
 
 /**
- * Devuelve TODAS las transacciones del usuario (historial completo) fusionadas
- * con el array live. En modo invitado (sin userId) devuelve solo el array live.
+ * Devuelve TODAS las transacciones del usuario. Hasta confirmar el servidor
+ * fusiona el head visible con la caché; después usa el snapshot completo como
+ * autoridad. En modo invitado devuelve únicamente el array live.
  */
 export function useAllTransactions(
   userId: string | null,
@@ -34,97 +56,168 @@ export function useAllTransactions(
 }
 
 /**
- * Variante con estado de asentamiento: `settled` indica que el PRIMER fetch del
- * historial completo para este usuario resolvió CON ÉXITO (tenemos el historial
- * completo). En error NO se asienta: `settled` queda false para que el gate de
+ * Variante con estado de asentamiento: `settled` indica que el PRIMER snapshot
+ * completo del servidor para este usuario llegó CON ÉXITO. En error, o mientras
+ * solo exista un snapshot parcial de caché, queda false para que el gate de
  * SALDOS no calcule contra la ventana paginada truncada (C1/C2). Mientras
  * settled=false el resultado puede ser solo la ventana live (incompleta): los
  * consumidores que derivan SALDOS deben tratar ese estado como "calculando"
  * (C-FIX paginación + saldos: el flash de saldo incorrecto al recargar).
- * Los refetches posteriores NO des-asientan: el snapshot stale + el array live
- * mantienen el conjunto completo durante el gap.
+ * Una vez asentado, el listener mantiene el historial sincronizado mediante
+ * deltas remotos, sin reconsultar la colección por cambios del array live.
  */
 export function useAllTransactionsWithStatus(
   userId: string | null,
   liveTransactions: Transaction[],
 ): { transactions: Transaction[]; settled: boolean } {
-  const [fullTxs, setFullTxs] = useState<Transaction[]>([]);
-  const [settledForUser, setSettledForUser] = useState<string | null>(null);
-
-  // Firma = SET de IDs del array live (no los campos). El refetch del historial
-  // completo solo debe ocurrir cuando cambia la MEMBRESÍA (alta/baja), no al
-  // EDITAR campos (R-allTx-refetch): antes la firma incluía monto/fecha/categoría/
-  // tipo/pago, así que cada edición re-leía la colección ENTERA (N lecturas de
-  // Firestore por cada edit con Stats abierto).
-  //
-  // Por qué es correcto omitir las ediciones: el retorno fusiona con precedencia
-  // del array LIVE (mergeTransactionsById(primary=live, secondary=full) — el live
-  // gana por id), y toda transacción editable está en el array live. Así una
-  // edición ya se refleja en el merge sin tocar `fullTxs`. La baja sí debe
-  // refetchear para purgar la copia stale de `fullTxs` (que de otro modo
-  // reaparecería vía el secondary); la baja cambia el set de IDs → dispara refetch.
-  const liveIdsSignature = useMemo(() => {
-    return liveTransactions
-      .map((t) => t.id)
-      .filter(Boolean)
-      .sort()
-      .join('|');
-  }, [liveTransactions]);
+  const [fullHistory, setFullHistory] = useState<FullHistoryState | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-
     if (!userId) {
-      setFullTxs([]);
+      setFullHistory(null);
       return;
     }
 
-    const fetchAll = async () => {
-      try {
-        const snap = await getDocs(
-          query(collection(db, `users/${userId}/transactions`), orderBy('date', 'desc')),
-        );
-        if (!cancelled) {
-          setFullTxs(
-            snap.docs.map((d) => ({
-              id: d.id,
-              ...d.data(),
-              date: ensureDate(d.data().date),
-            }) as Transaction),
-          );
-          // Asentar SOLO con éxito: ya tenemos el historial completo. En error NO
-          // se asienta (C1/C2): el único consumidor de `settled` es el gate de
-          // SALDOS (useBalanceTransactions); darle luz verde sobre la ventana
-          // paginada truncada corrompe el saldo al ajustar. Stats no lee `settled`,
-          // así que degrada al array live igual. Recuperación: recarga o el refetch
-          // por cambio de membresía (alta/baja) reintenta.
-          // ponytail: sin reintento automático; añadir uno si el "Calculando…"
-          // tras un blip transitorio resulta molesto.
-          setSettledForUser(userId);
+    let active = true;
+    let initialized = false;
+    setFullHistory(null);
+
+    const fullHistoryQuery = query(
+      collection(db, `users/${userId}/transactions`),
+      orderBy('date', 'desc'),
+    );
+
+    const unsubscribe = onSnapshot(
+      fullHistoryQuery,
+      { includeMetadataChanges: true },
+      (snapshot) => {
+        if (!active) return;
+
+        const settledFromServer = !snapshot.metadata.fromCache;
+
+        if (!initialized) {
+          initialized = true;
+          setFullHistory({
+            userId,
+            transactions: snapshot.docs.map(transactionFromDocument),
+            settled: settledFromServer,
+          });
+          return;
         }
-      } catch (err) {
+
+        const changes = snapshot.docChanges();
+
+        // El listener completo también es la fuente remota de verdad para las
+        // páginas antiguas ya cargadas. Solo propagamos cambios confirmados:
+        // las escrituras locales pendientes ya se publican tras su commit y una
+        // mutación optimista rechazada no debe borrar una fila de la caché.
+        if (!snapshot.metadata.hasPendingWrites && changes.length > 0) {
+          const deletedIds = changes
+            .filter((change) => change.type === 'removed')
+            .map((change) => change.doc.id);
+          const updatedTransactions = changes
+            .filter((change) => change.type !== 'removed')
+            .map((change) => transactionFromDocument(change.doc));
+
+          if (deletedIds.length > 0) {
+            publishTransactionCacheMutation({
+              userId,
+              type: 'delete',
+              transactionIds: deletedIds,
+            });
+          }
+          if (updatedTransactions.length > 0) {
+            publishTransactionCacheMutation({
+              userId,
+              type: 'update',
+              transactions: updatedTransactions,
+            });
+          }
+        }
+
+        setFullHistory((current) => {
+          if (!current || current.userId !== userId) {
+            return {
+              userId,
+              transactions: snapshot.docs.map(transactionFromDocument),
+              settled: settledFromServer,
+            };
+          }
+
+          const settled = current.settled || settledFromServer;
+          if (changes.length === 0) {
+            return settled === current.settled ? current : { ...current, settled };
+          }
+
+          // Firestore entrega oldIndex/newIndex en el orden necesario para
+          // transformar el snapshot anterior en el nuevo sin reconstruirlo.
+          const transactions = [...current.transactions];
+          changes.forEach((change) => {
+            const indexMatchesDocument = change.oldIndex >= 0
+              && transactions[change.oldIndex]?.id === change.doc.id;
+            const currentIndex = change.type === 'added'
+              ? -1
+              : indexMatchesDocument
+                ? change.oldIndex
+                : transactions.findIndex(
+                    (transaction) => transaction.id === change.doc.id
+                  );
+            if (currentIndex >= 0) transactions.splice(currentIndex, 1);
+
+            if (change.type !== 'removed') {
+              const targetIndex = Math.max(
+                0,
+                Math.min(change.newIndex, transactions.length)
+              );
+              transactions.splice(
+                targetIndex,
+                0,
+                transactionFromDocument(change.doc)
+              );
+            }
+          });
+
+          return { userId, transactions, settled };
+        });
+      },
+      (err) => {
+        if (!active) return;
         logger.error('Error cargando el historial completo de transacciones', err);
-        // NO asentar en error: ver nota arriba. El gate de saldos se mantiene en
-        // "Calculando…" (seguro) en vez de calcular contra la ventana incompleta.
-      }
-    };
+        // Sin primer snapshot de servidor no se asienta: el gate de saldos sigue
+        // en "Calculando…" en vez de usar una ventana potencialmente incompleta.
+      },
+    );
 
-    fetchAll();
     return () => {
-      cancelled = true;
+      active = false;
+      unsubscribe();
     };
-    // liveIdsSignature: refetch solo al AGREGAR o ELIMINAR (cambia el set de IDs),
-    // NO al editar campos (el merge con precedencia live ya refleja la edición).
-  }, [userId, liveIdsSignature]);
+  }, [userId]);
 
-  const transactions = useMemo(
-    () => mergeTransactionsById(liveTransactions, fullTxs),
-    [liveTransactions, fullTxs],
-  );
+  // La clave de usuario en el estado impide exponer el historial de la sesión
+  // anterior durante el render previo al cleanup/primer snapshot del nuevo user.
+  const transactions = useMemo(() => {
+    const currentFullHistory = fullHistory?.userId === userId ? fullHistory : null;
+
+    // Una vez confirmado el snapshot completo del servidor, esa colección es
+    // exhaustiva y autoritativa. No anexamos filas ausentes del array paginado:
+    // podrían ser versiones obsoletas o documentos ya eliminados remotamente.
+    if (currentFullHistory?.settled) return currentFullHistory.transactions;
+
+    // Antes del primer snapshot de servidor, conservar el head visible y sumar
+    // cualquier cola que haya llegado desde la caché local.
+    return mergeTransactionsById(
+      liveTransactions,
+      currentFullHistory?.transactions ?? [],
+    );
+  }, [liveTransactions, fullHistory, userId]);
 
   return {
     transactions,
     // Invitado (sin userId): no hay nada que fetchear → siempre asentado.
-    settled: !userId || settledForUser === userId,
+    settled: !userId || (
+      fullHistory?.userId === userId
+      && fullHistory.settled
+    ),
   };
 }

@@ -53,7 +53,7 @@ export function GeminiKeyModal({ isOpen, onClose }: GeminiKeyModalProps) {
     >
       <div className="space-y-4">
         <p className="text-sm text-gray-600 dark:text-gray-300">
-          Las funciones de IA (categorización automática, chat financiero e importación de PDF)
+          Las funciones de IA (chat financiero, filtros de fecha y plan financiero)
           usan <strong>tu propia</strong> API key gratuita de Google Gemini. Sin key, el resto de
           la app funciona normal; solo la IA queda desactivada.
         </p>
@@ -112,8 +112,8 @@ export function GeminiKeyModal({ isOpen, onClose }: GeminiKeyModalProps) {
           <span>
             Tu key se guarda en tu cuenta para sincronizarse entre tus dispositivos (cifrada en
             reposo en Firebase; solo tu usuario puede leerla). MoneyTrack no tiene backend proxy:
-            cuando usas la IA, tu navegador envía a Google las descripciones, montos y PDF de tus
-            movimientos con tu propia key. Recomendado:{' '}
+            cuando usas la IA, tu navegador envía a Google los datos financieros necesarios para
+            cada función con tu propia key. Recomendado:{' '}
             <a
               href="https://aistudio.google.com/apikey"
               target="_blank"
@@ -139,7 +139,7 @@ export function GeminiKeyModal({ isOpen, onClose }: GeminiKeyModalProps) {
             className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-gray-300 text-purple-600 focus:ring-primary"
           />
           <span className="text-sm text-gray-700 dark:text-gray-300">
-            Autorizo el envío de las descripciones, montos y PDF de mis movimientos a Google Gemini
+            Autorizo el envío de los datos financieros necesarios a Google Gemini
             cuando use funciones de IA. Sin esta autorización, la IA permanece desactivada y ningún
             dato sale de mi dispositivo.
           </span>

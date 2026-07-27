@@ -7,6 +7,7 @@ import { logger } from '../utils/logger';
 import { formatCurrency } from '../utils/formatters';
 import { getNextDueDate, getCycleWindow, cycleKey } from '../utils/recurringDates';
 import type { RecurringPayment, Transaction, Notification } from '../types/finance';
+import { viewActionUrl } from '../hooks/useViewRouting';
 
 interface PaymentMonitorDeps {
     createNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => Promise<void>;
@@ -63,7 +64,7 @@ export class PaymentMonitor {
                         message: `El pago de ${formatCurrency(payment.amount)} vence hoy`,
                         severity: 'warning',
                         isRead: false,
-                        actionUrl: `/recurring`,
+                        actionUrl: viewActionUrl('recurring'),
                         metadata: {
                             recurringPaymentId: payment.id,
                             amount: payment.amount,
@@ -77,7 +78,7 @@ export class PaymentMonitor {
                         message: `El pago de ${formatCurrency(payment.amount)} vence mañana`,
                         severity: 'warning',
                         isRead: false,
-                        actionUrl: `/recurring`,
+                        actionUrl: viewActionUrl('recurring'),
                         metadata: {
                             recurringPaymentId: payment.id,
                             amount: payment.amount,
@@ -91,7 +92,7 @@ export class PaymentMonitor {
                         message: `El pago de ${formatCurrency(payment.amount)} vence en 3 días`,
                         severity: 'info',
                         isRead: false,
-                        actionUrl: `/recurring`,
+                        actionUrl: viewActionUrl('recurring'),
                         metadata: {
                             recurringPaymentId: payment.id,
                             amount: payment.amount,

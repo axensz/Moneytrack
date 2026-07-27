@@ -16,28 +16,26 @@
  *     "fijé el saldo en X y quedó en X ± monto-fantasma".
  *
  * SOLUCIÓN:
- * Alimentar los cálculos de saldo con el historial COMPLETO (useAllTransactions,
- * el mismo patrón ya usado por Estadísticas y por las TC vía
- * useCreditCardTransactions), fusionado con el array live para reflejar cambios
- * recientes al instante.
+ * Alimentar los cálculos de saldo con el historial COMPLETO mediante
+ * useAllTransactions. Estadísticas reutiliza esta misma fuente desde el provider
+ * y el snapshot completo del servidor queda como autoridad tras asentarse.
  *
- * COSTO: el fetch completo solo se activa cuando la ventana está saturada
- * (hasMoreTransactions === true). Con <500 transacciones el array live YA es el
- * historial completo y no se lee nada extra. En modo invitado (localStorage)
- * tampoco: el array local es completo por construcción.
+ * COSTO: la suscripción completa se activa cuando la ventana está saturada o ya
+ * cargó al menos 500 filas. Hace una carga inicial completa y luego recibe deltas
+ * realtime. Con menos de 500, el listener principal ya contiene el historial.
  */
 
 import { useAllTransactionsWithStatus } from './useAllTransactions';
+import { TRANSACTION_PAGE_SIZE } from './firestore/transactionPaginationCache';
 import type { Transaction } from '../types/finance';
 
 export interface BalanceTransactionsResult {
   /** Conjunto de transacciones para derivar saldos (historial completo si aplica). */
   transactions: Transaction[];
   /**
-   * false mientras el primer fetch del historial completo está en vuelo: en ese
-   * estado los saldos derivados provienen solo de la ventana paginada y pueden
-   * ser incorrectos (flash al recargar). La UI debe mostrar "calculando" y el
-   * ajuste de saldo debe bloquearse hasta que sea true.
+   * false hasta recibir el primer snapshot completo confirmado por el servidor.
+   * Antes de eso los saldos pueden provenir solo de la ventana paginada o de una
+   * caché parcial. La UI debe mostrar "calculando" y bloquear ajustes.
    */
   ready: boolean;
 }
@@ -47,10 +45,13 @@ export function useBalanceTransactions(
   liveTransactions: Transaction[],
   hasMoreTransactions: boolean,
 ): BalanceTransactionsResult {
-  // Gate: pasar userId=null desactiva el fetch en useAllTransactions y devuelve
-  // el array live tal cual (que en ese caso es el historial completo).
+  // Al llegar al final de las páginas, hasMore pasa a false aunque la colección
+  // siga siendo grande. Mantener el listener si ya hay un head completo evita
+  // dejar obsoletas ediciones o eliminaciones remotas antiguas.
+  const requiresFullHistory =
+    hasMoreTransactions || liveTransactions.length >= TRANSACTION_PAGE_SIZE;
   const { transactions, settled } = useAllTransactionsWithStatus(
-    hasMoreTransactions ? userId : null,
+    requiresFullHistory ? userId : null,
     liveTransactions,
   );
   return { transactions, ready: settled };

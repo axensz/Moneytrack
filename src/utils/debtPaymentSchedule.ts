@@ -16,6 +16,7 @@ const startOfLocalDay = (date: Date): Date =>
 const daysInMonth = (year: number, monthIndex: number): number =>
   new Date(year, monthIndex + 1, 0).getDate();
 
+
 export function normalizePaymentDay(day: unknown): number | undefined {
   if (typeof day !== 'number' || !Number.isFinite(day)) return undefined;
   const normalized = Math.trunc(day);

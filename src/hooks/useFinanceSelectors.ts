@@ -26,6 +26,17 @@ export function useFormatCurrency() {
   return useStoreSelector(useFinanceStore(), selectFormatCurrency, Object.is);
 }
 
+const selectFinanceStatus = (s: FinanceContextValue) => ({
+  transactionsLoading: s.transactionsLoading,
+  accountsLoading: s.accountsLoading,
+  firestoreError: s.firestoreError,
+  retryLoad: s.retryLoad,
+}) as const;
+
+export function useFinanceStatus() {
+  return useStoreSelector(useFinanceStore(), selectFinanceStatus);
+}
+
 // ── Transacciones ─────────────────────────────────────────────────────────────
 
 const selectTransactionDomain = (s: FinanceContextValue) => ({
@@ -42,6 +53,7 @@ const selectTransactionDomain = (s: FinanceContextValue) => ({
   loadingMoreTransactions: s.loadingMoreTransactions,
   loadMoreTransactions: s.loadMoreTransactions,
   balanceTransactions: s.balanceTransactions,
+  balancesReady: s.balancesReady,
 }) as const;
 
 export function useTransactionDomain() {

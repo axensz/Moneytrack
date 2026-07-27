@@ -11,7 +11,6 @@ import { FilterDropdown } from './FilterDropdown';
 const SPECIAL_FILTER_CATEGORIES = [TRANSFER_CATEGORY, CREDIT_PAYMENT_CATEGORY, BALANCE_ADJUSTMENT_CATEGORY];
 const ClearIcon = ACTION_ICONS.clear;
 const ExportIcon = ACTION_ICONS.export;
-const ImportIcon = ACTION_ICONS.import;
 const NewIcon = ACTION_ICONS.new;
 const SearchIcon = ACTION_ICONS.search;
 const CloseIcon = ACTION_ICONS.close;
@@ -30,9 +29,9 @@ interface TransactionsFiltersProps {
   onClearFilters: () => void;
   showForm: boolean;
   setShowForm: (show: boolean) => void;
-  onImport?: () => void;
   onExport?: () => void;
   exportDisabled?: boolean;
+  exportDisabledReason?: string;
   dateRangePreset: DateRangePreset;
   setDateRangePreset: (preset: DateRangePreset) => void;
   customStartDate: string;
@@ -66,16 +65,15 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
   setShowDatePicker,
   searchQuery,
   setSearchQuery,
-  onImport,
   onExport,
   exportDisabled = false,
+  exportDisabledReason,
 }) => {
   const [activeDropdown, setActiveDropdown] = useState<'none' | 'account' | 'category'>('none');
   const isDisabled = accounts.length === 0;
 
-  // Receta única de botón secundario: Importar y Exportar comparten estilo y se
-  // diferencian solo por su icono. El relleno violeta de marca queda reservado a
-  // la acción primaria ("Nueva"). Color neutro = acción de soporte, no de estado.
+  // El relleno violeta de marca queda reservado a la acción primaria ("Nueva").
+  // Exportar usa un estilo neutro porque es una acción de soporte.
   const secondaryBtn =
     'flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium border border-[var(--border)] text-foreground bg-card hover:bg-[var(--muted)] rounded-lg transition-colors min-h-[44px]';
 
@@ -115,25 +113,16 @@ export const TransactionsFilters: React.FC<TransactionsFiltersProps> = ({
             {UI_TEXT.actions.newFeminine}
           </button>
 
-          {onImport && (
-            <button
-              onClick={onImport}
-              disabled={isDisabled}
-              className={`${secondaryBtn} ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-              title="Importar desde extracto bancario"
-              aria-label="Importar transacciones"
-            >
-              <ImportIcon size={16} aria-hidden="true" />
-              <span className="hidden sm:inline">{UI_TEXT.actions.import}</span>
-            </button>
-          )}
-
           {onExport && (
             <button
               onClick={onExport}
               disabled={exportDisabled}
               className={`${secondaryBtn} ${exportDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-              title={exportDisabled ? 'No hay transacciones para exportar' : 'Exportar a CSV las transacciones filtradas'}
+              title={
+                exportDisabled
+                  ? exportDisabledReason || 'No hay transacciones para exportar'
+                  : 'Exportar a CSV las transacciones filtradas'
+              }
               aria-label="Exportar transacciones a CSV"
             >
               <ExportIcon size={16} aria-hidden="true" />

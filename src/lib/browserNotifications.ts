@@ -1,6 +1,7 @@
 'use client';
 
 import type { Notification as AppNotification } from '../types/finance';
+import { canonicalizeActionUrl } from '../hooks/useViewRouting';
 
 export type BrowserNotificationPermission = NotificationPermission | 'unsupported';
 
@@ -39,7 +40,7 @@ function withBasePath(path: string): string {
     return `${getBasePath()}${path}`;
 }
 
-function normalizeAppUrl(url?: string): string {
+export function normalizeAppUrl(url?: string): string {
     if (!url) {
         return withBasePath('/');
     }
@@ -48,12 +49,17 @@ function normalizeAppUrl(url?: string): string {
         return url;
     }
 
+    const canonicalUrl = canonicalizeActionUrl(url) ?? url;
     const basePath = getBasePath();
-    if (basePath && url.startsWith('/') && !url.startsWith(`${basePath}/`)) {
-        return `${basePath}${url}`;
+    if (
+        basePath &&
+        canonicalUrl.startsWith('/') &&
+        !canonicalUrl.startsWith(`${basePath}/`)
+    ) {
+        return `${basePath}${canonicalUrl}`;
     }
 
-    return url;
+    return canonicalUrl;
 }
 
 export function getBrowserNotificationPermission(): BrowserNotificationPermission {

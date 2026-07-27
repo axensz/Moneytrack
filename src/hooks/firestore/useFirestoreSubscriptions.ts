@@ -10,13 +10,36 @@
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { collection, onSnapshot, query, orderBy, limit, doc as firestoreDoc, DocumentData, startAfter, getDocs, QueryDocumentSnapshot } from 'firebase/firestore';
+import {
+  collection,
+  onSnapshot,
+  query,
+  orderBy,
+  limit,
+  doc as firestoreDoc,
+  startAfter,
+  getDocs,
+  type DocumentData,
+  type DocumentReference,
+  type DocumentSnapshot,
+  type Query,
+  type QueryDocumentSnapshot,
+  type QuerySnapshot,
+} from 'firebase/firestore';
 import { db } from '../../lib/firebaseDb';
 import { logger } from '../../utils/logger';
 import type { Transaction, Account, Category, RecurringPayment, Debt, Budget, SavingsGoal, Notification, NotificationPreferences } from '../../types/finance';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../../types/finance';
+import {
+  applyTransactionCacheMutation,
+  mergePaginatedTransactions,
+  mergeRealtimeAndCachedTransactions,
+  reconcileRealtimeHeadCache,
+  subscribeTransactionCacheMutations,
+  TRANSACTION_PAGE_SIZE,
+} from './transactionPaginationCache';
 
-const PAGE_SIZE = 500;
+const PAGE_SIZE = TRANSACTION_PAGE_SIZE;
 const MAX_NOTIFICATIONS = 100;
 const LOADING_TIMEOUT_MS = 10000;
 
@@ -40,6 +63,14 @@ function isValidAccount(data: DocumentData): boolean {
 
 function isValidCategory(data: DocumentData): boolean {
   return typeof data.type === 'string' && typeof data.name === 'string';
+}
+
+function transactionFromSnapshot(snapshot: QueryDocumentSnapshot<DocumentData>): Transaction {
+  return {
+    id: snapshot.id,
+    ...snapshot.data(),
+    date: snapshot.data().date?.toDate() || new Date(),
+  } as Transaction;
 }
 
 export interface FirestoreData {
@@ -85,8 +116,15 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
   // Pagination state for transactions
   const [olderTransactions, setOlderTransactions] = useState<Transaction[]>([]);
   const [hasMoreTransactions, setHasMoreTransactions] = useState(false);
+  const hasMoreTransactionsRef = useRef(false);
   const [loadingMoreTransactions, setLoadingMoreTransactions] = useState(false);
-  const lastDocRef = useRef<QueryDocumentSnapshot | null>(null);
+  const realtimeTransactionsRef = useRef<Transaction[]>([]);
+  const nextPageCursorRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const paginationStartedRef = useRef(false);
+  const loadingMoreRef = useRef(false);
+  const paginationGenerationRef = useRef(0);
+  const deletedTransactionIdsRef = useRef<Set<string>>(new Set());
+  const updatedTransactionsByIdRef = useRef<Map<string, Transaction>>(new Map());
   const [retryTrigger, setRetryTrigger] = useState(0);
 
   const retryLoad = useCallback(() => {
@@ -96,10 +134,24 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
   }, []);
 
   useEffect(() => {
+    const generation = paginationGenerationRef.current + 1;
+    paginationGenerationRef.current = generation;
     isMountedRef.current = true;
     setError(null);
     setOlderTransactions([]);
-    lastDocRef.current = null;
+    setHasMoreTransactions(false);
+    hasMoreTransactionsRef.current = false;
+    setLoadingMoreTransactions(false);
+    realtimeTransactionsRef.current = [];
+    nextPageCursorRef.current = null;
+    paginationStartedRef.current = false;
+    loadingMoreRef.current = false;
+    deletedTransactionIdsRef.current.clear();
+    updatedTransactionsByIdRef.current.clear();
+
+    const isActive = () => (
+      isMountedRef.current && paginationGenerationRef.current === generation
+    );
 
     const checkAllLoaded = () => {
       // Unblock UI when core collections are ready (transactions, accounts, categories)
@@ -112,7 +164,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
 
     const handleError = (name: string) => (err: Error) => {
       logger.error(`Error en ${name}`, err);
-      if (!isMountedRef.current) return;
+      if (!isActive()) return;
       setError(new Error(`Error al cargar ${name}: ${err.message}`));
       setLoadedForUserId(userId);
     };
@@ -136,8 +188,36 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     loadedCollections.current = Object.fromEntries(COLLECTION_NAMES.map(n => [n, false]));
     const unsubscribes: (() => void)[] = [];
 
+    const subscribeQuery = (
+      source: Query<DocumentData>,
+      name: string,
+      onNext: (snapshot: QuerySnapshot<DocumentData>) => void
+    ) => {
+      unsubscribes.push(onSnapshot(
+        source,
+        snapshot => {
+          if (isActive()) onNext(snapshot);
+        },
+        handleError(name)
+      ));
+    };
+
+    const subscribeDocument = (
+      source: DocumentReference<DocumentData>,
+      name: string,
+      onNext: (snapshot: DocumentSnapshot<DocumentData>) => void
+    ) => {
+      unsubscribes.push(onSnapshot(
+        source,
+        snapshot => {
+          if (isActive()) onNext(snapshot);
+        },
+        handleError(name)
+      ));
+    };
+
     const timeoutId = setTimeout(() => {
-      if (!isMountedRef.current) return;
+      if (!isActive()) return;
       const { transactions, accounts, categories } = loadedCollections.current;
       if (!transactions || !accounts || !categories) {
         logger.warn('Timeout: No se pudieron cargar los datos principales');
@@ -149,68 +229,85 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     const base = `users/${userId}`;
 
     // 1. Transactions (limited, ordered by date)
-    unsubscribes.push(onSnapshot(
+    subscribeQuery(
       query(collection(db, `${base}/transactions`), orderBy('date', 'desc'), limit(PAGE_SIZE)),
+      'transacciones',
       (snap) => {
-        if (!isMountedRef.current) return;
-        setTransactions(snap.docs
+        const nextTransactions = snap.docs
           .filter(d => isValidTransaction(d.data()))
-          .map(d => ({ id: d.id, ...d.data(), date: d.data().date?.toDate() || new Date() })) as Transaction[]);
-        // Track last doc for pagination
-        lastDocRef.current = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
-        setHasMoreTransactions(snap.docs.length >= PAGE_SIZE);
+          .map(transactionFromSnapshot);
+
+        if (paginationStartedRef.current) {
+          const previousRealtimeTransactions = realtimeTransactionsRef.current;
+          setOlderTransactions(previous => reconcileRealtimeHeadCache(
+            previous,
+            previousRealtimeTransactions,
+            nextTransactions,
+            {
+              deletedIds: deletedTransactionIdsRef.current,
+              updatedById: updatedTransactionsByIdRef.current,
+            }
+          ));
+        }
+        realtimeTransactionsRef.current = nextTransactions;
+        setTransactions(nextTransactions);
+
+        if (!paginationStartedRef.current) {
+          nextPageCursorRef.current = snap.docs.length > 0
+            ? snap.docs[snap.docs.length - 1]
+            : null;
+          const hasMore = snap.docs.length >= PAGE_SIZE;
+          hasMoreTransactionsRef.current = hasMore;
+          setHasMoreTransactions(hasMore);
+        }
         loadedCollections.current.transactions = true;
         checkAllLoaded();
-      },
-      handleError('transacciones')
-    ));
+      }
+    );
 
     // 2. Accounts
-    unsubscribes.push(onSnapshot(
+    subscribeQuery(
       collection(db, `${base}/accounts`),
+      'cuentas',
       (snap) => {
-        if (!isMountedRef.current) return;
         setAccounts(snap.docs
           .filter(d => isValidAccount(d.data()))
           .map(d => ({ id: d.id, ...d.data() })) as Account[]);
         loadedCollections.current.accounts = true;
         checkAllLoaded();
-      },
-      handleError('cuentas')
-    ));
+      }
+    );
 
     // 3. Categories
-    unsubscribes.push(onSnapshot(
+    subscribeQuery(
       collection(db, `${base}/categories`),
+      'categorías',
       (snap) => {
-        if (!isMountedRef.current) return;
         setCategories(snap.docs
           .filter(d => isValidCategory(d.data()))
           .map(d => ({ id: d.id, ...d.data() })) as Category[]);
         loadedCollections.current.categories = true;
         checkAllLoaded();
-      },
-      handleError('categorías')
-    ));
+      }
+    );
 
     // 4. Recurring Payments (ordered by dueDay)
-    unsubscribes.push(onSnapshot(
+    subscribeDocument(
       firestoreDoc(db, `${base}/settings/beneficiaries`),
+      'personas',
       (snap) => {
-        if (!isMountedRef.current) return;
         const items = snap.exists() && Array.isArray(snap.data().items)
           ? snap.data().items.filter((item: unknown): item is string => typeof item === 'string')
           : [];
         setTransactionBeneficiaries(items);
-      },
-      handleError('personas')
-    ));
+      }
+    );
 
     // 4. Recurring Payments (ordered by dueDay)
-    unsubscribes.push(onSnapshot(
+    subscribeQuery(
       query(collection(db, `${base}/recurringPayments`), orderBy('dueDay', 'asc')),
+      'pagos recurrentes',
       (snap) => {
-        if (!isMountedRef.current) return;
         setRecurringPayments(snap.docs.map(d => ({
           id: d.id, ...d.data(),
           lastPaidDate: d.data().lastPaidDate?.toDate() || null,
@@ -218,15 +315,14 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
         })) as RecurringPayment[]);
         loadedCollections.current.recurringPayments = true;
         checkAllLoaded();
-      },
-      handleError('pagos recurrentes')
-    ));
+      }
+    );
 
     // 5. Debts (ordered by createdAt)
-    unsubscribes.push(onSnapshot(
+    subscribeQuery(
       query(collection(db, `${base}/debts`), orderBy('createdAt', 'desc')),
+      'deudas',
       (snap) => {
-        if (!isMountedRef.current) return;
         setDebts(snap.docs.map(d => ({
           id: d.id, ...d.data(),
           createdAt: d.data().createdAt?.toDate() || new Date(),
@@ -237,30 +333,28 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
         })) as Debt[]);
         loadedCollections.current.debts = true;
         checkAllLoaded();
-      },
-      handleError('deudas')
-    ));
+      }
+    );
 
     // 6. Budgets
-    unsubscribes.push(onSnapshot(
+    subscribeQuery(
       collection(db, `${base}/budgets`),
+      'presupuestos',
       (snap) => {
-        if (!isMountedRef.current) return;
         setBudgets(snap.docs.map(d => ({
           id: d.id, ...d.data(),
           createdAt: d.data().createdAt?.toDate() || new Date(),
         })) as Budget[]);
         loadedCollections.current.budgets = true;
         checkAllLoaded();
-      },
-      handleError('presupuestos')
-    ));
+      }
+    );
 
     // 7. Savings Goals (ordered by createdAt)
-    unsubscribes.push(onSnapshot(
+    subscribeQuery(
       query(collection(db, `${base}/savingsGoals`), orderBy('createdAt', 'desc')),
+      'metas de ahorro',
       (snap) => {
-        if (!isMountedRef.current) return;
         setSavingsGoals(snap.docs.map(d => ({
           id: d.id, ...d.data(),
           targetDate: d.data().targetDate?.toDate() || null,
@@ -269,38 +363,35 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
         })) as SavingsGoal[]);
         loadedCollections.current.savingsGoals = true;
         checkAllLoaded();
-      },
-      handleError('metas de ahorro')
-    ));
+      }
+    );
 
     // 8. Notifications (limited, ordered by createdAt)
-    unsubscribes.push(onSnapshot(
+    subscribeQuery(
       query(collection(db, `${base}/notifications`), orderBy('createdAt', 'desc'), limit(MAX_NOTIFICATIONS)),
+      'notificaciones',
       (snap) => {
-        if (!isMountedRef.current) return;
         setNotifications(snap.docs.map(d => ({
           id: d.id, ...d.data(),
           createdAt: d.data().createdAt?.toDate() || new Date(),
         })) as Notification[]);
         loadedCollections.current.notifications = true;
         checkAllLoaded();
-      },
-      handleError('notificaciones')
-    ));
+      }
+    );
 
     // 9. Notification Preferences (single document)
-    unsubscribes.push(onSnapshot(
+    subscribeDocument(
       firestoreDoc(db, `${base}/notificationPreferences/settings`),
+      'preferencias de notificaciones',
       (snap) => {
-        if (!isMountedRef.current) return;
         if (snap.exists()) {
           setNotificationPreferences(snap.data() as NotificationPreferences);
         }
         loadedCollections.current.notificationPreferences = true;
         checkAllLoaded();
-      },
-      handleError('preferencias de notificaciones')
-    ));
+      }
+    );
 
     return () => {
       isMountedRef.current = false;
@@ -314,41 +405,119 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     return loadedForUserId !== userId;
   }, [userId, loadedForUserId]);
 
+  useEffect(() => {
+    if (!userId) return;
+
+    return subscribeTransactionCacheMutations(mutation => {
+      if (mutation.userId !== userId) return;
+
+      if (mutation.type === 'delete') {
+        mutation.transactionIds.forEach(id => {
+          deletedTransactionIdsRef.current.add(id);
+          updatedTransactionsByIdRef.current.delete(id);
+        });
+      } else {
+        mutation.transactions.forEach(transaction => {
+          if (!transaction.id) return;
+          deletedTransactionIdsRef.current.delete(transaction.id);
+          updatedTransactionsByIdRef.current.set(transaction.id, transaction);
+        });
+      }
+
+      setOlderTransactions(previous => (
+        applyTransactionCacheMutation(previous, mutation, {
+          // Cuando el usuario ya llegó al final, una alta remota con fecha
+          // histórica debe incorporarse aunque su id no estuviera en caché.
+          insertMissingUpdates:
+            paginationStartedRef.current && !hasMoreTransactionsRef.current,
+        })
+      ));
+    });
+  }, [userId]);
+
   // Load more transactions from Firestore (pagination)
   const loadMoreTransactions = useCallback(async () => {
-    if (!userId || !lastDocRef.current || loadingMoreTransactions || !hasMoreTransactions) return;
+    const cursor = nextPageCursorRef.current;
+    if (!userId || !cursor || loadingMoreRef.current || !hasMoreTransactions) return;
+
+    const generation = paginationGenerationRef.current;
+    paginationStartedRef.current = true;
+    loadingMoreRef.current = true;
     setLoadingMoreTransactions(true);
     try {
       const base = `users/${userId}`;
       const q = query(
         collection(db, `${base}/transactions`),
         orderBy('date', 'desc'),
-        startAfter(lastDocRef.current),
+        startAfter(cursor),
         limit(PAGE_SIZE)
       );
       const snap = await getDocs(q);
-      if (!isMountedRef.current) return;
+      if (
+        !isMountedRef.current ||
+        paginationGenerationRef.current !== generation
+      ) return;
+
       const newTxs = snap.docs
         .filter(d => isValidTransaction(d.data()))
-        .map(d => ({ id: d.id, ...d.data(), date: d.data().date?.toDate() || new Date() })) as Transaction[];
-      setOlderTransactions(prev => [...prev, ...newTxs]);
-      lastDocRef.current = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
-      setHasMoreTransactions(snap.docs.length >= PAGE_SIZE);
+        .map(transactionFromSnapshot);
+      const hasMore = snap.docs.length >= PAGE_SIZE;
+      setOlderTransactions(previous => {
+        const merged = mergePaginatedTransactions(previous, newTxs, {
+          deletedIds: deletedTransactionIdsRef.current,
+          updatedById: updatedTransactionsByIdRef.current,
+        });
+        if (hasMore) return merged;
+
+        // Una alta remota puede llegar después de que el cursor ya atravesó su
+        // fecha. Al descubrir el final, materializar los updates pendientes que
+        // no están en el head evita que esa fila quede omitida hasta recargar.
+        const realtimeIds = new Set(
+          realtimeTransactionsRef.current
+            .map(transaction => transaction.id)
+            .filter((id): id is string => Boolean(id))
+        );
+        const missingHistoricalUpdates = Array.from(
+          updatedTransactionsByIdRef.current.values()
+        ).filter(transaction => (
+          transaction.id ? !realtimeIds.has(transaction.id) : false
+        ));
+        if (missingHistoricalUpdates.length === 0) return merged;
+
+        return applyTransactionCacheMutation(
+          merged,
+          {
+            userId,
+            type: 'update',
+            transactions: missingHistoricalUpdates,
+          },
+          { insertMissingUpdates: true }
+        );
+      });
+      nextPageCursorRef.current = snap.docs.length > 0
+        ? snap.docs[snap.docs.length - 1]
+        : null;
+      hasMoreTransactionsRef.current = hasMore;
+      setHasMoreTransactions(hasMore);
     } catch (err) {
       logger.error('Error loading more transactions', err);
+      throw err;
     } finally {
-      if (isMountedRef.current) setLoadingMoreTransactions(false);
+      if (
+        isMountedRef.current &&
+        paginationGenerationRef.current === generation
+      ) {
+        loadingMoreRef.current = false;
+        setLoadingMoreTransactions(false);
+      }
     }
-  }, [userId, loadingMoreTransactions, hasMoreTransactions]);
+  }, [userId, hasMoreTransactions]);
 
   // Merge real-time transactions with older paginated ones
-  const allTransactions = useMemo(() => {
-    if (olderTransactions.length === 0) return transactions;
-    // Deduplicate by id (real-time listener may overlap with paginated)
-    const ids = new Set(transactions.map(t => t.id));
-    const unique = olderTransactions.filter(t => !ids.has(t.id));
-    return [...transactions, ...unique];
-  }, [transactions, olderTransactions]);
+  const allTransactions = useMemo(
+    () => mergeRealtimeAndCachedTransactions(transactions, olderTransactions),
+    [transactions, olderTransactions]
+  );
 
   return { transactions: allTransactions, accounts, categories, transactionBeneficiaries, recurringPayments, debts, budgets, savingsGoals, notifications, notificationPreferences, loading, error, hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions, retryLoad };
 }

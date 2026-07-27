@@ -9,7 +9,7 @@ import { useNotificationStore } from './useNotificationStore';
 import { useNotificationPreferences } from './useNotificationPreferences';
 import { useFirestoreData } from '../contexts/FirestoreContext';
 import { NotificationManager } from '../services/NotificationManager';
-import type { Notification, NotificationFilter, NotificationPreferences } from '../types/finance';
+import type { Notification, NotificationFilter } from '../types/finance';
 
 export function useNotifications(userId: string | null) {
   // Get centralized Firestore data to avoid separate listeners
@@ -69,8 +69,8 @@ export function useNotifications(userId: string | null) {
 
   // Get unread count
   const unreadCount = useMemo(() => {
-    return notificationManager.getUnreadCount();
-  }, [notificationManager, notifications]);
+    return notifications.filter((notification) => !notification.isRead).length;
+  }, [notifications]);
 
   // Mark as read
   const markAsRead = useCallback(
@@ -103,7 +103,7 @@ export function useNotifications(userId: string | null) {
     (filter?: NotificationFilter): Notification[] => {
       return notificationManager.getNotifications(filter);
     },
-    [notificationManager, notifications]
+    [notificationManager]
   );
 
   // Create notification (exposed for manual creation if needed)

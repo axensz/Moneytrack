@@ -15,7 +15,21 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, getDocs, where, runTransaction, increment, deleteField } from 'firebase/firestore';
+import {
+  collection,
+  onSnapshot,
+  query,
+  orderBy,
+  addDoc,
+  updateDoc,
+  doc,
+  getDocsFromServer,
+  getDocFromServer,
+  where,
+  writeBatch,
+  increment,
+  deleteField,
+} from 'firebase/firestore';
 import { db } from '../lib/firebaseDb';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
@@ -24,6 +38,15 @@ import { generateId } from '../utils/formatters';
 import { creditDeltasByAccount } from '../utils/creditDeltas';
 import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../config/constants';
 import type { Debt, Transaction, Account } from '../types/finance';
+import {
+  acquireAccountOperationLock,
+  assertAtomicBatchCapacity,
+  createAccountOperationId,
+  createAccountOperationRelease,
+  releaseAccountOperationLock,
+  renewAccountOperationLock,
+} from './firestore/accountOrchestration';
+import { publishTransactionCacheMutation } from './firestore/transactionPaginationCache';
 
 interface DebtTransactionOps {
   addTransaction?: (tx: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
@@ -34,8 +57,7 @@ export function useDebts(
   userId: string | null,
   transactions: Transaction[],
   externalDebts?: Debt[],
-  txOps: DebtTransactionOps = {},
-  accounts: Account[] = []
+  txOps: DebtTransactionOps = {}
 ) {
   const { addTransaction, deleteTransaction } = txOps;
   // Firestore state
@@ -160,77 +182,100 @@ export function useDebts(
     }
   }, [userId, setLocalDebts]);
 
-  // Nº máximo de transacciones vinculadas que se borran ATÓMICAMENTE en una sola
-  // runTransaction (Firestore limita a ~500 ops por transacción: borrados + updates
-  // de usedCredit + el borrado de la deuda). Por encima, se cae a la ruta secuencial
-  // (cada deleteTransaction es atómica por sí misma). Préstamos reales tienen pocas.
-  const ATOMIC_DELETE_LIMIT = 400;
-
   const deleteDebt = useCallback(async (id: string) => {
     if (userId) {
       if (!checkNetworkConnection()) {
         throw new Error('Sin conexión a internet');
       }
 
-      // #11: consultar Firestore por TODAS las transacciones del préstamo (el array en
-      // memoria está paginado). runTransaction NO permite queries, así que obtenemos
-      // los ids fuera y luego operamos sobre refs concretas dentro de la transacción.
-      const txCollection = collection(db, `users/${userId}/transactions`);
-      const snap = await getDocs(query(txCollection, where('debtId', '==', id)));
-      const linkedTxIds = snap.docs.map(d => d.id);
-      const debtRef = doc(db, `users/${userId}/debts`, id);
+      await safeFirestoreOperation(async () => {
+        const operationId = createAccountOperationId('delete-debt');
+        let committed = false;
 
-      // Préstamo con demasiadas transacciones para una sola transacción atómica:
-      // caer a la ruta secuencial (cada deleteTransaction revierte usedCredit de forma
-      // atómica e idempotente). La deuda se borra al final.
-      if (linkedTxIds.length > ATOMIC_DELETE_LIMIT) {
-        if (deleteTransaction) {
-          for (const txId of linkedTxIds) {
-            await deleteTransaction(txId);
+        try {
+          await acquireAccountOperationLock(userId, operationId, 'delete-debt');
+          // Todas las lecturas vienen del servidor y ocurren después del lease.
+          // Las reglas bloquean altas/ediciones concurrentes mientras se prepara
+          // el único batch final.
+          const txCollection = collection(db, `users/${userId}/transactions`);
+          const debtRef = doc(db, `users/${userId}/debts`, id);
+          const accountCollection = collection(db, `users/${userId}/accounts`);
+          const [linkedSnapshot, debtSnapshot, accountSnapshot] = await Promise.all([
+            getDocsFromServer(query(txCollection, where('debtId', '==', id))),
+            getDocFromServer(debtRef),
+            getDocsFromServer(accountCollection),
+          ]);
+
+          if (!debtSnapshot.exists()) {
+            throw new Error('La deuda cambió o ya no existe. Actualiza e intenta de nuevo.');
+          }
+
+          const serverAccounts = accountSnapshot.docs.map(accountDoc => ({
+            id: accountDoc.id,
+            ...(accountDoc.data() as Omit<Account, 'id'>),
+          } as Account));
+          const linkedTransactions = linkedSnapshot.docs.map(transactionDoc => ({
+            id: transactionDoc.id,
+            ...(transactionDoc.data() as Omit<Transaction, 'id'>),
+          } as Transaction));
+
+          const revertByAccount = new Map<string, number>();
+          linkedTransactions.forEach(transaction => {
+            for (const [accountId, delta] of creditDeltasByAccount(transaction, serverAccounts)) {
+              revertByAccount.set(
+                accountId,
+                (revertByAccount.get(accountId) ?? 0) + delta
+              );
+            }
+          });
+          const accountUpdates = Array.from(revertByAccount.entries())
+            .filter(([, delta]) => delta !== 0);
+
+          // tx deletes + account updates + debt delete + liberación del lease.
+          assertAtomicBatchCapacity(
+            'eliminar esta deuda',
+            linkedTransactions.length + accountUpdates.length + 2
+          );
+          await renewAccountOperationLock(userId, operationId, 'delete-debt');
+
+          const batch = writeBatch(db);
+          linkedTransactions.forEach(transaction => {
+            batch.delete(
+              doc(db, `users/${userId}/transactions`, transaction.id!)
+            );
+          });
+          accountUpdates.forEach(([accountId, delta]) => {
+            batch.update(
+              doc(db, `users/${userId}/accounts`, accountId),
+              { usedCredit: increment(-delta) }
+            );
+          });
+          batch.delete(debtRef);
+          batch.set(
+            doc(db, 'users', userId),
+            createAccountOperationRelease(operationId, 'delete-debt'),
+            { merge: true }
+          );
+          await batch.commit();
+          committed = true;
+
+          if (linkedTransactions.length > 0) {
+            publishTransactionCacheMutation({
+              userId,
+              type: 'delete',
+              transactionIds: linkedTransactions.map(transaction => transaction.id!),
+            });
+          }
+        } finally {
+          if (!committed) {
+            await releaseAccountOperationLock(
+              userId,
+              operationId,
+              'delete-debt'
+            ).catch(() => undefined);
           }
         }
-        await safeFirestoreOperation(() => deleteDoc(debtRef), 'deleteDebt', { maxRetries: 2 });
-        return;
-      }
-
-      // F-debt-cascade: borrado ATÓMICO. Borra todas las transacciones vinculadas,
-      // revierte usedCredit de las TC afectadas y borra la deuda en UNA runTransaction.
-      // Un fallo a mitad no aplica nada → nunca quedan deuda o transacciones huérfanas
-      // ni saldos/usedCredit desincronizados (antes era una secuencia no atómica).
-      await safeFirestoreOperation(
-        () => runTransaction(db, async (firestoreTransaction) => {
-          const txRefs = linkedTxIds.map(txId => doc(db, `users/${userId}/transactions`, txId));
-
-          // LECTURAS primero (requisito de Firestore).
-          const txSnaps = await Promise.all(txRefs.map(ref => firestoreTransaction.get(ref)));
-
-          // Acumular el delta de usedCredit a revertir por cada TC afectada.
-          const revertByAccount = new Map<string, number>();
-          txSnaps.forEach(s => {
-            if (!s.exists()) return;
-            const txData = { id: s.id, ...s.data() } as Transaction;
-            for (const [accId, delta] of creditDeltasByAccount(txData, accounts)) {
-              revertByAccount.set(accId, (revertByAccount.get(accId) ?? 0) + delta);
-            }
-          });
-
-          const accountIds = Array.from(revertByAccount.keys());
-          const accountRefs = accountIds.map(accId => doc(db, `users/${userId}/accounts`, accId));
-          const accountSnaps = await Promise.all(accountRefs.map(ref => firestoreTransaction.get(ref)));
-
-          // ESCRITURAS después.
-          txRefs.forEach(ref => firestoreTransaction.delete(ref));
-          accountIds.forEach((accId, i) => {
-            const delta = revertByAccount.get(accId) ?? 0;
-            if (accountSnaps[i].exists() && delta !== 0) {
-              firestoreTransaction.update(accountRefs[i], { usedCredit: increment(-delta) });
-            }
-          });
-          firestoreTransaction.delete(debtRef);
-        }),
-        'deleteDebt',
-        { maxRetries: 2 }
-      );
+      }, 'deleteDebt', { maxRetries: 2 });
     } else {
       // Modo invitado (en memoria): borrar transacciones vinculadas + la deuda.
       if (deleteTransaction) {
@@ -241,7 +286,7 @@ export function useDebts(
       }
       setLocalDebts(prev => prev.filter(d => d.id !== id));
     }
-  }, [userId, setLocalDebts, deleteTransaction, transactions, accounts]);
+  }, [userId, setLocalDebts, deleteTransaction, transactions]);
 
   // Register a payment against a debt
   const registerDebtPayment = useCallback(async (debtId: string, amount: number) => {

@@ -41,7 +41,7 @@ export const RecurringCalendar: React.FC<RecurringCalendarProps> = ({
   getDaysOverdue,
   getDaysUntilDue,
 }) => {
-  const { cells, monthLabel, daysInMonth, todayDate, isCurrentMonth, otherMonth } = useMemo(() => {
+  const { cells, monthLabel, daysInMonth, todayDate, isCurrentMonth } = useMemo(() => {
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth();
@@ -63,14 +63,10 @@ export const RecurringCalendar: React.FC<RecurringCalendarProps> = ({
 
     // Agrupar SOLO los pagos que vencen este mes, en su día efectivo (acotado al
     // último día real del mes; el centinela "último día" cae también ahí). Los
-    // anuales de otros meses se segregan en una nota aparte (no se capean).
+    // anuales de otros meses se omiten (no se capean).
     const byDay = new Map<number, { payment: RecurringPayment; status: PaymentStatus }[]>();
-    const other: RecurringPayment[] = [];
     for (const p of payments) {
-      if (!isDueThisMonth(p)) {
-        other.push(p);
-        continue;
-      }
+      if (!isDueThisMonth(p)) continue;
       const day = effectiveDueDay(p.dueDay, year, month);
       if (!byDay.has(day)) byDay.set(day, []);
       byDay.get(day)!.push({ payment: p, status: statusOf(p) });
@@ -88,7 +84,6 @@ export const RecurringCalendar: React.FC<RecurringCalendarProps> = ({
       daysInMonth: days,
       todayDate: now.getDate(),
       isCurrentMonth: true,
-      otherMonth: other,
     };
   }, [payments, isPaidForMonth, getDaysOverdue, getDaysUntilDue]);
 

@@ -4,7 +4,7 @@
  * Verifica que respeta `preferences.enabled` por tipo, deduplica dentro de la
  * ventana de debounce (60s), y decide toasts por severidad / quiet hours. Audit A3.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('react-hot-toast', () => ({
   default: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }),

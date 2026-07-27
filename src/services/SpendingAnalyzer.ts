@@ -7,6 +7,7 @@ import { logger } from '../utils/logger';
 import { SPECIAL_CATEGORIES } from '../config/constants';
 import { formatCurrency } from '../utils/formatters';
 import type { Transaction, Notification, NotificationPreferences } from '../types/finance';
+import { viewActionUrl } from '../hooks/useViewRouting';
 
 interface SpendingAnalyzerDeps {
     createNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => Promise<void>;
@@ -74,7 +75,7 @@ export class SpendingAnalyzer {
                     message: `Gasto de ${formatCurrency(transaction.amount)} excede el promedio de ${formatCurrency(average)} en ${Math.round((transaction.amount / average) * 100)}%`,
                     severity: 'warning',
                     isRead: false,
-                    actionUrl: `/transactions`,
+                    actionUrl: viewActionUrl('transactions'),
                     metadata: {
                         transactionId: transaction.id,
                         categoryName: transaction.category,

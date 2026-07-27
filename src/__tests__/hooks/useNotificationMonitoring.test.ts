@@ -109,6 +109,18 @@ describe('useNotificationMonitoring — guard anti-flood por paginación', () =>
     expect(spy.mock.calls[0][0].id).toBe(fresh.id);
   });
 
+  it('invalida la cache de presupuesto cuando cambia el historial', async () => {
+    const old = tx(new Date(2026, 1, 1));
+    const { result, rerender } = mount([old]);
+    const clearCache = vi.spyOn(result.current.monitors.budgetMonitor!, 'clearCache');
+
+    await act(async () => {
+      rerender({ transactions: [old, tx(new Date(2026, 1, 2))] });
+    });
+
+    expect(clearCache).toHaveBeenCalled();
+  });
+
   it('una tx creada hace ~5 min (desfase de reloj / latencia) SÍ dispara — antes la ventana de 2 min la descartaba (#5)', async () => {
     const old = new Date(2026, 1, 1);
     const initial = [tx(old)];

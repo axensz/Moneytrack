@@ -8,18 +8,37 @@ import { showToast } from '../utils/toastHelpers';
 import { logger } from '../utils/logger';
 import type { Transaction, Account } from '../types/finance';
 
+const DANGEROUS_SPREADSHEET_PREFIX = /^[\t\r]|^\s*[=+\-@]/;
+
+/**
+ * Escapes one CSV cell and neutralizes spreadsheet formulas in textual data.
+ * Numeric values stay numeric, including legitimate negative amounts.
+ */
+export function escapeCSVCell(
+  value: string | number | boolean | undefined
+): string {
+  if (value === undefined || value === null) return '';
+
+  let str = String(value);
+  if (typeof value === 'string' && DANGEROUS_SPREADSHEET_PREFIX.test(str)) {
+    str = `'${str}`;
+  }
+
+  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+
+  return str;
+}
+
 export function useCSVExport() {
   /**
    * Escapa un valor para CSV (maneja comas, comillas y saltos de línea)
    */
-  const escapeCSV = useCallback((value: string | number | boolean | undefined): string => {
-    if (value === undefined || value === null) return '';
-    const str = String(value);
-    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-      return `"${str.replace(/"/g, '""')}"`;
-    }
-    return str;
-  }, []);
+  const escapeCSV = useCallback(
+    (value: string | number | boolean | undefined) => escapeCSVCell(value),
+    []
+  );
 
   /**
    * Exporta transacciones a CSV

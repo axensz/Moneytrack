@@ -121,7 +121,6 @@ export function useCreditCardTransactions(
     };
     // liveTransactions.length: refetch cuando se agrega/elimina una transacción.
     // creditIdsKey: refetch cuando cambian las TC (nueva tarjeta / unificación).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, creditIdsKey, liveTransactions.length]);
 
   return useMemo(

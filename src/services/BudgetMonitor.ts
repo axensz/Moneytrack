@@ -7,6 +7,7 @@ import { logger } from '../utils/logger';
 import { SPECIAL_CATEGORIES } from '../config/constants';
 import { formatCurrency } from '../utils/formatters';
 import type { Transaction, Budget, Notification, NotificationPreferences } from '../types/finance';
+import { viewActionUrl } from '../hooks/useViewRouting';
 
 export interface BudgetUtilization {
     budgetId: string;
@@ -30,6 +31,17 @@ export class BudgetMonitor {
 
     constructor(deps: BudgetMonitorDeps) {
         this.deps = deps;
+    }
+
+    updateDeps(nextDeps: BudgetMonitorDeps): void {
+        const financialInputsChanged =
+            this.deps.budgets !== nextDeps.budgets ||
+            this.deps.transactions !== nextDeps.transactions;
+
+        this.deps = nextDeps;
+        if (financialInputsChanged) {
+            this.clearCache();
+        }
     }
 
     /**
@@ -140,7 +152,7 @@ export class BudgetMonitor {
                 message: `Has gastado ${formatCurrency(spent)} de ${formatCurrency(limit)} (${Math.round(percentage)}%)`,
                 severity: 'error',
                 isRead: false,
-                actionUrl: `/budgets`,
+                actionUrl: viewActionUrl('budgets'),
                 metadata: {
                     budgetId,
                     categoryName: category,
@@ -160,7 +172,7 @@ export class BudgetMonitor {
                 message: `Has gastado ${formatCurrency(spent)} de ${formatCurrency(limit)} (${Math.round(percentage)}%)`,
                 severity: 'warning',
                 isRead: false,
-                actionUrl: `/budgets`,
+                actionUrl: viewActionUrl('budgets'),
                 metadata: {
                     budgetId,
                     categoryName: category,
@@ -180,7 +192,7 @@ export class BudgetMonitor {
                 message: `Has gastado ${formatCurrency(spent)} de ${formatCurrency(limit)} (${Math.round(percentage)}%)`,
                 severity: 'warning',
                 isRead: false,
-                actionUrl: `/budgets`,
+                actionUrl: viewActionUrl('budgets'),
                 metadata: {
                     budgetId,
                     categoryName: category,

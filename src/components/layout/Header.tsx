@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import {
   Bell,
   HelpCircle,
@@ -136,10 +137,12 @@ export const Header: React.FC<HeaderProps> = ({
                 aria-label={`Sesión iniciada como ${accountLabel}`}
               >
                 {user.photoURL ? (
-                  <img
+                  <Image
                     src={user.photoURL}
                     alt=""
                     aria-hidden="true"
+                    width={36}
+                    height={36}
                     className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-border-accent"
                   />
                 ) : (

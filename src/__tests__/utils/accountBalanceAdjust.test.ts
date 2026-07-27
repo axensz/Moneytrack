@@ -12,7 +12,9 @@ const credit: Account = {
 };
 
 function setup(currentBalance: number, balancesReady = true) {
-  const addTransaction = vi.fn(async (_tx: Omit<Transaction, 'id'>) => {});
+  const addTransaction = vi.fn<
+    (tx: Omit<Transaction, 'id'>) => Promise<void>
+  >(async () => {});
   const updateAccount = vi.fn(async () => {});
   const hook = renderHook(() =>
     useAccountForm({

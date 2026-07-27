@@ -20,6 +20,10 @@ import { generateId } from '../utils/formatters';
 import { ensureDate } from '../utils/dateUtils';
 import { getAccountReferenceIds } from '../utils/accountTransactions';
 import { reconcileUsedCredit } from '../utils/creditDeltas';
+import {
+  CURRENT_PAYMENT_PAIR_MODEL_VERSION,
+  findHistoricalCreditPaymentPairs,
+} from '../utils/creditPaymentPairs';
 import type { Account, Transaction } from '../types/finance';
 
 const linkedPaymentUpdates = (updates: Partial<Transaction>): Partial<Transaction> => {
@@ -71,7 +75,39 @@ export function useTransactions(userId: string | null) {
   } = useFirestoreData();
 
   const [localTransactions, setLocalTransactions] = useLocalStorage<Transaction[]>('transactions', []);
-  const [, setLocalAccounts] = useLocalStorage<Account[]>('accounts', []);
+  const [localAccounts, setLocalAccounts] = useLocalStorage<Account[]>('accounts', []);
+
+  // Los pagos creados antes de linkedTransactionId eran dos movimientos
+  // independientes. En invitado se enlazan una vez, solo cuando el par es
+  // inequívoco, para que editar/borrar conserve ambos lados sincronizados.
+  useEffect(() => {
+    if (userId) return;
+    const pendingAccounts = localAccounts.filter(account =>
+      account.type === 'credit' && account.id &&
+      account.paymentPairModelVersion !== CURRENT_PAYMENT_PAIR_MODEL_VERSION
+    );
+    if (pendingAccounts.length === 0) return;
+
+    setLocalTransactions(previous => {
+      const links = new Map<string, string>();
+      pendingAccounts.forEach(account => {
+        findHistoricalCreditPaymentPairs(account, previous).forEach(pair => {
+          links.set(pair.creditTransactionId, pair.sourceTransactionId);
+          links.set(pair.sourceTransactionId, pair.creditTransactionId);
+        });
+      });
+      if (links.size === 0) return previous;
+      return previous.map(transaction => {
+        const linkedTransactionId = transaction.id ? links.get(transaction.id) : undefined;
+        return linkedTransactionId ? { ...transaction, linkedTransactionId } : transaction;
+      });
+    });
+    setLocalAccounts(previous => previous.map(account =>
+      pendingAccounts.some(pending => pending.id === account.id)
+        ? { ...account, paymentPairModelVersion: CURRENT_PAYMENT_PAIR_MODEL_VERSION }
+        : account
+    ));
+  }, [userId, localAccounts, setLocalAccounts, setLocalTransactions]);
 
   // En invitado no existe el trigger atómico de Firestore: reconciliar el campo
   // persistido desde el historial local evita que un usedCredit inicial/mergeado

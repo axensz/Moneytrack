@@ -10,7 +10,7 @@ import { useCallback, useMemo } from 'react';
 import { useLocalStorage } from './useLocalStorage';
 import { useFirestoreData } from '../contexts/FirestoreContext';
 import { DEFAULT_CATEGORIES, ERROR_MESSAGES, SPECIAL_CATEGORIES, TRANSFER_CATEGORY } from '../config/constants';
-import type { Categories, Transaction, Category } from '../types/finance';
+import type { Categories, Transaction } from '../types/finance';
 
 /**
  * Normaliza un nombre de categoría para comparaciones de duplicados:

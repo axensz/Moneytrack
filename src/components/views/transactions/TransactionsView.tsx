@@ -8,6 +8,7 @@ import type {
   DateRangePreset,
 } from '../../../types/finance';
 import { useTransactionDomain, useAccountDomain, useBeneficiaryDomain, useCategoryDomain, useRecurringDomain, useFormatCurrency } from '../../../hooks/useFinanceSelectors';
+import { useLedgerOverview } from '../../../hooks/useGlobalStats';
 
 import { DATE_PRESETS } from '../../../utils/dateUtils';
 
@@ -21,6 +22,7 @@ import { TransactionsList } from './components/TransactionsList';
 // Hook
 import { useTransactionsView } from './hooks/useTransactionsView';
 import { useCSVExport } from '../../../hooks/useCSVExport';
+import { StatsCards } from '../../shared/StatsCards';
 
 interface TransactionsViewProps {
   showForm: boolean;
@@ -70,7 +72,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     loadMoreTransactions,
     balanceTransactions,
   } = useTransactionDomain();
-  const { accounts, balancesReady } = useAccountDomain();
+  const { accounts, balancesReady, totalBalance } = useAccountDomain();
+  const overview = useLedgerOverview(balanceTransactions, accounts, totalBalance);
   const { recurringPayments } = useRecurringDomain();
   const { categories } = useCategoryDomain();
   const { beneficiaries } = useBeneficiaryDomain();
@@ -156,7 +159,17 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   };
 
   return (
-    <div className="card">
+    <div data-testid="transactions-panel">
+      <StatsCards
+        balanceSettling={!balancesReady}
+        totalBalance={overview.totalBalance}
+        totalIncome={overview.totalIncome}
+        totalExpenses={overview.totalExpenses}
+        pendingExpenses={overview.pendingExpenses}
+        formatCurrency={formatCurrency}
+        hasAccounts={accounts.length > 0}
+      />
+      <div className="card">
       {/* Mensaje de ayuda cuando no hay cuentas */}
       {accounts.length === 0 && <NoAccountsMessage onCreateAccount={onGoToAccounts} />}
 
@@ -239,6 +252,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           onRetry={handleLoadMore}
         />
       )}
+      </div>
     </div>
   );
 };

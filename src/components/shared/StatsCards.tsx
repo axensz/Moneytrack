@@ -10,8 +10,6 @@ interface StatsCardsProps {
   totalExpenses: number;
   pendingExpenses: number;
   formatCurrency: (amount: number) => string;
-  balanceLabel?: string;
-  periodLabel?: string;
   /** Cuando no hay cuentas creadas, muestra un mensaje orientativo bajo las tarjetas */
   hasAccounts?: boolean;
   /**
@@ -28,8 +26,6 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
   totalExpenses,
   pendingExpenses,
   formatCurrency,
-  balanceLabel = 'Balance',
-  periodLabel = 'este mes',
   hasAccounts = true,
   balanceSettling = false,
 }) => {
@@ -42,7 +38,8 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
   };
 
   return (
-    <div className="mb-4 sm:mb-5 md:mb-6">
+    <section data-testid="ledger-overview" className="mb-4 sm:mb-5 md:mb-6" aria-labelledby="ledger-overview-title">
+      <h2 id="ledger-overview-title" className="text-base font-bold text-foreground mb-2 sm:mb-3">Resumen general</h2>
       {/* Botón de ocultar valores */}
       <div className="flex justify-end mb-2 sm:mb-3">
         <button
@@ -61,7 +58,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
         {/* Balance Card - Morado Premium (reusa .card-balance, no duplica el degradado) */}
         <div className="card-balance col-span-2 lg:col-span-1 hover:shadow-lg">
           <div className="flex items-center justify-between mb-1.5 sm:mb-2">
-            <span className="text-xs sm:text-sm font-medium text-balance-foreground">{balanceLabel}</span>
+            <span className="text-xs sm:text-sm font-medium text-balance-foreground">Saldo actual</span>
             <div className="p-1.5 sm:p-2 rounded-lg bg-balance-accent">
               <Wallet size={16} className="sm:w-[18px] sm:h-[18px] text-balance-value" />
             </div>
@@ -78,7 +75,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
         {/* Ingresos Card */}
         <div className="p-3 sm:p-4 md:p-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-md hover:shadow-lg transition-[box-shadow,border-color,transform]">
           <div className="flex items-center justify-between mb-1.5 sm:mb-2">
-            <span className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Ingresos <span className="text-[10px] sm:text-xs text-muted-foreground font-normal">{periodLabel}</span></span>
+            <span className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Ingresos · mes actual</span>
             <div className="p-1.5 sm:p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
               <TrendingUp size={16} className="sm:w-[18px] sm:h-[18px] text-emerald-600 dark:text-emerald-400" />
             </div>
@@ -91,7 +88,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
         {/* Gastos Card */}
         <div className="p-3 sm:p-4 md:p-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-md hover:shadow-lg transition-[box-shadow,border-color,transform]">
           <div className="flex items-center justify-between mb-1.5 sm:mb-2">
-            <span className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Gastos <span className="text-[10px] sm:text-xs text-muted-foreground font-normal">{periodLabel}</span></span>
+            <span className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Gastos · mes actual</span>
             <div className="p-1.5 sm:p-2 rounded-lg bg-rose-100 dark:bg-rose-900/30">
               <TrendingDown size={16} className="sm:w-[18px] sm:h-[18px] text-rose-600 dark:text-rose-400" />
             </div>
@@ -106,9 +103,9 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
           <div className="flex items-center justify-between mb-1.5 sm:mb-2">
             <span
               className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 inline-flex items-center gap-1 cursor-help"
-              title="Incluye la deuda de tus tarjetas de crédito (compras que aún no pagas al banco), no solo gastos sin marcar como pagados. Una compra de TC cuenta como gasto (ya gastaste el dinero) y como pendiente (lo debes a la tarjeta) hasta que pagas el extracto."
+              title="Crédito usado actual en todas tus tarjetas. Las compras de tarjeta aún no pagadas se muestran aquí, no en Gastos."
             >
-              Pendientes
+              Pendiente actual · tarjetas de crédito
               <Info size={12} className="text-gray-400 dark:text-gray-500" aria-hidden="true" />
             </span>
             <div className="p-1.5 sm:p-2 rounded-lg bg-amber-100 dark:bg-amber-900/30">
@@ -128,7 +125,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
           {' '}para ver tu balance real
         </p>
       )}
-    </div>
+    </section>
   );
 });
 

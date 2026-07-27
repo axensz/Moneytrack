@@ -9,7 +9,7 @@ import { FirestoreErrorBanner } from './components/layout/FirestoreErrorBanner';
 import { FinanceNotificationBridge } from './components/layout/FinanceNotificationBridge';
 import { FinanceViewRouter } from './components/layout/FinanceViewRouter';
 import { MobileNavigation } from './components/layout/MobileNavigation';
-import { StatsCards, TransactionForm } from './components/shared';
+import { TransactionForm } from './components/shared';
 import { AuthModal } from './components/modals/AuthModal';
 import { WelcomeModal } from './components/modals/WelcomeModal';
 import { HelpModal } from './components/modals/HelpModal';
@@ -24,7 +24,6 @@ import { FirestoreProvider } from './contexts/FirestoreContext';
 import { FinanceProvider } from './contexts/FinanceContext';
 import { TransactionsView } from './components/views/transactions';
 import { useAddTransaction } from './hooks/useAddTransaction';
-import { useFilteredData } from './hooks/useFilteredData';
 import { useWelcomeModal } from './hooks/useWelcomeModal';
 import { useGuestMigration } from './hooks/useGuestMigration';
 import { NotificationProvider } from './contexts/NotificationContext';
@@ -42,10 +41,8 @@ import {
 } from './hooks/useFinanceSelectors';
 import { TOAST_CONFIG, createInitialTransaction } from './config/constants';
 import { UI_TEXT, VIEW_SHORTCUTS } from './config/ui';
-import { DATE_PRESETS } from './utils/dateUtils';
-import { parseDateFromInput } from './utils/formatters';
 import { logger } from './utils/logger';
-import type { NewTransaction, FilterValue, DateRange, DateRangePreset } from './types/finance';
+import type { NewTransaction, FilterValue, DateRangePreset } from './types/finance';
 import { logoutFirebase } from './lib/firebase';
 import { clearFirestorePersistence } from './lib/firebaseDb';
 import type { User } from 'firebase/auth';
@@ -99,8 +96,6 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const {
     accounts,
     defaultAccount,
-    totalBalance,
-    getAccountBalance,
   } = useAccountDomain();
   const {
     categories,
@@ -151,34 +146,6 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>('this-month');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
-  const dateRange = useMemo<DateRange>(() => {
-    const range: DateRange = { preset: dateRangePreset };
-
-    if (dateRangePreset === 'custom' && customStartDate) {
-      range.startDate = parseDateFromInput(customStartDate);
-    }
-
-    if (dateRangePreset === 'custom' && customEndDate) {
-      const endDate = parseDateFromInput(customEndDate);
-      endDate.setHours(23, 59, 59, 999);
-      range.endDate = endDate;
-    }
-
-    return range;
-  }, [customEndDate, customStartDate, dateRangePreset]);
-  const statsPeriodLabel = useMemo(() => {
-    if (dateRangePreset === 'custom') return 'rango elegido';
-    return DATE_PRESETS.find((preset) => preset.value === dateRangePreset)?.label.toLowerCase() || 'todo el tiempo';
-  }, [dateRangePreset]);
-
-  // Historial COMPLETO (balanceTransactions), no la ventana paginada de 500: las
-  // tarjetas de resumen (Ingresos/Gastos/Pendientes) agregan sobre transacciones,
-  // y con >500 tx un filtro "este año"/"todo" subcontaría periodos antiguos. Mismo
-  // motivo que los saldos (C2) y los monitores de notificación. (#stats-1)
-  const { dynamicStats, dynamicTotalBalance, balanceLabel } = useFilteredData({
-    transactions: balanceTransactions, accounts, filterAccount, filterCategory, dateRange, totalBalance, getAccountBalance,
-  });
-
   const [newTransaction, setNewTransaction] = useState<NewTransaction>({
     ...createInitialTransaction()
   });
@@ -450,18 +417,6 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
               onAddTransaction={() => { setView('transactions'); setShowForm(true); }}
               onOpenAISettings={() => setShowAISettingsModal(true)}
             />
-            <StatsCards
-              balanceSettling={!balancesReady}
-              totalBalance={dynamicTotalBalance}
-              totalIncome={dynamicStats.totalIncome}
-              totalExpenses={dynamicStats.totalExpenses}
-              pendingExpenses={dynamicStats.pendingExpenses}
-              formatCurrency={formatCurrency}
-              balanceLabel={balanceLabel}
-              periodLabel={statsPeriodLabel}
-              hasAccounts={accounts.length > 0}
-            />
-
             {/* Error banner when Firestore fails */}
             {firestoreError && (
               <FirestoreErrorBanner

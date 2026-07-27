@@ -19,6 +19,7 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
     <>
       {/* Desktop Navigation */}
       <nav
+        data-testid="primary-navigation"
         className="hidden sm:flex justify-start items-center gap-4 mb-4 sm:mb-5 md:mb-6"
         aria-label={UI_TEXT.aria.mainNavigation}
       >

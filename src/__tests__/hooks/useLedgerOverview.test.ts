@@ -49,6 +49,26 @@ describe('useLedgerOverview', () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it('rearms after an ordinary midnight so a later month-end refreshes without focus or visibility events', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 30, 23, 59, 59, 999));
+    try {
+      const history = [
+        tx('july', { type: 'income', amount: 10, category: 'Salario', date: new Date(2026, 6, 31, 12) }),
+        tx('august', { type: 'income', amount: 20, category: 'Salario', date: new Date(2026, 7, 1, 12) }),
+      ];
+      const { result } = renderHook(() => useLedgerOverview(history, [bank], 777));
+
+      expect(result.current.totalIncome).toBe(10);
+
+      act(() => vi.advanceTimersByTime(1));
+      expect(result.current.totalIncome).toBe(10);
+
+      act(() => vi.advanceTimersByTime(24 * 60 * 60 * 1000));
+      expect(result.current.totalIncome).toBe(20);
+    } finally { vi.useRealTimers(); }
+  });
+
   it('refreshes the current-month flow when the app becomes visible after month rollover', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 6, 31, 12));

@@ -146,18 +146,31 @@ export function useLedgerOverview(
       const nextKey = getLocalMonthKey();
       return previousKey === nextKey ? previousKey : nextKey;
     });
-    const nextMidnight = new Date();
-    nextMidnight.setHours(24, 0, 0, 0);
-    const timeout = window.setTimeout(syncCurrentMonth, nextMidnight.getTime() - Date.now());
-
-    document.addEventListener('visibilitychange', syncCurrentMonth);
-    window.addEventListener('focus', syncCurrentMonth);
-    return () => {
-      window.clearTimeout(timeout);
-      document.removeEventListener('visibilitychange', syncCurrentMonth);
-      window.removeEventListener('focus', syncCurrentMonth);
+    let timeout: number | undefined;
+    const scheduleNextMidnight = () => {
+      const nextMidnight = new Date();
+      nextMidnight.setHours(24, 0, 0, 0);
+      timeout = window.setTimeout(() => {
+        syncCurrentMonth();
+        scheduleNextMidnight();
+      }, nextMidnight.getTime() - Date.now());
     };
-  }, [currentMonthKey]);
+    const syncAndReschedule = () => {
+      syncCurrentMonth();
+      if (timeout !== undefined) window.clearTimeout(timeout);
+      scheduleNextMidnight();
+    };
+
+    scheduleNextMidnight();
+
+    document.addEventListener('visibilitychange', syncAndReschedule);
+    window.addEventListener('focus', syncAndReschedule);
+    return () => {
+      if (timeout !== undefined) window.clearTimeout(timeout);
+      document.removeEventListener('visibilitychange', syncAndReschedule);
+      window.removeEventListener('focus', syncAndReschedule);
+    };
+  }, []);
 
   const currentMonthTransactions = useMemo(() => {
     const [year, month] = currentMonthKey.split('-').map(Number);

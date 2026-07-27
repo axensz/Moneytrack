@@ -162,7 +162,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={() => setHideBalances(!hideBalances)}
-              className="header-icon"
+              className="header-icon min-w-[44px] min-h-[44px]"
               title={hideBalances ? 'Mostrar valores' : 'Ocultar valores'}
               aria-label={hideBalances ? 'Mostrar valores' : 'Ocultar valores'}
               aria-pressed={hideBalances}

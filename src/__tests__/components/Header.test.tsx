@@ -38,6 +38,7 @@ describe('Header', () => {
     const toggle = screen.getByRole('button', { name: 'Ocultar valores' });
     expect(toggle).toHaveAttribute('type', 'button');
     expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(toggle).toHaveClass('min-w-[44px]', 'min-h-[44px]');
     expect(screen.getByRole('status')).toHaveTextContent('false');
 
     fireEvent.click(toggle);

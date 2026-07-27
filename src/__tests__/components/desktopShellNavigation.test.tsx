@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { FinanceViewRouter } from '../../components/layout/FinanceViewRouter';
 import { sectionTitle } from '../../config/ui';
 import { navigateToActionUrl, useViewRouting } from '../../hooks/useViewRouting';
+import { useViewTransitionFocus } from '../../hooks/useViewTransitionFocus';
 import type { ViewType } from '../../types/finance';
 
 const statsGate = vi.hoisted(() => ({
@@ -30,28 +31,21 @@ vi.mock('../../components/views/accounts/AccountsView', () => ({
 }));
 
 function RoutedShell({ onViewChange = vi.fn() }: { onViewChange?: (view: ViewType) => void }) {
-  const scrollContainerRef = useRef<HTMLElement>(null);
-  const pendingFocusViewRef = useRef<ViewType | null>(null);
-  const handleViewChange = useCallback((nextView: ViewType) => {
-    pendingFocusViewRef.current = nextView;
-    scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+  const { focusMainContent, handleViewChange, handleViewMounted, scrollContainerRef } = useViewTransitionFocus();
+  const routedViewChange = useCallback((nextView: ViewType) => {
+    handleViewChange(nextView);
     onViewChange(nextView);
-  }, [onViewChange]);
-  const { view, setView } = useViewRouting({ onViewChange: handleViewChange });
-  const handleViewMounted = useCallback((mountedView: ViewType) => {
-    if (pendingFocusViewRef.current !== mountedView) return;
-    document.getElementById(`view-heading-${mountedView}`)?.focus();
-    pendingFocusViewRef.current = null;
-  }, []);
+  }, [handleViewChange, onViewChange]);
+  const { view: routedView, setView: setRoutedView } = useViewRouting({ onViewChange: routedViewChange });
 
   return (
     <>
-      <a href="#main-content" onClick={(event) => { event.preventDefault(); scrollContainerRef.current?.focus(); }}>
+      <a href="#main-content" onClick={(event) => { event.preventDefault(); focusMainContent(); }}>
         Saltar al contenido principal
       </a>
       <main id="main-content" ref={scrollContainerRef} tabIndex={-1}>
-        <button type="button" onClick={() => setView('stats')}>Ir a Estadísticas</button>
-        <button type="button" onClick={() => setView('accounts')}>Ir a Cuentas</button>
+        <button type="button" onClick={() => setRoutedView('stats')}>Ir a Estadísticas</button>
+        <button type="button" onClick={() => setRoutedView('accounts')}>Ir a Cuentas</button>
         <button type="button" onClick={() => navigateToActionUrl('/?view=stats')}>Abrir Estadísticas desde acción</button>
         <button
           type="button"
@@ -63,7 +57,7 @@ function RoutedShell({ onViewChange = vi.fn() }: { onViewChange?: (view: ViewTyp
           Abrir Cuentas desde historial
         </button>
         <FinanceViewRouter
-          view={view}
+          view={routedView}
           transactionsPanel={<h2 id="view-heading-transactions" tabIndex={-1}>{sectionTitle('transactions')}</h2>}
           pendingBudgetDraft={null}
           onBudgetDraftApplied={() => undefined}
@@ -151,5 +145,12 @@ describe('desktop shell navigation', () => {
     const source = readFileSync(resolve(process.cwd(), path), 'utf8');
     const canonicalHeading = new RegExp(`<h2[^>]*id=["']view-heading-${view}["'][^>]*>[\\s\\S]*?sectionTitle\\(['"]${view}['"]\\)[\\s\\S]*?</h2>`, 'g');
     expect(source.match(canonicalHeading)).toHaveLength(1);
+  });
+
+  it('wires the actual app skip link and main landmark to the shared controller', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/AuthenticatedApp.tsx'), 'utf8');
+    expect(source).toContain('useViewTransitionFocus');
+    expect(source).toMatch(/<a\s+className="skip-link"\s+href="#main-content"[\s\S]*?focusMainContent\(\)/);
+    expect(source).toMatch(/<main id="main-content" ref=\{scrollContainerRef\} tabIndex=\{-1\} className="flex-1 min-h-0 overflow-auto">/);
   });
 });

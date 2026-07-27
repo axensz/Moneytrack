@@ -30,6 +30,7 @@ import { NotificationProvider } from './contexts/NotificationContext';
 import { UIPreferencesProvider } from './contexts/UIPreferencesContext';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useViewRouting } from './hooks/useViewRouting';
+import { useViewTransitionFocus } from './hooks/useViewTransitionFocus';
 import {
   useAccountDomain,
   useBeneficiaryDomain,
@@ -123,8 +124,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const pendingSettingsCount = aiAuthPending ? 1 : 0;
 
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const scrollContainerRef = useRef<HTMLElement>(null);
-  const pendingFocusViewRef = useRef<import('./types/finance').ViewType | null>(null);
+  const { scrollContainerRef, handleViewChange, handleViewMounted, focusMainContent } = useViewTransitionFocus();
   const newTransactionRef = useRef<NewTransaction>({ ...createInitialTransaction() });
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -138,10 +138,6 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const [pendingBudgetDraft, setPendingBudgetDraft] = useState<BudgetDraft | null>(null);
   const [batchCount, setBatchCount] = useState(0);
   // S6: sincroniza la vista con ?view=<name> en la URL (back/forward funciona).
-  const handleViewChange = useCallback((nextView: import('./types/finance').ViewType) => {
-    pendingFocusViewRef.current = nextView;
-    scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'auto' });
-  }, []);
   const { view, setView } = useViewRouting({ onViewChange: handleViewChange });
   const [filterCategory, setFilterCategory] = useState<FilterValue>('all');
   const [filterAccount, setFilterAccount] = useState<FilterValue>('all');
@@ -214,12 +210,6 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     setPendingBudgetDraft({ category, suggestedLimit });
     setView('budgets');
   }, [setView]);
-
-  const handleViewMounted = useCallback((mountedView: import('./types/finance').ViewType) => {
-    if (pendingFocusViewRef.current !== mountedView) return;
-    document.getElementById(`view-heading-${mountedView}`)?.focus();
-    pendingFocusViewRef.current = null;
-  }, []);
 
   const handleBudgetDraftApplied = useCallback(() => {
     setPendingBudgetDraft(null);
@@ -402,7 +392,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         href="#main-content"
         onClick={(event) => {
           event.preventDefault();
-          scrollContainerRef.current?.focus();
+          focusMainContent();
         }}
       >
         Saltar al contenido principal

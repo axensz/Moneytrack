@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { FinanceViewRouter } from '../../components/layout/FinanceViewRouter';
+import { TabNavigation } from '../../components/layout/TabNavigation';
 import { sectionTitle } from '../../config/ui';
 import { navigateToActionUrl, useViewRouting } from '../../hooks/useViewRouting';
 import { useViewTransitionFocus } from '../../hooks/useViewTransitionFocus';
@@ -84,6 +85,7 @@ const headingContracts: Array<[ViewType, string]> = [
 describe('desktop shell navigation', () => {
   beforeEach(() => {
     window.history.replaceState({}, '', '/');
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });
   });
 
   it('uses the real router to reset and focus only after a delayed lazy view commits', async () => {
@@ -152,5 +154,37 @@ describe('desktop shell navigation', () => {
     expect(source).toContain('useViewTransitionFocus');
     expect(source).toMatch(/<a\s+className="skip-link"\s+href="#main-content"[\s\S]*?focusMainContent\(\)/);
     expect(source).toMatch(/<main id="main-content" ref=\{scrollContainerRef\} tabIndex=\{-1\} className="flex-1 min-h-0 overflow-auto">/);
+  });
+
+  it.each([
+    ['ArrowRight', 'transactions', 'accounts'],
+    ['ArrowLeft', 'transactions', 'financial-plan'],
+    ['Home', 'goals', 'transactions'],
+    ['End', 'transactions', 'financial-plan'],
+  ])('moves %s from %s to %s with roving tabindex', async (key, from, to) => {
+    const setView = vi.fn();
+    render(<TabNavigation view={from as ViewType} setView={setView} />);
+    const current = screen.getByRole('tab', { selected: true });
+    current.focus();
+    fireEvent.keyDown(current, { key });
+    expect(setView).toHaveBeenCalledWith(to);
+    await waitFor(() => expect(screen.getByRole('tab', { name: new RegExp(sectionTitle(to as ViewType)) })).toHaveFocus());
+  });
+
+  it('ignores keys outside the primary tab keyboard model', () => {
+    const setView = vi.fn();
+    render(<TabNavigation view="transactions" setView={setView} />);
+    const current = screen.getByRole('tab', { selected: true });
+    expect(current).toHaveAttribute('tabindex', '0');
+    expect(screen.getAllByRole('tab').filter(tab => tab.getAttribute('tabindex') === '0')).toHaveLength(1);
+    expect(fireEvent.keyDown(current, { key: 'Enter' })).toBe(true);
+    expect(setView).not.toHaveBeenCalled();
+  });
+
+  it('keeps desktop overflow inside the navigation surface', () => {
+    const { container } = render(<TabNavigation view="transactions" setView={vi.fn()} />);
+    expect(container.querySelector('[role="tablist"]')).toHaveClass('min-w-max');
+    expect(container.querySelector('[data-desktop-tab-scroll]')).toHaveClass('overflow-x-auto');
+    expect(container.querySelector('nav')).toHaveClass('max-w-full');
   });
 });

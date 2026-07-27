@@ -220,7 +220,7 @@ export const DebtsView: React.FC = () => {
       {/* Header con descripción */}
       <div className="card">
         <div className="mb-6">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+          <h2 id="view-heading-debts" tabIndex={-1} className="text-xl font-bold text-gray-900 dark:text-gray-100">
             {sectionTitle('debts')}
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">

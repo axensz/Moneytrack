@@ -123,7 +123,8 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const pendingSettingsCount = aiAuthPending ? 1 : 0;
 
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLElement>(null);
+  const pendingFocusViewRef = useRef<import('./types/finance').ViewType | null>(null);
   const newTransactionRef = useRef<NewTransaction>({ ...createInitialTransaction() });
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -137,7 +138,11 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const [pendingBudgetDraft, setPendingBudgetDraft] = useState<BudgetDraft | null>(null);
   const [batchCount, setBatchCount] = useState(0);
   // S6: sincroniza la vista con ?view=<name> en la URL (back/forward funciona).
-  const { view, setView } = useViewRouting();
+  const handleViewChange = useCallback((nextView: import('./types/finance').ViewType) => {
+    pendingFocusViewRef.current = nextView;
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+  }, []);
+  const { view, setView } = useViewRouting({ onViewChange: handleViewChange });
   const [filterCategory, setFilterCategory] = useState<FilterValue>('all');
   const [filterAccount, setFilterAccount] = useState<FilterValue>('all');
   const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>('this-month');
@@ -208,8 +213,13 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const handleUseBudgetSuggestion = useCallback((category: string, suggestedLimit: number) => {
     setPendingBudgetDraft({ category, suggestedLimit });
     setView('budgets');
-    scrollContainerRef.current?.scrollTo({ top: 0 });
   }, [setView]);
+
+  const handleViewMounted = useCallback((mountedView: import('./types/finance').ViewType) => {
+    if (pendingFocusViewRef.current !== mountedView) return;
+    document.getElementById(`view-heading-${mountedView}`)?.focus();
+    pendingFocusViewRef.current = null;
+  }, []);
 
   const handleBudgetDraftApplied = useCallback(() => {
     setPendingBudgetDraft(null);
@@ -387,6 +397,17 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         />
       )}
 
+      <a
+        className="skip-link"
+        href="#main-content"
+        onClick={(event) => {
+          event.preventDefault();
+          scrollContainerRef.current?.focus();
+        }}
+      >
+        Saltar al contenido principal
+      </a>
+
       <Header
         user={user}
         setIsAuthModalOpen={setIsAuthModalOpen}
@@ -403,7 +424,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         aiAuthPending={aiAuthPending}
       />
 
-      <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-auto">
+      <main id="main-content" ref={scrollContainerRef} tabIndex={-1} className="flex-1 min-h-0 overflow-auto">
         <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-5 pb-24 sm:pb-6">
           <div className="max-w-7xl mx-auto">
             <OnboardingChecklist
@@ -465,10 +486,11 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
               onBudgetDraftApplied={handleBudgetDraftApplied}
               onOpenFinancialPlan={() => setView('financial-plan')}
               onUseBudgetSuggestion={handleUseBudgetSuggestion}
+              onViewMounted={handleViewMounted}
             />
           </div>
         </div>
-      </div>
+      </main>
 
       {/* Asistente IA (A6) — descubrible siempre:
           - listo (sesión + key + consentimiento) → chat completo (lazy).

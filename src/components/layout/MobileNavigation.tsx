@@ -16,7 +16,7 @@ const MOBILE_MORE_TABS = tabsFor(MOBILE_MORE_KEYS);
 interface MobileNavigationProps {
   view: ViewType;
   setView: (view: ViewType) => void;
-  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
+  scrollContainerRef: React.RefObject<HTMLElement | null>;
 }
 
 export function MobileNavigation({

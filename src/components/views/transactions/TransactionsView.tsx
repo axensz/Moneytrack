@@ -23,6 +23,7 @@ import { TransactionsList } from './components/TransactionsList';
 import { useTransactionsView } from './hooks/useTransactionsView';
 import { useCSVExport } from '../../../hooks/useCSVExport';
 import { StatsCards } from '../../shared/StatsCards';
+import { sectionTitle } from '../../../config/ui';
 
 interface TransactionsViewProps {
   showForm: boolean;
@@ -160,6 +161,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
 
   return (
     <div data-testid="transactions-panel">
+      <h2 id="view-heading-transactions" tabIndex={-1} className="sr-only">{sectionTitle('transactions')}</h2>
       <StatsCards
         balanceSettling={!balancesReady}
         totalBalance={overview.totalBalance}

@@ -12,6 +12,7 @@ import { CreditCardInterestsCard } from './components/CreditCardInterestsCard';
 import { PeriodSummaryCard } from './components/PeriodSummaryCard';
 import { useCreditCardInterests } from './hooks/useCreditCardInterests';
 import { useStatsData } from './hooks/useStatsData';
+import { sectionTitle } from '../../../config/ui';
 
 /**
  * Vista Principal de Estadísticas
@@ -40,6 +41,7 @@ export const StatsView: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <h2 id="view-heading-stats" tabIndex={-1} className="sr-only">{sectionTitle('stats')}</h2>
       {/* Fila 1: Flujo de caja a ancho completo */}
       <CashFlowChart
         data={monthlyData}

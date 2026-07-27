@@ -138,7 +138,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
       <div className="card">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+            <h2 id="view-heading-budgets" tabIndex={-1} className="text-lg font-bold text-gray-900 dark:text-gray-100">
               <button
                 type="button"
                 onClick={() => setBudgetsMinimized(prev => !prev)}

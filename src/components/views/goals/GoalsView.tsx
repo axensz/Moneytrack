@@ -124,7 +124,7 @@ export const GoalsView: React.FC = () => {
       <div className="card">
         {/* Header con descripción */}
         <div className="mb-6">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+          <h2 id="view-heading-goals" tabIndex={-1} className="text-xl font-bold text-gray-900 dark:text-gray-100">
             {sectionTitle('goals')}
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">

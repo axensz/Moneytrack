@@ -12,10 +12,9 @@
  * ✅ Separation of Concerns
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getCreditCardUsedCredit } from '../utils/accountStrategies';
 import { findAccountForTransaction } from '../utils/accountTransactions';
-import { getDateRangeFromPreset } from '../utils/dateUtils';
 import { SPECIAL_CATEGORIES } from '../config/constants';
 import type { Account, Transaction } from '../types/finance';
 
@@ -46,6 +45,11 @@ export interface LedgerOverview {
   totalIncome: number;
   totalExpenses: number;
   pendingExpenses: number;
+}
+
+function getLocalMonthKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${now.getMonth()}`;
 }
 
 /**
@@ -135,13 +139,35 @@ export function useLedgerOverview(
   accounts: Account[],
   totalBalance: number,
 ): LedgerOverview {
+  const [currentMonthKey, setCurrentMonthKey] = useState(getLocalMonthKey);
+
+  useEffect(() => {
+    const syncCurrentMonth = () => setCurrentMonthKey((previousKey) => {
+      const nextKey = getLocalMonthKey();
+      return previousKey === nextKey ? previousKey : nextKey;
+    });
+    const nextMidnight = new Date();
+    nextMidnight.setHours(24, 0, 0, 0);
+    const timeout = window.setTimeout(syncCurrentMonth, nextMidnight.getTime() - Date.now());
+
+    document.addEventListener('visibilitychange', syncCurrentMonth);
+    window.addEventListener('focus', syncCurrentMonth);
+    return () => {
+      window.clearTimeout(timeout);
+      document.removeEventListener('visibilitychange', syncCurrentMonth);
+      window.removeEventListener('focus', syncCurrentMonth);
+    };
+  }, [currentMonthKey]);
+
   const currentMonthTransactions = useMemo(() => {
-    const { start, end } = getDateRangeFromPreset('this-month');
+    const [year, month] = currentMonthKey.split('-').map(Number);
+    const start = new Date(year, month, 1);
+    const end = new Date(year, month + 1, 0, 23, 59, 59, 999);
     return transactions.filter((transaction) => {
       const date = new Date(transaction.date);
-      return (!start || date >= start) && (!end || date <= end);
+      return date >= start && date <= end;
     });
-  }, [transactions]);
+  }, [transactions, currentMonthKey]);
 
   const currentMonthStats = useGlobalStats(currentMonthTransactions, accounts);
   const fullHistoryStats = useGlobalStats(transactions, accounts);

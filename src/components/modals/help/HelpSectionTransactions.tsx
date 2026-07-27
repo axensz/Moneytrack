@@ -150,7 +150,7 @@ export const HelpSectionTransactions: React.FC = () => (
                <Clock size={16} /> Pendiente
             </h4>
             <p className="text-sm" style={{ color: 'var(--warning-text)' }}>
-               Programado pero aún no ejecutado. Aparece en "Gastos pendientes".
+               Las transacciones pendientes no entran en los totales actuales de ingresos o gastos pagados. Las compras con tarjeta de crédito pueden reflejarse en el crédito usado actual.
             </p>
          </div>
       </div>

@@ -120,7 +120,7 @@ export const HelpSectionStats: React.FC = () => (
         <div className="p-4 rounded-xl border border-border">
            <Eye className="w-8 h-8 text-muted-foreground mb-3" />
            <h4 className="font-semibold text-foreground mb-1">Modo Discreto</h4>
-           <p className="text-sm text-muted-foreground">Usa el botón del ojo en las tarjetas superiores para ocultar los saldos cuando estés en público.</p>
+           <p className="text-sm text-muted-foreground">Usa el botón del ojo en el encabezado, junto al tema, para ocultar los saldos cuando estés en público.</p>
         </div>
 
         <div className="p-4 rounded-xl border border-border">

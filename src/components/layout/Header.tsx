@@ -4,6 +4,8 @@ import React, { useRef, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import {
   Bell,
+  Eye,
+  EyeOff,
   HelpCircle,
   LogIn,
   LogOut,
@@ -15,6 +17,7 @@ import {
 import { ThemeToggle } from '../theme/ThemeToggle';
 import { NotificationBell, NotificationCenter } from '../notifications/NotificationCenter';
 import { useDismissable } from '../../hooks/useDismissable';
+import { useUIPreferences } from '../../contexts/UIPreferencesContext';
 import type { User } from 'firebase/auth';
 
 interface HeaderProps {
@@ -51,6 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
   pendingSettingsCount = 0,
   aiAuthPending = false,
 }) => {
+  const { hideBalances, setHideBalances } = useUIPreferences();
   const settingsMenuRef = useRef<HTMLDivElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
@@ -154,6 +158,17 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             <ThemeToggle />
+
+            <button
+              type="button"
+              onClick={() => setHideBalances(!hideBalances)}
+              className="header-icon"
+              title={hideBalances ? 'Mostrar valores' : 'Ocultar valores'}
+              aria-label={hideBalances ? 'Mostrar valores' : 'Ocultar valores'}
+              aria-pressed={hideBalances}
+            >
+              {hideBalances ? <Eye size={20} aria-hidden="true" /> : <EyeOff size={20} aria-hidden="true" />}
+            </button>
 
             {user && (
               <div className="relative" ref={notificationsRef}>

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { CREDIT_PAYMENT_CATEGORY, LOAN_CATEGORY } from '../../config/constants';
 import { useLedgerOverview } from '../../hooks/useGlobalStats';
 import type { Account, Transaction } from '../../types/finance';
@@ -29,5 +29,60 @@ describe('useLedgerOverview', () => {
       const { result } = renderHook(() => useLedgerOverview(history, [bank, card], 777));
       expect(result.current).toEqual({ totalBalance: 777, totalIncome: 100, totalExpenses: 40, pendingExpenses: 200 });
     } finally { vi.useRealTimers(); }
+  });
+
+  it('refreshes the current-month flow when the local month rolls over while mounted', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 31, 23, 59, 59, 999));
+    try {
+      const history = [
+        tx('july', { type: 'income', amount: 10, category: 'Salario', date: new Date(2026, 6, 31, 12) }),
+        tx('august', { type: 'income', amount: 20, category: 'Salario', date: new Date(2026, 7, 1, 12) }),
+      ];
+      const { result } = renderHook(() => useLedgerOverview(history, [bank], 777));
+
+      expect(result.current.totalIncome).toBe(10);
+
+      act(() => vi.advanceTimersByTime(1));
+
+      expect(result.current.totalIncome).toBe(20);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('refreshes the current-month flow when the app becomes visible after month rollover', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 31, 12));
+    try {
+      const history = [
+        tx('july', { type: 'income', amount: 10, category: 'Salario', date: new Date(2026, 6, 31, 12) }),
+        tx('august', { type: 'income', amount: 20, category: 'Salario', date: new Date(2026, 7, 1, 12) }),
+      ];
+      const { result } = renderHook(() => useLedgerOverview(history, [bank], 777));
+
+      expect(result.current.totalIncome).toBe(10);
+
+      vi.setSystemTime(new Date(2026, 7, 1, 12));
+      act(() => document.dispatchEvent(new Event('visibilitychange')));
+
+      expect(result.current.totalIncome).toBe(20);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('cleans up its rollover timer and visibility listeners on unmount', () => {
+    vi.useFakeTimers();
+    const removeVisibilityListener = vi.spyOn(document, 'removeEventListener');
+    const removeFocusListener = vi.spyOn(window, 'removeEventListener');
+    try {
+      const { unmount } = renderHook(() => useLedgerOverview([], [bank], 0));
+
+      unmount();
+
+      expect(removeVisibilityListener).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
+      expect(removeFocusListener).toHaveBeenCalledWith('focus', expect.any(Function));
+    } finally {
+      removeVisibilityListener.mockRestore();
+      removeFocusListener.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });

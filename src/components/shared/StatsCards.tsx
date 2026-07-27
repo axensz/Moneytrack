@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { TrendingUp, TrendingDown, Wallet, Calendar, Eye, EyeOff, Info } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, Calendar, Info } from 'lucide-react';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 import { BalanceSettling } from './BalanceSettling';
 import { AnimateDigits } from '@/components/unlumen-ui/animate-digits';
@@ -29,7 +29,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
   hasAccounts = true,
   balanceSettling = false,
 }) => {
-  const { hideBalances, setHideBalances } = useUIPreferences();
+  const { hideBalances } = useUIPreferences();
 
   const displayValue = (value: number) => hideBalances ? '••••••' : formatCurrency(value);
   const animatedValue = (value: number) => {
@@ -40,20 +40,6 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
   return (
     <section data-testid="ledger-overview" className="mb-4 sm:mb-5 md:mb-6" aria-labelledby="ledger-overview-title">
       <h2 id="ledger-overview-title" className="text-base font-bold text-foreground mb-2 sm:mb-3">Resumen general</h2>
-      {/* Botón de ocultar valores */}
-      <div className="flex justify-end mb-2 sm:mb-3">
-        <button
-          onClick={() => setHideBalances(!hideBalances)}
-          className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          title={hideBalances ? 'Mostrar valores' : 'Ocultar valores'}
-          aria-pressed={hideBalances}
-          aria-label={hideBalances ? 'Mostrar valores' : 'Ocultar valores'}
-        >
-          {hideBalances ? <Eye size={16} /> : <EyeOff size={16} />}
-          <span className="hidden sm:inline">{hideBalances ? 'Mostrar' : 'Ocultar'}</span>
-        </button>
-      </div>
-
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
         {/* Balance Card - Morado Premium (reusa .card-balance, no duplica el degradado) */}
         <div className="card-balance col-span-2 lg:col-span-1 hover:shadow-lg">

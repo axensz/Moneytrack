@@ -31,7 +31,13 @@ vi.mock('../../components/views/transactions/hooks/useTransactionsView', () => (
 }));
 
 vi.mock('../../hooks/useCSVExport', () => ({ useCSVExport: () => ({ exportTransactionsCSV: vi.fn() }) }));
+vi.mock('../../components/views/stats/StatsView', () => ({ StatsView: () => <div>Estadísticas</div> }));
 vi.mock('../../components/views/accounts/AccountsView', () => ({ AccountsView: () => <div>Cuentas</div> }));
+vi.mock('../../components/views/recurring/RecurringPaymentsView', () => ({ RecurringPaymentsView: () => <div>Periódicos</div> }));
+vi.mock('../../components/views/debts/DebtsView', () => ({ DebtsView: () => <div>Deudas</div> }));
+vi.mock('../../components/views/budgets/BudgetsView', () => ({ BudgetsView: () => <div>Presupuestos</div> }));
+vi.mock('../../components/views/financial-plan/FinancialPlanView', () => ({ FinancialPlanView: () => <div>Plan financiero</div> }));
+vi.mock('../../components/views/goals/GoalsView', () => ({ GoalsView: () => <div>Metas</div> }));
 
 function FinanceShell({ initialView }: { initialView: ViewType }) {
   return (

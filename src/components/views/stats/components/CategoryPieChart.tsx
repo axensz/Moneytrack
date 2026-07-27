@@ -56,7 +56,7 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
   const chartLabel = `Distribución de gastos por categoría. Total ${formatCurrency(total)} en ${chartData.length} grupos.`;
 
   return (
-    <ChartCard title="Gastos por Categoría" subtitle="Distribución actual" icon={PieChartIcon}>
+    <ChartCard title="Gastos por Categoría" subtitle="Historial completo" icon={PieChartIcon}>
       {hasData ? (
         <>
           <div className="flex justify-center" role="img" aria-label={chartLabel}>

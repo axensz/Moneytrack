@@ -1,0 +1,30 @@
+schema: spec-driven
+
+context: |
+  MoneyTrack is a privacy-first personal finance register built with React and
+  TypeScript. Before UI work, treat PRODUCT.md and DESIGN.md as the source of
+  truth. The product voice is confident, warm, and expert; its North Star is
+  "The Confident Ledger."
+
+  Prefer incremental, behavior-preserving changes using existing components
+  and semantic tokens. Violet #7c3aed is the only brand hue. Gradients are
+  confined to the components allowed by DESIGN.md. Do not introduce generic
+  SaaS dashboard patterns, a new dependency, or mobile-specific layout and
+  navigation changes unless the approved change explicitly requires them.
+  Shared semantic and truthful-copy corrections may apply across breakpoints
+  but must preserve existing mobile journeys.
+
+rules:
+  proposal:
+    - State the user-visible trust or usability problem and explicit non-goals.
+    - Declare whether desktop, mobile, data behavior, and dependencies are in scope.
+  design:
+    - Preserve financial calculations and persistence unless the specification explicitly changes them.
+    - Prefer the smallest feature-local fix; use an existing shared hook only when it owns the root cause.
+    - Reference the existing design tokens and accessibility contract.
+  specs:
+    - Use testable MUST requirements and concrete WHEN/THEN scenarios.
+    - Keep financial metric scopes and offline capabilities explicit.
+  tasks:
+    - Order work test-first and make every task independently verifiable.
+    - Include targeted tests, full tests, typecheck, lint, build, and proportional browser verification.

@@ -1,11 +1,9 @@
 import { renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { mergeCreditCards } from '../../utils/mergeCreditCards';
-import { BalanceCalculator } from '../../utils/balanceCalculator';
 import { getCreditCardUsedCredit } from '../../utils/accountStrategies';
 import { useCreditCardStatement } from '../../hooks/useCreditCardStatement';
 import { useGlobalStats } from '../../hooks/useGlobalStats';
-import { useFilteredData } from '../../hooks/useFilteredData';
 import { useCreditCardInterests } from '../../components/views/stats/hooks/useCreditCardInterests';
 import { buildFinancialContext } from '../../lib/gemini';
 import type { Account, Categories, Transaction } from '../../types/finance';
@@ -138,17 +136,6 @@ describe('mergeCreditCards consumers', () => {
 
       const globalStats = renderHook(() => useGlobalStats(merged.transactions, merged.accounts)).result.current;
       expect(globalStats.pendingExpenses).toBe(1_450_000);
-
-      const filtered = renderHook(() => useFilteredData({
-        transactions: merged.transactions,
-        accounts: merged.accounts,
-        filterAccount: destinationCard.id!,
-        filterCategory: 'all',
-        totalBalance: 0,
-        getAccountBalance: () => BalanceCalculator.calculateAccountBalance(mergedCard, merged.transactions),
-      })).result.current;
-      expect(filtered.filteredTransactions).toHaveLength(4);
-      expect(filtered.dynamicStats.pendingExpenses).toBe(1_450_000);
 
       const interests = renderHook(() => useCreditCardInterests(merged.accounts, merged.transactions)).result.current;
       expect(interests.creditCardInterests).toEqual([

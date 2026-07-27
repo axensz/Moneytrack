@@ -35,7 +35,7 @@ describe('useTransactionsView - alcance del export', () => {
       recurringPayments: [],
       filterCategory: 'Comida',
       filterAccount: 'account-1',
-      searchQuery: 'mercado',
+      searchQuery: '  MERCADO  ',
       dateRangePreset: 'custom' as const,
       customStartDate: '2026-07-01',
       customEndDate: '2026-07-31',
@@ -57,7 +57,20 @@ describe('useTransactionsView - alcance del export', () => {
     const wrongCategory: Transaction = {
       ...matchVisible, id: 'wrong-category', category: 'Otros',
     };
-    const visible = [matchVisible, juneMatch, augustMatch, wrongCategory];
+    const wrongAccount: Transaction = {
+      ...matchVisible, id: 'wrong-account', accountId: 'account-2',
+    };
+    const nonMatchingSearch: Transaction = {
+      ...matchVisible, id: 'non-matching-search', description: 'PanaderÃ­a semanal',
+    };
+    const visible = [
+      matchVisible,
+      juneMatch,
+      augustMatch,
+      wrongCategory,
+      wrongAccount,
+      nonMatchingSearch,
+    ];
     const fullHistory = [...visible, matchHistorical];
 
     expect(filterTransactionsForView(visible, options).map((item) => item.id)).toEqual(['match-visible']);

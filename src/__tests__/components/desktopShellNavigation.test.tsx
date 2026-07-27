@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { FinanceViewRouter } from '../../components/layout/FinanceViewRouter';
 import { TabNavigation } from '../../components/layout/TabNavigation';
-import { sectionTitle } from '../../config/ui';
+import { navTabLabel, sectionTitle } from '../../config/ui';
 import { navigateToActionUrl, useViewRouting } from '../../hooks/useViewRouting';
 import { useViewTransitionFocus } from '../../hooks/useViewTransitionFocus';
 import type { ViewType } from '../../types/finance';
@@ -69,6 +69,11 @@ function RoutedShell({ onViewChange = vi.fn() }: { onViewChange?: (view: ViewTyp
       </main>
     </>
   );
+}
+
+function ControlledTabNavigation({ initialView }: { initialView: ViewType }) {
+  const [view, setView] = React.useState(initialView);
+  return <TabNavigation view={view} setView={setView} />;
 }
 
 const headingContracts: Array<[ViewType, string]> = [
@@ -162,13 +167,20 @@ describe('desktop shell navigation', () => {
     ['Home', 'goals', 'transactions'],
     ['End', 'transactions', 'financial-plan'],
   ])('moves %s from %s to %s with roving tabindex', async (key, from, to) => {
-    const setView = vi.fn();
-    render(<TabNavigation view={from as ViewType} setView={setView} />);
-    const current = screen.getByRole('tab', { selected: true });
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView });
+    render(<ControlledTabNavigation initialView={from as ViewType} />);
+    const current = screen.getByRole('tab', { name: new RegExp(navTabLabel(from as ViewType)), selected: true });
     current.focus();
     fireEvent.keyDown(current, { key });
-    expect(setView).toHaveBeenCalledWith(to);
-    await waitFor(() => expect(screen.getByRole('tab', { name: new RegExp(sectionTitle(to as ViewType)) })).toHaveFocus());
+    const target = screen.getByRole('tab', { name: new RegExp(navTabLabel(to as ViewType)) });
+    await waitFor(() => {
+      expect(target).toHaveAttribute('aria-selected', 'true');
+      expect(target).toHaveAttribute('tabindex', '0');
+      expect(current).toHaveAttribute('tabindex', '-1');
+      expect(target).toHaveFocus();
+    });
+    expect(scrollIntoView).toHaveBeenCalledExactlyOnceWith({ block: 'nearest', inline: 'nearest' });
   });
 
   it('ignores keys outside the primary tab keyboard model', () => {

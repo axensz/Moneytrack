@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationCenter } from '../../components/notifications/NotificationCenter';
+import { useViewRouting } from '../../hooks/useViewRouting';
 
 const mocks = vi.hoisted(() => ({
   markAsRead: vi.fn(async () => undefined),
@@ -40,9 +41,14 @@ describe('NotificationCenter - navegacion de acciones', () => {
     window.history.replaceState({}, '', '/');
   });
 
-  it('marca como leida y navega a la vista indicada', async () => {
+  it('marca como leida y navega a la vista indicada una sola vez', async () => {
     const onClose = vi.fn();
-    render(<NotificationCenter isOpen onClose={onClose} />);
+    const onViewChange = vi.fn();
+    function NotificationRoutingHarness() {
+      useViewRouting({ onViewChange });
+      return <NotificationCenter isOpen onClose={onClose} />;
+    }
+    render(<NotificationRoutingHarness />);
 
     fireEvent.click(screen.getByText('Presupuesto cerca del limite'));
 
@@ -50,6 +56,8 @@ describe('NotificationCenter - navegacion de acciones', () => {
       expect(mocks.markAsRead).toHaveBeenCalledWith('notification-1');
       expect(new URLSearchParams(window.location.search).get('view')).toBe('budgets');
       expect(onClose).toHaveBeenCalledTimes(1);
+      expect(onViewChange).toHaveBeenCalledTimes(1);
+      expect(onViewChange).toHaveBeenLastCalledWith('budgets');
     });
   });
 

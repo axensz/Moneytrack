@@ -15,6 +15,7 @@
 import { useMemo } from 'react';
 import { getCreditCardUsedCredit } from '../utils/accountStrategies';
 import { findAccountForTransaction } from '../utils/accountTransactions';
+import { getDateRangeFromPreset } from '../utils/dateUtils';
 import { SPECIAL_CATEGORIES } from '../config/constants';
 import type { Account, Transaction } from '../types/finance';
 
@@ -38,6 +39,13 @@ export interface GlobalStats {
    * consumidores que aún dependan de este desglose.
    */
   unpaidTCExpenses: number;
+}
+
+export interface LedgerOverview {
+  totalBalance: number;
+  totalIncome: number;
+  totalExpenses: number;
+  pendingExpenses: number;
 }
 
 /**
@@ -120,4 +128,28 @@ export function useGlobalStats(
       unpaidTCExpenses
     };
   }, [transactions, accounts]);
+}
+
+export function useLedgerOverview(
+  transactions: Transaction[],
+  accounts: Account[],
+  totalBalance: number,
+): LedgerOverview {
+  const currentMonthTransactions = useMemo(() => {
+    const { start, end } = getDateRangeFromPreset('this-month');
+    return transactions.filter((transaction) => {
+      const date = new Date(transaction.date);
+      return (!start || date >= start) && (!end || date <= end);
+    });
+  }, [transactions]);
+
+  const currentMonthStats = useGlobalStats(currentMonthTransactions, accounts);
+  const fullHistoryStats = useGlobalStats(transactions, accounts);
+
+  return {
+    totalBalance,
+    totalIncome: currentMonthStats.totalIncome,
+    totalExpenses: currentMonthStats.totalExpenses,
+    pendingExpenses: fullHistoryStats.pendingExpenses,
+  };
 }

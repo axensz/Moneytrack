@@ -13,8 +13,8 @@ interface StatsCardsProps {
   /** Cuando no hay cuentas creadas, muestra un mensaje orientativo bajo las tarjetas */
   hasAccounts?: boolean;
   /**
-   * true mientras el saldo aún se calcula desde la ventana paginada (el fetch
-   * del historial completo está en vuelo): muestra "Calculando…" en vez de un
+   * true mientras el historial completo del saldo todavía se carga: muestra
+   * "Calculando…" en vez de un
    * número transitorio incorrecto.
    */
   balanceSettling?: boolean;

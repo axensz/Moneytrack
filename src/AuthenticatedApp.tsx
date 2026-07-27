@@ -35,7 +35,6 @@ import {
   useBeneficiaryDomain,
   useCategoryDomain,
   useFinanceStatus,
-  useFormatCurrency,
   useRecurringDomain,
   useTransactionDomain,
 } from './hooks/useFinanceSelectors';
@@ -117,8 +116,6 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     firestoreError,
     retryLoad,
   } = useFinanceStatus();
-  const formatCurrency = useFormatCurrency();
-
   // Estado de IA (BYOK): si hay key pero falta autorizar el consentimiento,
   // mostramos un badge de "pendiente" sobre el botón de configuración.
   const { isConfigured: aiKeyConfigured, hasConsent: aiHasConsent } = useGeminiKey();

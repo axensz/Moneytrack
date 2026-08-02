@@ -1,4 +1,6 @@
 import React from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { User } from 'firebase/auth';
@@ -161,5 +163,16 @@ describe('Header', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Abrir asistente IA' }));
 
     expect(onOpenAssistant).toHaveBeenCalledWith(settingsTrigger);
+  });
+
+  it('keeps the desktop button floor from overriding 44px header targets', () => {
+    const utilitiesSource = readFileSync(
+      resolve(process.cwd(), 'app/styles/utilities.css'),
+      'utf8',
+    );
+
+    expect(utilitiesSource).toContain(
+      'button:not(.btn-type):not(.header-icon)',
+    );
   });
 });

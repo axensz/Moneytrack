@@ -24,6 +24,7 @@ interface BaseModalProps {
   onClose: () => void;
   children: React.ReactNode;
   title?: string;
+  ariaLabelledBy?: string;
   titleIcon?: React.ReactNode;
   maxWidth?: string;
   className?: string;
@@ -39,6 +40,7 @@ export function BaseModal({
   onClose,
   children,
   title,
+  ariaLabelledBy,
   titleIcon,
   maxWidth = 'max-w-md',
   className = '',
@@ -81,7 +83,8 @@ export function BaseModal({
       onClick={closeOnBackdrop ? onClose : undefined}
       role="dialog"
       aria-modal="true"
-      aria-label={title}
+      aria-labelledby={ariaLabelledBy}
+      aria-label={ariaLabelledBy ? undefined : title}
     >
       <div
         ref={modalRef}

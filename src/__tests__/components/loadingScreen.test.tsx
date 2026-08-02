@@ -15,12 +15,14 @@ describe('LoadingScreen', () => {
 
   it('stays visible until the parent marks it as exiting', () => {
     vi.useFakeTimers();
-    render(<LoadingScreen />);
+    render(<LoadingScreen message="Preparando tu registro" />);
 
     vi.advanceTimersByTime(1000);
 
-    expect(getSplash()).toHaveClass('opacity-100');
-    expect(getSplash()).not.toHaveClass('opacity-0');
+    const splash = screen.getByRole('status', { name: 'Preparando tu registro' });
+    expect(splash).toHaveClass('opacity-100');
+    expect(splash).not.toHaveClass('opacity-0');
+    expect(splash).toHaveAttribute('aria-busy', 'true');
   });
 
   it('fades out without blocking clicks when exiting', () => {

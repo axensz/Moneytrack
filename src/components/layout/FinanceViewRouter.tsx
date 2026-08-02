@@ -32,10 +32,12 @@ const GoalsView = lazy(() =>
 );
 
 const ViewFallback = () => (
-  <div className="space-y-4 animate-pulse">
-    <div className="h-24 bg-muted rounded-xl" />
-    <div className="h-16 bg-muted rounded-xl" />
-    <div className="h-16 bg-muted rounded-xl" />
+  <div role="status" aria-busy="true" aria-label="Cargando vista">
+    <div className="space-y-4 animate-pulse" aria-hidden="true">
+      <div className="h-24 bg-muted rounded-xl" />
+      <div className="h-16 bg-muted rounded-xl" />
+      <div className="h-16 bg-muted rounded-xl" />
+    </div>
   </div>
 );
 

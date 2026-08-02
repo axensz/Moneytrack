@@ -108,9 +108,14 @@ describe('TransactionItem a11y / máscara', () => {
     const toggle = screen.getByRole('button', { name: 'Expandir detalle' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(toggle.tagName).toBe('BUTTON');
-    // El contenedor de la fila ya no debe anunciarse como button (ARIA inválido:
-    // button anidando button). No debe existir un role=button salvo los reales.
-    expect(screen.queryByRole('button', { name: '' })).toBeNull();
+    const rowControls = [
+      screen.getByRole('button', { name: 'Editar transacción' }),
+      screen.getByRole('button', { name: 'Eliminar transacción' }),
+      toggle,
+    ];
+    for (const control of rowControls) {
+      expect(control.parentElement?.closest('[role="button"], a[href]')).toBeNull();
+    }
 
     rerender(
       <TransactionItem

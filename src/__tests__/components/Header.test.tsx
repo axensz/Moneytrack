@@ -35,6 +35,8 @@ function renderHeader(overrides: Partial<React.ComponentProps<typeof Header>> = 
     onOpenCategories: vi.fn(),
     onOpenNotificationPreferences: vi.fn(),
     onOpenAISettings: vi.fn(),
+    aiReady: false,
+    onOpenAssistant: vi.fn(),
     onLogout: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -67,6 +69,8 @@ describe('Header', () => {
           onOpenCategories={vi.fn()}
           onOpenNotificationPreferences={vi.fn()}
           onOpenAISettings={vi.fn()}
+          aiReady={false}
+          onOpenAssistant={vi.fn()}
           onLogout={vi.fn()}
         />
         <PreferenceValue />
@@ -103,6 +107,7 @@ describe('Header', () => {
       screen.getByRole('button', { name: 'Cambiar tema' }),
       screen.getByRole('button', { name: 'Ocultar valores' }),
       screen.getByRole('button', { name: 'Abrir notificaciones' }),
+      container.querySelector<HTMLElement>('[data-header-action="assistant"]')!,
       screen.getByRole('button', { name: 'Abrir menú de ajustes' }),
       container.querySelector<HTMLElement>('[data-header-action="logout"]')!,
     ];
@@ -112,5 +117,49 @@ describe('Header', () => {
         & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
     });
+  });
+
+  it('routes the guest assistant entry to authentication', () => {
+    const setIsAuthModalOpen = vi.fn();
+    const { container } = renderHeader({ user: null, showSettingsMenu: false, setIsAuthModalOpen });
+    const entry = container.querySelector<HTMLElement>('[data-header-action="assistant"]')!;
+
+    expect(entry).toHaveAccessibleName('Inicia sesión para usar el asistente IA');
+    fireEvent.click(entry);
+
+    expect(setIsAuthModalOpen).toHaveBeenCalledWith(true);
+  });
+
+  it('routes the unconfigured authenticated assistant entry to AI settings', () => {
+    const onOpenAISettings = vi.fn();
+    const { container } = renderHeader({ aiReady: false, showSettingsMenu: false, onOpenAISettings });
+    const entry = container.querySelector<HTMLElement>('[data-header-action="assistant"]')!;
+
+    expect(entry).toHaveAccessibleName('Activar asistente IA');
+    fireEvent.click(entry);
+
+    expect(onOpenAISettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes a configured assistant entry to the controlled panel trigger', () => {
+    const onOpenAssistant = vi.fn();
+    const { container } = renderHeader({ aiReady: true, showSettingsMenu: false, onOpenAssistant });
+    const entry = container.querySelector<HTMLElement>('[data-header-action="assistant"]')!;
+
+    expect(entry).toHaveAccessibleName('Abrir asistente IA');
+    fireEvent.click(entry);
+
+    expect(onOpenAssistant).toHaveBeenCalledWith(entry);
+    expect(entry).toHaveClass('hidden', 'lg:inline-flex');
+  });
+
+  it('uses the labeled Settings action as the compact configured entry', () => {
+    const onOpenAssistant = vi.fn();
+    renderHeader({ aiReady: true, showSettingsMenu: true, onOpenAssistant });
+    const settingsTrigger = screen.getByRole('button', { name: 'Abrir menú de ajustes' });
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Abrir asistente IA' }));
+
+    expect(onOpenAssistant).toHaveBeenCalledWith(settingsTrigger);
   });
 });

@@ -31,6 +31,8 @@ interface HeaderProps {
   onOpenCategories: () => void;
   onOpenNotificationPreferences: () => void;
   onOpenAISettings: () => void;
+  aiReady: boolean;
+  onOpenAssistant: (returnFocusTo: HTMLElement) => void;
   onLogout: () => Promise<void>;
   pendingSettingsCount?: number;
   aiAuthPending?: boolean;
@@ -50,6 +52,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCategories,
   onOpenNotificationPreferences,
   onOpenAISettings,
+  aiReady,
+  onOpenAssistant,
   onLogout,
   pendingSettingsCount = 0,
   aiAuthPending = false,
@@ -122,6 +126,18 @@ export const Header: React.FC<HeaderProps> = ({
   });
 
   const accountLabel = user?.displayName || user?.email || 'Usuario';
+  const assistantLabel = !user
+    ? 'Inicia sesión para usar el asistente IA'
+    : aiReady
+      ? 'Abrir asistente IA'
+      : 'Activar asistente IA';
+
+  const activateAssistant = useCallback((returnFocusTo: HTMLElement) => {
+    if (!user) setIsAuthModalOpen(true);
+    else if (!aiReady) onOpenAISettings();
+    else onOpenAssistant(returnFocusTo);
+  }, [aiReady, onOpenAISettings, onOpenAssistant, setIsAuthModalOpen, user]);
+
   return (
     <header className="w-full min-w-0 max-w-full overflow-x-clip flex items-center pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 sm:pt-[calc(0.75rem+env(safe-area-inset-top))] sm:pb-3 bg-card/90 backdrop-blur-md border-b border-border z-[100] shadow-sm shrink-0">
       <div className="w-full min-w-0 px-3 sm:px-4 md:px-6 lg:px-8">
@@ -179,6 +195,17 @@ export const Header: React.FC<HeaderProps> = ({
                 />
               </div>
             )}
+
+            <button
+              type="button"
+              data-header-action="assistant"
+              onClick={(event) => activateAssistant(event.currentTarget)}
+              className="header-icon hidden lg:inline-flex"
+              aria-label={assistantLabel}
+              title={assistantLabel}
+            >
+              <Sparkles size={20} aria-hidden="true" />
+            </button>
 
             <div className="relative" ref={settingsMenuRef}>
               <button
@@ -238,15 +265,16 @@ export const Header: React.FC<HeaderProps> = ({
                     </button>
                   )}
                   <button
-                    onClick={() => {
-                      onOpenAISettings();
+                    onClick={(event) => {
+                      const returnFocusTo = settingsButtonRef.current ?? event.currentTarget;
                       setShowSettingsMenu(false);
+                      activateAssistant(returnFocusTo);
                     }}
                     className={menuItemClass}
                     role="menuitem"
                   >
                     <Sparkles size={18} aria-hidden="true" />
-                    <span>Asistente IA</span>
+                    <span>{assistantLabel}</span>
                     {aiAuthPending && (
                       <span
                         className="ml-auto w-2 h-2 rounded-full bg-destructive"

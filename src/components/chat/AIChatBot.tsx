@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
-import { X, Send, Bot, User, Loader2, Sparkles, Trash2, Check, XCircle, Info } from 'lucide-react';
+import { X, Send, Bot, User, Loader2, Trash2, Check, XCircle, Info } from 'lucide-react';
 import { sendChatMessage, isGeminiConfigured, parseActionFromResponse, type ChatMessage, type ChatAction, type TokenUsage } from '../../lib/gemini';
 import { formatCurrency } from '../../utils/formatters';
 import { logger } from '../../utils/logger';
@@ -107,7 +107,11 @@ function renderMarkdown(text: string): React.ReactNode {
   return elements;
 }
 
-interface AIChatBotProps { }
+interface AIChatBotProps {
+  isOpen: boolean;
+  onClose: () => void;
+  returnFocusRef: React.RefObject<HTMLElement | null>;
+}
 
 const WELCOME_MESSAGE: UIChatMessage = {
   id: 'welcome',
@@ -285,7 +289,11 @@ const ActionCard: React.FC<{
   );
 };
 
-export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
+export const AIChatBot: React.FC<AIChatBotProps> = memo(({
+  isOpen,
+  onClose,
+  returnFocusRef,
+}) => {
   const {
     transactions,
     addTransaction: onAddTransaction,
@@ -293,7 +301,6 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
   } = useTransactionDomain();
   const { accounts } = useAccountDomain();
   const { categories, addCategory: onAddCategory } = useCategoryDomain();
-  const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<UIChatMessage[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -387,6 +394,11 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
     setMessages([WELCOME_MESSAGE]);
     setError(null);
   }, []);
+
+  const handleClose = useCallback(() => {
+    onClose();
+    returnFocusRef.current?.focus();
+  }, [onClose, returnFocusRef]);
 
   // Ejecutar una acción confirmada por el usuario
   const handleConfirmAction = useCallback(async (msgIndex: number) => {
@@ -534,28 +546,9 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
     });
   }, []);
 
-  // No mostrar el chatbot si la API key no está configurada
-  if (!configured) return null;
-
-  // Botón flotante
-  if (!isOpen) {
-    return (
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-[88px] sm:bottom-6 right-4 sm:right-6 z-40 p-4 rounded-full bg-gradient-to-br from-purple-600 via-violet-600 to-purple-700 text-white shadow-lg hover:shadow-2xl hover:scale-110 transition-[box-shadow,transform] duration-300 group animate-in fade-in zoom-in"
-        title="Asistente financiero IA"
-        aria-label="Abrir asistente de IA"
-      >
-        <Sparkles size={24} className="group-hover:rotate-12 transition-transform duration-300" />
-        {/* Badge de IA con animación */}
-        <span className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-br from-amber-400 to-amber-500 rounded-full flex items-center justify-center shadow-md animate-pulse">
-          <span className="text-[9px] font-bold text-amber-900">AI</span>
-        </span>
-        {/* Efecto de brillo */}
-        <span className="absolute inset-0 rounded-full bg-white opacity-0 group-hover:opacity-20 transition-opacity duration-300"></span>
-      </button>
-    );
-  }
+  // El shell controla la visibilidad; mantener este componente montado conserva
+  // el borrador y la conversación entre cierres.
+  if (!configured || !isOpen) return null;
 
   return (
     <div className="fixed bottom-[88px] sm:bottom-6 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-[420px] sm:max-w-[420px] h-[calc(100vh-180px)] sm:h-[600px] max-h-[calc(100vh-180px)] sm:max-h-[85vh] flex flex-col bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-purple-200 dark:border-purple-800 overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-300">
@@ -587,7 +580,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
             <Trash2 size={16} className="drop-shadow-sm" />
           </button>
           <button
-            onClick={() => setIsOpen(false)}
+            onClick={handleClose}
             className="p-2 hover:bg-white/20 backdrop-blur-sm rounded-lg transition-[background-color,transform] hover:scale-110 active:scale-95"
             aria-label="Cerrar chat"
           >

@@ -51,7 +51,6 @@ import { InstallPrompt } from './components/pwa/InstallPrompt';
 const AIChatBot = lazy(() =>
   import('./components/chat/AIChatBot').then(m => ({ default: m.AIChatBot }))
 );
-import { AITeaserButton } from './components/chat/AITeaserButton';
 import { OnboardingChecklist } from './components/onboarding/OnboardingChecklist';
 import type { BudgetDraft } from './components/views/budgets/BudgetsView';
 
@@ -120,6 +119,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   // Estado de IA (BYOK): si hay key pero falta autorizar el consentimiento,
   // mostramos un badge de "pendiente" sobre el botón de configuración.
   const { isConfigured: aiKeyConfigured, hasConsent: aiHasConsent } = useGeminiKey();
+  const aiReady = Boolean(user && aiKeyConfigured && aiHasConsent);
   const aiAuthPending = aiKeyConfigured && !aiHasConsent;
   const pendingSettingsCount = aiAuthPending ? 1 : 0;
 
@@ -133,6 +133,15 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const [showNotificationPreferences, setShowNotificationPreferences] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [hasMountedAssistant, setHasMountedAssistant] = useState(false);
+  const assistantTriggerRef = useRef<HTMLElement | null>(null);
+
+  const handleOpenAssistant = useCallback((returnFocusTo: HTMLElement) => {
+    assistantTriggerRef.current = returnFocusTo;
+    setHasMountedAssistant(true);
+    setIsAssistantOpen(true);
+  }, []);
 
   const [showForm, setShowForm] = useState(false);
   const [pendingBudgetDraft, setPendingBudgetDraft] = useState<BudgetDraft | null>(null);
@@ -409,6 +418,8 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         onOpenCategories={handleOpenCategories}
         onOpenNotificationPreferences={handleOpenNotificationPreferences}
         onOpenAISettings={() => setShowAISettingsModal(true)}
+        aiReady={aiReady}
+        onOpenAssistant={handleOpenAssistant}
         onLogout={handleLogout}
         pendingSettingsCount={pendingSettingsCount}
         aiAuthPending={aiAuthPending}
@@ -420,7 +431,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
             <OnboardingChecklist
               hasAccounts={accounts.length > 0}
               hasTransactions={transactions.length > 0}
-              aiReady={!!user && aiKeyConfigured && aiHasConsent}
+              aiReady={aiReady}
               onGoToAccounts={() => setView('accounts')}
               onAddTransaction={() => { setView('transactions'); setShowForm(true); }}
               onOpenAISettings={() => setShowAISettingsModal(true)}
@@ -482,20 +493,14 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         </div>
       </main>
 
-      {/* Asistente IA (A6) — descubrible siempre:
-          - listo (sesión + key + consentimiento) → chat completo (lazy).
-          - invitado o sin key/consentimiento → teaser ligero que invita a
-            activarlo (abre login o GeminiKeyModal). Evita cargar el chunk del
-            chat / el cliente Gemini hasta que la IA esté realmente lista. */}
-      {user && aiKeyConfigured && aiHasConsent ? (
+      {hasMountedAssistant && aiReady && (
         <Suspense fallback={null}>
-          <AIChatBot />
+          <AIChatBot
+            isOpen={isAssistantOpen}
+            onClose={() => setIsAssistantOpen(false)}
+            returnFocusRef={assistantTriggerRef}
+          />
         </Suspense>
-      ) : (
-        <AITeaserButton
-          isLoggedIn={!!user}
-          onActivate={() => (user ? setShowAISettingsModal(true) : setIsAuthModalOpen(true))}
-        />
       )}
     </div>
   );

@@ -118,4 +118,24 @@ describe('AIChatBot shell control', () => {
       .toHaveClass('flex-1', 'min-h-0', 'overflow-y-auto');
     expect(dialog.querySelector('[data-assistant-composer]')).toHaveClass('shrink-0');
   });
+
+  it('uses semantic surfaces without decorative assistant gradients or motion', () => {
+    const { container } = render(<ControlledChat />);
+    const assistant = container.querySelector('[role="dialog"]')!;
+    const classText = Array.from(assistant.querySelectorAll<HTMLElement>('*'))
+      .concat(assistant as HTMLElement)
+      .map((element) => element.className)
+      .filter((value) => typeof value === 'string')
+      .join(' ');
+
+    expect(classText).not.toMatch(
+      /bg-gradient|animate-shimmer|animate-pulse|hover:scale|group-hover:rotate|ease-(bounce|elastic)/,
+    );
+    expect(assistant).toHaveClass(
+      'bg-card',
+      'text-card-foreground',
+      'border-border',
+      'duration-200',
+    );
+  });
 });

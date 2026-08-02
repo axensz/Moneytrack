@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Account, RecurringPayment, Transaction } from '../../types/finance';
+import type { Account, Budget, RecurringPayment, Transaction } from '../../types/finance';
+import type { BudgetStatus } from '../../hooks/useBudgets';
 import { BudgetsView } from '../../components/views/budgets/BudgetsView';
 import { FinancialPlanView } from '../../components/views/financial-plan/FinancialPlanView';
 
@@ -13,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   applyBudgetSuggestion: vi.fn(),
   draftApplied: vi.fn(),
   openPlan: vi.fn(),
+  budgets: [] as Budget[],
+  budgetStatuses: [] as BudgetStatus[],
   transactions: [] as Transaction[],
   recurringPayments: [] as RecurringPayment[],
   accounts: [] as Account[],
@@ -33,11 +36,11 @@ const tx = (overrides: Partial<Transaction>): Transaction => ({
 
 vi.mock('../../hooks/useFinanceSelectors', () => ({
   useBudgetsDomain: () => ({
-    budgets: [],
+    budgets: mocks.budgets,
     addBudget: mocks.addBudget,
     updateBudget: mocks.updateBudget,
     deleteBudget: mocks.deleteBudget,
-    budgetStatuses: [],
+    budgetStatuses: mocks.budgetStatuses,
     budgetStats: { active: 0, exceeded: 0, warning: 0, totalBudgeted: 0, totalSpent: 0 },
   }),
   useCategoryDomain: () => ({
@@ -84,6 +87,8 @@ describe('FinancialPlanView — plan financiero accionable', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-15T12:00:00'));
     mocks.hideBalances = false;
+    mocks.budgets = [];
+    mocks.budgetStatuses = [];
     mocks.recurringPayments = [];
     mocks.accounts = [];
     mocks.transactions = [
@@ -262,6 +267,43 @@ describe('BudgetsView — responsabilidad de presupuestos', () => {
 
     expect(screen.getByRole('combobox')).toHaveValue('');
     expect(screen.getByRole('textbox')).toHaveValue('');
+  });
+
+  it('usa un formulario nativo con etiquetas y errores asociados', () => {
+    render(<BudgetsView />);
+
+    fireEvent.click(screen.getByRole('button', { name: /nuevo/i }));
+    const form = screen.getByRole('form', { name: 'Nuevo presupuesto' });
+    const category = screen.getByRole('combobox', { name: 'Categoría' });
+    const limit = screen.getByRole('textbox', { name: 'Límite mensual' });
+
+    fireEvent.submit(form);
+    expect(screen.getByRole('alert')).toHaveTextContent('Selecciona una categoría');
+    expect(category).toHaveAttribute('aria-invalid', 'true');
+    expect(category).toHaveAttribute('aria-describedby', 'new-budget-category-error');
+
+    fireEvent.change(category, { target: { value: 'Entretenimiento' } });
+    fireEvent.submit(form);
+    expect(screen.getByRole('alert')).toHaveTextContent('El límite debe ser mayor a 0');
+    expect(limit).toHaveAttribute('aria-invalid', 'true');
+    expect(limit).toHaveAttribute('aria-describedby', 'new-budget-limit-error');
+    expect(mocks.addBudget).not.toHaveBeenCalled();
+  });
+
+  it('nombra de forma estable las acciones por presupuesto', () => {
+    const budget: Budget = {
+      id: 'budget-food',
+      category: 'Alimentación',
+      monthlyLimit: 500_000,
+      isActive: true,
+    };
+    mocks.budgets = [budget];
+    mocks.budgetStatuses = [{ budget, spent: 120_000, remaining: 380_000, percentage: 24, status: 'ok' }];
+
+    render(<BudgetsView />);
+
+    expect(screen.getByRole('button', { name: 'Desactivar presupuesto de Alimentación' })).toHaveAttribute('type', 'button');
+    expect(screen.getByRole('button', { name: 'Eliminar presupuesto de Alimentación' })).toHaveAttribute('type', 'button');
   });
 
   it('bloquea doble submit mientras se guarda un presupuesto', async () => {

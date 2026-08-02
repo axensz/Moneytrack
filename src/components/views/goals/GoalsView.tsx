@@ -40,17 +40,25 @@ export const GoalsView: React.FC = () => {
   const submittingGoalRef = useRef(false);
 
   const [formData, setFormData] = useState(createEmptyGoalForm);
+  const [formErrors, setFormErrors] = useState<{ name?: string; targetAmount?: string }>({});
+  const [savingsError, setSavingsError] = useState<string | null>(null);
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     if (submittingGoalRef.current) return;
 
+    setFormErrors({});
     const amount = parseCurrency(formData.targetAmount);
     if (!formData.name.trim()) {
-      showToast.error('Ingresa un nombre para la meta');
+      const message = 'Ingresa un nombre para la meta';
+      setFormErrors({ name: message });
+      showToast.error(message);
       return;
     }
     if (isNaN(amount) || amount <= 0) {
-      showToast.error('El monto objetivo debe ser mayor a 0');
+      const message = 'El monto objetivo debe ser mayor a 0';
+      setFormErrors({ targetAmount: message });
+      showToast.error(message);
       return;
     }
 
@@ -67,6 +75,7 @@ export const GoalsView: React.FC = () => {
 
       showToast.success('Meta creada');
       setFormData(createEmptyGoalForm());
+      setFormErrors({});
       setShowForm(false);
     } catch (error) {
       showToast.error(error instanceof Error ? error.message : 'No se pudo guardar la meta');
@@ -79,6 +88,7 @@ export const GoalsView: React.FC = () => {
   const handleCancelGoalForm = () => {
     if (isSubmittingGoal) return;
     setFormData(createEmptyGoalForm());
+    setFormErrors({});
     setShowForm(false);
   };
 
@@ -86,20 +96,26 @@ export const GoalsView: React.FC = () => {
     if (showForm) {
       handleCancelGoalForm();
     } else {
+      setFormErrors({});
       setShowForm(true);
     }
   };
 
-  const handleAddSavings = async (goalId: string) => {
+  const handleAddSavings = async (event: React.FormEvent<HTMLFormElement>, goalId: string) => {
+    event.preventDefault();
+    setSavingsError(null);
     const amount = parseCurrency(savingsAmount);
     if (isNaN(amount) || amount <= 0) {
-      showToast.error('El monto debe ser mayor a 0');
+      const message = 'El monto debe ser mayor a 0';
+      setSavingsError(message);
+      showToast.error(message);
       return;
     }
 
     await addSavings(goalId, amount);
     showToast.success('Ahorro registrado');
     setSavingsAmount('');
+    setSavingsError(null);
     setShowAddSavings(null);
   };
 
@@ -180,6 +196,7 @@ export const GoalsView: React.FC = () => {
             Mis metas
           </h3>
           <button
+            type="button"
             onClick={handleToggleGoalForm}
             className="btn-primary text-sm"
           >
@@ -190,29 +207,45 @@ export const GoalsView: React.FC = () => {
 
         {/* Form */}
         {showForm && (
-          <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 mb-4 space-y-3">
-            <input
-              type="text"
-              value={formData.name}
-              onChange={e => setFormData(f => ({ ...f, name: e.target.value }))}
-              placeholder="Nombre de la meta (ej: Vacaciones)"
-              className="input-base"
-            />
-
-            <input
-              type="text"
-              inputMode="numeric"
-              value={formatNumberForInput(formData.targetAmount)}
-              onChange={e => setFormData(f => ({ ...f, targetAmount: unformatNumber(e.target.value) }))}
-              placeholder="Monto objetivo (COP)"
-              className="input-base"
-            />
+          <form aria-labelledby="new-goal-title" onSubmit={handleSubmit} noValidate className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 mb-4 space-y-3">
+            <h4 id="new-goal-title" className="sr-only">Nueva meta</h4>
+            <div>
+              <label htmlFor="new-goal-name" className="block text-xs font-medium text-muted-foreground mb-1">Nombre de la meta</label>
+              <input
+                id="new-goal-name"
+                type="text"
+                value={formData.name}
+                onChange={e => setFormData(f => ({ ...f, name: e.target.value }))}
+                placeholder="Nombre de la meta (ej: Vacaciones)"
+                className="input-base"
+                aria-invalid={Boolean(formErrors.name)}
+                aria-describedby={formErrors.name ? 'new-goal-name-error' : undefined}
+              />
+              {formErrors.name && <p id="new-goal-name-error" role="alert" className="mt-1 text-xs text-destructive">{formErrors.name}</p>}
+            </div>
 
             <div>
-              <label className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">
+              <label htmlFor="new-goal-amount" className="block text-xs font-medium text-muted-foreground mb-1">Monto objetivo</label>
+              <input
+                id="new-goal-amount"
+                type="text"
+                inputMode="numeric"
+                value={formatNumberForInput(formData.targetAmount)}
+                onChange={e => setFormData(f => ({ ...f, targetAmount: unformatNumber(e.target.value) }))}
+                placeholder="Monto objetivo (COP)"
+                className="input-base"
+                aria-invalid={Boolean(formErrors.targetAmount)}
+                aria-describedby={formErrors.targetAmount ? 'new-goal-amount-error' : undefined}
+              />
+              {formErrors.targetAmount && <p id="new-goal-amount-error" role="alert" className="mt-1 text-xs text-destructive">{formErrors.targetAmount}</p>}
+            </div>
+
+            <div>
+              <label htmlFor="new-goal-date" className="text-xs text-gray-600 dark:text-gray-400 mb-1 block">
                 Fecha límite (opcional)
               </label>
               <input
+                id="new-goal-date"
                 type="date"
                 value={formData.targetDate}
                 onChange={e => setFormData(f => ({ ...f, targetDate: e.target.value }))}
@@ -222,13 +255,14 @@ export const GoalsView: React.FC = () => {
 
             <div className="flex gap-2">
               <button
-                onClick={handleSubmit}
+                type="submit"
                 disabled={isSubmittingGoal}
                 className="btn-submit flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmittingGoal ? UI_TEXT.states.saving : 'Crear meta'}
               </button>
               <button
+                type="button"
                 onClick={handleCancelGoalForm}
                 disabled={isSubmittingGoal}
                 className="btn-cancel flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -236,7 +270,7 @@ export const GoalsView: React.FC = () => {
                 {UI_TEXT.actions.cancel}
               </button>
             </div>
-          </div>
+          </form>
         )}
 
         {/* Active Goals */}
@@ -270,12 +304,16 @@ export const GoalsView: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-1">
                     <button
+                      type="button"
+                      aria-label={`Agregar ahorro a ${goal.name}`}
                       onClick={() => {
                         if (showAddSavings === goal.id) {
                           setShowAddSavings(null);
+                          setSavingsError(null);
                         } else {
                           setShowAddSavings(goal.id!);
                           setSavingsAmount('');
+                          setSavingsError(null);
                         }
                       }}
                       className="p-1.5 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/30 text-green-600 dark:text-green-400"
@@ -284,6 +322,8 @@ export const GoalsView: React.FC = () => {
                       <DollarSign size={16} />
                     </button>
                     <button
+                      type="button"
+                      aria-label={`Eliminar meta ${goal.name}`}
                       onClick={() => handleDelete(goal)}
                       className="p-1.5 rounded-lg hover:bg-destructive-muted text-destructive"
                       title="Eliminar"
@@ -325,29 +365,39 @@ export const GoalsView: React.FC = () => {
 
                 {/* Add savings form */}
                 {showAddSavings === goal.id && (
-                  <div className="mt-3 flex gap-2">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={formatNumberForInput(savingsAmount)}
-                      onChange={e => setSavingsAmount(unformatNumber(e.target.value))}
-                      placeholder="Monto a ahorrar"
-                      className="input-base flex-1 text-sm"
-                      autoFocus
-                    />
-                    <button
-                      onClick={() => handleAddSavings(goal.id!)}
-                      className="btn-submit text-sm px-3"
-                    >
-                      Ahorrar
-                    </button>
-                    <button
-                      onClick={() => setShowAddSavings(null)}
-                      className="p-2 text-gray-400 hover:text-gray-600"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
+                  <form aria-label={`Agregar ahorro a ${goal.name}`} onSubmit={event => handleAddSavings(event, goal.id!)} noValidate className="mt-3">
+                    <div className="flex gap-2">
+                      <label htmlFor={`goal-savings-${goal.id}`} className="sr-only">Monto a ahorrar para {goal.name}</label>
+                      <input
+                        id={`goal-savings-${goal.id}`}
+                        type="text"
+                        inputMode="numeric"
+                        value={formatNumberForInput(savingsAmount)}
+                        onChange={e => setSavingsAmount(unformatNumber(e.target.value))}
+                        placeholder="Monto a ahorrar"
+                        className="input-base flex-1 text-sm"
+                        aria-invalid={Boolean(savingsError)}
+                        aria-describedby={savingsError ? `goal-savings-${goal.id}-error` : undefined}
+                        autoFocus
+                      />
+                      <button type="submit" className="btn-submit text-sm px-3">
+                        Ahorrar
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Cerrar ahorro para ${goal.name}`}
+                        onClick={() => {
+                          setShowAddSavings(null);
+                          setSavingsAmount('');
+                          setSavingsError(null);
+                        }}
+                        className="p-2 text-gray-400 hover:text-gray-600"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                    {savingsError && <p id={`goal-savings-${goal.id}-error`} role="alert" className="mt-1 text-xs text-destructive">{savingsError}</p>}
+                  </form>
                 )}
                 {showAddSavings === goal.id && (
                   <p className="mt-1.5 text-[11px] text-muted-foreground">
@@ -371,6 +421,7 @@ export const GoalsView: React.FC = () => {
         {completedGoals.length > 0 && (
           <div className="mt-4">
             <button
+              type="button"
               onClick={() => setShowCompleted(!showCompleted)}
               className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
             >

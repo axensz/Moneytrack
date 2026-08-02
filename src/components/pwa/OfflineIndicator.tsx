@@ -52,7 +52,7 @@ export function OfflineIndicator() {
     return (
         <div
             role="status"
-            className="fixed top-0 left-0 right-0 z-50 bg-amber-500 text-white px-4 py-3 shadow-lg"
+            className="fixed top-0 left-0 right-0 z-50 bg-warning-muted text-warning border-b border-warning px-4 py-3 shadow-lg"
         >
             <div className="max-w-7xl mx-auto flex items-center gap-3">
                 <WifiOff className="w-5 h-5 flex-shrink-0" aria-hidden="true" />

@@ -1,0 +1,32 @@
+## Why
+
+El encabezado concentra demasiadas acciones globales y presenta dos controles con poco contexto: el ojo de privacidad no comunica con claridad que afecta todos los importes y el acceso al asistente IA compite visualmente con notificaciones y ajustes. La decisión aprobada es llevar la privacidad a la tarjeta donde se consulta el saldo y convertir la IA en una acción flotante global, manteniendo ambos controles inmediatos, accesibles y predecibles.
+
+## What Changes
+
+- Mover el control global `Ocultar valores` / `Mostrar valores` desde `Header` a la tarjeta `Saldo actual` de `StatsCards`, sin cambiar la preferencia compartida ni el enmascaramiento existente.
+- Mantener el control de privacidad siempre visible dentro de la tarjeta, con objetivo táctil mínimo de 44×44 CSS px, nombre dinámico, estado presionado y respuesta inmediata.
+- Sustituir los accesos al asistente del encabezado y del menú de ajustes por un único lanzador flotante global de 48×48 CSS px.
+- Hacer que el lanzador respete la navegación inferior, safe areas, el panel abierto y los estados invitado, sin configurar, configurado y autorización pendiente.
+- Restaurar el foco al lanzador al cerrar el asistente y conservar la configuración, consentimiento, conversación y salvaguardas financieras actuales.
+- Actualizar los contratos responsive y de operabilidad del asistente que anteriormente exigían entradas dentro del shell y prohibían un disparador flotante cerrado.
+
+No se cambiarán cálculos, persistencia, mutaciones financieras, estructura de navegación móvil, dependencias, contenido del asistente ni el diseño interno de sus mensajes.
+
+## Capabilities
+
+### New Capabilities
+
+Ninguna.
+
+### Modified Capabilities
+
+- `ai-overlay-operability`: reemplazar las entradas de asistente en encabezado/ajustes por un lanzador flotante único que no cubra contenido ni navegación y conserve el contrato de foco.
+- `responsive-shell-fit`: retirar privacidad e IA del grupo obligatorio de acciones del encabezado y exigir que privacidad permanezca disponible en la tarjeta de saldo sin provocar overflow.
+
+## Impact
+
+- Componentes principales: `src/components/layout/Header.tsx`, `src/components/shared/StatsCards.tsx`, `src/AuthenticatedApp.tsx` y un lanzador de asistente pequeño y aislado si la implementación lo requiere.
+- Pruebas: contratos de `Header`, `StatsCards`, shell responsive y `AIChatBot`.
+- CSS: reutilización de tokens semánticos existentes; no se agregan colores, gradientes o dependencias.
+- Alcance responsive: desktop y móvil, únicamente para ubicación segura de los dos controles globales; las rutas y destinos no cambian.

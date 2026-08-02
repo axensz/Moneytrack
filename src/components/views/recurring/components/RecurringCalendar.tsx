@@ -28,6 +28,13 @@ const STATUS_CHIP: Record<PaymentStatus, string> = {
   normal: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
 };
 
+const STATUS_LABEL: Record<PaymentStatus, string> = {
+  paid: 'Pagado',
+  overdue: 'Vencido',
+  soon: 'Próximo',
+  normal: 'Programado',
+};
+
 const WEEKDAYS = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
 
 /**
@@ -139,9 +146,22 @@ export const RecurringCalendar: React.FC<RecurringCalendarProps> = ({
                   ))}
                 </div>
                 {cell.items.length > 2 && (
-                  <span className="hidden sm:block text-[10px] text-gray-400 dark:text-gray-500">
-                    +{cell.items.length - 2} más
-                  </span>
+                  <details className="hidden sm:block text-[10px] text-gray-500 dark:text-gray-400">
+                    <summary className="cursor-pointer rounded px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                      +{cell.items.length - 2} más
+                    </summary>
+                    <div className="mt-1 flex flex-col gap-1">
+                      {cell.items.slice(2).map(({ payment, status }) => (
+                        <div key={payment.id} className={`rounded px-1 py-0.5 ${STATUS_CHIP[status]}`}>
+                          <div className="truncate font-medium">{payment.name}</div>
+                          <div className="flex flex-wrap justify-between gap-x-1">
+                            <span>{formatCurrency(payment.amount)}</span>
+                            <span>{STATUS_LABEL[status]}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
                 )}
               </div>
             </div>

@@ -272,7 +272,7 @@
      (no le pongas clase de color al <svg>). Para variar el hover (p. ej. salir
      en destructive) añade una utilidad hover:text-* al botón. */
   .header-icon {
-    @apply relative p-2 sm:p-2.5 rounded-lg text-muted-foreground transition-colors;
+    @apply relative inline-flex min-w-[44px] min-h-[44px] items-center justify-center p-2 sm:p-2.5 rounded-lg text-muted-foreground transition-colors;
     cursor: pointer;
   }
 

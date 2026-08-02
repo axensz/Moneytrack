@@ -123,17 +123,17 @@ export const Header: React.FC<HeaderProps> = ({
 
   const accountLabel = user?.displayName || user?.email || 'Usuario';
   return (
-    <header className="w-full flex items-center pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 sm:pt-[calc(0.75rem+env(safe-area-inset-top))] sm:pb-3 bg-card/90 backdrop-blur-md border-b border-border z-[100] shadow-sm shrink-0">
-      <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-2 sm:gap-3 flex-1">
-            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold leading-none">
+    <header className="w-full min-w-0 max-w-full overflow-x-clip flex items-center pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 sm:pt-[calc(0.75rem+env(safe-area-inset-top))] sm:pb-3 bg-card/90 backdrop-blur-md border-b border-border z-[100] shadow-sm shrink-0">
+      <div className="w-full min-w-0 px-3 sm:px-4 md:px-6 lg:px-8">
+        <div className="flex min-w-0 justify-between items-center">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3 flex-1">
+            <h1 className="text-lg sm:text-2xl lg:text-3xl font-bold leading-none whitespace-nowrap">
               <span className="text-primary">Money</span>
               <span className="text-foreground">Track</span>
             </h1>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             {user && (
               <div
                 className="hidden sm:flex items-center rounded-lg p-1 text-foreground"
@@ -267,14 +267,34 @@ export const Header: React.FC<HeaderProps> = ({
                     <HelpCircle size={18} aria-hidden="true" />
                     <span>Ayuda</span>
                   </button>
+                  {user && (
+                    <>
+                      <div className="my-1 border-t border-border" aria-hidden="true" />
+                      <button
+                        type="button"
+                        data-settings-action="logout"
+                        onClick={() => {
+                          setShowSettingsMenu(false);
+                          void onLogout();
+                        }}
+                        className={menuItemClass + ' text-destructive'}
+                        role="menuitem"
+                      >
+                        <LogOut size={18} aria-hidden="true" />
+                        <span>Cerrar sesión</span>
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
 
             {user ? (
               <button
-                onClick={onLogout}
-                className="header-icon hover:text-destructive"
+                type="button"
+                data-header-action="logout"
+                onClick={() => void onLogout()}
+                className="header-icon hidden sm:inline-flex hover:text-destructive"
                 aria-label="Cerrar sesión"
               >
                 <LogOut size={20} aria-hidden="true" />

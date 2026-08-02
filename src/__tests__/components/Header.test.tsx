@@ -1,11 +1,49 @@
+import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { User } from 'firebase/auth';
 import { Header } from '../../components/layout/Header';
 import { UIPreferencesProvider, useUIPreferences } from '../../contexts/UIPreferencesContext';
 
 vi.mock('../../components/theme/ThemeToggle', () => ({
-  ThemeToggle: () => <button type="button" aria-label="Cambiar tema" />,
+  ThemeToggle: () => <button type="button" aria-label="Cambiar tema" className="header-icon" />,
 }));
+
+vi.mock('../../components/notifications/NotificationCenter', () => ({
+  NotificationBell: () => (
+    <button type="button" aria-label="Abrir notificaciones" className="header-icon" />
+  ),
+  NotificationCenter: () => null,
+}));
+
+const authenticatedUser = {
+  uid: 'user-1',
+  displayName: 'Camilo',
+  email: 'camilo@example.com',
+  photoURL: null,
+} as User;
+
+function renderHeader(overrides: Partial<React.ComponentProps<typeof Header>> = {}) {
+  const props: React.ComponentProps<typeof Header> = {
+    user: authenticatedUser,
+    setIsAuthModalOpen: vi.fn(),
+    showSettingsMenu: true,
+    setShowSettingsMenu: vi.fn(),
+    showNotifications: false,
+    setShowNotifications: vi.fn(),
+    onOpenHelp: vi.fn(),
+    onOpenCategories: vi.fn(),
+    onOpenNotificationPreferences: vi.fn(),
+    onOpenAISettings: vi.fn(),
+    onLogout: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
+
+  return {
+    ...render(<UIPreferencesProvider><Header {...props} /></UIPreferencesProvider>),
+    props,
+  };
+}
 
 function PreferenceValue() {
   const { hideBalances } = useUIPreferences();
@@ -45,5 +83,34 @@ describe('Header', () => {
 
     expect(screen.getByRole('button', { name: 'Mostrar valores' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('status')).toHaveTextContent('true');
+  });
+
+  it('keeps compact utility actions reachable and relocates logout through responsive affordances', () => {
+    const { container } = renderHeader();
+
+    for (const name of ['Cambiar tema', 'Ocultar valores', 'Abrir notificaciones', 'Abrir menú de ajustes']) {
+      expect(screen.getByRole('button', { name })).toHaveClass('header-icon');
+    }
+
+    expect(container.querySelector('[data-header-action="logout"]'))
+      .toHaveClass('hidden', 'sm:inline-flex');
+    expect(container.querySelector('[data-settings-action="logout"]'))
+      .toHaveTextContent('Cerrar sesión');
+    expect(container.querySelector('header'))
+      .toHaveClass('min-w-0', 'max-w-full', 'overflow-x-clip');
+
+    const orderedExistingActions = [
+      screen.getByRole('button', { name: 'Cambiar tema' }),
+      screen.getByRole('button', { name: 'Ocultar valores' }),
+      screen.getByRole('button', { name: 'Abrir notificaciones' }),
+      screen.getByRole('button', { name: 'Abrir menú de ajustes' }),
+      container.querySelector<HTMLElement>('[data-header-action="logout"]')!,
+    ];
+    orderedExistingActions.slice(1).forEach((action, index) => {
+      expect(
+        orderedExistingActions[index].compareDocumentPosition(action)
+        & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
   });
 });

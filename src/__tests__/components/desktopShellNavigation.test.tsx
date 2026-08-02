@@ -156,9 +156,12 @@ describe('desktop shell navigation', () => {
 
   it('wires the actual app skip link and main landmark to the shared controller', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/AuthenticatedApp.tsx'), 'utf8');
+    const componentStyles = readFileSync(resolve(process.cwd(), 'app/styles/components.css'), 'utf8');
     expect(source).toContain('useViewTransitionFocus');
     expect(source).toMatch(/<a\s+className="skip-link"\s+href="#main-content"[\s\S]*?focusMainContent\(\)/);
     expect(source).toMatch(/<main id="main-content" ref=\{scrollContainerRef\} tabIndex=\{-1\} className="flex-1 min-h-0 overflow-auto">/);
+    expect(componentStyles).toMatch(/\.skip-link\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?transform:\s*translateY\(calc\(-100% - 2rem\)\);[\s\S]*?\}/);
+    expect(componentStyles).toMatch(/\.skip-link:focus-visible\s*\{[\s\S]*?transform:\s*translateY\(0\);[\s\S]*?\}/);
   });
 
   it.each([

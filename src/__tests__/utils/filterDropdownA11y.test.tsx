@@ -1,5 +1,6 @@
+import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { FilterDropdown } from '../../components/views/transactions/components/FilterDropdown';
 
@@ -62,6 +63,78 @@ describe('FilterDropdown a11y', () => {
     const { onClose } = renderDropdown({ isOpen: true });
     fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('mueve un único foco por las opciones y restaura el trigger con Escape', async () => {
+    function ControlledDropdown() {
+      const [isOpen, setIsOpen] = React.useState(false);
+      return (
+        <FilterDropdown
+          label="Cuenta"
+          value="all"
+          options={options}
+          onChange={vi.fn()}
+          isOpen={isOpen}
+          onToggle={() => setIsOpen(open => !open)}
+          onClose={() => setIsOpen(false)}
+        />
+      );
+    }
+
+    render(<ControlledDropdown />);
+    const trigger = screen.getByRole('button', { name: 'Cuenta' });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const allOption = screen.getByRole('option', { name: 'Cuenta (Todos)' });
+    const accountA = screen.getByRole('option', { name: 'Cuenta A' });
+    const accountB = screen.getByRole('option', { name: 'Cuenta B' });
+    await waitFor(() => expect(allOption).toHaveFocus());
+    expect(allOption).toHaveAttribute('tabindex', '0');
+    expect(accountA).toHaveAttribute('tabindex', '-1');
+
+    fireEvent.keyDown(allOption, { key: 'ArrowDown' });
+    expect(accountA).toHaveFocus();
+    fireEvent.keyDown(accountA, { key: 'End' });
+    expect(accountB).toHaveFocus();
+    fireEvent.keyDown(accountB, { key: 'Home' });
+    expect(allOption).toHaveFocus();
+
+    fireEvent.keyDown(allOption, { key: 'Escape' });
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('selecciona con Enter, cierra y devuelve el foco al trigger', async () => {
+    const onChange = vi.fn();
+
+    function ControlledDropdown() {
+      const [isOpen, setIsOpen] = React.useState(false);
+      return (
+        <FilterDropdown
+          label="Cuenta"
+          value="all"
+          options={options}
+          onChange={onChange}
+          isOpen={isOpen}
+          onToggle={() => setIsOpen(open => !open)}
+          onClose={() => setIsOpen(false)}
+        />
+      );
+    }
+
+    render(<ControlledDropdown />);
+    const trigger = screen.getByRole('button', { name: 'Cuenta' });
+    fireEvent.click(trigger);
+    const accountA = screen.getByRole('option', { name: 'Cuenta A' });
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Cuenta (Todos)' })).toHaveFocus());
+    fireEvent.keyDown(screen.getByRole('listbox'), { key: 'ArrowDown' });
+    expect(accountA).toHaveFocus();
+    fireEvent.keyDown(accountA, { key: 'Enter' });
+
+    expect(onChange).toHaveBeenCalledWith('a');
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
   });
 
   it('seleccionar una option dispara onChange + onClose', () => {

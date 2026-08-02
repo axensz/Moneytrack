@@ -1,7 +1,8 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AIChatBot } from '../../components/chat/AIChatBot';
+import { parseActionFromResponse, sendChatMessage } from '../../lib/gemini';
 
 vi.mock('../../lib/gemini', () => ({
   sendChatMessage: vi.fn(),
@@ -22,6 +23,24 @@ vi.mock('../../hooks/useFinanceSelectors', () => ({
   }),
 }));
 
+const sendChatMessageMock = vi.mocked(sendChatMessage);
+const parseActionFromResponseMock = vi.mocked(parseActionFromResponse);
+const decorativeAssistantClasses =
+  /bg-gradient|animate-(?:shimmer|pulse|bounce)|(?:group-hover|hover|active):scale|backdrop-blur|\brotate-|ease-(?:bounce|elastic)/;
+
+function getClassText(root: HTMLElement) {
+  return [root, ...Array.from(root.querySelectorAll('*'))]
+    .map((element) => element.getAttribute('class') ?? '')
+    .join(' ');
+}
+
+function sendAssistantMessage(text: string) {
+  fireEvent.change(screen.getByRole('textbox', { name: 'Mensaje para el asistente' }), {
+    target: { value: text },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Enviar mensaje' }));
+}
+
 function ControlledChat() {
   const [open, setOpen] = React.useState(true);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
@@ -40,10 +59,16 @@ function ControlledChat() {
 
 describe('AIChatBot shell control', () => {
   beforeEach(() => {
+    sendChatMessageMock.mockReset();
+    parseActionFromResponseMock.mockReset();
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
       configurable: true,
       value: vi.fn(),
     });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('keeps conversation input state while controlled visibility changes', () => {
@@ -122,20 +147,96 @@ describe('AIChatBot shell control', () => {
   it('uses semantic surfaces without decorative assistant gradients or motion', () => {
     const { container } = render(<ControlledChat />);
     const assistant = container.querySelector('[role="dialog"]')!;
-    const classText = Array.from(assistant.querySelectorAll<HTMLElement>('*'))
-      .concat(assistant as HTMLElement)
-      .map((element) => element.className)
-      .filter((value) => typeof value === 'string')
-      .join(' ');
+    const classText = getClassText(assistant as HTMLElement);
 
-    expect(classText).not.toMatch(
-      /bg-gradient|animate-shimmer|animate-pulse|hover:scale|group-hover:rotate|ease-(bounce|elastic)/,
-    );
+    expect(classText).not.toMatch(decorativeAssistantClasses);
+    expect(classText).not.toContain('animate-spin');
     expect(assistant).toHaveClass(
       'bg-card',
       'text-card-foreground',
       'border-border',
       'duration-200',
     );
+  });
+
+  it('keeps expanded token details free of decorative motion', async () => {
+    sendChatMessageMock.mockResolvedValue({
+      text: 'Respuesta con tokens',
+      tokenUsage: {
+        promptTokens: 120,
+        responseTokens: 40,
+        thinkingTokens: 10,
+        totalTokens: 170,
+      },
+    });
+    parseActionFromResponseMock.mockReturnValue({ text: 'Resumen listo' });
+    render(<ControlledChat />);
+
+    sendAssistantMessage('Muéstrame el resumen');
+    await screen.findByText('Resumen listo');
+    fireEvent.click(screen.getByRole('button', { name: 'Ver uso de tokens' }));
+    expect(await screen.findByText('Entrada')).toBeInTheDocument();
+
+    const classText = getClassText(screen.getByRole('dialog'));
+    expect(classText).not.toMatch(decorativeAssistantClasses);
+    expect(classText).not.toContain('animate-spin');
+  });
+
+  it('keeps parsed action confirmation free of decorative motion', async () => {
+    sendChatMessageMock.mockResolvedValue({ text: 'Respuesta con acción' });
+    parseActionFromResponseMock.mockReturnValue({
+      text: 'Crear categoría Mascotas',
+      action: {
+        type: 'add_category',
+        data: { categoryType: 'expense', name: 'Mascotas' },
+      },
+    });
+    render(<ControlledChat />);
+
+    sendAssistantMessage('Crea una categoría para mascotas');
+    expect(await screen.findByRole('button', { name: 'Confirmar' })).toBeInTheDocument();
+
+    const classText = getClassText(screen.getByRole('dialog'));
+    expect(classText).not.toMatch(decorativeAssistantClasses);
+    expect(classText).not.toContain('animate-spin');
+  });
+
+  it('uses animate-spin only while a real assistant request is loading', async () => {
+    let resolveRequest!: (value: { text: string }) => void;
+    const pendingRequest = new Promise<{ text: string }>((resolve) => {
+      resolveRequest = resolve;
+    });
+    sendChatMessageMock.mockReturnValue(pendingRequest);
+    parseActionFromResponseMock.mockReturnValue({ text: 'Carga terminada' });
+    render(<ControlledChat />);
+
+    sendAssistantMessage('Analiza mis gastos');
+    await screen.findByText('Pensando...');
+
+    const dialog = screen.getByRole('dialog');
+    const classText = getClassText(dialog);
+    const spinners = dialog.querySelectorAll('.animate-spin');
+    expect(classText).not.toMatch(decorativeAssistantClasses);
+    expect(spinners).toHaveLength(1);
+    expect(spinners[0].parentElement).toHaveTextContent('Pensando...');
+
+    await act(async () => {
+      resolveRequest({ text: 'Respuesta final' });
+      await pendingRequest;
+    });
+    await screen.findByText('Carga terminada');
+  });
+
+  it('keeps the rendered error state free of decorative motion', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    sendChatMessageMock.mockRejectedValue(new Error('fallo visual controlado'));
+    render(<ControlledChat />);
+
+    sendAssistantMessage('Provoca un error controlado');
+    await screen.findByText('Error: fallo visual controlado');
+
+    const classText = getClassText(screen.getByRole('dialog'));
+    expect(classText).not.toMatch(decorativeAssistantClasses);
+    expect(classText).not.toContain('animate-spin');
   });
 });

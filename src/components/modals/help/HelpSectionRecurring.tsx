@@ -85,15 +85,17 @@ export const HelpSectionRecurring: React.FC = () => (
             <div className="flex gap-3">
                <span className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold" style={{ background: 'var(--surface-primary)', color: 'var(--primary-text)' }}>3</span>
                <div>
-                  <p className="font-medium text-foreground">Registra el pago</p>
-                  <p className="text-sm text-muted-foreground">Crea un gasto y selecciona el pago periódico asociado.</p>
+                  <p className="font-medium text-foreground">Marca «Ya pagó»</p>
+                  <p className="text-sm text-muted-foreground">
+                     En el menú del pago elige «Ya pagó» y luego «Registrar pago ahora» o «Vincular transacción existente».
+                  </p>
                </div>
             </div>
             <div className="flex gap-3">
                <span className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold" style={{ background: 'var(--surface-primary)', color: 'var(--primary-text)' }}>4</span>
                <div>
-                  <p className="font-medium text-foreground">Se marca automáticamente</p>
-                  <p className="text-sm text-muted-foreground">El sistema detecta que ya pagaste este período.</p>
+                  <p className="font-medium text-foreground">Confirma el movimiento</p>
+                  <p className="text-sm text-muted-foreground">MoneyTrack vincula el pago al período y actualiza su estado.</p>
                </div>
             </div>
          </div>

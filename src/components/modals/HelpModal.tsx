@@ -15,6 +15,7 @@ import { HelpSectionTransactions } from './help/HelpSectionTransactions';
 import { HelpSectionRecurring } from './help/HelpSectionRecurring';
 import { HelpSectionDebts } from './help/HelpSectionDebts';
 import { HelpSectionBudgets } from './help/HelpSectionBudgets';
+import { HelpSectionFinancialPlan } from './help/HelpSectionFinancialPlan';
 import { HelpSectionGoals } from './help/HelpSectionGoals';
 import { HelpSectionStats } from './help/HelpSectionStats';
 import { HelpSectionAI } from './help/HelpSectionAI';
@@ -25,7 +26,7 @@ interface HelpModalProps {
   onClose: () => void;
 }
 
-type HelpViewTabId = Exclude<ViewType, 'financial-plan'>;
+type HelpViewTabId = ViewType;
 type HelpTabId = 'basics' | HelpViewTabId | 'ai' | 'shortcuts';
 
 interface HelpTab {
@@ -50,6 +51,7 @@ const HELP_TABS: HelpTab[] = [
   helpTabFromView('recurring'),
   helpTabFromView('debts'),
   helpTabFromView('budgets'),
+  helpTabFromView('financial-plan'),
   helpTabFromView('goals'),
   helpTabFromView('stats'),
   { id: 'ai', label: 'Asistente IA', Icon: Bot },
@@ -166,6 +168,9 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
 
             {/* Presupuestos */}
             {activeTab === 'budgets' && <HelpSectionBudgets />}
+
+            {/* Plan financiero */}
+            {activeTab === 'financial-plan' && <HelpSectionFinancialPlan />}
 
             {/* Metas de Ahorro */}
             {activeTab === 'goals' && <HelpSectionGoals />}

@@ -51,6 +51,7 @@ Aplicación de finanzas personales construida con **Next.js** y **Firebase**. Ll
 
 **Experiencia**
 - **PWA instalable** con service worker e indicador offline.
+- **Consulta sin conexión** de los datos disponibles en caché; se requiere conexión para guardar cambios con una cuenta registrada.
 - **Tema claro/oscuro** con preferencia del sistema y **balances enmascarables**.
 - **Notificaciones** de vencimientos, presupuestos y balances.
 - **Asistente de IA opcional** (Google Gemini) para categorización y plan financiero.
@@ -244,8 +245,8 @@ Firestore usa una caché local persistente (`persistentLocalCache`). Si la cach�
 ### Error `quota-exceeded` en Firestore
 
 El plan gratuito de Firebase (Spark) tiene límites de lecturas/escrituras diarias. Si los superas:
-- La app seguirá funcionando **offline** con la caché local.
-- Las escrituras nuevas se encolarán y se sincronizan cuando el cupo se renueve (al día siguiente UTC).
+- Sin conexión, la app puede mostrar los datos que ya estén disponibles en la caché local.
+- Necesitas recuperar la conexión y tener cuota disponible para guardar cambios; vuelve a intentarlo manualmente.
 - Considera hacer upgrade al plan Blaze si usas la app intensivamente.
 
 ### El almacenamiento local se llena en modo invitado

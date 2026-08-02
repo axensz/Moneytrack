@@ -47,8 +47,10 @@ export class ErrorBoundary extends React.Component<Props, State> {
     if (this.props.fallback) return this.props.fallback;
 
     const errorMessage = this.state.error?.message || 'Error desconocido';
+    const isDevelopment = process.env.NODE_ENV === 'development';
     const isFirebaseError =
       errorMessage.includes('Firebase') || errorMessage.includes('API key');
+    const showFirebaseDiagnostics = isDevelopment && isFirebaseError;
 
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
@@ -58,10 +60,10 @@ export class ErrorBoundary extends React.Component<Props, State> {
           </div>
 
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2 text-center">
-            {isFirebaseError ? '🔥 Error de configuración Firebase' : 'Algo salió mal'}
+            {showFirebaseDiagnostics ? '🔥 Error de configuración Firebase' : 'Algo salió mal'}
           </h1>
 
-          {isFirebaseError ? (
+          {showFirebaseDiagnostics ? (
             <div className="space-y-4">
               <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                 <p className="text-sm font-mono text-red-800 dark:text-red-400 whitespace-pre-wrap">
@@ -91,7 +93,13 @@ export class ErrorBoundary extends React.Component<Props, State> {
                 Ocurrió un error inesperado. El problema fue registrado automáticamente.
               </p>
 
-              {process.env.NODE_ENV === 'development' && this.state.error && (
+              <ol className="mb-6 list-inside list-decimal space-y-2 rounded-lg border border-border bg-muted p-4 text-sm text-foreground">
+                <li>Intenta reintentar la operación.</li>
+                <li>Si el problema continúa, recarga la página.</li>
+                <li>Si aún no puedes continuar, contacta a soporte.</li>
+              </ol>
+
+              {isDevelopment && this.state.error && (
                 <div className="mb-6 p-4 bg-gray-100 dark:bg-gray-700 rounded-lg text-left overflow-auto max-h-40">
                   <pre className="text-xs font-mono text-red-600 dark:text-red-400 whitespace-pre-wrap">
                     {errorMessage}

@@ -113,6 +113,11 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   const closeSettingsMenu = useCallback(() => setShowSettingsMenu(false), [setShowSettingsMenu]);
+  const openSettingsModal = useCallback((openModal: () => void) => {
+    setShowSettingsMenu(false);
+    settingsButtonRef.current?.focus();
+    openModal();
+  }, [setShowSettingsMenu]);
   useDismissable({
     isOpen: showSettingsMenu,
     onClose: closeSettingsMenu,
@@ -244,10 +249,7 @@ export const Header: React.FC<HeaderProps> = ({
                   onKeyDown={(e) => handleMenuKeyDown(e, settingsMenuRef, closeSettingsMenu, settingsButtonRef)}
                 >
                   <button
-                    onClick={() => {
-                      onOpenCategories();
-                      setShowSettingsMenu(false);
-                    }}
+                    onClick={() => openSettingsModal(onOpenCategories)}
                     className={menuItemClass}
                     role="menuitem"
                   >
@@ -256,10 +258,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
                   {user && (
                     <button
-                      onClick={() => {
-                        onOpenNotificationPreferences();
-                        setShowSettingsMenu(false);
-                      }}
+                      onClick={() => openSettingsModal(onOpenNotificationPreferences)}
                       className={menuItemClass}
                       role="menuitem"
                     >
@@ -288,10 +287,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
                   <div className="my-1 border-t border-border" aria-hidden="true" />
                   <button
-                    onClick={() => {
-                      onOpenHelp();
-                      setShowSettingsMenu(false);
-                    }}
+                    onClick={() => openSettingsModal(onOpenHelp)}
                     className={menuItemClass}
                     role="menuitem"
                   >

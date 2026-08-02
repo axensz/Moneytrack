@@ -170,6 +170,21 @@ describe('Header', () => {
     expect(onOpenAssistant).toHaveBeenCalledWith(settingsTrigger);
   });
 
+  it('transfiere el retorno de foco al trigger estable antes de abrir Ayuda', () => {
+    let activeElementWhenOpened: Element | null = null;
+    const onOpenHelp = vi.fn(() => {
+      activeElementWhenOpened = document.activeElement;
+    });
+    renderHeader({ showSettingsMenu: true, onOpenHelp });
+    const settingsTrigger = screen.getByRole('button', { name: 'Abrir menú de ajustes' });
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Ayuda' }));
+
+    expect(onOpenHelp).toHaveBeenCalledTimes(1);
+    expect(activeElementWhenOpened).toBe(settingsTrigger);
+    expect(settingsTrigger).toHaveFocus();
+  });
+
   it.each([
     {
       viewport: 'desktop',

@@ -47,6 +47,7 @@ function FinanceShell({ initialView }: { initialView: ViewType }) {
         view={initialView}
         pendingBudgetDraft={null}
         onBudgetDraftApplied={() => {}}
+        onGoToTransactions={() => {}}
         onOpenFinancialPlan={() => {}}
         onUseBudgetSuggestion={() => {}}
         onViewMounted={() => {}}

@@ -62,6 +62,7 @@ function RoutedShell({ onViewChange = vi.fn() }: { onViewChange?: (view: ViewTyp
           transactionsPanel={<h2 id="view-heading-transactions" tabIndex={-1}>{sectionTitle('transactions')}</h2>}
           pendingBudgetDraft={null}
           onBudgetDraftApplied={() => undefined}
+          onGoToTransactions={() => setRoutedView('transactions')}
           onOpenFinancialPlan={() => undefined}
           onUseBudgetSuggestion={() => undefined}
           onViewMounted={handleViewMounted}

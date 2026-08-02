@@ -46,6 +46,7 @@ interface FinanceViewRouterProps {
   transactionsPanel: React.ReactNode;
   pendingBudgetDraft: BudgetDraft | null;
   onBudgetDraftApplied: () => void;
+  onGoToTransactions: () => void;
   onOpenFinancialPlan: () => void;
   onUseBudgetSuggestion: (category: string, suggestedLimit: number) => void;
   onViewMounted: (view: ViewType) => void;
@@ -77,6 +78,7 @@ export function FinanceViewRouter({
   transactionsPanel,
   pendingBudgetDraft,
   onBudgetDraftApplied,
+  onGoToTransactions,
   onOpenFinancialPlan,
   onUseBudgetSuggestion,
   onViewMounted,
@@ -95,7 +97,7 @@ export function FinanceViewRouter({
       return panel(
         view,
         <Suspense fallback={<ViewFallback />}>
-          <FocusedPanel view={view} onViewMounted={onViewMounted}><StatsView /></FocusedPanel>
+          <FocusedPanel view={view} onViewMounted={onViewMounted}><StatsView onGoToTransactions={onGoToTransactions} /></FocusedPanel>
         </Suspense>
       );
     case 'accounts':

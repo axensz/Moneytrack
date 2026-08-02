@@ -26,6 +26,7 @@ describe('contratos accesibles de carga', () => {
         transactionsPanel={null}
         pendingBudgetDraft={null}
         onBudgetDraftApplied={vi.fn()}
+        onGoToTransactions={vi.fn()}
         onOpenFinancialPlan={vi.fn()}
         onUseBudgetSuggestion={vi.fn()}
         onViewMounted={vi.fn()}

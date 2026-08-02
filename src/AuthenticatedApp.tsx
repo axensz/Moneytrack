@@ -484,6 +484,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
               )}
               pendingBudgetDraft={pendingBudgetDraft}
               onBudgetDraftApplied={handleBudgetDraftApplied}
+              onGoToTransactions={() => setView('transactions')}
               onOpenFinancialPlan={() => setView('financial-plan')}
               onUseBudgetSuggestion={handleUseBudgetSuggestion}
               onViewMounted={handleViewMounted}

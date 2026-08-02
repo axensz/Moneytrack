@@ -26,7 +26,7 @@ vi.mock('../../hooks/useFinanceSelectors', () => ({
 
 describe('StatsView scopes', () => {
   it('shows real period labels and keeps complete-history charts independent from the Transaction result', () => {
-    render(<UIPreferencesProvider><StatsView /></UIPreferencesProvider>);
+    render(<UIPreferencesProvider><StatsView onGoToTransactions={() => {}} /></UIPreferencesProvider>);
 
     expect(screen.getAllByText('Últimos 6 meses').length).toBeGreaterThan(0);
     expect(screen.getByText('Historial completo por año')).toBeInTheDocument();

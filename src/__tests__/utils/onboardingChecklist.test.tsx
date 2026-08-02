@@ -6,10 +6,8 @@ import { OnboardingChecklist } from '../../components/onboarding/OnboardingCheck
 const props = (over: Partial<React.ComponentProps<typeof OnboardingChecklist>> = {}) => ({
   hasAccounts: false,
   hasTransactions: false,
-  aiReady: false,
   onGoToAccounts: vi.fn(),
   onAddTransaction: vi.fn(),
-  onOpenAISettings: vi.fn(),
   ...over,
 });
 
@@ -20,7 +18,8 @@ describe('OnboardingChecklist (P-onboarding)', () => {
     const p = props();
     render(<OnboardingChecklist {...p} />);
     expect(screen.getByText('Primeros pasos')).toBeInTheDocument();
-    expect(screen.getByText('0 de 3 completados')).toBeInTheDocument();
+    expect(screen.getByText('0 de 2 completados')).toBeInTheDocument();
+    expect(screen.queryByText(/Activa el asistente IA/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Ir a Cuentas/i }));
     expect(p.onGoToAccounts).toHaveBeenCalled();
   });
@@ -49,7 +48,7 @@ describe('OnboardingChecklist (P-onboarding)', () => {
 
   it('marca como completado el paso cuyo estado ya esta hecho (sin CTA)', () => {
     render(<OnboardingChecklist {...props({ hasAccounts: true })} />);
-    expect(screen.getByText('1 de 3 completados')).toBeInTheDocument();
+    expect(screen.getByText('1 de 2 completados')).toBeInTheDocument();
     expect(screen.getByText('Crea tu primera cuenta').closest('li')).toHaveClass('hidden', 'sm:flex');
     // El paso de cuenta hecho ya no muestra su CTA.
     expect(screen.queryByRole('button', { name: /Ir a Cuentas/i })).not.toBeInTheDocument();
@@ -57,7 +56,7 @@ describe('OnboardingChecklist (P-onboarding)', () => {
 
   it('se oculta cuando todos los pasos estan completos', () => {
     const { container } = render(
-      <OnboardingChecklist {...props({ hasAccounts: true, hasTransactions: true, aiReady: true })} />
+      <OnboardingChecklist {...props({ hasAccounts: true, hasTransactions: true })} />
     );
     expect(container).toBeEmptyDOMElement();
   });

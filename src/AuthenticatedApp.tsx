@@ -432,10 +432,8 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
             <OnboardingChecklist
               hasAccounts={accounts.length > 0}
               hasTransactions={transactions.length > 0}
-              aiReady={aiReady}
               onGoToAccounts={() => setView('accounts')}
               onAddTransaction={() => { setView('transactions'); setShowForm(true); }}
-              onOpenAISettings={() => setShowAISettingsModal(true)}
             />
             {/* Error banner when Firestore fails */}
             {firestoreError && (

@@ -318,7 +318,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                 </div>
               )}
               {isCreditCard && newTransaction.type === 'income' && creditUsed > 0 && (
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                <p className="text-xs text-warning mt-1">
                   Deuda pendiente: {formatCurrency(creditUsed)}
                 </p>
               )}
@@ -348,7 +348,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                   </button>
                 </div>
                 <p
-                  className={`text-xs mt-1 ${officialTrmError ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}
+                  className={`text-xs mt-1 ${officialTrmError ? 'text-warning' : 'text-muted-foreground'}`}
                   aria-live="polite"
                 >
                   {trmStatusText}
@@ -633,15 +633,15 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                   </p>
                   <div className="mt-2 space-y-1.5">
                     {pendingDuplicates.map((dup, i) => (
-                      <div key={i} className="text-xs text-amber-700 dark:text-amber-300 bg-amber-100/50 dark:bg-amber-900/30 p-2 rounded-lg">
+                      <div key={i} className="text-xs text-warning bg-warning-muted p-2 rounded-lg">
                         <span className="font-medium">{formatCurrency(dup.transaction.amount)}</span>
                         {' — '}
                         {dup.transaction.description || dup.transaction.category}
                         {' · '}
-                        <span className="text-amber-600 dark:text-amber-400">
+                        <span className="text-warning">
                           {formatDate(dup.transaction.date)}
                         </span>
-                        <span className="ml-2 text-amber-500 dark:text-amber-500 italic">
+                        <span className="ml-2 text-warning italic">
                           ({dup.reasons.join(', ')})
                         </span>
                       </div>
@@ -650,13 +650,13 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                   <div className="flex gap-3 mt-3">
                     <button
                       onClick={handleConfirmDuplicate}
-                      className="text-xs font-medium px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors"
+                      className="text-xs font-medium px-3 py-1.5 rounded-lg bg-warning-muted text-warning border border-warning transition-colors hover:opacity-80"
                     >
                       No es duplicado, agregar de todos modos
                     </button>
                     <button
                       onClick={handleCancelDuplicate}
-                      className="text-xs font-medium text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200 underline underline-offset-2"
+                      className="text-xs font-medium text-warning hover:opacity-80 underline underline-offset-2"
                     >
                       {UI_TEXT.actions.cancel}
                     </button>
@@ -683,7 +683,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
               onClick={() => checkDuplicatesAndSubmit('continue')}
               aria-label="Agregar y continuar"
               title="Agregar y seguir ingresando (mantiene cuenta y fecha)"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-white shadow-sm transition-colors hover:bg-amber-600"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary-solid text-primary-foreground shadow-sm transition-opacity hover:opacity-90"
             >
               <Zap size={18} aria-hidden="true" />
             </button>

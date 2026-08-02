@@ -9,7 +9,7 @@ import { FirestoreErrorBanner } from './components/layout/FirestoreErrorBanner';
 import { FinanceNotificationBridge } from './components/layout/FinanceNotificationBridge';
 import { FinanceViewRouter } from './components/layout/FinanceViewRouter';
 import { MobileNavigation } from './components/layout/MobileNavigation';
-import { StatsCards, TransactionForm } from './components/shared';
+import { TransactionForm } from './components/shared';
 import { AuthModal } from './components/modals/AuthModal';
 import { WelcomeModal } from './components/modals/WelcomeModal';
 import { HelpModal } from './components/modals/HelpModal';
@@ -24,28 +24,25 @@ import { FirestoreProvider } from './contexts/FirestoreContext';
 import { FinanceProvider } from './contexts/FinanceContext';
 import { TransactionsView } from './components/views/transactions';
 import { useAddTransaction } from './hooks/useAddTransaction';
-import { useFilteredData } from './hooks/useFilteredData';
 import { useWelcomeModal } from './hooks/useWelcomeModal';
 import { useGuestMigration } from './hooks/useGuestMigration';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { UIPreferencesProvider } from './contexts/UIPreferencesContext';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useViewRouting } from './hooks/useViewRouting';
+import { useViewTransitionFocus } from './hooks/useViewTransitionFocus';
 import {
   useAccountDomain,
   useBeneficiaryDomain,
   useCategoryDomain,
   useFinanceStatus,
-  useFormatCurrency,
   useRecurringDomain,
   useTransactionDomain,
 } from './hooks/useFinanceSelectors';
 import { TOAST_CONFIG, createInitialTransaction } from './config/constants';
 import { UI_TEXT, VIEW_SHORTCUTS } from './config/ui';
-import { DATE_PRESETS } from './utils/dateUtils';
-import { parseDateFromInput } from './utils/formatters';
 import { logger } from './utils/logger';
-import type { NewTransaction, FilterValue, DateRange, DateRangePreset } from './types/finance';
+import type { NewTransaction, FilterValue, DateRangePreset } from './types/finance';
 import { logoutFirebase } from './lib/firebase';
 import { clearFirestorePersistence } from './lib/firebaseDb';
 import type { User } from 'firebase/auth';
@@ -54,7 +51,6 @@ import { InstallPrompt } from './components/pwa/InstallPrompt';
 const AIChatBot = lazy(() =>
   import('./components/chat/AIChatBot').then(m => ({ default: m.AIChatBot }))
 );
-import { AITeaserButton } from './components/chat/AITeaserButton';
 import { OnboardingChecklist } from './components/onboarding/OnboardingChecklist';
 import type { BudgetDraft } from './components/views/budgets/BudgetsView';
 
@@ -99,8 +95,6 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const {
     accounts,
     defaultAccount,
-    totalBalance,
-    getAccountBalance,
   } = useAccountDomain();
   const {
     categories,
@@ -122,16 +116,15 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     firestoreError,
     retryLoad,
   } = useFinanceStatus();
-  const formatCurrency = useFormatCurrency();
-
   // Estado de IA (BYOK): si hay key pero falta autorizar el consentimiento,
   // mostramos un badge de "pendiente" sobre el botón de configuración.
   const { isConfigured: aiKeyConfigured, hasConsent: aiHasConsent } = useGeminiKey();
+  const aiReady = Boolean(user && aiKeyConfigured && aiHasConsent);
   const aiAuthPending = aiKeyConfigured && !aiHasConsent;
   const pendingSettingsCount = aiAuthPending ? 1 : 0;
 
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const { scrollContainerRef, handleViewChange, handleViewMounted, focusMainContent } = useViewTransitionFocus();
   const newTransactionRef = useRef<NewTransaction>({ ...createInitialTransaction() });
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -140,45 +133,26 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const [showNotificationPreferences, setShowNotificationPreferences] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [hasMountedAssistant, setHasMountedAssistant] = useState(false);
+  const assistantTriggerRef = useRef<HTMLElement | null>(null);
+
+  const handleOpenAssistant = useCallback((returnFocusTo: HTMLElement) => {
+    assistantTriggerRef.current = returnFocusTo;
+    setHasMountedAssistant(true);
+    setIsAssistantOpen(true);
+  }, []);
 
   const [showForm, setShowForm] = useState(false);
   const [pendingBudgetDraft, setPendingBudgetDraft] = useState<BudgetDraft | null>(null);
   const [batchCount, setBatchCount] = useState(0);
   // S6: sincroniza la vista con ?view=<name> en la URL (back/forward funciona).
-  const { view, setView } = useViewRouting();
+  const { view, setView } = useViewRouting({ onViewChange: handleViewChange });
   const [filterCategory, setFilterCategory] = useState<FilterValue>('all');
   const [filterAccount, setFilterAccount] = useState<FilterValue>('all');
   const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>('this-month');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
-  const dateRange = useMemo<DateRange>(() => {
-    const range: DateRange = { preset: dateRangePreset };
-
-    if (dateRangePreset === 'custom' && customStartDate) {
-      range.startDate = parseDateFromInput(customStartDate);
-    }
-
-    if (dateRangePreset === 'custom' && customEndDate) {
-      const endDate = parseDateFromInput(customEndDate);
-      endDate.setHours(23, 59, 59, 999);
-      range.endDate = endDate;
-    }
-
-    return range;
-  }, [customEndDate, customStartDate, dateRangePreset]);
-  const statsPeriodLabel = useMemo(() => {
-    if (dateRangePreset === 'custom') return 'rango elegido';
-    return DATE_PRESETS.find((preset) => preset.value === dateRangePreset)?.label.toLowerCase() || 'todo el tiempo';
-  }, [dateRangePreset]);
-
-  // Historial COMPLETO (balanceTransactions), no la ventana paginada de 500: las
-  // tarjetas de resumen (Ingresos/Gastos/Pendientes) agregan sobre transacciones,
-  // y con >500 tx un filtro "este año"/"todo" subcontaría periodos antiguos. Mismo
-  // motivo que los saldos (C2) y los monitores de notificación. (#stats-1)
-  const { dynamicStats, dynamicTotalBalance, balanceLabel } = useFilteredData({
-    transactions: balanceTransactions, accounts, filterAccount, filterCategory, dateRange, totalBalance, getAccountBalance,
-  });
-
   const [newTransaction, setNewTransaction] = useState<NewTransaction>({
     ...createInitialTransaction()
   });
@@ -244,7 +218,6 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const handleUseBudgetSuggestion = useCallback((category: string, suggestedLimit: number) => {
     setPendingBudgetDraft({ category, suggestedLimit });
     setView('budgets');
-    scrollContainerRef.current?.scrollTo({ top: 0 });
   }, [setView]);
 
   const handleBudgetDraftApplied = useCallback(() => {
@@ -336,7 +309,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   }
 
   return (
-    <div className="flex flex-col h-dvh bg-background bg-gradient-to-br from-violet-50/30 via-purple-50/20 to-fuchsia-50/10 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <div className="flex flex-col h-dvh w-full min-w-0 overflow-x-hidden bg-background bg-gradient-to-br from-violet-50/30 via-purple-50/20 to-fuchsia-50/10 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
       {/* Banner de sin conexión + sync status */}
       <OfflineIndicator />
 
@@ -423,6 +396,17 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         />
       )}
 
+      <a
+        className="skip-link"
+        href="#main-content"
+        onClick={(event) => {
+          event.preventDefault();
+          focusMainContent();
+        }}
+      >
+        Saltar al contenido principal
+      </a>
+
       <Header
         user={user}
         setIsAuthModalOpen={setIsAuthModalOpen}
@@ -434,34 +418,23 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         onOpenCategories={handleOpenCategories}
         onOpenNotificationPreferences={handleOpenNotificationPreferences}
         onOpenAISettings={() => setShowAISettingsModal(true)}
+        aiReady={aiReady}
+        onOpenAssistant={handleOpenAssistant}
         onLogout={handleLogout}
         pendingSettingsCount={pendingSettingsCount}
         aiAuthPending={aiAuthPending}
       />
 
-      <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-auto">
+      <div className="relative flex flex-col flex-1 min-h-0 min-w-0">
+      <main id="main-content" ref={scrollContainerRef} tabIndex={-1} className="flex-1 min-h-0 overflow-auto">
         <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-5 pb-24 sm:pb-6">
           <div className="max-w-7xl mx-auto">
             <OnboardingChecklist
               hasAccounts={accounts.length > 0}
               hasTransactions={transactions.length > 0}
-              aiReady={!!user && aiKeyConfigured && aiHasConsent}
               onGoToAccounts={() => setView('accounts')}
               onAddTransaction={() => { setView('transactions'); setShowForm(true); }}
-              onOpenAISettings={() => setShowAISettingsModal(true)}
             />
-            <StatsCards
-              balanceSettling={!balancesReady}
-              totalBalance={dynamicTotalBalance}
-              totalIncome={dynamicStats.totalIncome}
-              totalExpenses={dynamicStats.totalExpenses}
-              pendingExpenses={dynamicStats.pendingExpenses}
-              formatCurrency={formatCurrency}
-              balanceLabel={balanceLabel}
-              periodLabel={statsPeriodLabel}
-              hasAccounts={accounts.length > 0}
-            />
-
             {/* Error banner when Firestore fails */}
             {firestoreError && (
               <FirestoreErrorBanner
@@ -511,28 +484,25 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
               )}
               pendingBudgetDraft={pendingBudgetDraft}
               onBudgetDraftApplied={handleBudgetDraftApplied}
+              onGoToTransactions={() => setView('transactions')}
               onOpenFinancialPlan={() => setView('financial-plan')}
               onUseBudgetSuggestion={handleUseBudgetSuggestion}
+              onViewMounted={handleViewMounted}
             />
           </div>
         </div>
-      </div>
+      </main>
 
-      {/* Asistente IA (A6) — descubrible siempre:
-          - listo (sesión + key + consentimiento) → chat completo (lazy).
-          - invitado o sin key/consentimiento → teaser ligero que invita a
-            activarlo (abre login o GeminiKeyModal). Evita cargar el chunk del
-            chat / el cliente Gemini hasta que la IA esté realmente lista. */}
-      {user && aiKeyConfigured && aiHasConsent ? (
+      {hasMountedAssistant && aiReady && (
         <Suspense fallback={null}>
-          <AIChatBot />
+          <AIChatBot
+            isOpen={isAssistantOpen}
+            onClose={() => setIsAssistantOpen(false)}
+            returnFocusRef={assistantTriggerRef}
+          />
         </Suspense>
-      ) : (
-        <AITeaserButton
-          isLoggedIn={!!user}
-          onActivate={() => (user ? setShowAISettingsModal(true) : setIsAuthModalOpen(true))}
-        />
       )}
+      </div>
     </div>
   );
 };

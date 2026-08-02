@@ -207,21 +207,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
 
   return (
     <div
-      className={`border rounded-xl p-3.5 sm:p-4 transition-[box-shadow,border-color,background-color] bg-card hover:bg-[var(--muted)] hover:border-[var(--border-accent)] hover:shadow-md shadow-sm group ${isExpanded ? 'border-[var(--border-accent)]' : 'border-[var(--border)]'} ${onToggleExpand ? 'cursor-pointer' : ''}`}
-      onClick={onToggleExpand ? () => onToggleExpand(transaction.id!) : undefined}
-      role={onToggleExpand ? 'button' : undefined}
-      tabIndex={onToggleExpand ? 0 : undefined}
-      aria-expanded={onToggleExpand ? isExpanded : undefined}
-      onKeyDown={
-        onToggleExpand
-          ? (e) => {
-              if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
-                e.preventDefault();
-                onToggleExpand(transaction.id!);
-              }
-            }
-          : undefined
-      }
+      className={`border rounded-xl p-3.5 sm:p-4 transition-[box-shadow,border-color,background-color] bg-card hover:bg-[var(--muted)] hover:border-[var(--border-accent)] hover:shadow-md shadow-sm group ${isExpanded ? 'border-[var(--border-accent)]' : 'border-[var(--border)]'}`}
     >
       <div className="flex items-start gap-3">
         {/* Icon — color = estado, icono = tipo */}
@@ -292,6 +278,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
             <div className="flex items-center gap-0.5 shrink-0">
               <div className="flex gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
                 <button
+                  type="button"
                   onClick={(e) => { e.stopPropagation(); onEdit(transaction); }}
                   className="flex items-center justify-center p-1.5 min-h-[44px] min-w-[44px] text-muted-foreground hover:text-primary hover:bg-[var(--muted)] rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   title="Editar"
@@ -300,6 +287,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
                   <Edit2 size={15} />
                 </button>
                 <button
+                  type="button"
                   onClick={(e) => { e.stopPropagation(); onDelete(transaction); }}
                   className="flex items-center justify-center p-1.5 min-h-[44px] min-w-[44px] text-muted-foreground hover:text-destructive hover:bg-[var(--destructive-muted)] rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   title="Eliminar"
@@ -414,6 +402,7 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
 
           <div className="flex justify-end">
             <button
+              type="button"
               onClick={(e) => { e.stopPropagation(); onEdit(transaction); }}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary bg-[var(--muted)] rounded-lg hover:bg-[var(--balance-accent)] transition-colors"
             >

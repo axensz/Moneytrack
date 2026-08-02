@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import {
   actionUrlToView,
@@ -77,6 +77,22 @@ describe('useViewRouting (S6)', () => {
     });
 
     expect(result.current.view).toBe('goals');
+  });
+
+  it('notifies the shell once for direct navigation and once for browser history', () => {
+    const onViewChange = vi.fn();
+    const { result } = renderHook(() => useViewRouting({ onViewChange }));
+
+    act(() => result.current.setView('stats'));
+    expect(onViewChange).toHaveBeenCalledTimes(1);
+    expect(onViewChange).toHaveBeenLastCalledWith('stats');
+
+    act(() => {
+      window.history.pushState({ view: 'accounts' }, '', '/?view=accounts');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    expect(onViewChange).toHaveBeenCalledTimes(2);
+    expect(onViewChange).toHaveBeenLastCalledWith('accounts');
   });
 
   it('genera actionUrl canonica y convierte rutas legacy', () => {

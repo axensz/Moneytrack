@@ -11,7 +11,7 @@
  * sin rutas nuevas que requieran configuración de servidor.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ViewType } from '../types/finance';
 
 export const VALID_VIEWS: readonly ViewType[] = [
@@ -78,13 +78,24 @@ function readViewFromURL(): ViewType {
   return VALID_VIEWS.includes(param as ViewType) ? (param as ViewType) : DEFAULT_VIEW;
 }
 
-export function useViewRouting() {
+export interface UseViewRoutingOptions {
+  onViewChange?: (view: ViewType) => void;
+}
+
+export function useViewRouting(options?: UseViewRoutingOptions) {
   // Lazy initializer: lee la URL una sola vez en el primer render de cliente.
   const [view, setViewState] = useState<ViewType>(readViewFromURL);
+  const onViewChangeRef = useRef(options?.onViewChange);
+  onViewChangeRef.current = options?.onViewChange;
+
+  const applyView = useCallback((nextView: ViewType) => {
+    setViewState(nextView);
+    onViewChangeRef.current?.(nextView);
+  }, []);
 
   // Actualiza el estado + la URL. Estable entre renders (useCallback sin deps).
   const setView = useCallback((newView: ViewType) => {
-    setViewState(newView);
+    applyView(newView);
     const url = new URL(window.location.href);
     if (newView === DEFAULT_VIEW) {
       url.searchParams.delete('view');
@@ -92,16 +103,16 @@ export function useViewRouting() {
       url.searchParams.set('view', newView);
     }
     history.pushState({ view: newView }, '', url.toString());
-  }, []);
+  }, [applyView]);
 
   // Navegación Atrás/Adelante del navegador
   useEffect(() => {
     const handlePopState = () => {
-      setViewState(readViewFromURL());
+      applyView(readViewFromURL());
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [applyView]);
 
   return { view, setView } as const;
 }

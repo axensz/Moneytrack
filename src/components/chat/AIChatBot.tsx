@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
-import { X, Send, Bot, User, Loader2, Sparkles, Trash2, Check, XCircle, Info } from 'lucide-react';
+import { X, Send, Bot, User, Loader2, Trash2, Check, XCircle, Info } from 'lucide-react';
 import { sendChatMessage, isGeminiConfigured, parseActionFromResponse, type ChatMessage, type ChatAction, type TokenUsage } from '../../lib/gemini';
 import { formatCurrency } from '../../utils/formatters';
 import { logger } from '../../utils/logger';
@@ -107,7 +107,11 @@ function renderMarkdown(text: string): React.ReactNode {
   return elements;
 }
 
-interface AIChatBotProps { }
+interface AIChatBotProps {
+  isOpen: boolean;
+  onClose: () => void;
+  returnFocusRef: React.RefObject<HTMLElement | null>;
+}
 
 const WELCOME_MESSAGE: UIChatMessage = {
   id: 'welcome',
@@ -130,24 +134,24 @@ const TokenBadge: React.FC<{ tokenUsage: TokenUsage }> = ({ tokenUsage }) => {
     <div className="mt-2 select-none">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-purple-600 dark:hover:text-purple-400 transition-colors px-2 py-1 rounded-md hover:bg-purple-50 dark:hover:bg-purple-900/20"
+        className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-primary transition-colors px-2 py-1 rounded-md hover:bg-surface-primary"
         aria-label="Ver uso de tokens"
       >
         <Info size={12} />
         <span className="font-medium">{tokenUsage.totalTokens.toLocaleString()} tokens</span>
       </button>
       {expanded && (
-        <div className="mt-1.5 p-2.5 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800 rounded-lg text-[10px] text-gray-700 dark:text-gray-300 space-y-1 shadow-sm border border-gray-300 dark:border-gray-600 animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <div className="mt-1.5 p-2.5 bg-muted rounded-lg text-[10px] text-foreground space-y-1 border border-border animate-in fade-in duration-200">
           <div className="flex justify-between gap-4 items-center">
             <span className="flex items-center gap-1">
-              <span className="text-blue-500">↗</span>
+              <span className="text-primary">↗</span>
               <span>Entrada</span>
             </span>
             <span className="font-mono font-semibold">{tokenUsage.promptTokens.toLocaleString()}</span>
           </div>
           <div className="flex justify-between gap-4 items-center">
             <span className="flex items-center gap-1">
-              <span className="text-green-500">↙</span>
+              <span className="text-primary">↙</span>
               <span>Respuesta</span>
             </span>
             <span className="font-mono font-semibold">{tokenUsage.responseTokens.toLocaleString()}</span>
@@ -161,12 +165,12 @@ const TokenBadge: React.FC<{ tokenUsage: TokenUsage }> = ({ tokenUsage }) => {
               <span className="font-mono font-semibold">{tokenUsage.thinkingTokens!.toLocaleString()}</span>
             </div>
           )}
-          <div className="flex justify-between gap-4 items-center border-t border-gray-300 dark:border-gray-600 pt-1 mt-1">
+          <div className="flex justify-between gap-4 items-center border-t border-border pt-1 mt-1">
             <span className="font-semibold flex items-center gap-1">
-              <span className="text-purple-500">Σ</span>
+              <span className="text-primary">Σ</span>
               <span>Total</span>
             </span>
-            <span className="font-mono font-bold text-purple-600 dark:text-purple-400">{tokenUsage.totalTokens.toLocaleString()}</span>
+            <span className="font-mono font-bold text-primary">{tokenUsage.totalTokens.toLocaleString()}</span>
           </div>
         </div>
       )}
@@ -192,12 +196,12 @@ const ActionCard: React.FC<{
               <span className="text-lg">{icon}</span>
               {d.txType === 'income' ? 'Agregar ingreso' : 'Agregar gasto'}
             </p>
-            <div className="text-xs space-y-1 text-gray-700 dark:text-gray-300 bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 border border-purple-100 dark:border-purple-800/50">
-              <p className="flex justify-between"><span className="font-medium">Monto:</span> <span className="font-semibold text-purple-700 dark:text-purple-300">{formatCurrency(d.amount)}</span></p>
+            <div className="text-xs space-y-1 text-foreground bg-card rounded-lg p-2 border border-border">
+              <p className="flex justify-between"><span className="font-medium">Monto:</span> <span className="font-semibold text-primary">{formatCurrency(d.amount)}</span></p>
               <p className="flex justify-between"><span className="font-medium">Categoría:</span> <span className="font-medium">{d.category}</span></p>
               <p className="flex justify-between"><span className="font-medium">Descripción:</span> <span>{d.description}</span></p>
               <p className="flex justify-between"><span className="font-medium">Cuenta:</span> <span>{d.accountName}</span></p>
-              <p className="flex justify-between"><span className="font-medium">Estado:</span> <span className={d.paid ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>{d.paid ? '✓ Pagado' : '⏳ Pendiente'}</span></p>
+              <p className="flex justify-between"><span className="font-medium">Estado:</span> <span className={d.paid ? 'text-success' : 'text-warning'}>{d.paid ? '✓ Pagado' : '⏳ Pendiente'}</span></p>
             </div>
           </div>
         );
@@ -210,12 +214,12 @@ const ActionCard: React.FC<{
               <span className="text-lg">🏷️</span>
               Recategorizar transacción
             </p>
-            <div className="text-xs space-y-1 text-gray-700 dark:text-gray-300 bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 border border-purple-100 dark:border-purple-800/50">
+            <div className="text-xs space-y-1 text-foreground bg-card rounded-lg p-2 border border-border">
               <p><span className="font-medium">Transacción:</span> {d.description}</p>
               <p className="flex items-center gap-2">
-                <span className="px-2 py-0.5 bg-gray-200 dark:bg-gray-700 rounded">{d.oldCategory}</span>
+                <span className="px-2 py-0.5 bg-muted rounded">{d.oldCategory}</span>
                 <span>→</span>
-                <span className="px-2 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 rounded font-medium">{d.newCategory}</span>
+                <span className="px-2 py-0.5 bg-surface-primary text-primary-text rounded font-medium">{d.newCategory}</span>
               </p>
             </div>
           </div>
@@ -229,13 +233,13 @@ const ActionCard: React.FC<{
               <span className="text-lg">🏷️</span>
               Recategorizar {updates.length} transacciones
             </p>
-            <div className="text-xs space-y-1 text-gray-700 dark:text-gray-300 bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 border border-purple-100 dark:border-purple-800/50 max-h-32 overflow-y-auto scrollbar-thin">
+            <div className="text-xs space-y-1 text-foreground bg-card rounded-lg p-2 border border-border max-h-32 overflow-y-auto scrollbar-thin">
               {updates.map((u) => (
                 <p key={u.transactionId} className="flex items-center gap-1.5 py-0.5">
-                  <span className="text-purple-500">•</span>
+                  <span className="text-primary">•</span>
                   <span className="flex-1 truncate">{u.description}</span>
                   <span className="text-[10px] text-muted-foreground">→</span>
-                  <span className="text-purple-600 dark:text-purple-400 font-medium">{u.newCategory}</span>
+                  <span className="text-primary font-medium">{u.newCategory}</span>
                 </p>
               ))}
             </div>
@@ -250,7 +254,7 @@ const ActionCard: React.FC<{
               <span className="text-lg">➕</span>
               Crear categoría
             </p>
-            <div className="text-xs text-gray-700 dark:text-gray-300 bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 border border-purple-100 dark:border-purple-800/50">
+            <div className="text-xs text-foreground bg-card rounded-lg p-2 border border-border">
               <p className="flex justify-between"><span className="font-medium">Nombre:</span> <span className="font-semibold">{d.name}</span></p>
               <p className="flex justify-between"><span className="font-medium">Tipo:</span> <span>{d.categoryType === 'expense' ? '📉 Gasto' : '📈 Ingreso'}</span></p>
             </div>
@@ -261,13 +265,13 @@ const ActionCard: React.FC<{
   };
 
   return (
-    <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 dark:from-purple-900/20 dark:to-purple-800/10 border-2 border-purple-300 dark:border-purple-700 rounded-xl p-3 space-y-2.5 shadow-md animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div className="bg-muted border border-border rounded-xl p-3 space-y-2.5 shadow-sm animate-in fade-in duration-200">
       {getActionSummary()}
       <div className="flex gap-2 pt-1">
         <button
           onClick={onConfirm}
           disabled={isExecuting}
-          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-700 text-white hover:from-emerald-700 hover:to-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed transition-[box-shadow,transform,background-color] shadow-sm hover:shadow-md hover:scale-105 active:scale-95"
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-primary-solid text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
         >
           {isExecuting ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
           {isExecuting ? 'Ejecutando...' : 'Confirmar'}
@@ -275,7 +279,7 @@ const ActionCard: React.FC<{
         <button
           onClick={onReject}
           disabled={isExecuting}
-          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-[box-shadow,transform,background-color] shadow-sm hover:shadow-md hover:scale-105 active:scale-95"
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-card text-foreground border border-border hover:bg-muted disabled:opacity-50 transition-colors"
         >
           <XCircle size={14} />
           Cancelar
@@ -285,7 +289,11 @@ const ActionCard: React.FC<{
   );
 };
 
-export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
+export const AIChatBot: React.FC<AIChatBotProps> = memo(({
+  isOpen,
+  onClose,
+  returnFocusRef,
+}) => {
   const {
     transactions,
     addTransaction: onAddTransaction,
@@ -293,7 +301,6 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
   } = useTransactionDomain();
   const { accounts } = useAccountDomain();
   const { categories, addCategory: onAddCategory } = useCategoryDomain();
-  const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<UIChatMessage[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -301,6 +308,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
   const [executingAction, setExecutingAction] = useState<number | null>(null); // index of message with action being executed
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const configured = isGeminiConfigured();
 
@@ -309,11 +317,13 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Focus input al abrir
   useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 300);
-    }
+    if (!isOpen) return;
+    const composer = inputRef.current;
+    const fallback = panelRef.current?.querySelector<HTMLButtonElement>(
+      '[data-assistant-focus-fallback]:not([disabled])',
+    );
+    (composer && !composer.disabled ? composer : fallback)?.focus();
   }, [isOpen]);
 
   // Memoizar el contexto financiero para evitar recalcular en cada render
@@ -387,6 +397,24 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
     setMessages([WELCOME_MESSAGE]);
     setError(null);
   }, []);
+
+  const requestClose = useCallback(() => {
+    onClose();
+    queueMicrotask(() => {
+      const trigger = returnFocusRef.current;
+      if (trigger?.isConnected) trigger.focus();
+    });
+  }, [onClose, returnFocusRef]);
+
+  const handlePanelKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      requestClose();
+    },
+    [requestClose],
+  );
 
   // Ejecutar una acción confirmada por el usuario
   const handleConfirmAction = useCallback(async (msgIndex: number) => {
@@ -534,41 +562,27 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
     });
   }, []);
 
-  // No mostrar el chatbot si la API key no está configurada
-  if (!configured) return null;
-
-  // Botón flotante
-  if (!isOpen) {
-    return (
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-[88px] sm:bottom-6 right-4 sm:right-6 z-40 p-4 rounded-full bg-gradient-to-br from-purple-600 via-violet-600 to-purple-700 text-white shadow-lg hover:shadow-2xl hover:scale-110 transition-[box-shadow,transform] duration-300 group animate-in fade-in zoom-in"
-        title="Asistente financiero IA"
-        aria-label="Abrir asistente de IA"
-      >
-        <Sparkles size={24} className="group-hover:rotate-12 transition-transform duration-300" />
-        {/* Badge de IA con animación */}
-        <span className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-br from-amber-400 to-amber-500 rounded-full flex items-center justify-center shadow-md animate-pulse">
-          <span className="text-[9px] font-bold text-amber-900">AI</span>
-        </span>
-        {/* Efecto de brillo */}
-        <span className="absolute inset-0 rounded-full bg-white opacity-0 group-hover:opacity-20 transition-opacity duration-300"></span>
-      </button>
-    );
-  }
+  // El shell controla la visibilidad; mantener este componente montado conserva
+  // el borrador y la conversación entre cierres.
+  if (!configured || !isOpen) return null;
 
   return (
-    <div className="fixed bottom-[88px] sm:bottom-6 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-[420px] sm:max-w-[420px] h-[calc(100vh-180px)] sm:h-[600px] max-h-[calc(100vh-180px)] sm:max-h-[85vh] flex flex-col bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-purple-200 dark:border-purple-800 overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-300">
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby="assistant-title"
+      onKeyDown={handlePanelKeyDown}
+      className="absolute inset-x-3 top-3 bottom-[calc(var(--shell-nav-h,72px)+env(safe-area-inset-bottom))] sm:left-auto sm:right-4 sm:bottom-4 sm:w-[420px] z-[80] flex flex-col min-w-0 max-w-[calc(100%-1.5rem)] bg-card text-card-foreground rounded-2xl shadow-2xl border border-border overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200"
+    >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-br from-purple-600 via-violet-600 to-purple-700 text-white shrink-0 relative overflow-hidden">
-        {/* Efecto de brillo animado en el header */}
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full animate-shimmer"></div>
+      <div data-assistant-titlebar className="flex items-center justify-between px-4 py-3 bg-primary-solid text-primary-foreground shrink-0">
         <div className="flex items-center gap-2 relative z-10">
-          <div className="p-1.5 bg-white/20 backdrop-blur-sm rounded-lg shadow-inner">
+          <div className="p-1.5 bg-white/15 rounded-lg">
             <Bot size={18} className="drop-shadow-sm" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold drop-shadow-sm">Asistente MoneyTrack</h3>
+            <h2 id="assistant-title" className="text-sm font-semibold drop-shadow-sm">Asistente MoneyTrack</h2>
             {(() => {
               const total = messages.reduce((sum, m) => sum + (m.tokenUsage?.totalTokens ?? 0), 0);
               return total > 0 ? (
@@ -579,16 +593,17 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
         </div>
         <div className="flex items-center gap-1 relative z-10">
           <button
+            data-assistant-focus-fallback
             onClick={handleClearChat}
-            className="p-2 hover:bg-white/20 backdrop-blur-sm rounded-lg transition-[background-color,transform] hover:scale-110 active:scale-95"
+            className="p-2 rounded-lg hover:bg-white/15 transition-colors"
             title="Limpiar chat"
             aria-label="Limpiar conversación"
           >
             <Trash2 size={16} className="drop-shadow-sm" />
           </button>
           <button
-            onClick={() => setIsOpen(false)}
-            className="p-2 hover:bg-white/20 backdrop-blur-sm rounded-lg transition-[background-color,transform] hover:scale-110 active:scale-95"
+            onClick={requestClose}
+            className="p-2 rounded-lg hover:bg-white/15 transition-colors"
             aria-label="Cerrar chat"
           >
             <X size={18} className="drop-shadow-sm" />
@@ -597,21 +612,21 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 space-y-3 min-h-0 bg-gradient-to-b from-gray-50/50 to-transparent dark:from-gray-800/30 dark:to-transparent scrollbar-thin">
+      <div data-assistant-messages className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 space-y-3 scrollbar-thin">
         {messages.map((msg, i) => (
           <React.Fragment key={msg.id}>
             <div
-              className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}
+              className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in duration-200`}
             >
               {msg.role === 'model' && (
-                <div className="shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-purple-100 to-purple-200 dark:from-purple-900/40 dark:to-purple-800/40 flex items-center justify-center mt-1 shadow-sm border border-purple-200 dark:border-purple-700">
-                  <Bot size={14} className="text-purple-600 dark:text-purple-400" />
+                <div className="shrink-0 w-7 h-7 rounded-full bg-surface-primary text-primary-text flex items-center justify-center mt-1 border border-border-accent">
+                  <Bot size={14} />
                 </div>
               )}
               <div
                 className={`max-w-[calc(100%-3rem)] px-3 py-2 rounded-2xl text-sm leading-relaxed break-words overflow-wrap-anywhere shadow-sm ${msg.role === 'user'
-                  ? 'bg-gradient-to-br from-purple-600 to-purple-700 text-white rounded-br-md whitespace-pre-wrap'
-                  : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-md border border-gray-200 dark:border-gray-700'
+                  ? 'bg-primary-solid text-primary-foreground rounded-br-md whitespace-pre-wrap'
+                  : 'bg-card text-card-foreground rounded-bl-md border border-border'
                   }`}
                 style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
               >
@@ -621,8 +636,8 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
                 )}
               </div>
               {msg.role === 'user' && (
-                <div className="shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-purple-600 to-purple-700 flex items-center justify-center mt-1 shadow-sm">
-                  <User size={14} className="text-white" />
+                <div className="shrink-0 w-7 h-7 rounded-full bg-primary-solid text-primary-foreground flex items-center justify-center mt-1 border border-border-accent">
+                  <User size={14} />
                 </div>
               )}
             </div>
@@ -640,28 +655,28 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
             )}
             {msg.actionExecuted && (
               <div className="ml-9">
-                <span className="text-xs text-emerald-600 dark:text-emerald-400 italic">Acción ejecutada ✓</span>
+                <span className="text-xs text-success italic">Acción ejecutada ✓</span>
               </div>
             )}
           </React.Fragment>
         ))}
 
         {isLoading && (
-          <div className="flex gap-2 justify-start animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-purple-100 to-purple-200 dark:from-purple-900/40 dark:to-purple-800/40 flex items-center justify-center mt-1 shadow-sm border border-purple-200 dark:border-purple-700">
-              <Bot size={14} className="text-purple-600 dark:text-purple-400" />
+          <div className="flex gap-2 justify-start animate-in fade-in duration-200">
+            <div className="shrink-0 w-7 h-7 rounded-full bg-surface-primary text-primary-text flex items-center justify-center mt-1 border border-border-accent">
+              <Bot size={14} />
             </div>
-            <div className="bg-white dark:bg-gray-800 px-4 py-3 rounded-2xl rounded-bl-md shadow-sm border border-gray-200 dark:border-gray-700">
+            <div className="bg-card text-card-foreground px-4 py-3 rounded-2xl rounded-bl-md shadow-sm border border-border">
               <div className="flex items-center gap-2">
-                <Loader2 size={16} className="animate-spin text-purple-500" />
-                <span className="text-xs text-gray-500 dark:text-gray-400">Pensando...</span>
+                <Loader2 size={16} className="animate-spin text-primary" />
+                <span className="text-xs text-muted-foreground">Pensando...</span>
               </div>
             </div>
           </div>
         )}
 
         {error && (
-          <div className="text-center px-3 py-2 text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 rounded-lg border border-rose-200 dark:border-rose-800 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="text-center px-3 py-2 text-xs text-destructive bg-destructive-muted rounded-lg border border-destructive animate-in fade-in duration-200">
             <div className="flex items-center justify-center gap-2">
               <XCircle size={14} />
               <span>{error}</span>
@@ -674,12 +689,12 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
 
       {/* Sugerencias (solo al inicio) */}
       {messages.length <= 1 && !isLoading && configured && (
-        <div className="px-3 sm:px-4 pb-2 flex flex-wrap gap-1.5 shrink-0 animate-in fade-in slide-in-from-bottom-2 duration-500">
+        <div className="px-3 sm:px-4 pb-2 flex flex-wrap gap-1.5 shrink-0 animate-in fade-in duration-200">
           {SUGGESTIONS.map((s) => (
             <button
               key={s}
               onClick={() => handleSuggestion(s)}
-              className="text-xs px-3 py-1.5 rounded-full bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-900/30 text-purple-700 dark:text-purple-300 hover:from-purple-100 hover:to-purple-200 dark:hover:from-purple-900/40 dark:hover:to-purple-900/50 transition-[background-color,transform] hover:scale-105 active:scale-95 border border-purple-200 dark:border-purple-800 shadow-sm"
+              className="text-xs px-3 py-1.5 rounded-full bg-muted text-primary hover:bg-surface-primary transition-colors border border-border-accent"
             >
               {s}
             </button>
@@ -688,7 +703,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
       )}
 
       {/* Input */}
-      <div className="border-t border-gray-200 dark:border-gray-700 p-3 shrink-0 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm">
+      <div data-assistant-composer className="border-t border-border p-3 shrink-0 bg-card">
         {!configured ? (
           <p className="text-xs text-center text-gray-500 dark:text-gray-400 py-2">
             Agrega tu API key de Gemini en <strong>Ajustes → Asistente IA</strong> para activar el asistente.
@@ -701,18 +716,19 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(() => {
           <div className="flex items-center gap-2">
             <input
               ref={inputRef}
+              aria-label="Mensaje para el asistente"
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Pregunta sobre tus finanzas..."
               disabled={isLoading}
-              className="flex-1 px-3 py-2.5 text-sm rounded-xl border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 transition-[border-color,box-shadow] shadow-sm"
+              className="flex-1 px-3 py-2.5 text-sm rounded-xl border border-border bg-input text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 transition-[border-color,box-shadow]"
             />
             <button
               onClick={handleSend}
               disabled={!input.trim() || isLoading}
-              className="p-2.5 rounded-xl bg-gradient-to-br from-purple-600 to-purple-700 text-white hover:from-purple-700 hover:to-purple-800 transition-[box-shadow,transform,background-color] disabled:opacity-40 disabled:cursor-not-allowed shadow-md hover:shadow-lg hover:scale-105 active:scale-95"
+              className="p-2.5 rounded-xl bg-primary-solid text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
               aria-label="Enviar mensaje"
             >
               <Send size={16} />

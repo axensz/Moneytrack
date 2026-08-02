@@ -44,7 +44,7 @@ export const BeneficiarySpendTable: React.FC<BeneficiarySpendTableProps> = ({
   const maxValue = topRows[0]?.value || 0;
 
   return (
-    <ChartCard title="Gastos por Persona" subtitle="Quién concentra más gasto" icon={UserRound}>
+    <ChartCard title="Gastos por Persona" subtitle={`Periodo: ${INTERVAL_OPTIONS.find((option) => option.value === interval)!.label}`} icon={UserRound}>
       <div className="mb-4 flex justify-end">
         <label htmlFor="beneficiary-spend-interval" className="sr-only">
           Intervalo de gastos por persona

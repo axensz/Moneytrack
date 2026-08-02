@@ -41,6 +41,16 @@ const categoryValue = (data: { name: string; value: number }[], name: string) =>
   data.find((c) => c.name === name)?.value ?? 0;
 
 describe('useStatsData — filtra transacciones impagas (F2-stats-paid)', () => {
+  it('aggregates the supplied complete history without Transaction-view filter state', () => {
+    const history = [
+      makeTx({ id: 'old', amount: 120_000, date: new Date(2025, 0, 15), paid: true }),
+      makeTx({ id: 'current', amount: 80_000, date: recentDate(), paid: true }),
+    ];
+    const { result } = renderHook(() => useStatsData(history));
+
+    expect(sumYearlyGastos(result.current.yearlyData)).toBe(200_000);
+  });
+
   it('NO suma un gasto con paid:false en monthlyData/yearlyData/categoryData', () => {
     const txs = [
       makeTx({ id: 'paid', amount: 100_000, paid: true, category: 'Alimentación' }),

@@ -11,7 +11,7 @@ import { ConfirmDialog } from '../../modals/ConfirmDialog';
 import { ACTION_ICONS, sectionTitle, UI_TEXT } from '../../../config/ui';
 import type { Debt } from '../../../types/finance';
 import { DebtCard } from './components/DebtCard';
-import { NewDebtForm } from './components/NewDebtForm';
+import { NewDebtForm, type DebtFormErrors } from './components/NewDebtForm';
 import { FORGIVEN_LABELS } from './constants';
 import { createInitialDebtFormData } from './utils/debtForm';
 import {
@@ -60,23 +60,32 @@ export const DebtsView: React.FC = () => {
   // Form state
   const [formData, setFormData] = useState(createInitialDebtFormData);
   const [newDebtPaymentSchedule, setNewDebtPaymentSchedule] = useState<PaymentScheduleFormState>(createEmptyPaymentScheduleForm());
+  const [newDebtFormErrors, setNewDebtFormErrors] = useState<DebtFormErrors>({});
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     if (submittingDebtRef.current) return;
 
+    setNewDebtFormErrors({});
     const amount = parseCurrency(formData.originalAmount);
     if (!formData.personName.trim()) {
-      showToast.error('Ingresa el nombre de la persona');
+      const message = 'Ingresa el nombre de la persona';
+      setNewDebtFormErrors({ personName: message });
+      showToast.error(message);
       return;
     }
     if (isNaN(amount) || amount <= 0) {
-      showToast.error('El monto debe ser mayor a 0');
+      const message = 'El monto debe ser mayor a 0';
+      setNewDebtFormErrors({ originalAmount: message });
+      showToast.error(message);
       return;
     }
 
     const paymentSchedule = buildPaymentScheduleUpdates(newDebtPaymentSchedule);
     if (paymentSchedule.error || !paymentSchedule.updates) {
-      showToast.error(paymentSchedule.error || 'Revisa la próxima fecha de pago');
+      const message = paymentSchedule.error || 'Revisa la próxima fecha de pago';
+      setNewDebtFormErrors({ paymentSchedule: message });
+      showToast.error(message);
       return;
     }
 
@@ -99,6 +108,7 @@ export const DebtsView: React.FC = () => {
     showToast.success(formData.type === 'lent' ? 'Préstamo registrado' : 'Deuda registrada');
     setFormData(createInitialDebtFormData());
     setNewDebtPaymentSchedule(createEmptyPaymentScheduleForm());
+    setNewDebtFormErrors({});
     setShowForm(false);
     } catch (error) {
       showToast.error(error instanceof Error ? error.message : 'No se pudo guardar el préstamo');
@@ -112,6 +122,7 @@ export const DebtsView: React.FC = () => {
     if (isSubmittingDebt) return;
     setFormData(createInitialDebtFormData());
     setNewDebtPaymentSchedule(createEmptyPaymentScheduleForm());
+    setNewDebtFormErrors({});
     setShowForm(false);
   };
 
@@ -119,6 +130,7 @@ export const DebtsView: React.FC = () => {
     if (showForm) {
       handleCancelNewDebt();
     } else {
+      setNewDebtFormErrors({});
       setShowForm(true);
     }
   };
@@ -220,7 +232,7 @@ export const DebtsView: React.FC = () => {
       {/* Header con descripción */}
       <div className="card">
         <div className="mb-6">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+          <h2 id="view-heading-debts" tabIndex={-1} className="text-xl font-bold text-gray-900 dark:text-gray-100">
             {sectionTitle('debts')}
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -281,6 +293,7 @@ export const DebtsView: React.FC = () => {
             Gestionar préstamos
           </h3>
           <button
+            type="button"
             onClick={handleToggleNewDebtForm}
             className="btn-primary text-sm"
           >
@@ -293,6 +306,7 @@ export const DebtsView: React.FC = () => {
         {showForm && (
           <NewDebtForm
             accounts={accounts}
+            errors={newDebtFormErrors}
             formData={formData}
             isSubmitting={isSubmittingDebt}
             paymentSchedule={newDebtPaymentSchedule}

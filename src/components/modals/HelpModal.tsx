@@ -15,6 +15,7 @@ import { HelpSectionTransactions } from './help/HelpSectionTransactions';
 import { HelpSectionRecurring } from './help/HelpSectionRecurring';
 import { HelpSectionDebts } from './help/HelpSectionDebts';
 import { HelpSectionBudgets } from './help/HelpSectionBudgets';
+import { HelpSectionFinancialPlan } from './help/HelpSectionFinancialPlan';
 import { HelpSectionGoals } from './help/HelpSectionGoals';
 import { HelpSectionStats } from './help/HelpSectionStats';
 import { HelpSectionAI } from './help/HelpSectionAI';
@@ -25,7 +26,7 @@ interface HelpModalProps {
   onClose: () => void;
 }
 
-type HelpViewTabId = Exclude<ViewType, 'financial-plan'>;
+type HelpViewTabId = ViewType;
 type HelpTabId = 'basics' | HelpViewTabId | 'ai' | 'shortcuts';
 
 interface HelpTab {
@@ -50,6 +51,7 @@ const HELP_TABS: HelpTab[] = [
   helpTabFromView('recurring'),
   helpTabFromView('debts'),
   helpTabFromView('budgets'),
+  helpTabFromView('financial-plan'),
   helpTabFromView('goals'),
   helpTabFromView('stats'),
   { id: 'ai', label: 'Asistente IA', Icon: Bot },
@@ -59,12 +61,29 @@ const HELP_TABS: HelpTab[] = [
 export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState<HelpTabId>('basics');
   const contentRef = useRef<HTMLDivElement>(null);
+  const tabRefs = useRef<HTMLButtonElement[]>([]);
 
   const scrollContentToStart = useCallback(() => {
     window.requestAnimationFrame(() => {
       contentRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     });
   }, []);
+
+  const selectTab = useCallback((nextIndex: number) => {
+    setActiveTab(HELP_TABS[nextIndex].id);
+    requestAnimationFrame(() => tabRefs.current[nextIndex]?.focus());
+    tabRefs.current[nextIndex]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, []);
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const { key } = event;
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(key)) return;
+
+    event.preventDefault();
+    const nextIndex = key === 'Home' ? 0 : key === 'End' ? HELP_TABS.length - 1 :
+      (index + (key === 'ArrowRight' ? 1 : -1) + HELP_TABS.length) % HELP_TABS.length;
+    selectTab(nextIndex);
+  };
 
   useEffect(() => {
     scrollContentToStart();
@@ -88,9 +107,10 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             aria-label="Secciones del manual"
             className="flex flex-wrap justify-center gap-1.5 p-2 scroll-smooth sm:gap-2 sm:p-3 lg:gap-3 max-sm:flex-nowrap max-sm:justify-start max-sm:overflow-x-auto max-sm:no-scrollbar max-sm:scroll-fade-x"
           >
-            {HELP_TABS.map((tab) => (
+            {HELP_TABS.map((tab, index) => (
               <button
                 key={tab.id}
+                ref={element => { if (element) tabRefs.current[index] = element; }}
                 id={`help-tab-${tab.id}`}
                 type="button"
                 role="tab"
@@ -98,10 +118,12 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                 aria-controls={`help-panel-${tab.id}`}
                 aria-label={tab.label}
                 title={tab.label}
+                tabIndex={activeTab === tab.id ? 0 : -1}
                 onClick={() => {
                   setActiveTab(tab.id);
                   scrollContentToStart();
                 }}
+                onKeyDown={event => handleKeyDown(event, index)}
                 className={`
                   group relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground outline-none transition-[background-color,color,box-shadow,transform] duration-200 focus-visible:ring-2 focus-visible:ring-primary sm:h-12 sm:w-12 lg:h-14 lg:w-14
                   ${activeTab === tab.id
@@ -146,6 +168,9 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
 
             {/* Presupuestos */}
             {activeTab === 'budgets' && <HelpSectionBudgets />}
+
+            {/* Plan financiero */}
+            {activeTab === 'financial-plan' && <HelpSectionFinancialPlan />}
 
             {/* Metas de Ahorro */}
             {activeTab === 'goals' && <HelpSectionGoals />}

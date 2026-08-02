@@ -12,6 +12,11 @@ import { CreditCardInterestsCard } from './components/CreditCardInterestsCard';
 import { PeriodSummaryCard } from './components/PeriodSummaryCard';
 import { useCreditCardInterests } from './hooks/useCreditCardInterests';
 import { useStatsData } from './hooks/useStatsData';
+import { sectionTitle } from '../../../config/ui';
+
+interface StatsViewProps {
+  onGoToTransactions: () => void;
+}
 
 /**
  * Vista Principal de Estadísticas
@@ -23,7 +28,7 @@ import { useStatsData } from './hooks/useStatsData';
  * 
  * @author Refactored following Clean Code principles
  */
-export const StatsView: React.FC = () => {
+export const StatsView: React.FC<StatsViewProps> = ({ onGoToTransactions }) => {
   const { balanceTransactions } = useTransactionDomain();
   const { accounts } = useAccountDomain();
   const formatCurrency = useFormatCurrency();
@@ -34,12 +39,28 @@ export const StatsView: React.FC = () => {
   // Custom hooks para procesamiento de datos
   const { monthlyData, yearlyData, categoryData } = useStatsData(allTransactions);
   const { creditCardInterests, totals } = useCreditCardInterests(accounts, allTransactions);
+  const hasTransactions = allTransactions.length > 0;
 
   // Wrapper para formatCurrency que respeta hideBalances
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <h2 id="view-heading-stats" tabIndex={-1} className="sr-only">{sectionTitle('stats')}</h2>
+      {!hasTransactions ? (
+        <section className="card py-12 text-center" aria-labelledby="stats-empty-title">
+          <h3 id="stats-empty-title" className="text-lg font-semibold text-foreground">
+            Tus estadísticas empiezan con un movimiento
+          </h3>
+          <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+            Los gráficos aparecerán al registrar movimientos.
+          </p>
+          <button type="button" className="btn-primary mt-6" onClick={onGoToTransactions}>
+            Ir a Transacciones
+          </button>
+        </section>
+      ) : (
+      <>
       {/* Fila 1: Flujo de caja a ancho completo */}
       <CashFlowChart
         data={monthlyData}
@@ -82,6 +103,8 @@ export const StatsView: React.FC = () => {
         transactions={allTransactions}
         accounts={accounts}
       />
+      </>
+      )}
     </div>
   );
 };

@@ -4,6 +4,30 @@
  */
 
 @layer components {
+  /* Bypass navigation: fuera del layout hasta que un usuario de teclado
+     le da foco. Al mostrarse queda por encima del shell sin desplazarlo. */
+  .skip-link {
+    position: fixed;
+    top: 1rem;
+    left: 1rem;
+    z-index: 200;
+    transform: translateY(calc(-100% - 2rem));
+    padding: 0.625rem 0.875rem;
+    border: 1px solid var(--border-accent);
+    border-radius: 0.5rem;
+    background-color: var(--card);
+    color: var(--foreground);
+    box-shadow: var(--shadow-lg);
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .skip-link:focus-visible {
+    transform: translateY(0);
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+
   /* ─── Cards ───────────────────────────────────────── */
 
   .card-balance {
@@ -272,7 +296,7 @@
      (no le pongas clase de color al <svg>). Para variar el hover (p. ej. salir
      en destructive) añade una utilidad hover:text-* al botón. */
   .header-icon {
-    @apply relative p-2 sm:p-2.5 rounded-lg text-muted-foreground transition-colors;
+    @apply relative inline-flex min-w-[44px] min-h-[44px] items-center justify-center p-2 sm:p-2.5 rounded-lg text-muted-foreground transition-colors;
     cursor: pointer;
   }
 

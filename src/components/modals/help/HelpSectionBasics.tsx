@@ -59,13 +59,13 @@ export const HelpSectionBasics: React.FC = () => (
           Primeros Pasos
         </h4>
         <ol className="list-decimal list-inside space-y-2.5 text-sm ml-1" style={{ color: 'var(--primary-text)' }}>
-          <li>Crea tu primera cuenta (ahorro, efectivo o TC)</li>
-          <li>Registra tu saldo inicial</li>
-          <li>Agrega tus primeras transacciones</li>
-          <li>Configura pagos periódicos (suscripciones)</li>
-          <li>Define presupuestos y metas de ahorro</li>
-          <li>Revisa tus estadísticas</li>
+          <li>Crea tu primera cuenta y registra su saldo inicial</li>
+          <li>Agrega tu primera transacción</li>
         </ol>
+        <p className="mt-3 text-sm" style={{ color: 'var(--primary-text)' }}>
+          Crear una cuenta y registrar tu primera transacción completa el inicio. Después puedes explorar el resto;
+          la IA es opcional y se activa solo si quieres usarla.
+        </p>
       </div>
 
       <div className="p-4 rounded-xl border" style={{ background: 'var(--info-muted)', borderColor: 'var(--info)' }}>
@@ -83,6 +83,10 @@ export const HelpSectionBasics: React.FC = () => (
           <li className="flex items-start gap-2">
             <span className="mt-1" style={{ color: 'var(--info)' }}>•</span>
             <span><strong>Con Google:</strong> Sincronización en la nube, accede desde cualquier dispositivo</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="mt-1" style={{ color: 'var(--info)' }}>•</span>
+            <span><strong>Sin conexión:</strong> Puedes consultar los datos disponibles en caché. Recupera la conexión para guardar cambios.</span>
           </li>
           <li className="flex items-start gap-2">
             <span className="mt-1" style={{ color: 'var(--info)' }}>•</span>

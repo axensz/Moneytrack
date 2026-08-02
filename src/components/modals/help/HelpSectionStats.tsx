@@ -104,29 +104,15 @@ export const HelpSectionStats: React.FC = () => (
         </div>
      </div>
 
-     {/* Filtros en estadísticas — panel neutro (explicación genérica, no estado). */}
+     {/* Alcance independiente de las estadísticas. */}
      <div className="p-4 bg-muted rounded-xl border border-border">
         <h4 className="font-semibold text-foreground mb-2 flex items-center gap-2">
            <Filter size={16} className="text-muted-foreground" />
-           Filtros Aplicados
+           Alcance de las estadísticas
         </h4>
         <p className="text-sm text-muted-foreground mb-3">
-           Los filtros que apliques en la vista de Transacciones también afectan las estadísticas:
+           Las Estadísticas usan el historial completo. Cada gráfico muestra su propio periodo: flujo y comparación usan los últimos 6 meses, tendencia anual y categorías usan historial completo, y las consultas muestran el periodo que eliges.
         </p>
-        <ul className="space-y-1 text-sm text-muted-foreground">
-           <li className="flex items-start gap-2">
-              <span className="text-muted-foreground">•</span>
-              <span>Filtra por cuenta para ver estadísticas solo de esa cuenta</span>
-           </li>
-           <li className="flex items-start gap-2">
-              <span className="text-muted-foreground">•</span>
-              <span>Filtra por categoría para analizar un tipo específico de gasto</span>
-           </li>
-           <li className="flex items-start gap-2">
-              <span className="text-muted-foreground">•</span>
-              <span>Usa rangos de fecha para comparar períodos específicos</span>
-           </li>
-        </ul>
      </div>
 
      {/* Funciones adicionales — iconos neutros de marca, no decoración violeta. */}
@@ -134,7 +120,7 @@ export const HelpSectionStats: React.FC = () => (
         <div className="p-4 rounded-xl border border-border">
            <Eye className="w-8 h-8 text-muted-foreground mb-3" />
            <h4 className="font-semibold text-foreground mb-1">Modo Discreto</h4>
-           <p className="text-sm text-muted-foreground">Usa el botón del ojo en las tarjetas superiores para ocultar los saldos cuando estés en público.</p>
+           <p className="text-sm text-muted-foreground">Usa el botón del ojo en el encabezado, junto al tema, para ocultar los saldos cuando estés en público.</p>
         </div>
 
         <div className="p-4 rounded-xl border border-border">

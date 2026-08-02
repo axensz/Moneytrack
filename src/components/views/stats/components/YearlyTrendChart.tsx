@@ -52,7 +52,7 @@ export const YearlyTrendChart: React.FC<YearlyTrendChartProps> = ({
   const chartLabel = `Tendencia anual de ingresos y gastos. Ingresos totales ${formatCurrency(totalIngresos)}, gastos totales ${formatCurrency(totalGastos)}.`;
 
   return (
-    <ChartCard title="Tendencia Anual" subtitle="Resumen por año" icon={TrendingUp}>
+    <ChartCard title="Tendencia Anual" subtitle="Historial completo por año" icon={TrendingUp}>
       {!hasData ? (
         <div className="text-center py-12 text-gray-400 dark:text-gray-500" role="status">
           <TrendingUp size={48} className="mx-auto mb-3 opacity-30" aria-hidden="true" />

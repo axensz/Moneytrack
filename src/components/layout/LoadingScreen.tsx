@@ -28,7 +28,9 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
       className={`fixed inset-0 overflow-hidden bg-background flex items-center justify-center z-50 transition-opacity duration-500 motion-reduce:transition-none ${
         exiting ? 'opacity-0 pointer-events-none' : 'opacity-100'
       }`}
+      role="status"
       aria-busy={!exiting}
+      aria-label={message}
       aria-live="polite"
     >
       {/* Bloom violet ambiental: florece tras el logo y se desvanece al borde. */}

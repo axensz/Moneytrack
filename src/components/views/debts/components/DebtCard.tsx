@@ -129,7 +129,7 @@ export const DebtCard: React.FC<DebtCardProps> = React.memo(({
           {/* Antigüedad y vencimiento */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs">
             {lentLabel && (
-              <span className="text-gray-400 dark:text-gray-500">
+              <span className="text-muted-foreground">
                 {isLent ? 'Prestado' : 'Recibido'} {lentLabel}
               </span>
             )}
@@ -140,7 +140,7 @@ export const DebtCard: React.FC<DebtCardProps> = React.memo(({
                   Vencido {formatRelativeTime(dueDate)}
                 </span>
               ) : (
-                <span className="text-gray-400 dark:text-gray-500">
+                <span className="text-muted-foreground">
                   Vence el {formatDate(dueDate)}
                 </span>
               )
@@ -155,7 +155,7 @@ export const DebtCard: React.FC<DebtCardProps> = React.memo(({
               </span>
             )}
             {paymentInfo?.isOneTimeOverride && paymentInfo.expectedPaymentDay && (
-              <span className="text-gray-400 dark:text-gray-500">
+              <span className="text-muted-foreground">
                 Luego vuelve al día {paymentInfo.expectedPaymentDay}
               </span>
             )}
@@ -227,7 +227,7 @@ export const DebtCard: React.FC<DebtCardProps> = React.memo(({
             </span>
             <button
               onClick={() => setShowPaymentScheduleForm(null)}
-              className="p-1 text-gray-400 hover:text-gray-600"
+              className="p-1 text-muted-foreground hover:text-foreground"
               title="Cerrar"
             >
               <X size={16} />
@@ -266,7 +266,7 @@ export const DebtCard: React.FC<DebtCardProps> = React.memo(({
           </button>
           <button
             onClick={() => setShowPaymentForm(null)}
-            className="p-2 text-gray-400 hover:text-gray-600"
+            className="p-2 text-muted-foreground hover:text-foreground"
           >
             <X size={16} />
           </button>
@@ -279,18 +279,18 @@ export const DebtCard: React.FC<DebtCardProps> = React.memo(({
           <div className="flex gap-2">
             <button
               onClick={() => setModifierOperation('add')}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${modifierOperation === 'add'
-                ? 'bg-green-500 text-white'
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+              className={`btn-type ${modifierOperation === 'add'
+                ? 'btn-type-active-success'
+                : 'btn-type-inactive'
                 }`}
             >
               Agregar
             </button>
             <button
               onClick={() => setModifierOperation('subtract')}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${modifierOperation === 'subtract'
-                ? 'bg-red-500 text-white'
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+              className={`btn-type ${modifierOperation === 'subtract'
+                ? 'btn-type-active-destructive'
+                : 'btn-type-inactive'
                 }`}
             >
               Restar
@@ -314,7 +314,7 @@ export const DebtCard: React.FC<DebtCardProps> = React.memo(({
             </button>
             <button
               onClick={() => setShowBalanceModifier(null)}
-              className="p-2 text-gray-400 hover:text-gray-600"
+              className="p-2 text-muted-foreground hover:text-foreground"
             >
               <X size={16} />
             </button>
@@ -340,7 +340,7 @@ export const DebtCard: React.FC<DebtCardProps> = React.memo(({
             ))}
             <button
               onClick={() => setShowForgive(null)}
-              className="p-2 text-gray-400 hover:text-gray-600"
+              className="p-2 text-muted-foreground hover:text-foreground"
             >
               <X size={16} />
             </button>

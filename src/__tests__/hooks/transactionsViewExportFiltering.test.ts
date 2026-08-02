@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useTransactionsView } from '../../components/views/transactions/hooks/useTransactionsView';
+import {
+  filterTransactionsForView,
+  useTransactionsView,
+} from '../../components/views/transactions/hooks/useTransactionsView';
 import type { Account, Transaction } from '../../types/finance';
 
 const account: Account = {
@@ -26,6 +29,57 @@ function transaction(id: string, category: string): Transaction {
 }
 
 describe('useTransactionsView - alcance del export', () => {
+  it('aplica los mismos filtros de cuenta, categoría, fecha y búsqueda al listado y al historial', () => {
+    const options = {
+      accounts: [account],
+      recurringPayments: [],
+      filterCategory: 'Comida',
+      filterAccount: 'account-1',
+      searchQuery: '  MERCADO  ',
+      dateRangePreset: 'custom' as const,
+      customStartDate: '2026-07-01',
+      customEndDate: '2026-07-31',
+    };
+    const matchVisible: Transaction = {
+      id: 'match-visible', type: 'expense', amount: 10_000, category: 'Comida',
+      description: 'Mercado semanal', date: new Date('2026-07-01T00:00:00.000'),
+      paid: true, accountId: account.id!, createdAt: new Date('2026-07-01T00:00:00.000'),
+    };
+    const matchHistorical: Transaction = {
+      ...matchVisible, id: 'match-historical', date: new Date('2026-07-31T23:59:59.999'),
+    };
+    const juneMatch: Transaction = {
+      ...matchVisible, id: 'june-match', date: new Date('2026-06-30T23:59:59.999'),
+    };
+    const augustMatch: Transaction = {
+      ...matchVisible, id: 'august-match', date: new Date('2026-08-01T00:00:00.000'),
+    };
+    const wrongCategory: Transaction = {
+      ...matchVisible, id: 'wrong-category', category: 'Otros',
+    };
+    const wrongAccount: Transaction = {
+      ...matchVisible, id: 'wrong-account', accountId: 'account-2',
+    };
+    const nonMatchingSearch: Transaction = {
+      ...matchVisible, id: 'non-matching-search', description: 'PanaderÃ­a semanal',
+    };
+    const visible = [
+      matchVisible,
+      juneMatch,
+      augustMatch,
+      wrongCategory,
+      wrongAccount,
+      nonMatchingSearch,
+    ];
+    const fullHistory = [...visible, matchHistorical];
+
+    expect(filterTransactionsForView(visible, options).map((item) => item.id)).toEqual(['match-visible']);
+    expect(filterTransactionsForView(fullHistory, options).map((item) => item.id)).toEqual([
+      'match-visible',
+      'match-historical',
+    ]);
+  });
+
   it('aplica los filtros al historial completo, no solo a las 500 recientes', () => {
     const paginated = Array.from({ length: 500 }, (_, index) =>
       transaction(`recent-${index}`, 'Otros')

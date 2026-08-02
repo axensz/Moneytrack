@@ -1,15 +1,13 @@
 'use client';
 
 import React from 'react';
-import { CheckCircle2, Circle, Wallet, Plus, Sparkles } from 'lucide-react';
+import { CheckCircle2, Circle, Wallet, Plus } from 'lucide-react';
 
 interface OnboardingChecklistProps {
   hasAccounts: boolean;
   hasTransactions: boolean;
-  aiReady: boolean;
   onGoToAccounts: () => void;
   onAddTransaction: () => void;
-  onOpenAISettings: () => void;
 }
 
 /**
@@ -21,15 +19,12 @@ interface OnboardingChecklistProps {
 export function OnboardingChecklist({
   hasAccounts,
   hasTransactions,
-  aiReady,
   onGoToAccounts,
   onAddTransaction,
-  onOpenAISettings,
 }: OnboardingChecklistProps) {
   const steps = [
     { key: 'account', label: 'Crea tu primera cuenta', done: hasAccounts, icon: Wallet, cta: 'Ir a Cuentas', onAction: onGoToAccounts },
     { key: 'transaction', label: 'Registra tu primer movimiento', done: hasTransactions, icon: Plus, cta: 'Registrar', onAction: onAddTransaction },
-    { key: 'ai', label: 'Activa el asistente IA (opcional)', done: aiReady, icon: Sparkles, cta: 'Configurar', onAction: onOpenAISettings },
   ];
 
   const completed = steps.filter(s => s.done).length;

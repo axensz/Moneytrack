@@ -50,6 +50,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
   const [showForm, setShowForm] = useState(false);
   const [budgetsMinimized, setBudgetsMinimized] = useState(false);
   const [formData, setFormData] = useState(createEmptyBudgetForm);
+  const [formErrors, setFormErrors] = useState<{ category?: string; monthlyLimit?: string }>({});
   const [budgetToDelete, setBudgetToDelete] = useState<{ id: string; category: string } | null>(null);
   const [isSubmittingBudget, setIsSubmittingBudget] = useState(false);
   const submittingBudgetRef = useRef(false);
@@ -71,6 +72,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
 
     setBudgetsMinimized(false);
     setShowForm(true);
+    setFormErrors({});
     setFormData({
       category: initialDraft.category,
       monthlyLimit: String(initialDraft.suggestedLimit),
@@ -78,18 +80,31 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
     onInitialDraftApplied?.();
   }, [initialDraft, onInitialDraftApplied]);
 
-  const handleBudgetSubmit = async () => {
+  const handleBudgetSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     if (submittingBudgetRef.current) return;
 
+    setFormErrors({});
     const limit = parseCurrency(formData.monthlyLimit);
-    if (!formData.category) { showToast.error('Selecciona una categoría'); return; }
-    if (isNaN(limit) || limit <= 0) { showToast.error('El límite debe ser mayor a 0'); return; }
+    if (!formData.category) {
+      const message = 'Selecciona una categoría';
+      setFormErrors({ category: message });
+      showToast.error(message);
+      return;
+    }
+    if (isNaN(limit) || limit <= 0) {
+      const message = 'El límite debe ser mayor a 0';
+      setFormErrors({ monthlyLimit: message });
+      showToast.error(message);
+      return;
+    }
     submittingBudgetRef.current = true;
     setIsSubmittingBudget(true);
     try {
       await addBudget({ category: formData.category, monthlyLimit: limit, isActive: true });
     showToast.success('Presupuesto creado');
     setFormData(createEmptyBudgetForm());
+    setFormErrors({});
     setShowForm(false);
     } catch (error) {
       showToast.error(error instanceof Error ? error.message : 'No se pudo guardar el presupuesto');
@@ -102,6 +117,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
   const handleCancelBudgetForm = () => {
     if (isSubmittingBudget) return;
     setFormData(createEmptyBudgetForm());
+    setFormErrors({});
     setShowForm(false);
   };
 
@@ -111,6 +127,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
       handleCancelBudgetForm();
       return;
     }
+    setFormErrors({});
     setShowForm(true);
   };
 
@@ -138,7 +155,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
       <div className="card">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+            <h2 id="view-heading-budgets" tabIndex={-1} className="text-lg font-bold text-gray-900 dark:text-gray-100">
               <button
                 type="button"
                 onClick={() => setBudgetsMinimized(prev => !prev)}
@@ -153,6 +170,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
           </div>
           {availableCategories.length > 0 && (
             <button
+              type="button"
               onClick={handleToggleBudgetForm}
               className="btn-primary text-sm"
             >
@@ -186,13 +204,24 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
       {!budgetsMinimized && (
         <>
           {showForm && (
-            <div className="card">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Nuevo presupuesto</h3>
+            <form className="card" aria-labelledby="new-budget-title" onSubmit={handleBudgetSubmit} noValidate>
+              <h3 id="new-budget-title" className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Nuevo presupuesto</h3>
               <div className="space-y-3">
-                <select value={formData.category} onChange={e => setFormData(f => ({ ...f, category: e.target.value }))} className="input-base">
-                  <option value="">{UI_LABELS.forms.selectCategory}</option>
-                  {availableCategories.map(cat => (<option key={cat} value={cat}>{cat}</option>))}
-                </select>
+                <div>
+                  <label htmlFor="new-budget-category" className="block text-xs font-medium text-muted-foreground mb-1">Categoría</label>
+                  <select
+                    id="new-budget-category"
+                    value={formData.category}
+                    onChange={e => setFormData(f => ({ ...f, category: e.target.value }))}
+                    className="input-base"
+                    aria-invalid={Boolean(formErrors.category)}
+                    aria-describedby={formErrors.category ? 'new-budget-category-error' : undefined}
+                  >
+                    <option value="">{UI_LABELS.forms.selectCategory}</option>
+                    {availableCategories.map(cat => (<option key={cat} value={cat}>{cat}</option>))}
+                  </select>
+                  {formErrors.category && <p id="new-budget-category-error" role="alert" className="mt-1 text-xs text-destructive">{formErrors.category}</p>}
+                </div>
 
                 {selectedRecommendation && selectedRecommendation.suggestedLimit > 0 && (
                   <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800/50">
@@ -211,21 +240,29 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
                   </div>
                 )}
 
-                <input
-                  type="text" inputMode="numeric"
-                  value={formatNumberForInput(formData.monthlyLimit)}
-                  onChange={e => setFormData(f => ({ ...f, monthlyLimit: unformatNumber(e.target.value) }))}
-                  placeholder="Límite mensual" className="input-base"
-                />
+                <div>
+                  <label htmlFor="new-budget-limit" className="block text-xs font-medium text-muted-foreground mb-1">Límite mensual</label>
+                  <input
+                    id="new-budget-limit"
+                    type="text" inputMode="numeric"
+                    value={formatNumberForInput(formData.monthlyLimit)}
+                    onChange={e => setFormData(f => ({ ...f, monthlyLimit: unformatNumber(e.target.value) }))}
+                    placeholder="Límite mensual" className="input-base"
+                    aria-invalid={Boolean(formErrors.monthlyLimit)}
+                    aria-describedby={formErrors.monthlyLimit ? 'new-budget-limit-error' : undefined}
+                  />
+                  {formErrors.monthlyLimit && <p id="new-budget-limit-error" role="alert" className="mt-1 text-xs text-destructive">{formErrors.monthlyLimit}</p>}
+                </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={handleBudgetSubmit}
+                    type="submit"
                     disabled={isSubmittingBudget}
                     className="btn-submit flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isSubmittingBudget ? UI_TEXT.states.saving : UI_TEXT.actions.create}
                   </button>
                   <button
+                    type="button"
                     onClick={handleCancelBudgetForm}
                     disabled={isSubmittingBudget}
                     className="btn-cancel flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -234,7 +271,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
                   </button>
                 </div>
               </div>
-            </div>
+            </form>
           )}
 
           {budgetStatuses.length > 0 ? (
@@ -247,10 +284,10 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
                       <span className="text-sm font-semibold text-gray-900 dark:text-white">{budget.category}</span>
                     </div>
                     <div className="flex items-center gap-1">
-                      <button onClick={() => updateBudget(budget.id!, { isActive: !budget.isActive })} className="p-1 text-gray-400 hover:text-gray-600">
+                      <button type="button" aria-label={`${budget.isActive ? 'Desactivar' : 'Activar'} presupuesto de ${budget.category}`} onClick={() => updateBudget(budget.id!, { isActive: !budget.isActive })} className="p-1 text-gray-400 hover:text-gray-600">
                         {budget.isActive ? <ToggleRight size={18} className="text-purple-500" /> : <ToggleLeft size={18} />}
                       </button>
-                      <button onClick={() => handleDelete(budget.id!, budget.category)} className="p-1 text-gray-400 hover:text-red-500">
+                      <button type="button" aria-label={`Eliminar presupuesto de ${budget.category}`} onClick={() => handleDelete(budget.id!, budget.category)} className="p-1 text-gray-400 hover:text-red-500">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -297,7 +334,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
               </p>
             </div>
           </div>
-          <button onClick={onOpenFinancialPlan} className="btn-secondary justify-center text-sm">
+          <button type="button" onClick={onOpenFinancialPlan} className="btn-secondary justify-center text-sm">
             Abrir plan
           </button>
         </div>

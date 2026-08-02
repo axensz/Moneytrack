@@ -123,11 +123,14 @@ export const HelpSectionTransactions: React.FC = () => (
                   <Settings size={14} className="inline mr-1" /> Categoría
                </div>
                <div className="p-2 bg-muted rounded-lg text-muted-foreground text-center">
-                  <CheckCircle size={14} className="inline mr-1" /> Estado
+                  <Filter size={14} className="inline mr-1" /> Búsqueda
                </div>
             </div>
             <p className="text-xs text-muted-foreground mt-3">
                Presets de fecha: Hoy, Esta semana, Este mes, Mes anterior, Este año, Año anterior, o rango personalizado.
+            </p>
+            <p className="text-xs text-muted-foreground mt-3">
+               Estos filtros cambian la lista y el CSV exportado; no cambian el Resumen general ni las Estadísticas.
             </p>
          </div>
       </div>
@@ -147,7 +150,7 @@ export const HelpSectionTransactions: React.FC = () => (
                <Clock size={16} /> Pendiente
             </h4>
             <p className="text-sm" style={{ color: 'var(--warning-text)' }}>
-               Programado pero aún no ejecutado. Aparece en "Gastos pendientes".
+               Las transacciones pendientes no entran en los totales actuales de ingresos o gastos pagados. Las compras con tarjeta de crédito pueden reflejarse en el crédito usado actual.
             </p>
          </div>
       </div>

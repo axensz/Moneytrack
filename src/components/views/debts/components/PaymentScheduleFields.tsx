@@ -12,7 +12,8 @@ export const PaymentScheduleFields: React.FC<PaymentScheduleFieldsProps> = ({ va
   };
 
   return (
-    <div className="space-y-3">
+    <fieldset className="space-y-3">
+      <legend className="sr-only">Frecuencia del próximo pago</legend>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {PAYMENT_SCHEDULE_MODES.map(({ mode, label }) => (
           <button
@@ -55,6 +56,6 @@ export const PaymentScheduleFields: React.FC<PaymentScheduleFieldsProps> = ({ va
           <input type="number" min={1} max={120} value={value.monthsFromNow} onChange={event => setField({ monthsFromNow: event.target.value })} className="input-base text-sm" />
         </label>
       )}
-    </div>
+    </fieldset>
   );
 };

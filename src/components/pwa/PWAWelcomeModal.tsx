@@ -38,7 +38,12 @@ export function PWAWelcomeModal() {
     };
 
     return (
-        <BaseModal isOpen={isOpen} onClose={handleClose} closeOnBackdrop={false}>
+        <BaseModal
+            isOpen={isOpen}
+            onClose={handleClose}
+            closeOnBackdrop={false}
+            ariaLabelledBy="pwa-welcome-title"
+        >
             <div className="p-6 sm:p-8">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-6">
@@ -47,7 +52,7 @@ export function PWAWelcomeModal() {
                             <Wallet className="w-6 h-6 text-primary" />
                         </div>
                         <div>
-                            <h2 className="text-2xl font-bold text-foreground">
+                            <h2 id="pwa-welcome-title" className="text-2xl font-bold text-foreground">
                                 ¡Bienvenido a MoneyTrack!
                             </h2>
                             <p className="text-sm text-muted-foreground">
@@ -86,10 +91,10 @@ export function PWAWelcomeModal() {
                         </div>
                         <div className="flex-1">
                             <h3 className="font-semibold text-foreground mb-1">
-                                Funciona sin conexión
+                                Consulta sin conexión
                             </h3>
                             <p className="text-sm text-muted-foreground">
-                                Consulta tus datos financieros incluso sin internet. Los cambios se sincronizarán automáticamente.
+                                Puedes consultar sin conexión los datos ya cacheados; guardar cambios requiere conexión.
                             </p>
                         </div>
                     </div>

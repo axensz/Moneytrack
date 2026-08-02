@@ -144,7 +144,7 @@ export const HelpSectionAccounts: React.FC = () => (
        </div>
        <div className="p-4 space-y-3">
           <p className="text-sm" style={{ color: 'var(--destructive-text)' }}>
-             Para cada tarjeta de crédito con día de corte y día de pago configurados, se muestra automáticamente un estado de cuenta:
+             En la tarjeta de crédito, abre el menú de opciones (...) y elige <strong>Extractos</strong> para abrir el modal de extractos. Solo está disponible cuando configuraste el día de corte y el día de pago.
           </p>
           <ul className="space-y-2 text-sm" style={{ color: 'var(--destructive-text)' }}>
              <li className="flex items-start gap-2">
@@ -169,7 +169,7 @@ export const HelpSectionAccounts: React.FC = () => (
              </li>
           </ul>
           <p className="text-xs" style={{ color: 'var(--destructive-text)' }}>
-             El estado de cuenta aparece debajo de tus cuentas, en la pestaña de Cuentas. Solo se muestra para tarjetas con día de corte y pago configurados.
+             Desde ese modal puedes revisar los movimientos del ciclo sin salir de Cuentas.
           </p>
        </div>
     </div>

@@ -12,7 +12,12 @@ import { ShimmerSkeleton } from '@/components/unlumen-ui/shimmer-skeleton';
  */
 export const TransactionsListSkeleton: React.FC = () => {
   return (
-    <div className="space-y-2">
+    <div
+      className="space-y-2"
+      role="status"
+      aria-busy="true"
+      aria-label="Cargando movimientos"
+    >
       {[1, 2, 3].map((i) => (
         <div
           key={i}

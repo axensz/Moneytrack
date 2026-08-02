@@ -12,7 +12,7 @@
  * ✅ Separation of Concerns
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getCreditCardUsedCredit } from '../utils/accountStrategies';
 import { findAccountForTransaction } from '../utils/accountTransactions';
 import { SPECIAL_CATEGORIES } from '../config/constants';
@@ -38,6 +38,18 @@ export interface GlobalStats {
    * consumidores que aún dependan de este desglose.
    */
   unpaidTCExpenses: number;
+}
+
+export interface LedgerOverview {
+  totalBalance: number;
+  totalIncome: number;
+  totalExpenses: number;
+  pendingExpenses: number;
+}
+
+function getLocalMonthKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${now.getMonth()}`;
 }
 
 /**
@@ -120,4 +132,63 @@ export function useGlobalStats(
       unpaidTCExpenses
     };
   }, [transactions, accounts]);
+}
+
+export function useLedgerOverview(
+  transactions: Transaction[],
+  accounts: Account[],
+  totalBalance: number,
+): LedgerOverview {
+  const [currentMonthKey, setCurrentMonthKey] = useState(getLocalMonthKey);
+
+  useEffect(() => {
+    const syncCurrentMonth = () => setCurrentMonthKey((previousKey) => {
+      const nextKey = getLocalMonthKey();
+      return previousKey === nextKey ? previousKey : nextKey;
+    });
+    let timeout: number | undefined;
+    const scheduleNextMidnight = () => {
+      const nextMidnight = new Date();
+      nextMidnight.setHours(24, 0, 0, 0);
+      timeout = window.setTimeout(() => {
+        syncCurrentMonth();
+        scheduleNextMidnight();
+      }, nextMidnight.getTime() - Date.now());
+    };
+    const syncAndReschedule = () => {
+      syncCurrentMonth();
+      if (timeout !== undefined) window.clearTimeout(timeout);
+      scheduleNextMidnight();
+    };
+
+    scheduleNextMidnight();
+
+    document.addEventListener('visibilitychange', syncAndReschedule);
+    window.addEventListener('focus', syncAndReschedule);
+    return () => {
+      if (timeout !== undefined) window.clearTimeout(timeout);
+      document.removeEventListener('visibilitychange', syncAndReschedule);
+      window.removeEventListener('focus', syncAndReschedule);
+    };
+  }, []);
+
+  const currentMonthTransactions = useMemo(() => {
+    const [year, month] = currentMonthKey.split('-').map(Number);
+    const start = new Date(year, month, 1);
+    const end = new Date(year, month + 1, 0, 23, 59, 59, 999);
+    return transactions.filter((transaction) => {
+      const date = new Date(transaction.date);
+      return date >= start && date <= end;
+    });
+  }, [transactions, currentMonthKey]);
+
+  const currentMonthStats = useGlobalStats(currentMonthTransactions, accounts);
+  const fullHistoryStats = useGlobalStats(transactions, accounts);
+
+  return {
+    totalBalance,
+    totalIncome: currentMonthStats.totalIncome,
+    totalExpenses: currentMonthStats.totalExpenses,
+    pendingExpenses: fullHistoryStats.pendingExpenses,
+  };
 }

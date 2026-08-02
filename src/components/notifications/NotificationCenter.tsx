@@ -14,6 +14,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Notification } from '../../types/finance';
 import { navigateToActionUrl } from '../../hooks/useViewRouting';
+import { useModalA11y } from '../../hooks/useModalA11y';
 
 interface NotificationCenterProps {
     isOpen: boolean;
@@ -29,6 +30,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
         deleteNotification,
         clearAll,
     } = useNotificationContext();
+    const { modalRef, onKeyDown } = useModalA11y({ isOpen, onClose });
 
     const handleNotificationClick = async (notification: Notification) => {
         if (!notification.isRead && notification.id) {
@@ -61,7 +63,12 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                 onClick={(e) => { e.stopPropagation(); onClose(); }}
             />
             <div
+                ref={modalRef}
                 data-notification-center
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="notification-center-title"
+                onKeyDown={onKeyDown}
                 className="relative w-[calc(100vw-2rem)] sm:w-[420px] max-h-[calc(100vh-6rem)] bg-card text-card-foreground rounded-2xl shadow-2xl border border-border flex flex-col animate-in fade-in zoom-in duration-200"
                 onClick={(e) => e.stopPropagation()}
             >
@@ -72,7 +79,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                             <Bell className="w-5 h-5 text-primary" />
                         </div>
                         <div>
-                            <h2 className="text-lg font-bold text-foreground">
+                            <h2 id="notification-center-title" className="text-lg font-bold text-foreground">
                                 Notificaciones
                             </h2>
                             {unreadCount > 0 && (
@@ -83,6 +90,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                         </div>
                     </div>
                     <button
+                        type="button"
                         onClick={onClose}
                         className="p-2 text-muted-foreground hover:bg-muted rounded-xl transition-colors"
                         aria-label="Cerrar notificaciones"
@@ -108,45 +116,49 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                             {notifications.map((notification) => (
                                 <div
                                     key={notification.id}
-                                    onClick={() => handleNotificationClick(notification)}
-                                    className={`group p-4 hover:bg-muted cursor-pointer transition-colors ${!notification.isRead ? 'bg-primary/5' : ''}`}
+                                    className={`group flex items-start gap-3 p-4 hover:bg-muted focus-within:bg-muted transition-colors ${!notification.isRead ? 'bg-primary/5' : ''}`}
                                 >
-                                    <div className="flex items-start gap-3">
-                                        <div className="flex-shrink-0 mt-1.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleNotificationClick(notification)}
+                                        aria-label={`Abrir notificación: ${notification.title}`}
+                                        className="flex flex-1 min-w-0 items-start gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                                    >
+                                        <span className="flex-shrink-0 mt-1.5">
                                             {!notification.isRead ? (
-                                                <div className="w-2.5 h-2.5 bg-primary rounded-full" />
+                                                <span className="block w-2.5 h-2.5 bg-primary rounded-full" />
                                             ) : (
-                                                <div className="w-2.5 h-2.5" />
+                                                <span className="block w-2.5 h-2.5" />
                                             )}
-                                        </div>
-                                        <div className="flex-shrink-0 mt-0.5">
+                                        </span>
+                                        <span className="flex-shrink-0 mt-0.5">
                                             {getSeverityIcon(notification.severity)}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <h3 className="text-sm font-bold text-foreground mb-1 line-clamp-2">
+                                        </span>
+                                        <span className="flex-1 min-w-0">
+                                            <span className="block text-sm font-bold text-foreground mb-1 line-clamp-2">
                                                 {notification.title}
-                                            </h3>
-                                            <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
+                                            </span>
+                                            <span className="block text-sm text-muted-foreground mb-2 line-clamp-2">
                                                 {notification.message}
-                                            </p>
-                                            <span className="text-xs text-muted-foreground font-medium">
+                                            </span>
+                                            <span className="block text-xs text-muted-foreground font-medium">
                                                 {formatDistanceToNow(new Date(notification.createdAt), {
                                                     addSuffix: true,
                                                     locale: es,
                                                 })}
                                             </span>
-                                        </div>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                if (notification.id) deleteNotification(notification.id);
-                                            }}
-                                            className="opacity-0 group-hover:opacity-100 p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-[opacity,background-color,color] flex-shrink-0"
-                                            aria-label="Eliminar notificación"
-                                        >
-                                            <X className="w-4 h-4" />
-                                        </button>
-                                    </div>
+                                        </span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (notification.id) deleteNotification(notification.id);
+                                        }}
+                                        className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-[opacity,background-color,color] flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                                        aria-label="Eliminar notificación"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
                                 </div>
                             ))}
                         </div>
@@ -157,6 +169,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                 {notifications.length > 0 && (
                     <div className="flex gap-2 p-4 border-t border-border bg-muted/40 rounded-b-2xl">
                         <button
+                            type="button"
                             onClick={async (e) => {
                                 e.stopPropagation();
                                 e.preventDefault();
@@ -174,6 +187,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                             <span className="sm:hidden">Leídas</span>
                         </button>
                         <button
+                            type="button"
                             onClick={async (e) => {
                                 e.stopPropagation();
                                 e.preventDefault();

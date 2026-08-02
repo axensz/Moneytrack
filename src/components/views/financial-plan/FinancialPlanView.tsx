@@ -212,6 +212,7 @@ export const FinancialPlanView: React.FC<FinancialPlanViewProps> = ({ onUseBudge
 
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <h2 id="view-heading-financial-plan" tabIndex={-1} className="sr-only">{sectionTitle('financial-plan')}</h2>
       {/* ===== PLAN FINANCIERO ===== */}
       {(planLoading || !balancesReady) ? (
         // Skeleton mientras (a) carga la config del plan y (b) los saldos asientan.
@@ -230,7 +231,7 @@ export const FinancialPlanView: React.FC<FinancialPlanViewProps> = ({ onUseBudge
             <div className="mx-auto mb-3 sm:mb-4 flex h-12 w-12 sm:h-16 sm:w-16 items-center justify-center rounded-2xl bg-primary/10">
               <Target size={24} className="text-primary" />
             </div>
-            <h2 className="text-xl sm:text-2xl font-black text-gray-900 dark:text-gray-100">{sectionTitle('financial-plan')}</h2>
+            <h3 className="text-xl sm:text-2xl font-black text-gray-900 dark:text-gray-100">{sectionTitle('financial-plan')}</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1.5 sm:mt-2 max-w-sm mx-auto leading-relaxed">
               Analiza tus hábitos, obtén un score personalizado y proyecta tu ahorro con IA
             </p>
@@ -290,7 +291,7 @@ export const FinancialPlanView: React.FC<FinancialPlanViewProps> = ({ onUseBudge
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h2 className="text-lg font-black text-gray-900 dark:text-gray-100">{sectionTitle('financial-plan')}</h2>
+                      <h3 className="text-lg font-black text-gray-900 dark:text-gray-100">{sectionTitle('financial-plan')}</h3>
                       <span className={`text-2xl font-black ${scoreColor(plan.score.total)}`}>{plan.score.total}</span>
                       <span className="text-xs text-muted-foreground">/100</span>
                       {planMinimized ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronUp size={16} className="text-gray-400" />}

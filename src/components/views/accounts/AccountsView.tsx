@@ -382,7 +382,7 @@ export const AccountsView: React.FC = () => {
       {/* Header con botón */}
       <div className="flex justify-between items-start mb-6 flex-wrap gap-4">
         <div>
-          <h2 className="text-xl font-bold text-foreground">
+          <h2 id="view-heading-accounts" tabIndex={-1} className="text-xl font-bold text-foreground">
             {sectionTitle('accounts')}
           </h2>
           <p className="text-sm text-muted-foreground mt-1">

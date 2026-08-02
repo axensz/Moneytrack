@@ -1,6 +1,6 @@
 'use client';
 
-import React, { lazy, Suspense } from 'react';
+import React, { lazy, Suspense, useEffect } from 'react';
 import { PlanSkeleton } from '../views/financial-plan/PlanSkeleton';
 import type { ViewType } from '../../types/finance';
 import type { BudgetDraft } from '../views/budgets/BudgetsView';
@@ -32,10 +32,12 @@ const GoalsView = lazy(() =>
 );
 
 const ViewFallback = () => (
-  <div className="space-y-4 animate-pulse">
-    <div className="h-24 bg-muted rounded-xl" />
-    <div className="h-16 bg-muted rounded-xl" />
-    <div className="h-16 bg-muted rounded-xl" />
+  <div role="status" aria-busy="true" aria-label="Cargando vista">
+    <div className="space-y-4 animate-pulse" aria-hidden="true">
+      <div className="h-24 bg-muted rounded-xl" />
+      <div className="h-16 bg-muted rounded-xl" />
+      <div className="h-16 bg-muted rounded-xl" />
+    </div>
   </div>
 );
 
@@ -44,8 +46,19 @@ interface FinanceViewRouterProps {
   transactionsPanel: React.ReactNode;
   pendingBudgetDraft: BudgetDraft | null;
   onBudgetDraftApplied: () => void;
+  onGoToTransactions: () => void;
   onOpenFinancialPlan: () => void;
   onUseBudgetSuggestion: (category: string, suggestedLimit: number) => void;
+  onViewMounted: (view: ViewType) => void;
+}
+
+function FocusedPanel({ view, onViewMounted, children }: {
+  view: ViewType;
+  onViewMounted: (view: ViewType) => void;
+  children: React.ReactNode;
+}) {
+  useEffect(() => onViewMounted(view), [onViewMounted, view]);
+  return <>{children}</>;
 }
 
 function panel(view: ViewType, content: React.ReactNode) {
@@ -65,63 +78,65 @@ export function FinanceViewRouter({
   transactionsPanel,
   pendingBudgetDraft,
   onBudgetDraftApplied,
+  onGoToTransactions,
   onOpenFinancialPlan,
   onUseBudgetSuggestion,
+  onViewMounted,
 }: FinanceViewRouterProps) {
   switch (view) {
     case 'transactions':
-      return panel(view, transactionsPanel);
+      return panel(view, <FocusedPanel view={view} onViewMounted={onViewMounted}>{transactionsPanel}</FocusedPanel>);
     case 'recurring':
       return panel(
         view,
         <Suspense fallback={<ViewFallback />}>
-          <RecurringPaymentsView />
+          <FocusedPanel view={view} onViewMounted={onViewMounted}><RecurringPaymentsView /></FocusedPanel>
         </Suspense>
       );
     case 'stats':
       return panel(
         view,
         <Suspense fallback={<ViewFallback />}>
-          <StatsView />
+          <FocusedPanel view={view} onViewMounted={onViewMounted}><StatsView onGoToTransactions={onGoToTransactions} /></FocusedPanel>
         </Suspense>
       );
     case 'accounts':
       return panel(
         view,
         <Suspense fallback={<ViewFallback />}>
-          <AccountsView />
+          <FocusedPanel view={view} onViewMounted={onViewMounted}><AccountsView /></FocusedPanel>
         </Suspense>
       );
     case 'debts':
       return panel(
         view,
         <Suspense fallback={<ViewFallback />}>
-          <DebtsView />
+          <FocusedPanel view={view} onViewMounted={onViewMounted}><DebtsView /></FocusedPanel>
         </Suspense>
       );
     case 'budgets':
       return panel(
         view,
         <Suspense fallback={<ViewFallback />}>
-          <BudgetsView
+          <FocusedPanel view={view} onViewMounted={onViewMounted}><BudgetsView
             initialDraft={pendingBudgetDraft}
             onInitialDraftApplied={onBudgetDraftApplied}
             onOpenFinancialPlan={onOpenFinancialPlan}
-          />
+          /></FocusedPanel>
         </Suspense>
       );
     case 'financial-plan':
       return panel(
         view,
         <Suspense fallback={<PlanSkeleton />}>
-          <FinancialPlanView onUseBudgetSuggestion={onUseBudgetSuggestion} />
+          <FocusedPanel view={view} onViewMounted={onViewMounted}><FinancialPlanView onUseBudgetSuggestion={onUseBudgetSuggestion} /></FocusedPanel>
         </Suspense>
       );
     case 'goals':
       return panel(
         view,
         <Suspense fallback={<ViewFallback />}>
-          <GoalsView />
+          <FocusedPanel view={view} onViewMounted={onViewMounted}><GoalsView /></FocusedPanel>
         </Suspense>
       );
   }

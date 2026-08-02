@@ -80,7 +80,10 @@ export const Header: React.FC<HeaderProps> = ({
   ) => {
     const items = Array.from(
       menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []
-    );
+    ).filter((item) => {
+      const style = window.getComputedStyle(item);
+      return style.display !== 'none' && style.visibility !== 'hidden';
+    });
     if (items.length === 0) return;
     const current = items.indexOf(document.activeElement as HTMLButtonElement);
 

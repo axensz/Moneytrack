@@ -170,6 +170,39 @@ describe('Header', () => {
     expect(onOpenAssistant).toHaveBeenCalledWith(settingsTrigger);
   });
 
+  it.each([
+    {
+      viewport: 'desktop',
+      hideAssistant: true,
+      nextFromNotifications: 'Ayuda',
+    },
+    {
+      viewport: 'tablet',
+      hideAssistant: false,
+      nextFromNotifications: 'Abrir asistente IA',
+    },
+  ])('skips responsive-hidden Settings actions during $viewport keyboard navigation', ({
+    hideAssistant,
+    nextFromNotifications,
+  }) => {
+    renderHeader({ aiReady: true, showSettingsMenu: true });
+    const menu = screen.getByRole('menu', { name: 'Opciones de ajustes' });
+    const notifications = screen.getByRole('menuitem', { name: 'Notificaciones' });
+    const assistant = screen.getByRole('menuitem', { name: 'Abrir asistente IA' });
+    const help = screen.getByRole('menuitem', { name: 'Ayuda' });
+    const logout = screen.getByRole('menuitem', { name: 'Cerrar sesión' });
+
+    logout.style.display = 'none';
+    if (hideAssistant) assistant.style.display = 'none';
+
+    notifications.focus();
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(screen.getByRole('menuitem', { name: nextFromNotifications })).toHaveFocus();
+
+    fireEvent.keyDown(menu, { key: 'End' });
+    expect(help).toHaveFocus();
+  });
+
   it('keeps the desktop button floor from overriding 44px header targets', () => {
     const utilitiesSource = readFileSync(
       resolve(process.cwd(), 'app/styles/utilities.css'),

@@ -61,6 +61,34 @@ describe('DebtsView - formulario nuevo', () => {
     expect(screen.getByPlaceholderText(/Descripci/)).toHaveValue('');
   });
 
+  it('usa un formulario nativo con etiquetas y errores asociados', () => {
+    render(<DebtsView />);
+
+    fireEvent.click(screen.getByRole('button', { name: /nuevo/i }));
+
+    const form = screen.getByRole('form', { name: 'Registrar préstamo o deuda' });
+    const personName = screen.getByRole('textbox', { name: 'Nombre de la persona' });
+    const amount = screen.getByRole('textbox', { name: 'Monto' });
+    expect(screen.getByLabelText('Descripción (opcional)')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Fecha del préstamo/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Cuenta asociada/)).toBeInTheDocument();
+
+    fireEvent.submit(form);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Ingresa el nombre de la persona');
+    expect(personName).toHaveAttribute('aria-invalid', 'true');
+    expect(personName).toHaveAttribute('aria-describedby', 'new-debt-person-error');
+    expect(mocks.addDebt).not.toHaveBeenCalled();
+
+    fireEvent.change(personName, { target: { value: 'Laura' } });
+    fireEvent.submit(form);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('El monto debe ser mayor a 0');
+    expect(amount).toHaveAttribute('aria-invalid', 'true');
+    expect(amount).toHaveAttribute('aria-describedby', 'new-debt-amount-error');
+    expect(mocks.addDebt).not.toHaveBeenCalled();
+  });
+
   it('bloquea doble submit mientras se guarda una deuda', async () => {
     let release!: () => void;
     mocks.addDebt.mockReturnValueOnce(new Promise<void>((resolve) => { release = resolve; }));

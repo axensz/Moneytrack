@@ -271,7 +271,7 @@ const ActionCard: React.FC<{
         <button
           onClick={onConfirm}
           disabled={isExecuting}
-          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-success text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-primary-solid text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
         >
           {isExecuting ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
           {isExecuting ? 'Ejecutando...' : 'Confirmar'}

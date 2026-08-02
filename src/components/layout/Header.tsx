@@ -270,7 +270,7 @@ export const Header: React.FC<HeaderProps> = ({
                       setShowSettingsMenu(false);
                       activateAssistant(returnFocusTo);
                     }}
-                    className={menuItemClass}
+                    className={menuItemClass + ' lg:hidden'}
                     role="menuitem"
                   >
                     <Sparkles size={18} aria-hidden="true" />
@@ -297,7 +297,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
                   {user && (
                     <>
-                      <div className="my-1 border-t border-border" aria-hidden="true" />
+                      <div className="my-1 border-t border-border sm:hidden" aria-hidden="true" />
                       <button
                         type="button"
                         data-settings-action="logout"
@@ -305,7 +305,7 @@ export const Header: React.FC<HeaderProps> = ({
                           setShowSettingsMenu(false);
                           void onLogout();
                         }}
-                        className={menuItemClass + ' text-destructive'}
+                        className={menuItemClass + ' text-destructive sm:hidden'}
                         role="menuitem"
                       >
                         <LogOut size={18} aria-hidden="true" />

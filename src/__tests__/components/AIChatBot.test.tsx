@@ -4,6 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AIChatBot } from '../../components/chat/AIChatBot';
 import { parseActionFromResponse, sendChatMessage } from '../../lib/gemini';
 
+const financeDomainMocks = vi.hoisted(() => ({
+  addTransaction: vi.fn(),
+  updateTransaction: vi.fn(),
+  addCategory: vi.fn(),
+}));
+
 vi.mock('../../lib/gemini', () => ({
   sendChatMessage: vi.fn(),
   isGeminiConfigured: () => true,
@@ -13,13 +19,13 @@ vi.mock('../../lib/gemini', () => ({
 vi.mock('../../hooks/useFinanceSelectors', () => ({
   useTransactionDomain: () => ({
     transactions: [],
-    addTransaction: vi.fn(),
-    updateTransaction: vi.fn(),
+    addTransaction: financeDomainMocks.addTransaction,
+    updateTransaction: financeDomainMocks.updateTransaction,
   }),
   useAccountDomain: () => ({ accounts: [] }),
   useCategoryDomain: () => ({
     categories: { income: [], expense: [] },
-    addCategory: vi.fn(),
+    addCategory: financeDomainMocks.addCategory,
   }),
 }));
 
@@ -39,6 +45,17 @@ function sendAssistantMessage(text: string) {
     target: { value: text },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Enviar mensaje' }));
+}
+
+function mockParsedCategoryAction() {
+  sendChatMessageMock.mockResolvedValue({ text: 'Respuesta con acción' });
+  parseActionFromResponseMock.mockReturnValue({
+    text: 'Crear categoría Mascotas',
+    action: {
+      type: 'add_category',
+      data: { categoryType: 'expense', name: 'Mascotas' },
+    },
+  });
 }
 
 function ControlledChat() {
@@ -61,6 +78,9 @@ describe('AIChatBot shell control', () => {
   beforeEach(() => {
     sendChatMessageMock.mockReset();
     parseActionFromResponseMock.mockReset();
+    financeDomainMocks.addTransaction.mockReset();
+    financeDomainMocks.updateTransaction.mockReset();
+    financeDomainMocks.addCategory.mockReset();
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
       configurable: true,
       value: vi.fn(),
@@ -183,22 +203,46 @@ describe('AIChatBot shell control', () => {
   });
 
   it('keeps parsed action confirmation free of decorative motion', async () => {
-    sendChatMessageMock.mockResolvedValue({ text: 'Respuesta con acción' });
-    parseActionFromResponseMock.mockReturnValue({
-      text: 'Crear categoría Mascotas',
-      action: {
-        type: 'add_category',
-        data: { categoryType: 'expense', name: 'Mascotas' },
-      },
-    });
+    mockParsedCategoryAction();
     render(<ControlledChat />);
 
     sendAssistantMessage('Crea una categoría para mascotas');
-    expect(await screen.findByRole('button', { name: 'Confirmar' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Confirmar' }))
+      .toHaveClass('bg-primary-solid', 'text-primary-foreground');
 
     const classText = getClassText(screen.getByRole('dialog'));
     expect(classText).not.toMatch(decorativeAssistantClasses);
     expect(classText).not.toContain('animate-spin');
+  });
+
+  it('executes a parsed write only after explicit confirmation', async () => {
+    mockParsedCategoryAction();
+    render(<ControlledChat />);
+
+    sendAssistantMessage('Crea una categoría para mascotas');
+    const confirm = await screen.findByRole('button', { name: 'Confirmar' });
+    expect(financeDomainMocks.addCategory).not.toHaveBeenCalled();
+
+    fireEvent.click(confirm);
+
+    await waitFor(() => {
+      expect(financeDomainMocks.addCategory).toHaveBeenCalledWith('expense', 'Mascotas');
+    });
+    expect(financeDomainMocks.addCategory).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText('Acción ejecutada ✓')).toBeInTheDocument();
+  });
+
+  it('rejects a parsed write without mutating financial domains', async () => {
+    mockParsedCategoryAction();
+    render(<ControlledChat />);
+
+    sendAssistantMessage('Crea una categoría para mascotas');
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancelar' }));
+
+    expect(await screen.findByText(/no se realizó ningún cambio/i)).toBeInTheDocument();
+    expect(financeDomainMocks.addCategory).not.toHaveBeenCalled();
+    expect(financeDomainMocks.addTransaction).not.toHaveBeenCalled();
+    expect(financeDomainMocks.updateTransaction).not.toHaveBeenCalled();
   });
 
   it('uses animate-spin only while a real assistant request is loading', async () => {

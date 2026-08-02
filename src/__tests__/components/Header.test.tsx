@@ -102,6 +102,8 @@ describe('Header', () => {
       .toHaveClass('hidden', 'sm:inline-flex');
     expect(container.querySelector('[data-settings-action="logout"]'))
       .toHaveTextContent('Cerrar sesión');
+    expect(container.querySelector('[data-settings-action="logout"]'))
+      .toHaveClass('sm:hidden');
     expect(container.querySelector('header'))
       .toHaveClass('min-w-0', 'max-w-full', 'overflow-x-clip');
 
@@ -160,7 +162,10 @@ describe('Header', () => {
     renderHeader({ aiReady: true, showSettingsMenu: true, onOpenAssistant });
     const settingsTrigger = screen.getByRole('button', { name: 'Abrir menú de ajustes' });
 
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Abrir asistente IA' }));
+    const compactEntry = screen.getByRole('menuitem', { name: 'Abrir asistente IA' });
+
+    expect(compactEntry).toHaveClass('lg:hidden');
+    fireEvent.click(compactEntry);
 
     expect(onOpenAssistant).toHaveBeenCalledWith(settingsTrigger);
   });

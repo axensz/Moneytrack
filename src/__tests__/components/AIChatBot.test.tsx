@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AIChatBot } from '../../components/chat/AIChatBot';
 
@@ -21,6 +21,22 @@ vi.mock('../../hooks/useFinanceSelectors', () => ({
     addCategory: vi.fn(),
   }),
 }));
+
+function ControlledChat() {
+  const [open, setOpen] = React.useState(true);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+
+  return (
+    <>
+      <button ref={triggerRef} type="button">Abrir asistente IA</button>
+      <AIChatBot
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        returnFocusRef={triggerRef}
+      />
+    </>
+  );
+}
 
 describe('AIChatBot shell control', () => {
   beforeEach(() => {
@@ -50,15 +66,56 @@ describe('AIChatBot shell control', () => {
     expect(screen.getByRole('textbox')).toHaveValue('Saldo de este mes');
   });
 
-  it('returns focus to the shell trigger when closing', () => {
-    const trigger = document.createElement('button');
-    document.body.appendChild(trigger);
-    const returnFocusRef = { current: trigger };
+  it('opens a named non-modal dialog and focuses its composer', async () => {
+    render(<ControlledChat />);
+    const dialog = screen.getByRole('dialog', { name: 'Asistente MoneyTrack' });
+    expect(dialog).toHaveAttribute('aria-modal', 'false');
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Mensaje para el asistente' }))
+        .toHaveFocus();
+    });
+  });
 
-    render(<AIChatBot isOpen onClose={vi.fn()} returnFocusRef={returnFocusRef} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Cerrar chat' }));
+  it.each(['button', 'Escape'])(
+    'closes through %s and restores the persistent trigger',
+    async (method) => {
+      render(<ControlledChat />);
 
-    expect(trigger).toHaveFocus();
-    trigger.remove();
+      if (method === 'button') {
+        fireEvent.click(screen.getByRole('button', { name: 'Cerrar chat' }));
+      } else {
+        fireEvent.keyDown(
+          screen.getByRole('textbox', { name: 'Mensaje para el asistente' }),
+          { key: 'Escape' },
+        );
+      }
+
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog', { name: 'Asistente MoneyTrack' }))
+          .toBeNull();
+      });
+      expect(screen.getByRole('button', { name: 'Abrir asistente IA' }))
+        .toHaveFocus();
+    },
+  );
+
+  it('keeps title and composer fixed around one bounded message scroller', () => {
+    render(<ControlledChat />);
+    const dialog = screen.getByRole('dialog', { name: 'Asistente MoneyTrack' });
+
+    expect(dialog).toHaveClass(
+      'absolute',
+      'inset-x-3',
+      'top-3',
+      'bottom-[calc(var(--shell-nav-h,72px)+env(safe-area-inset-bottom))]',
+      'sm:left-auto',
+      'sm:right-4',
+      'sm:bottom-4',
+      'sm:w-[420px]',
+    );
+    expect(dialog.querySelector('[data-assistant-titlebar]')).toHaveClass('shrink-0');
+    expect(dialog.querySelector('[data-assistant-messages]'))
+      .toHaveClass('flex-1', 'min-h-0', 'overflow-y-auto');
+    expect(dialog.querySelector('[data-assistant-composer]')).toHaveClass('shrink-0');
   });
 });

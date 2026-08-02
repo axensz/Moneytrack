@@ -309,7 +309,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   }
 
   return (
-    <div className="flex flex-col h-dvh bg-background bg-gradient-to-br from-violet-50/30 via-purple-50/20 to-fuchsia-50/10 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <div className="flex flex-col h-dvh w-full min-w-0 overflow-x-hidden bg-background bg-gradient-to-br from-violet-50/30 via-purple-50/20 to-fuchsia-50/10 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
       {/* Banner de sin conexión + sync status */}
       <OfflineIndicator />
 
@@ -425,6 +425,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         aiAuthPending={aiAuthPending}
       />
 
+      <div className="relative flex flex-col flex-1 min-h-0 min-w-0">
       <main id="main-content" ref={scrollContainerRef} tabIndex={-1} className="flex-1 min-h-0 overflow-auto">
         <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-5 pb-24 sm:pb-6">
           <div className="max-w-7xl mx-auto">
@@ -502,6 +503,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
           />
         </Suspense>
       )}
+      </div>
     </div>
   );
 };

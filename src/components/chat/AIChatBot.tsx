@@ -308,6 +308,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
   const [executingAction, setExecutingAction] = useState<number | null>(null); // index of message with action being executed
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const configured = isGeminiConfigured();
 
@@ -316,11 +317,13 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Focus input al abrir
   useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 300);
-    }
+    if (!isOpen) return;
+    const composer = inputRef.current;
+    const fallback = panelRef.current?.querySelector<HTMLButtonElement>(
+      '[data-assistant-focus-fallback]:not([disabled])',
+    );
+    (composer && !composer.disabled ? composer : fallback)?.focus();
   }, [isOpen]);
 
   // Memoizar el contexto financiero para evitar recalcular en cada render
@@ -395,10 +398,23 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
     setError(null);
   }, []);
 
-  const handleClose = useCallback(() => {
+  const requestClose = useCallback(() => {
     onClose();
-    returnFocusRef.current?.focus();
+    queueMicrotask(() => {
+      const trigger = returnFocusRef.current;
+      if (trigger?.isConnected) trigger.focus();
+    });
   }, [onClose, returnFocusRef]);
+
+  const handlePanelKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      requestClose();
+    },
+    [requestClose],
+  );
 
   // Ejecutar una acción confirmada por el usuario
   const handleConfirmAction = useCallback(async (msgIndex: number) => {
@@ -551,9 +567,16 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
   if (!configured || !isOpen) return null;
 
   return (
-    <div className="fixed bottom-[88px] sm:bottom-6 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-[420px] sm:max-w-[420px] h-[calc(100vh-180px)] sm:h-[600px] max-h-[calc(100vh-180px)] sm:max-h-[85vh] flex flex-col bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-purple-200 dark:border-purple-800 overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-300">
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby="assistant-title"
+      onKeyDown={handlePanelKeyDown}
+      className="absolute inset-x-3 top-3 bottom-[calc(var(--shell-nav-h,72px)+env(safe-area-inset-bottom))] sm:left-auto sm:right-4 sm:bottom-4 sm:w-[420px] z-[80] flex flex-col min-w-0 max-w-[calc(100%-1.5rem)] bg-card text-card-foreground rounded-2xl shadow-2xl border border-border overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200"
+    >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-br from-purple-600 via-violet-600 to-purple-700 text-white shrink-0 relative overflow-hidden">
+      <div data-assistant-titlebar className="flex items-center justify-between px-4 py-3 bg-gradient-to-br from-purple-600 via-violet-600 to-purple-700 text-white shrink-0 relative overflow-hidden">
         {/* Efecto de brillo animado en el header */}
         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full animate-shimmer"></div>
         <div className="flex items-center gap-2 relative z-10">
@@ -561,7 +584,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
             <Bot size={18} className="drop-shadow-sm" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold drop-shadow-sm">Asistente MoneyTrack</h3>
+            <h2 id="assistant-title" className="text-sm font-semibold drop-shadow-sm">Asistente MoneyTrack</h2>
             {(() => {
               const total = messages.reduce((sum, m) => sum + (m.tokenUsage?.totalTokens ?? 0), 0);
               return total > 0 ? (
@@ -572,6 +595,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
         </div>
         <div className="flex items-center gap-1 relative z-10">
           <button
+            data-assistant-focus-fallback
             onClick={handleClearChat}
             className="p-2 hover:bg-white/20 backdrop-blur-sm rounded-lg transition-[background-color,transform] hover:scale-110 active:scale-95"
             title="Limpiar chat"
@@ -580,7 +604,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
             <Trash2 size={16} className="drop-shadow-sm" />
           </button>
           <button
-            onClick={handleClose}
+            onClick={requestClose}
             className="p-2 hover:bg-white/20 backdrop-blur-sm rounded-lg transition-[background-color,transform] hover:scale-110 active:scale-95"
             aria-label="Cerrar chat"
           >
@@ -590,7 +614,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 space-y-3 min-h-0 bg-gradient-to-b from-gray-50/50 to-transparent dark:from-gray-800/30 dark:to-transparent scrollbar-thin">
+      <div data-assistant-messages className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 space-y-3 bg-gradient-to-b from-gray-50/50 to-transparent dark:from-gray-800/30 dark:to-transparent scrollbar-thin">
         {messages.map((msg, i) => (
           <React.Fragment key={msg.id}>
             <div
@@ -681,7 +705,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
       )}
 
       {/* Input */}
-      <div className="border-t border-gray-200 dark:border-gray-700 p-3 shrink-0 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm">
+      <div data-assistant-composer className="border-t border-gray-200 dark:border-gray-700 p-3 shrink-0 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm">
         {!configured ? (
           <p className="text-xs text-center text-gray-500 dark:text-gray-400 py-2">
             Agrega tu API key de Gemini en <strong>Ajustes → Asistente IA</strong> para activar el asistente.
@@ -694,6 +718,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
           <div className="flex items-center gap-2">
             <input
               ref={inputRef}
+              aria-label="Mensaje para el asistente"
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}

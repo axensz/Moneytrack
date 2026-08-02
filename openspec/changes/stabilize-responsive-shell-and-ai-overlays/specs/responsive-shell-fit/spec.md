@@ -39,3 +39,18 @@ Responsive shell corrections MUST NOT alter financial navigation destinations, a
 #### Scenario: Existing shell regressions run
 - **WHEN** desktop and mobile shell regression suites execute
 - **THEN** all existing destinations and utility actions MUST retain their current behavior while satisfying the new viewport-fit contract
+
+### Requirement: Desktop tab navigation scrolls without a persistent native scrollbar
+The desktop primary tablist MUST keep every destination horizontally reachable when its labels exceed the available shell width, without rendering a persistent native scrollbar or widening the document.
+
+#### Scenario: Tab labels exceed the available desktop width
+- **WHEN** the complete desktop tablist is wider than its navigation region
+- **THEN** the region MUST remain horizontally scrollable, the browser's native horizontal scrollbar MUST NOT consume visible layout height, and an existing edge affordance MUST indicate that more destinations are available
+
+#### Scenario: User navigates tabs with the keyboard
+- **WHEN** focus moves through the tablist with ArrowLeft, ArrowRight, Home, or End
+- **THEN** the selected tab MUST scroll into the visible region and retain the existing roving-tabindex behavior
+
+#### Scenario: Desktop tablist fits without scrolling
+- **WHEN** the complete desktop tablist fits inside its navigation region
+- **THEN** no horizontal scrollbar or page-level overflow MUST appear

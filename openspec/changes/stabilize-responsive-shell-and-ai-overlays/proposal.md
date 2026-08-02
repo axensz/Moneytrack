@@ -12,6 +12,7 @@ La sesión real de Chrome confirmó que la cabecera móvil ensancha la aplicaci�
 - Permitir cerrar el panel con su control visible o con Escape, y restaurar el foco al disparador que lo abrió.
 - Alinear la superficie del asistente con los tokens y excepciones de `PRODUCT.md` y `DESIGN.md`, sin modificar el shell violet ni los gradientes aprobados de `RecurringStatsCards`.
 - Añadir regresiones enfocadas y verificación visual en Chrome para 390×844 y 1270×571, en temas claro y oscuro.
+- Mantener desplazable la navegación primaria cuando las pestañas no caben, sin mostrar la barra horizontal nativa; usar la afordancia de borde ya existente y verificarla en Chrome a 1214 px.
 - No duplicar el skip link, el focus trap modal, las pestañas de Ayuda ni los estados vacíos ya contratados por cambios OPSX existentes.
 
 ## Capabilities
@@ -27,6 +28,6 @@ None.
 
 ## Impact
 
-El cambio afecta principalmente `Header`, su menú de ajustes, la composición del shell en `AuthenticatedApp`, `AIChatBot`, `AITeaserButton`, tokens/clases compartidas estrictamente necesarios y sus pruebas. Añade una entrada directa del asistente al shell desde 1024 px y usa Ajustes por debajo de ese ancho; mueve `Cerrar sesión` al menú de ajustes únicamente por debajo de 640 px, conservando su acceso directo desde 640 px.
+El cambio afecta principalmente `Header`, su menú de ajustes, la composición del shell en `AuthenticatedApp`, `AIChatBot`, `AITeaserButton`, `TabNavigation`, tokens/clases compartidas estrictamente necesarios y sus pruebas. Añade una entrada directa del asistente al shell desde 1024 px y usa Ajustes por debajo de ese ancho; mueve `Cerrar sesión` al menú de ajustes únicamente por debajo de 640 px, conservando su acceso directo desde 640 px. La navegación de escritorio conserva su desplazamiento horizontal interno, pero oculta la barra nativa mediante utilidades ya existentes.
 
 No cambia modelos financieros, persistencia, autenticación, contratos de Gemini, navegación de datos, dependencias ni cálculos. Depende conceptualmente de `harden-desktop-shell-and-interactions` para el contrato general de foco y de `align-desktop-states-and-help` para estados y copy; no reescribe sus artefactos ni los cambios locales actuales en `useModalA11y`.

@@ -37,3 +37,10 @@
 - [x] 6.3 Run the deterministic design detector and classify approved brand exceptions separately from real assistant or motion findings.
 - [x] 6.4 Verify in Chrome at 390×844 and 1270×571 in light and dark themes, plus one wider desktop sanity check: `scrollWidth <= clientWidth`, all header/panel controls visible, closed assistant entry covers no audited CTA, Escape closes, and focus returns to the trigger.
 - [x] 6.5 Re-run `openspec validate stabilize-responsive-shell-and-ai-overlays --type change --strict --no-interactive`, reconcile task evidence, and leave existing OPSX changes and dirty modal work untouched.
+
+## 7. Remove the native desktop tab scrollbar
+
+- [x] 7.1 Add a failing shell regression requiring the desktop tab region to retain `overflow-x-auto` while applying the existing `no-scrollbar` and `scroll-fade-x` utilities.
+- [x] 7.2 Apply the existing utilities to `TabNavigation` without wrapping, shrinking, removing destinations, or changing keyboard navigation.
+- [x] 7.3 Verify in Chrome at 1214 CSS pixels and one wider desktop width that the tab region remains scrollable, the native scrollbar consumes no layout height, and the document has no horizontal overflow.
+- [x] 7.4 Run the focused shell test, type checking, linting, and strict OpenSpec validation; reconcile this task evidence without touching the protected modal work.

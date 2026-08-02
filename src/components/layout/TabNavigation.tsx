@@ -38,7 +38,7 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
         className="hidden sm:flex max-w-full justify-start items-center gap-4 mb-4 sm:mb-5 md:mb-6"
         aria-label={UI_TEXT.aria.mainNavigation}
       >
-        <div data-desktop-tab-scroll className="max-w-full overflow-x-auto">
+        <div data-desktop-tab-scroll className="max-w-full overflow-x-auto no-scrollbar scroll-fade-x">
           <div className="flex min-w-max gap-2 border-b border-border" role="tablist">
             {NAV_TABS.map((tab, index) => (
               <button

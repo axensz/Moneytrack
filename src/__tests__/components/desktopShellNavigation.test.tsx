@@ -197,10 +197,14 @@ describe('desktop shell navigation', () => {
     expect(setView).not.toHaveBeenCalled();
   });
 
-  it('keeps desktop overflow inside the navigation surface', () => {
+  it('keeps desktop navigation scrollable without rendering the native scrollbar', () => {
     const { container } = render(<TabNavigation view="transactions" setView={vi.fn()} />);
     expect(container.querySelector('[role="tablist"]')).toHaveClass('min-w-max');
-    expect(container.querySelector('[data-desktop-tab-scroll]')).toHaveClass('overflow-x-auto');
+    expect(container.querySelector('[data-desktop-tab-scroll]')).toHaveClass(
+      'overflow-x-auto',
+      'no-scrollbar',
+      'scroll-fade-x',
+    );
     expect(container.querySelector('nav')).toHaveClass('max-w-full');
   });
 });

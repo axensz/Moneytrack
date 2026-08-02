@@ -2,6 +2,8 @@
 
 Chrome verification on the authenticated application found two root problems outside the scope of the existing desktop OPSX changes. First, the authenticated mobile header combines the MoneyTrack wordmark with five 44-pixel utility controls; at 390 CSS pixels the body reaches 421 pixels and the logout control is clipped. Second, `AIChatBot` and `AITeaserButton` own viewport-fixed launchers, while the open chat uses fixed height and a lower stacking level than the header. The launcher covers view-owned CTAs and the panel header can sit behind the application header at 1270×571.
 
+A follow-up Chrome check at 1214 CSS pixels found a third shell-fit defect: the desktop tab content is 1181 pixels wide while its available region is 1135 pixels. The intended `overflow-x-auto` containment works and the document itself does not overflow, but Chromium reserves 15 pixels for a persistent native horizontal scrollbar. The project already provides `no-scrollbar` and `scroll-fade-x` for exactly this kind of scrollable strip.
+
 `harden-desktop-shell-and-interactions` already owns the skip link and shared modal focus behavior. `align-desktop-states-and-help` already owns empty/loading states, Help accuracy, and the semantic treatment of `Agregar y continuar`. Local uncommitted changes currently implement part of the shared modal task. This change MUST remain disjoint from those surfaces.
 
 The product remains a short-session personal-finance PWA. `PRODUCT.md`, `DESIGN.md`, and the current token files remain authoritative: violet is brand/action/selection, green/red/amber are state, gradients stay confined to their approved exceptions, targets are at least 44–48 pixels, and no new motion or UI dependency is introduced.
@@ -11,6 +13,7 @@ The product remains a short-session personal-finance PWA. `PRODUCT.md`, `DESIGN.
 **Goals:**
 
 - Eliminate mobile page-level overflow caused by the authenticated header.
+- Preserve horizontally reachable desktop tabs without showing a persistent native scrollbar.
 - Keep all account and utility actions reachable without shrinking touch targets.
 - Remove closed-state assistant collisions from financial views.
 - Keep AI discoverable for guests, unconfigured users, and configured users.
@@ -21,7 +24,7 @@ The product remains a short-session personal-finance PWA. `PRODUCT.md`, `DESIGN.
 **Non-Goals:**
 
 - Change financial calculations, persistence, Gemini request/response behavior, consent, or write confirmations.
-- Redesign primary mobile navigation, the desktop tablist, Help, onboarding, empty states, Categories/people, metric cards, or Plan hierarchy.
+- Redesign primary mobile navigation, Help, onboarding, empty states, Categories/people, metric cards, or Plan hierarchy.
 - Modify the shared modal accessibility hook or mark tasks in existing OPSX changes.
 - Remove the approved shell gradient, `.btn-primary`, `.card-balance`, or `RecurringStatsCards` gradients.
 - Add a dependency, collision-detection engine, portal framework, or new global state library.
@@ -41,6 +44,12 @@ This replaces both fixed launchers, including the current teaser. It is preferre
 Below 640 CSS pixels, `Cerrar sesión` moves into the existing settings menu. From 640 pixels upward it remains a direct header action. Theme, privacy, notifications, and settings keep their current order, accessible names, badges, and minimum target size. Containers receive the necessary `min-width: 0`, shrink, and overflow constraints so the wordmark and utility group negotiate the available width without widening the document.
 
 Shrinking icons or targets was rejected because it would violate the 44–48 pixel touch contract. Hiding logout without an equivalent labeled menu action was rejected because it would reduce user control.
+
+### Keep tab overflow operable while removing the native scrollbar
+
+`TabNavigation` will retain `overflow-x-auto`, its non-wrapping tab row, keyboard roving focus, and `scrollIntoView` behavior. The existing `no-scrollbar` utility removes the persistent browser chrome without disabling scrolling; `scroll-fade-x` supplies the existing edge affordance when more tabs remain outside the visible region.
+
+Removing horizontal overflow, wrapping labels, shrinking targets, or adding a custom scrollbar was rejected because each option either makes destinations unreachable, changes the information architecture, weakens target size, or duplicates an existing utility.
 
 ### Bound the panel to a shell workspace, not to the raw viewport
 
@@ -74,6 +83,7 @@ Automated tests will cover the shell composition, responsive class/contract, sta
 - [Workspace-relative positioning may interact with existing scrolling] → Keep one scroll owner for main content and one for chat messages; test short viewport, mobile nav, and keyboard resize.
 - [Feature-local Escape handling can conflict with other overlays] → Mount the panel only when open, stop only its handled Escape path, and verify settings/modal precedence.
 - [Token cleanup can unintentionally flatten hierarchy] → Preserve hierarchy through weight, spacing, solid brand action, and semantic surfaces rather than gradients.
+- [Hiding the native tab scrollbar can reduce discoverability] → Keep the existing edge fade, keyboard `scrollIntoView`, and touch/trackpad scrolling; verify both constrained and wide desktop states.
 - [Existing dirty modal work overlaps accessibility vocabulary] → Do not edit `useModalA11y` or its tests; validate this change with separate assistant-focused regressions.
 
 ## Migration Plan
@@ -85,6 +95,7 @@ Automated tests will cover the shell composition, responsive class/contract, sta
 5. Migrate assistant-only surfaces and motion to existing tokens and reduced-motion behavior.
 6. Run focused tests, type checking, lint, the full test suite, and `npx --no-install next build` to avoid mutating `public/sw.js` through the wrapper build script.
 7. Verify Chrome at the required viewports/themes, then reconcile OPSX task evidence. Rollback is a normal code revert; no data migration or compatibility bridge is required.
+8. Recheck the desktop tab strip at 1214 CSS pixels, retain internal scrolling, and confirm that no native horizontal scrollbar consumes layout height.
 
 ## Open Questions
 

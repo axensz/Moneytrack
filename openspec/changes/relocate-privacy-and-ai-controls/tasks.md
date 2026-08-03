@@ -23,3 +23,9 @@
 - [x] 4.2 Rebuild the code-review graph and confirm the diff touches only the approved shell/privacy/assistant surfaces and their tests, with no financial, Firestore, debt, metric, or navigation-domain mutation.
 - [ ] 4.3 Verify in Chrome at 390×844, 1214×768, and 1440×900: light/dark, privacy toggle, launcher geometry, pending state, open/close/Escape focus, onboarding coexistence, zero document overflow, and no console errors.
 - [x] 4.4 Commit and push the focused implementation to PR #76, update its title/body to reflect the actual combined scope, and keep it draft until the fresh checks are green.
+
+## 5. Refinement after visual review
+
+- [x] 5.1 Amend the SDD and add a failing `StatsCards` contract proving the privacy action shares the `Resumen general` row and is absent from every individual metric card.
+- [x] 5.2 Move the existing 44×44 privacy action from `Saldo actual` to the overview heading row without changing its global state, persistence, icons, or masking behavior.
+- [ ] 5.3 Re-run focused and broad validation, rebuild the graph, complete task 4.3 in Chrome, update PR #76, and keep it draft until the new CI checks pass.

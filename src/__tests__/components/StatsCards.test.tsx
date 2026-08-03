@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { StatsCards } from '../../components/shared/StatsCards';
 import { UIPreferencesProvider, useUIPreferences } from '../../contexts/UIPreferencesContext';
@@ -43,7 +43,15 @@ describe('StatsCards', () => {
   it('owns the global privacy action and masks every overview value immediately', () => {
     renderStats();
 
+    const overviewHeading = screen.getByRole('heading', { name: 'Resumen general' });
     const toggle = screen.getByRole('button', { name: 'Ocultar valores' });
+    const balanceCard = screen.getByText('Saldo actual').closest('.card-balance');
+
+    expect(toggle.parentElement).toBe(overviewHeading.parentElement);
+    expect(overviewHeading.parentElement).toHaveClass('flex', 'items-center', 'justify-between');
+    expect(balanceCard).not.toBeNull();
+    expect(within(balanceCard as HTMLElement).queryByRole('button', { name: 'Ocultar valores' }))
+      .not.toBeInTheDocument();
     expect(toggle).toHaveAttribute('type', 'button');
     expect(toggle).toHaveAttribute('aria-pressed', 'false');
     expect(toggle).toHaveClass('h-11', 'w-11');

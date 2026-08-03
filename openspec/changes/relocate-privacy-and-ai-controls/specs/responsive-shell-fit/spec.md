@@ -18,11 +18,11 @@ The mobile header MUST keep brand, theme, notifications, and settings operable w
 ## ADDED Requirements
 
 ### Requirement: Ledger overview owns the global privacy action
-The `Saldo actual` card MUST expose the only direct balance-privacy control, keep it immediately reachable, and continue using the existing global persisted preference.
+The `Resumen general` header MUST expose the only direct balance-privacy control, keep it immediately reachable, and continue using the existing global persisted preference.
 
 #### Scenario: Values are visible
 - **WHEN** `hideBalances` is false
-- **THEN** the top-right action in `Saldo actual` MUST be named `Ocultar valores`, expose `aria-pressed="false"`, and provide at least a 44×44 CSS pixel target
+- **THEN** the action on the same row as `Resumen general` MUST be named `Ocultar valores`, expose `aria-pressed="false"`, and provide at least a 44×44 CSS pixel target
 
 #### Scenario: User hides values
 - **WHEN** the user activates `Ocultar valores`
@@ -33,8 +33,8 @@ The `Saldo actual` card MUST expose the only direct balance-privacy control, kee
 - **THEN** the privacy action MUST remain visible and operable without replacing or falsifying the settling state
 
 #### Scenario: Overview renders on a narrow viewport
-- **WHEN** the `Saldo actual` card renders between 320 and 639 CSS pixels wide
-- **THEN** its privacy action MUST remain inside the card without clipping, overlapping the label/value, or causing horizontal overflow
+- **WHEN** the ledger overview renders between 320 and 639 CSS pixels wide
+- **THEN** the title and privacy action MUST remain on one responsive header row without clipping, overlapping, or causing horizontal overflow, and no individual metric card MUST contain the privacy action
 
 #### Scenario: User navigates away and returns
 - **WHEN** the user changes views after hiding or showing values

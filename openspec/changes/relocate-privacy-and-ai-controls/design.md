@@ -8,7 +8,7 @@ El cambio base `stabilize-responsive-shell-and-ai-overlays` impedía un disparad
 
 **Goals:**
 
-- Hacer inmediata y contextual la privacidad ubicándola en la tarjeta `Saldo actual`.
+- Hacer inmediata y contextual la privacidad ubicándola junto al título `Resumen general`.
 - Reducir el ruido del encabezado retirando privacidad e IA.
 - Proporcionar un único lanzador flotante de IA seguro en móvil y desktop.
 - Preservar el estado global de privacidad, las rutas de autenticación/configuración y el retorno de foco.
@@ -23,13 +23,13 @@ El cambio base `stabilize-responsive-shell-and-ai-overlays` impedía un disparad
 
 ## Decisions
 
-### 1. La tarjeta `Saldo actual` será el único dueño visual del control de privacidad
+### 1. El encabezado de `Resumen general` será el único dueño visual del control de privacidad
 
-`StatsCards` pasará a consumir `setHideBalances` además de `hideBalances`. El botón ocupará la esquina superior derecha de `Saldo actual` y reemplazará el badge decorativo de `Wallet`; así se conserva una sola acción clara en la cabecera de la tarjeta. Será un botón de al menos 44×44 CSS px con `EyeOff` cuando los valores están visibles, `Eye` cuando están ocultos, `aria-pressed`, `aria-label` y `title` dinámicos.
+`StatsCards` consume `setHideBalances` además de `hideBalances`. El botón compartirá una fila flex con el título `Resumen general`, alineado al extremo derecho y fuera de las cuatro tarjetas; la fila completa comunica que gobierna todo el conjunto y conserva el balance visual elegido por el usuario. Será un botón de al menos 44×44 CSS px con `EyeOff` cuando los valores están visibles, `Eye` cuando están ocultos, `aria-pressed`, `aria-label` y `title` dinámicos.
 
 La preferencia seguirá siendo global: activar el botón enmascara o revela inmediatamente todos los importes que ya consumen `UIPreferencesContext`, no solo esa tarjeta. El control permanecerá disponible durante `balanceSettling` y no alterará el estado de carga.
 
-Se descartó conservar `Wallet` junto al ojo porque produciría dos iconos del mismo peso en un espacio compacto. También se descartó el menú de ajustes porque el usuario priorizó una acción directa dentro de la tarjeta.
+La primera implementación lo ubicó en `Saldo actual`, pero la revisión visual mostró que esa proximidad podía interpretarse como una acción exclusiva de esa tarjeta. El usuario eligió explícitamente la línea de `Resumen general`; se mantienen descartados el menú de ajustes y cualquier segundo acceso que duplique la acción.
 
 ### 2. Un `AssistantLauncher` presentacional sustituirá las entradas del encabezado
 
@@ -67,7 +67,7 @@ Chrome validará claro/oscuro y al menos 390×844, 1214×768 y 1440×900, incluy
 ## Migration Plan
 
 1. Implementar pruebas fallidas para privacidad y lanzador.
-2. Mover privacidad y retirar las entradas antiguas del encabezado.
+2. Mover privacidad a la línea de `Resumen general` y retirar las entradas antiguas del encabezado global.
 3. Añadir el lanzador y conectar los estados existentes.
 4. Ejecutar pruebas enfocadas, suite completa, typecheck, lint, build y validación OPSX estricta.
 5. Verificar visualmente en Chrome y actualizar el PR #76 antes de volver a marcarlo listo.
@@ -76,4 +76,4 @@ El rollback consiste en revertir el commit de implementación: no existe migraci
 
 ## Open Questions
 
-Ninguna. La ubicación en la tarjeta y el lanzador flotante fueron aprobados por el usuario.
+Ninguna. La ubicación junto a `Resumen general` y el lanzador flotante fueron aprobados por el usuario.

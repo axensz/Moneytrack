@@ -40,24 +40,26 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
 
   return (
     <section data-testid="ledger-overview" className="mb-4 sm:mb-5 md:mb-6" aria-labelledby="ledger-overview-title">
-      <h2 id="ledger-overview-title" className="text-base font-bold text-foreground mb-2 sm:mb-3">Resumen general</h2>
+      <div className="mb-2 flex min-w-0 items-center justify-between gap-2 sm:mb-3">
+        <h2 id="ledger-overview-title" className="min-w-0 text-base font-bold text-foreground">Resumen general</h2>
+        <button
+          type="button"
+          onClick={() => setHideBalances(!hideBalances)}
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          aria-label={privacyLabel}
+          title={privacyLabel}
+          aria-pressed={hideBalances}
+        >
+          {hideBalances
+            ? <Eye size={20} aria-hidden="true" />
+            : <EyeOff size={20} aria-hidden="true" />}
+        </button>
+      </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
         {/* Balance Card - Morado Premium (reusa .card-balance, no duplica el degradado) */}
         <div className="card-balance min-w-0 col-span-2 lg:col-span-1 hover:shadow-lg">
-          <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+          <div className="mb-1.5 sm:mb-2">
             <span className="text-xs sm:text-sm font-medium text-balance-foreground">Saldo actual</span>
-            <button
-              type="button"
-              onClick={() => setHideBalances(!hideBalances)}
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-balance-accent text-balance-value transition-colors hover:bg-balance-accent/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              aria-label={privacyLabel}
-              title={privacyLabel}
-              aria-pressed={hideBalances}
-            >
-              {hideBalances
-                ? <Eye size={20} aria-hidden="true" />
-                : <EyeOff size={20} aria-hidden="true" />}
-            </button>
           </div>
           <div className="text-lg sm:text-xl lg:text-2xl font-bold text-balance-value break-words">
             {balanceSettling ? (

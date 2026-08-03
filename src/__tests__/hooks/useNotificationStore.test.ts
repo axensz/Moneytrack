@@ -10,6 +10,9 @@ const M = vi.hoisted(() => ({
   batchUpdate: vi.fn<(ref: unknown, data: unknown) => void>(() => undefined),
   batchCommit: vi.fn(async () => undefined),
   getDocs: vi.fn(),
+  getDoc: vi.fn(),
+  runTransaction: vi.fn(),
+  onSnapshot: vi.fn(),
 }));
 
 vi.mock('../../lib/firebaseDb', () => ({ db: { __db: true } }));
@@ -21,11 +24,13 @@ vi.mock('firebase/firestore', () => ({
   documentId: () => '__name__',
   startAfter: (cursor: unknown) => ({ __startAfter: cursor }),
   getDocs: (queryRef: unknown) => M.getDocs(queryRef),
-  onSnapshot: vi.fn(),
+  getDoc: (ref: unknown) => M.getDoc(ref),
+  onSnapshot: (...args: unknown[]) => M.onSnapshot(...args),
   doc: (_db: unknown, path: string, id?: string) => ({ __path: id ? `${path}/${id}` : path }),
   deleteDoc: (ref: unknown) => M.deleteDoc(ref),
   updateDoc: (ref: unknown, data: unknown) => M.updateDoc(ref, data),
   setDoc: (ref: unknown, data: unknown) => M.setDoc(ref, data),
+  runTransaction: (database: unknown, update: unknown) => M.runTransaction(database, update),
   writeBatch: () => ({
     delete: (ref: unknown) => M.batchDelete(ref),
     update: (ref: unknown, data: unknown) => M.batchUpdate(ref, data),
@@ -95,6 +100,20 @@ describe('useNotificationStore - actualizacion optimista con datos externos', ()
     M.batchCommit.mockClear();
     M.getDocs.mockReset();
     M.getDocs.mockResolvedValue(firestorePage([]));
+    M.getDoc.mockReset();
+    M.getDoc.mockResolvedValue({ exists: () => false, data: () => undefined });
+    M.runTransaction.mockReset();
+    M.onSnapshot.mockReset();
+    M.onSnapshot.mockReturnValue(vi.fn());
+    M.runTransaction.mockImplementation(async (_database, update: (transaction: {
+      get: (ref: unknown) => Promise<unknown>;
+      set: (ref: unknown, value: unknown) => void;
+      update: (ref: unknown, value: unknown) => void;
+    }) => Promise<unknown>) => update({
+      get: (ref) => M.getDoc(ref),
+      set: (ref, value) => { void M.setDoc(ref, value); },
+      update: (ref, value) => { void M.updateDoc(ref, value); },
+    }));
   });
 
   it('descuenta una notificacion borrada del conteo sin esperar otro snapshot', async () => {
@@ -227,16 +246,53 @@ describe('useNotificationStore - actualizacion optimista con datos externos', ()
 
     let advancedCreated: boolean | undefined;
     await act(async () => {
-      advancedCreated = await result.current.addNotification(makeVersionedNotification(3));
+      advancedCreated = await result.current.addNotification(
+        makeVersionedNotification(3, { stage: 'due', stageWindow: 'due' })
+      );
     });
 
     expect(advancedCreated).toBe(true);
     expect(result.current.notifications).toMatchObject([{
       revision: 3,
       isRead: false,
-      readRevision: 2,
-      dismissedRevision: 2,
     }]);
+    expect(result.current.notifications[0].readRevision).toBeUndefined();
+    expect(result.current.notifications[0].dismissedRevision).toBeUndefined();
+  });
+
+  it('reserves the higher revision before persistence so a concurrent lower revision cannot degrade the document', async () => {
+    const persisted = makeVersionedNotification(2);
+    const r4 = makeVersionedNotification(4, { stage: 'overdue', stageWindow: 'overdue:0' });
+    const r3 = makeVersionedNotification(3, { stage: 'due', stageWindow: 'due' });
+    const writes: Notification[] = [];
+    let releaseTransaction: (() => Promise<void>) | undefined;
+
+    M.runTransaction.mockImplementation((_database, update: (transaction: {
+      get: () => Promise<{ exists: () => boolean; data: () => Notification }>;
+      set: (_ref: unknown, value: Notification) => void;
+    }) => Promise<unknown>) => new Promise((resolve, reject) => {
+      releaseTransaction = async () => {
+        try {
+          resolve(await update({
+            get: async () => ({ exists: () => true, data: () => persisted }),
+            set: (_ref, value) => { writes.push(value); },
+          }));
+        } catch (error) {
+          reject(error);
+        }
+      };
+    }));
+
+    const { result } = renderHook(() => useNotificationStore('user-1', [persisted]));
+    const advancing = result.current.addNotification(r4);
+    await waitFor(() => expect(M.runTransaction).toHaveBeenCalledTimes(1));
+
+    await expect(result.current.addNotification(r3)).resolves.toBe(false);
+    await releaseTransaction?.();
+    await expect(advancing).resolves.toBe(true);
+
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({ revision: 4, stageWindow: 'overdue:0' });
   });
 
   it('normaliza el candidato v2 inicial a revisión 1 en vez de tratarlo como legacy', async () => {
@@ -252,7 +308,7 @@ describe('useNotificationStore - actualizacion optimista con datos externos', ()
 
     expect(created).toBe(true);
     expect(result.current.notifications).toMatchObject([{
-      id: 'event:recurring:rent:2026-08',
+      id: 'event:recurring%3Arent%3A2026-08',
       schemaVersion: 2,
       revision: 1,
     }]);
@@ -292,6 +348,7 @@ describe('useNotificationStore - actualizacion optimista con datos externos', ()
 
   it('no elimina directamente un evento v2 aunque se invoque la frontera store', async () => {
     const versioned = makeVersionedNotification(3);
+    M.getDoc.mockResolvedValue({ exists: () => true, data: () => versioned });
     const { result } = renderHook(() => useNotificationStore('user-1', [versioned]));
 
     await act(async () => {
@@ -303,6 +360,98 @@ describe('useNotificationStore - actualizacion optimista con datos externos', ()
       { __path: 'users/user-1/notifications/event-recurring-rent-2026-08' },
       expect.objectContaining({ dismissedRevision: 3 })
     );
+  });
+
+  it('never physically deletes a hidden v2 event and carries its expected revision to persistence', async () => {
+    const hidden = makeVersionedNotification(3, { dismissedRevision: 3 });
+    M.getDoc.mockResolvedValue({ exists: () => true, data: () => hidden });
+    const { result } = renderHook(() => useNotificationStore('user-1', [hidden]));
+
+    expect(result.current.notifications).toEqual([]);
+    await act(async () => {
+      await result.current.deleteNotification('event-recurring-rent-2026-08');
+    });
+
+    expect(M.deleteDoc).not.toHaveBeenCalled();
+    expect(M.getDoc).toHaveBeenCalledWith(
+      { __path: 'users/user-1/notifications/event-recurring-rent-2026-08' }
+    );
+    expect(M.updateDoc).toHaveBeenCalledWith(
+      { __path: 'users/user-1/notifications/event-recurring-rent-2026-08' },
+      expect.objectContaining({ dismissedRevision: 3 })
+    );
+  });
+
+  it('reads an absent document before deciding whether a physical delete is safe', async () => {
+    const persisted = makeVersionedNotification(3);
+    M.getDoc.mockResolvedValue({ exists: () => true, data: () => persisted });
+    const { result } = renderHook(() => useNotificationStore('user-1', []));
+
+    await act(async () => {
+      await result.current.deleteNotification('event-recurring-rent-2026-08');
+    });
+
+    expect(M.deleteDoc).not.toHaveBeenCalled();
+    expect(M.updateDoc).toHaveBeenCalledWith(
+      { __path: 'users/user-1/notifications/event-recurring-rent-2026-08' },
+      expect.objectContaining({ dismissedRevision: 3 })
+    );
+  });
+
+  it('restores a local v2 dismissal when Firestore has already advanced to another revision', async () => {
+    const visible = makeVersionedNotification(3, { stage: 'due', stageWindow: 'due' });
+    const persisted = makeVersionedNotification(4, { stage: 'overdue', stageWindow: 'overdue:0' });
+    let receiveSnapshot: ((snapshot: ReturnType<typeof firestorePage>) => void) | undefined;
+    M.onSnapshot.mockImplementation((_query, receive) => {
+      receiveSnapshot = receive;
+      return vi.fn();
+    });
+    M.getDoc.mockResolvedValue({ exists: () => true, data: () => persisted });
+    const { result } = renderHook(() => useNotificationStore('user-1'));
+
+    await act(async () => {
+      receiveSnapshot?.({
+        docs: [{
+          id: visible.id,
+          data: () => ({ ...visible, createdAt: { toDate: () => visible.createdAt } }),
+        }],
+      } as unknown as ReturnType<typeof firestorePage>);
+    });
+    await waitFor(() => expect(result.current.notifications).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.deleteNotification('event-recurring-rent-2026-08');
+    });
+
+    expect(M.updateDoc).not.toHaveBeenCalled();
+    expect(result.current.notifications).toMatchObject([{ revision: 3 }]);
+  });
+
+  it('restores a local v2 dismissal when its transaction rejects', async () => {
+    const visible = makeVersionedNotification(3, { stage: 'due', stageWindow: 'due' });
+    let receiveSnapshot: ((snapshot: ReturnType<typeof firestorePage>) => void) | undefined;
+    M.onSnapshot.mockImplementation((_query, receive) => {
+      receiveSnapshot = receive;
+      return vi.fn();
+    });
+    M.runTransaction.mockRejectedValue(new Error('offline'));
+    const { result } = renderHook(() => useNotificationStore('user-1'));
+
+    await act(async () => {
+      receiveSnapshot?.({
+        docs: [{
+          id: visible.id,
+          data: () => ({ ...visible, createdAt: { toDate: () => visible.createdAt } }),
+        }],
+      } as unknown as ReturnType<typeof firestorePage>);
+    });
+    await waitFor(() => expect(result.current.notifications).toHaveLength(1));
+
+    await act(async () => {
+      await expect(result.current.deleteNotification('event-recurring-rent-2026-08')).rejects.toThrow('offline');
+    });
+
+    expect(result.current.notifications).toMatchObject([{ revision: 3 }]);
   });
 
   it('mantiene el borrado legacy, pero descarta la revisión actual de eventos v2 al limpiar todo', async () => {

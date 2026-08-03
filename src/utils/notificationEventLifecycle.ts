@@ -19,19 +19,56 @@ export type RecurringStageWindow = {
   overdueOccurrence?: number;
 };
 
+type EventRevisionInput = Pick<Notification, 'eventKey' | 'stage' | 'stageWindow'>;
+
+const eventSegment = (value: string): string => encodeURIComponent(value);
+
 export const buildBudgetEventKey = (budgetId: string, localMonth: string): string =>
-  `budget:${budgetId}:${localMonth}`;
+  `budget:${eventSegment(budgetId)}:${eventSegment(localMonth)}`;
 
 export const buildRecurringEventKey = (recurringPaymentId: string, cycle: string): string =>
-  `recurring:${recurringPaymentId}:${cycle}`;
+  `recurring:${eventSegment(recurringPaymentId)}:${eventSegment(cycle)}`;
 
 export const buildDailyExpenseEventKey = (localDate: string): string =>
-  `daily-expense:${localDate}`;
+  `daily-expense:${eventSegment(localDate)}`;
 
 export const buildDebtEventKey = (debtId: string, localMonth: string): string =>
-  `debt:${debtId}:${localMonth}`;
+  `debt:${eventSegment(debtId)}:${eventSegment(localMonth)}`;
 
-export const eventDocumentId = (eventKey: string): string => `event:${eventKey}`;
+export const eventDocumentId = (eventKey: string): string => `event:${eventSegment(eventKey)}`;
+
+export function getCanonicalEventRevision({
+  eventKey,
+  stage,
+  stageWindow,
+}: EventRevisionInput): number | null {
+  if (!eventKey || !stage || !stageWindow) return null;
+
+  const fixedRevision = (stages: Array<[NotificationEventStage, number]>): number | null => {
+    const match = stages.find(([expectedStage]) => expectedStage === stage);
+    return match && stageWindow === stage ? match[1] : null;
+  };
+  const overdueRevision = (start: number): number | null => {
+    if (stage !== 'overdue') return null;
+    const occurrence = /^overdue:(0|[1-9]\d*)$/.exec(stageWindow)?.[1];
+    return occurrence === undefined ? null : start + Number(occurrence);
+  };
+
+  if (eventKey.startsWith('recurring:')) {
+    return fixedRevision([['d3', 1], ['d1', 2], ['due', 3]]) ?? overdueRevision(4);
+  }
+  if (eventKey.startsWith('budget:')) {
+    return fixedRevision([['warning', 1], ['critical', 2], ['exceeded', 3]]);
+  }
+  if (eventKey.startsWith('daily-expense:')) {
+    return fixedRevision([['daily', 1]]);
+  }
+  if (eventKey.startsWith('debt:')) {
+    return fixedRevision([['due', 1], ['warning', 2], ['critical', 3], ['exceeded', 4]])
+      ?? overdueRevision(5);
+  }
+  return null;
+}
 
 export function getRecurringStageWindow(daysUntilDue: number): RecurringStageWindow | null {
   if (daysUntilDue === 3) return { stage: 'd3', stageWindow: 'd3' };
@@ -53,6 +90,41 @@ export function getDailyReminderDisposition(
 ): 'pending' | 'due' | 'skipped' {
   if (scheduledLocalDate > currentLocalDate) return 'pending';
   return scheduledLocalDate === currentLocalDate ? 'due' : 'skipped';
+}
+
+export function getDailyReminderCatchUp({
+  now,
+  timeZone,
+  hour,
+  minute,
+  lastReminderLocalDate,
+}: {
+  now: Date;
+  timeZone: string;
+  hour: number;
+  minute: number;
+  lastReminderLocalDate?: string;
+}): { localDate: string; shouldSend: boolean } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now).reduce<Record<string, string>>((values, part) => {
+    values[part.type] = part.value;
+    return values;
+  }, {});
+  const localDate = `${parts.year}-${parts.month}-${parts.day}`;
+  const reachedScheduledTime = Number(parts.hour) > hour
+    || (Number(parts.hour) === hour && Number(parts.minute) >= minute);
+
+  return {
+    localDate,
+    shouldSend: reachedScheduledTime && lastReminderLocalDate !== localDate,
+  };
 }
 
 export function isVersionedEventCandidate(
@@ -90,13 +162,20 @@ export function advanceVersionedNotification(
   current: Notification | undefined,
   candidate: Notification
 ): Notification {
-  const revision = Number.isInteger(candidate.revision) && candidate.revision! > 0
-    ? candidate.revision!
-    : 1;
+  const canonicalRevision = isVersionedEventCandidate(candidate)
+    ? getCanonicalEventRevision(candidate)
+    : null;
+  if (isVersionedEventCandidate(candidate) && canonicalRevision === null) {
+    throw new Error('Invalid versioned notification stage');
+  }
+  const revision = canonicalRevision ?? 1;
 
   if (current && isVersionedNotification(current) && revision <= current.revision!) {
     return current;
   }
+
+  const advancesCurrent = isVersionedNotification(current) && revision > current.revision;
+  const lifecycleStatus = candidate.lifecycleStatus ?? 'active';
 
   return {
     ...current,
@@ -106,10 +185,21 @@ export function advanceVersionedNotification(
     schemaVersion: NOTIFICATION_EVENT_SCHEMA_VERSION,
     revision,
     stageWindow: candidate.stageWindow ?? candidate.stage,
-    lifecycleStatus: candidate.lifecycleStatus ?? 'active',
+    lifecycleStatus,
     isRead: false,
-    readRevision: current?.readRevision,
-    dismissedRevision: current?.dismissedRevision,
-    dismissedAt: current?.dismissedAt,
+    readRevision: undefined,
+    dismissedRevision: undefined,
+    dismissedAt: undefined,
+    scheduledAt: lifecycleStatus === 'scheduled'
+      ? candidate.scheduledAt ?? candidate.createdAt
+      : undefined,
+    resolvedRevision: advancesCurrent
+      ? current.revision
+      : lifecycleStatus === 'resolved'
+        ? revision
+        : undefined,
+    resolvedAt: advancesCurrent || lifecycleStatus === 'resolved'
+      ? candidate.resolvedAt ?? candidate.createdAt
+      : undefined,
   };
 }

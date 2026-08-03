@@ -15,6 +15,8 @@ import {
     doc,
     writeBatch,
     setDoc,
+    runTransaction,
+    getDoc,
     getDocs,
     startAfter,
     documentId,
@@ -29,6 +31,7 @@ import { RULE_SAFE_SIMPLE_WRITE_LIMIT } from '../config/firestoreLimits';
 import {
     advanceVersionedNotification,
     eventDocumentId,
+    getCanonicalEventRevision,
     isNotificationDismissed,
     isNotificationRead,
     isVersionedEventCandidate,
@@ -88,6 +91,7 @@ export function useNotificationStore(userId: string | null, externalNotification
     // Ref to avoid recreating addNotification on every snapshot update
     const firestoreNotificationsRef = useRef<Notification[]>([]);
     const visibleNotificationsRef = useRef<Notification[]>([]);
+    const eventRevisionHighWaterRef = useRef<Map<string, number>>(new Map());
 
     // LocalStorage for guest mode
     const [localNotifications, setLocalNotifications] = useLocalStorage<Notification[]>('notifications', []);
@@ -134,6 +138,14 @@ export function useNotificationStore(userId: string | null, externalNotification
     }, [userId, hasExternalNotifications]);
 
     const sourceNotifications = externalNotifications ?? (userId ? firestoreNotifications : localNotifications);
+
+    sourceNotifications.forEach((notification) => {
+        if (!isVersionedNotification(notification)) return;
+        const current = eventRevisionHighWaterRef.current.get(notification.eventKey) ?? 0;
+        if (notification.revision > current) {
+            eventRevisionHighWaterRef.current.set(notification.eventKey, notification.revision);
+        }
+    });
 
     // Usar Firebase si hay usuario, localStorage si no
     const notifications = useMemo(
@@ -269,20 +281,57 @@ export function useNotificationStore(userId: string | null, externalNotification
                 const current = currentNotifications.find((existing) =>
                     isVersionedNotification(existing) && existing.eventKey === notification.eventKey
                 );
-                const next = advanceVersionedNotification(current, {
+                const candidate = {
                     ...notification,
                     createdAt: now,
-                } as Notification);
+                } as Notification;
+                const candidateRevision = getCanonicalEventRevision(candidate);
+                if (candidateRevision === null) return false;
+                candidate.revision = candidateRevision;
+                const previousHighWater = Math.max(
+                    eventRevisionHighWaterRef.current.get(candidate.eventKey!) ?? 0,
+                    current?.revision ?? 0
+                );
+                if (candidateRevision <= previousHighWater) return false;
+
+                // Reserve synchronously: a lower concurrent caller must not race a pending write.
+                eventRevisionHighWaterRef.current.set(candidate.eventKey!, candidateRevision);
+                const next = advanceVersionedNotification(current, candidate);
                 if (next === current) return false;
 
                 const id = current?.id ?? generateDedupeDocId(notification);
-                const stored: Notification = { ...next, id };
 
                 if (userId) {
-                    const data = { ...stored };
-                    delete data.id;
-                    await setDoc(doc(db, `users/${userId}/notifications`, id), data);
+                    try {
+                        const result = await runTransaction(db, async (transaction) => {
+                            const ref = doc(db, `users/${userId}/notifications`, id);
+                            const snapshot = await transaction.get(ref);
+                            const persisted = snapshot.exists()
+                                ? { ...snapshot.data(), id } as Notification
+                                : undefined;
+                            const nextPersisted = advanceVersionedNotification(persisted, candidate);
+                            if (nextPersisted === persisted) {
+                                return { written: false, revision: persisted?.revision ?? 0 };
+                            }
+
+                            const data = { ...nextPersisted };
+                            delete data.id;
+                            transaction.set(ref, data);
+                            return { written: true, revision: nextPersisted.revision ?? candidateRevision };
+                        });
+                        eventRevisionHighWaterRef.current.set(
+                            candidate.eventKey!,
+                            Math.max(eventRevisionHighWaterRef.current.get(candidate.eventKey!) ?? 0, result.revision)
+                        );
+                        return result.written;
+                    } catch (error) {
+                        if (eventRevisionHighWaterRef.current.get(candidate.eventKey!) === candidateRevision) {
+                            eventRevisionHighWaterRef.current.set(candidate.eventKey!, previousHighWater);
+                        }
+                        throw error;
+                    }
                 } else {
+                    const stored: Notification = { ...next, id };
                     const updated = [stored, ...localNotificationsRef.current.filter((existing) => existing.id !== id)]
                         .slice(0, MAX_NOTIFICATIONS);
                     setLocalNotifications(updated);
@@ -404,15 +453,81 @@ export function useNotificationStore(userId: string | null, externalNotification
 
     // Delete notification
     const deleteNotification = useCallback(
-        async (id: string) => {
-            const current = visibleNotificationsRef.current.find((notification) => notification.id === id);
+        async (id: string, expectedRevision?: number) => {
+            const ref = userId ? doc(db, `users/${userId}/notifications`, id) : undefined;
+            let current = firestoreNotificationsRef.current.find((notification) => notification.id === id);
+
+            if (userId && !current) {
+                const snapshot = await getDoc(ref!);
+                if (!snapshot.exists()) return;
+                current = { ...snapshot.data(), id } as Notification;
+            }
+
             if (isVersionedNotification(current)) {
-                await updateNotification(id, {
-                    dismissedRevision: current.revision,
-                    dismissedAt: new Date(),
-                });
+                const revision = expectedRevision ?? current.revision;
+                if (revision !== current.revision) return;
+                const now = new Date();
+                const visible = visibleNotificationsRef.current.find((notification) => notification.id === id);
+                const hasVisibleRevision = isVersionedNotification(visible) && visible.revision === revision;
+
+                if (userId) {
+                    const rollbackDismissal = () => {
+                        if (hasExternalNotifications) {
+                            setOptimisticDismissedRevisions((revisions) => {
+                                if (revisions.get(id) !== revision) return revisions;
+                                const next = new Map(revisions);
+                                next.delete(id);
+                                return next;
+                            });
+                        } else if (hasVisibleRevision) {
+                            setFirestoreNotifications((notifications) => notifications.map((notification) => {
+                                if (!isVersionedNotification(notification) || notification.id !== id || notification.revision !== revision) {
+                                    return notification;
+                                }
+                                return { ...notification, dismissedRevision: undefined, dismissedAt: undefined };
+                            }));
+                        }
+                    };
+
+                    if (hasExternalNotifications && hasVisibleRevision) {
+                        setOptimisticDismissedRevisions((revisions) => new Map(revisions).set(id, revision));
+                    } else if (!hasExternalNotifications && hasVisibleRevision) {
+                        setFirestoreNotifications((notifications) => notifications.map((notification) =>
+                            notification.id === id
+                                ? { ...notification, dismissedRevision: revision, dismissedAt: now }
+                                : notification
+                        ));
+                    }
+
+                    try {
+                        const dismissed = await runTransaction(db, async (transaction) => {
+                            const snapshot = await transaction.get(ref!);
+                            if (!snapshot.exists()) return false;
+                            const persisted = { ...snapshot.data(), id } as Notification;
+                            if (!isVersionedNotification(persisted) || persisted.revision !== revision) return false;
+                            transaction.update(ref!, { dismissedRevision: revision, dismissedAt: now });
+                            return true;
+                        });
+                        if (dismissed) return;
+                    } catch (error) {
+                        rollbackDismissal();
+                        throw error;
+                    }
+
+                    rollbackDismissal();
+                    return;
+                }
+
+                setLocalNotifications((notifications) => notifications.map((notification) =>
+                    notification.id === id
+                        ? { ...notification, dismissedRevision: revision, dismissedAt: now }
+                        : notification
+                ));
                 return;
             }
+
+            // Absence is not proof of legacy. A physical delete needs a confirmed legacy document.
+            if (!current) return;
 
             if (userId) {
                 const previousNotifications = visibleNotificationsRef.current;
@@ -439,7 +554,7 @@ export function useNotificationStore(userId: string | null, externalNotification
                 setLocalNotifications((prev) => prev.filter((n) => n.id !== id));
             }
         },
-        [userId, hasExternalNotifications, setLocalNotifications, updateNotification]
+        [userId, hasExternalNotifications, setLocalNotifications]
     );
 
     // Read the complete collection, not only the visible 100-document window.

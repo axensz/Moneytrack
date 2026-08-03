@@ -80,6 +80,20 @@ describe('NotificationManager (A3)', () => {
     expect(addNotification).toHaveBeenCalledTimes(2);
   });
 
+  it('normalizes a manual v2 revision to the canonical stage revision before delegating', async () => {
+    const { mgr, addNotification } = setup();
+    await mgr.createNotification(notif({
+      schemaVersion: 2,
+      eventKey: 'budget:b1:2026-08',
+      revision: 99,
+      stage: 'warning',
+      stageWindow: 'warning',
+      lifecycleStatus: 'active',
+    }));
+
+    expect(addNotification).toHaveBeenCalledWith(expect.objectContaining({ revision: 1 }));
+  });
+
   it('shouldShowToast: solo para severidad warning/error', () => {
     const { mgr } = setup();
     expect(mgr.shouldShowToast(notif({ severity: 'warning' }))).toBe(true);
@@ -161,11 +175,8 @@ describe('NotificationManager (A3)', () => {
     await mgr.deleteNotification('event-1');
 
     expect(updateNotification).toHaveBeenNthCalledWith(1, 'event-1', { isRead: true, readRevision: 3 });
-    expect(updateNotification).toHaveBeenNthCalledWith(2, 'event-1', {
-      dismissedRevision: 3,
-      dismissedAt: expect.any(Date),
-    });
-    expect(deleteNotification).not.toHaveBeenCalled();
+    expect(updateNotification).toHaveBeenCalledTimes(1);
+    expect(deleteNotification).toHaveBeenCalledWith('event-1', 3);
   });
 
   it('conserva el comportamiento legacy si el snapshot aún no contiene el id', async () => {
@@ -185,6 +196,6 @@ describe('NotificationManager (A3)', () => {
     await mgr.deleteNotification('not-yet-loaded');
 
     expect(updateNotification).toHaveBeenCalledWith('not-yet-loaded', { isRead: true });
-    expect(deleteNotification).toHaveBeenCalledWith('not-yet-loaded');
+    expect(deleteNotification).not.toHaveBeenCalled();
   });
 });

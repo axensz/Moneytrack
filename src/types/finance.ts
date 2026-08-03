@@ -230,6 +230,8 @@ export interface Notification {
   stageWindow?: string;
   overdueOccurrence?: number;
   lifecycleStatus?: NotificationLifecycleStatus;
+  /** La revisión previa resuelta cuando el documento canónico avanza. */
+  resolvedRevision?: number;
   readRevision?: number;
   dismissedRevision?: number;
   scheduledAt?: Date;

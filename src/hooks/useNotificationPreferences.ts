@@ -11,6 +11,16 @@ import { logger } from '../utils/logger';
 import type { NotificationPreferences } from '../types/finance';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../types/finance';
 
+export type PartialNotificationPreferences = Omit<Partial<NotificationPreferences>,
+    'enabled' | 'thresholds' | 'quietHours' | 'browserNotifications' | 'dailyExpenseReminder'
+> & {
+    enabled?: Partial<NotificationPreferences['enabled']>;
+    thresholds?: Partial<NotificationPreferences['thresholds']>;
+    quietHours?: Partial<NotificationPreferences['quietHours']>;
+    browserNotifications?: Partial<NotificationPreferences['browserNotifications']>;
+    dailyExpenseReminder?: Partial<NotificationPreferences['dailyExpenseReminder']>;
+};
+
 /**
  * Mergea las prefs cargadas (Firestore/localStorage/externas) con los defaults.
  * Un doc guardado antes de que existiera un campo (quietHours, enabled.debt, …)
@@ -18,7 +28,7 @@ import { DEFAULT_NOTIFICATION_PREFERENCES } from '../types/finance';
  * quietHours.enabled / enabled[tipo] sobre undefined y lanzaría TypeError al
  * crear CUALQUIER notificación. Garantiza que los objetos anidados existan.
  */
-export function withDefaults(p?: Partial<NotificationPreferences> | null): NotificationPreferences {
+export function withDefaults(p?: PartialNotificationPreferences | null): NotificationPreferences {
     return {
         ...DEFAULT_NOTIFICATION_PREFERENCES,
         ...p,

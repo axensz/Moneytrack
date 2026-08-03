@@ -74,6 +74,40 @@ type StoredNotificationDocument = {
     readRevision?: number;
 };
 
+type EventRevisionState = {
+    confirmed: number;
+    pending: Map<symbol, number>;
+};
+
+const effectiveEventRevision = (state: EventRevisionState): number => {
+    let revision = state.confirmed;
+    state.pending.forEach((pendingRevision) => {
+        revision = Math.max(revision, pendingRevision);
+    });
+    return revision;
+};
+
+const releaseEventRevisionReservation = (
+    states: Map<string, EventRevisionState>,
+    eventKey: string,
+    state: EventRevisionState,
+    reservation: symbol,
+    rawRevision: number,
+    confirmedRevision?: number,
+): void => {
+    state.pending.delete(reservation);
+    if (confirmedRevision !== undefined) {
+        state.confirmed = Math.max(state.confirmed, confirmedRevision);
+    }
+    if (
+        state.pending.size === 0
+        && state.confirmed === rawRevision
+        && states.get(eventKey) === state
+    ) {
+        states.delete(eventKey);
+    }
+};
+
 const isVersionedStoredDocument = (notification: StoredNotificationDocument): boolean =>
     notification.schemaVersion === 2
     && Number.isInteger(notification.revision)
@@ -91,7 +125,7 @@ export function useNotificationStore(userId: string | null, externalNotification
     // Ref to avoid recreating addNotification on every snapshot update
     const firestoreNotificationsRef = useRef<Notification[]>([]);
     const visibleNotificationsRef = useRef<Notification[]>([]);
-    const eventRevisionHighWaterRef = useRef<Map<string, number>>(new Map());
+    const eventRevisionStatesRef = useRef<Map<string, EventRevisionState>>(new Map());
 
     // LocalStorage for guest mode
     const [localNotifications, setLocalNotifications] = useLocalStorage<Notification[]>('notifications', []);
@@ -141,9 +175,12 @@ export function useNotificationStore(userId: string | null, externalNotification
 
     sourceNotifications.forEach((notification) => {
         if (!isVersionedNotification(notification)) return;
-        const current = eventRevisionHighWaterRef.current.get(notification.eventKey) ?? 0;
-        if (notification.revision > current) {
-            eventRevisionHighWaterRef.current.set(notification.eventKey, notification.revision);
+        const state = eventRevisionStatesRef.current.get(notification.eventKey);
+        if (!state) return;
+
+        state.confirmed = Math.max(state.confirmed, notification.revision);
+        if (state.pending.size === 0 && state.confirmed === notification.revision) {
+            eventRevisionStatesRef.current.delete(notification.eventKey);
         }
     });
 
@@ -288,16 +325,31 @@ export function useNotificationStore(userId: string | null, externalNotification
                 const candidateRevision = getCanonicalEventRevision(candidate);
                 if (candidateRevision === null) return false;
                 candidate.revision = candidateRevision;
-                const previousHighWater = Math.max(
-                    eventRevisionHighWaterRef.current.get(candidate.eventKey!) ?? 0,
-                    current?.revision ?? 0
-                );
-                if (candidateRevision <= previousHighWater) return false;
+                const eventKey = candidate.eventKey!;
+                const rawRevision = current?.revision ?? 0;
+                let revisionState = eventRevisionStatesRef.current.get(eventKey);
+                if (!revisionState) {
+                    revisionState = { confirmed: rawRevision, pending: new Map() };
+                    eventRevisionStatesRef.current.set(eventKey, revisionState);
+                } else {
+                    revisionState.confirmed = Math.max(revisionState.confirmed, rawRevision);
+                }
+                if (candidateRevision <= effectiveEventRevision(revisionState)) return false;
 
-                // Reserve synchronously: a lower concurrent caller must not race a pending write.
-                eventRevisionHighWaterRef.current.set(candidate.eventKey!, candidateRevision);
+                // Cada intento conserva su propia reserva hasta que persiste o falla.
+                const reservation = Symbol(eventKey);
+                revisionState.pending.set(reservation, candidateRevision);
                 const next = advanceVersionedNotification(current, candidate);
-                if (next === current) return false;
+                if (next === current) {
+                    releaseEventRevisionReservation(
+                        eventRevisionStatesRef.current,
+                        eventKey,
+                        revisionState,
+                        reservation,
+                        rawRevision,
+                    );
+                    return false;
+                }
 
                 const id = current?.id ?? generateDedupeDocId(notification);
 
@@ -319,15 +371,23 @@ export function useNotificationStore(userId: string | null, externalNotification
                             transaction.set(ref, data);
                             return { written: true, revision: nextPersisted.revision ?? candidateRevision };
                         });
-                        eventRevisionHighWaterRef.current.set(
-                            candidate.eventKey!,
-                            Math.max(eventRevisionHighWaterRef.current.get(candidate.eventKey!) ?? 0, result.revision)
+                        releaseEventRevisionReservation(
+                            eventRevisionStatesRef.current,
+                            eventKey,
+                            revisionState,
+                            reservation,
+                            rawRevision,
+                            result.revision,
                         );
                         return result.written;
                     } catch (error) {
-                        if (eventRevisionHighWaterRef.current.get(candidate.eventKey!) === candidateRevision) {
-                            eventRevisionHighWaterRef.current.set(candidate.eventKey!, previousHighWater);
-                        }
+                        releaseEventRevisionReservation(
+                            eventRevisionStatesRef.current,
+                            eventKey,
+                            revisionState,
+                            reservation,
+                            rawRevision,
+                        );
                         throw error;
                     }
                 } else {
@@ -335,6 +395,14 @@ export function useNotificationStore(userId: string | null, externalNotification
                     const updated = [stored, ...localNotificationsRef.current.filter((existing) => existing.id !== id)]
                         .slice(0, MAX_NOTIFICATIONS);
                     setLocalNotifications(updated);
+                    releaseEventRevisionReservation(
+                        eventRevisionStatesRef.current,
+                        eventKey,
+                        revisionState,
+                        reservation,
+                        rawRevision,
+                        next.revision ?? candidateRevision,
+                    );
                 }
                 return true;
             }

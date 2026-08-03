@@ -295,6 +295,111 @@ describe('useNotificationStore - actualizacion optimista con datos externos', ()
     expect(writes[0]).toMatchObject({ revision: 4, stageWindow: 'overdue:0' });
   });
 
+  it.each([
+    ['r4', 'r5'],
+    ['r5', 'r4'],
+  ] as const)('releases only the failed reservation when %s fails before %s', async (firstFailed, secondFailed) => {
+    const persisted = makeVersionedNotification(2);
+    const r4 = makeVersionedNotification(4, { stage: 'overdue', stageWindow: 'overdue:0' });
+    const r5 = makeVersionedNotification(5, { stage: 'overdue', stageWindow: 'overdue:1' });
+    const writes: Notification[] = [];
+    const pendingTransactions: Array<{
+      resolve: () => Promise<void>;
+      reject: (error: Error) => void;
+    }> = [];
+
+    M.runTransaction.mockImplementation((_database, update: (transaction: {
+      get: () => Promise<{ exists: () => boolean; data: () => Notification }>;
+      set: (_ref: unknown, value: Notification) => void;
+    }) => Promise<unknown>) => new Promise((resolve, reject) => {
+      pendingTransactions.push({
+        resolve: async () => {
+          try {
+            resolve(await update({
+              get: async () => ({ exists: () => true, data: () => persisted }),
+              set: (_ref, value) => { writes.push(value); },
+            }));
+          } catch (error) {
+            reject(error);
+          }
+        },
+        reject,
+      });
+    }));
+
+    const { result } = renderHook(() => useNotificationStore('user-1', [persisted]));
+    const r4Write = result.current.addNotification(r4);
+    const r5Write = result.current.addNotification(r5);
+    await waitFor(() => expect(pendingTransactions).toHaveLength(2));
+
+    const firstIndex = firstFailed === 'r4' ? 0 : 1;
+    const secondIndex = secondFailed === 'r4' ? 0 : 1;
+    const firstWrite = firstFailed === 'r4' ? r4Write : r5Write;
+    const secondWrite = secondFailed === 'r4' ? r4Write : r5Write;
+    const secondCandidate = secondFailed === 'r4' ? r4 : r5;
+
+    pendingTransactions[firstIndex].reject(new Error(`offline ${firstFailed}`));
+    await expect(firstWrite).rejects.toThrow(`offline ${firstFailed}`);
+
+    await expect(result.current.addNotification(secondCandidate)).resolves.toBe(false);
+
+    pendingTransactions[secondIndex].reject(new Error(`offline ${secondFailed}`));
+    await expect(secondWrite).rejects.toThrow(`offline ${secondFailed}`);
+
+    const retryR4 = result.current.addNotification(r4);
+    await waitFor(() => expect(pendingTransactions).toHaveLength(3));
+    await pendingTransactions[2].resolve();
+    await expect(retryR4).resolves.toBe(true);
+
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({ revision: 4, stageWindow: 'overdue:0' });
+  });
+
+  it('keeps the confirmed higher revision when r5 succeeds and the pending r4 write fails', async () => {
+    const persisted = makeVersionedNotification(2);
+    const r4 = makeVersionedNotification(4, { stage: 'overdue', stageWindow: 'overdue:0' });
+    const r5 = makeVersionedNotification(5, { stage: 'overdue', stageWindow: 'overdue:1' });
+    const writes: Notification[] = [];
+    const pendingTransactions: Array<{
+      resolve: () => Promise<void>;
+      reject: (error: Error) => void;
+    }> = [];
+
+    M.runTransaction.mockImplementation((_database, update: (transaction: {
+      get: () => Promise<{ exists: () => boolean; data: () => Notification }>;
+      set: (_ref: unknown, value: Notification) => void;
+    }) => Promise<unknown>) => new Promise((resolve, reject) => {
+      pendingTransactions.push({
+        resolve: async () => {
+          try {
+            resolve(await update({
+              get: async () => ({ exists: () => true, data: () => persisted }),
+              set: (_ref, value) => { writes.push(value); },
+            }));
+          } catch (error) {
+            reject(error);
+          }
+        },
+        reject,
+      });
+    }));
+
+    const { result } = renderHook(() => useNotificationStore('user-1', [persisted]));
+    const r4Write = result.current.addNotification(r4);
+    const r5Write = result.current.addNotification(r5);
+    await waitFor(() => expect(pendingTransactions).toHaveLength(2));
+
+    await pendingTransactions[1].resolve();
+    await expect(r5Write).resolves.toBe(true);
+
+    pendingTransactions[0].reject(new Error('offline r4'));
+    await expect(r4Write).rejects.toThrow('offline r4');
+    await expect(result.current.addNotification(r4)).resolves.toBe(false);
+
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({ revision: 5, stageWindow: 'overdue:1' });
+  });
+
   it('normaliza el candidato v2 inicial a revisión 1 en vez de tratarlo como legacy', async () => {
     const candidate = makeVersionedNotification(1);
     delete candidate.revision;

@@ -90,6 +90,7 @@ export interface FirestoreData {
   loadingMoreTransactions: boolean;
   loadMoreTransactions: () => Promise<void>;
   transactionsServerSettled: boolean;
+  transactionsHeadExhaustive: boolean;
   transactionsUnresolvedReason: 'cache' | 'pending-writes' | 'error' | null;
   transactionsRetrying: boolean;
   retryLoad: () => void;
@@ -130,6 +131,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
   const updatedTransactionsByIdRef = useRef<Map<string, Transaction>>(new Map());
   const [retryTrigger, setRetryTrigger] = useState(0);
   const [transactionsServerSettledForUserId, setTransactionsServerSettledForUserId] = useState<string | null>(null);
+  const [transactionsHeadExhaustiveForUserId, setTransactionsHeadExhaustiveForUserId] = useState<string | null>(null);
   const [transactionsReadiness, setTransactionsReadiness] = useState<{
     userId: string | null;
     reason: 'cache' | 'pending-writes' | 'error' | null;
@@ -137,6 +139,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
   }>({ userId: null, reason: null, retrying: false });
 
   const transactionsServerSettled = !userId || transactionsServerSettledForUserId === userId;
+  const transactionsHeadExhaustive = !userId || transactionsHeadExhaustiveForUserId === userId;
   const transactionsUnresolvedReason = userId && transactionsReadiness.userId === userId
     ? transactionsReadiness.reason
     : userId ? 'cache' : null;
@@ -148,6 +151,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     setError(null);
     setLoadedForUserId(null);
     setTransactionsServerSettledForUserId(null);
+    setTransactionsHeadExhaustiveForUserId(null);
     setTransactionsReadiness({ userId, reason: 'cache', retrying: true });
     setRetryTrigger(prev => prev + 1);
   }, [userId]);
@@ -168,7 +172,12 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     deletedTransactionIdsRef.current.clear();
     updatedTransactionsByIdRef.current.clear();
     setTransactionsServerSettledForUserId(null);
-    setTransactionsReadiness({ userId, reason: userId ? 'cache' : null, retrying: false });
+    setTransactionsHeadExhaustiveForUserId(null);
+    setTransactionsReadiness(previous => (
+      previous.userId === userId && previous.retrying
+        ? previous
+        : { userId, reason: userId ? 'cache' : null, retrying: false }
+    ));
 
     const isActive = () => (
       isMountedRef.current && paginationGenerationRef.current === generation
@@ -189,6 +198,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
       setError(new Error(`Error al cargar ${name}: ${err.message}`));
       if (name === 'transacciones') {
         setTransactionsServerSettledForUserId(null);
+        setTransactionsHeadExhaustiveForUserId(null);
         setTransactionsReadiness({ userId, reason: 'error', retrying: false });
       }
       setLoadedForUserId(userId);
@@ -261,6 +271,9 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
         if (!isActive()) return;
         const settledFromServer = !snap.metadata.fromCache && !snap.metadata.hasPendingWrites;
         setTransactionsServerSettledForUserId(settledFromServer ? userId : null);
+        setTransactionsHeadExhaustiveForUserId(
+          settledFromServer && snap.docs.length < PAGE_SIZE ? userId : null
+        );
         setTransactionsReadiness({
           userId,
           reason: settledFromServer
@@ -572,6 +585,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     loadingMoreTransactions,
     loadMoreTransactions,
     transactionsServerSettled,
+    transactionsHeadExhaustive,
     transactionsUnresolvedReason,
     transactionsRetrying,
     retryLoad,

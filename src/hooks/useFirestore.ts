@@ -18,7 +18,7 @@ export function useFirestore(userId: string | null) {
     notifications, notificationPreferences,
     loading, error,
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
-    transactionsServerSettled, transactionsUnresolvedReason, transactionsRetrying,
+    transactionsServerSettled, transactionsHeadExhaustive, transactionsUnresolvedReason, transactionsRetrying,
     retryLoad,
   } = useFirestoreSubscriptions(userId);
 
@@ -36,7 +36,7 @@ export function useFirestore(userId: string | null) {
     notifications, notificationPreferences,
     loading, error,
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
-    transactionsServerSettled, transactionsUnresolvedReason, transactionsRetrying,
+    transactionsServerSettled, transactionsHeadExhaustive, transactionsUnresolvedReason, transactionsRetrying,
     retryLoad,
     // Transactions CRUD
     addTransaction, addCreditPaymentAtomic, deleteTransaction, updateTransaction,

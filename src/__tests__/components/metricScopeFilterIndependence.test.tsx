@@ -67,6 +67,7 @@ function FilterScopeHarness() {
     <>
       <output data-testid="overview">{`${overview.totalBalance}|${overview.totalIncome}|${overview.totalExpenses}|${overview.pendingExpenses}`}</output>
       <output data-testid="visible-results">{view.filteredTransactions.length}</output>
+      <output data-testid="csv-results">{view.filteredBalanceTransactions.length}</output>
       <button type="button" onClick={() => { reset(); setFilterAccount('a'); }}>Cuenta</button>
       <button type="button" onClick={() => { reset(); setFilterCategory('Comida'); }}>Categoría</button>
       <button type="button" onClick={() => { reset(); setDateRangePreset('custom'); setCustomStartDate('2026-07-15'); setCustomEndDate('2026-07-15'); }}>Fecha</button>
@@ -95,10 +96,12 @@ describe('Transaction filter scope', () => {
     const overview = screen.getByTestId('overview');
     expect(overview).toHaveTextContent('1000|100|100|0');
     expect(screen.getByTestId('visible-results')).toHaveTextContent('5');
+    expect(screen.getByTestId('csv-results')).toHaveTextContent('5');
 
     for (const [label, expectedCount] of [['Cuenta', '4'], ['Categoría', '3'], ['Fecha', '4'], ['Búsqueda', '3'], ['Todos', '1']] as const) {
       fireEvent.click(screen.getByRole('button', { name: label }));
       expect(screen.getByTestId('visible-results')).toHaveTextContent(expectedCount);
+      expect(screen.getByTestId('csv-results')).toHaveTextContent(expectedCount);
       expect(overview).toHaveTextContent('1000|100|100|0');
     }
   });

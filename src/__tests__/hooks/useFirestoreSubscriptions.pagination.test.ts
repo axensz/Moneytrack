@@ -22,6 +22,7 @@ const firestoreState = vi.hoisted(() => ({
       exists?: () => boolean;
       data?: () => Record<string, unknown>;
     }) => void;
+    error: (error: Error) => void;
   }>,
   getDocs: vi.fn(),
 }));
@@ -45,7 +46,8 @@ vi.mock('firebase/firestore', () => ({
     maybeError?: (error: Error) => void,
   ) => {
     const next = typeof optionsOrNext === 'function' ? optionsOrNext : nextOrError as (snapshot: { docs: FakeDocument[] }) => void;
-    firestoreState.listeners.push({ source, next });
+    const error = (typeof optionsOrNext === 'function' ? nextOrError : maybeError) as (error: Error) => void;
+    firestoreState.listeners.push({ source, next, error });
     return () => {};
   },
   getDocs: firestoreState.getDocs,
@@ -83,6 +85,12 @@ const transactionSnapshot = (
 const findListener = (suffix: string) => {
   const listener = firestoreState.listeners.find(item => item.source.path.endsWith(suffix));
   if (!listener) throw new Error(`No se registró listener para ${suffix}`);
+  return listener;
+};
+
+const findLatestListener = (suffix: string) => {
+  const listener = [...firestoreState.listeners].reverse().find(item => item.source.path.endsWith(suffix));
+  if (!listener) throw new Error(`No se registrÃ³ listener para ${suffix}`);
   return listener;
 };
 
@@ -159,6 +167,7 @@ describe('useFirestoreSubscriptions — paginación', () => {
 
     expect(result.current.transactions).toHaveLength(1);
     expect(result.current.transactionsServerSettled).toBe(false);
+    expect(result.current.transactionsHeadExhaustive).toBe(false);
     expect(result.current.transactionsUnresolvedReason).toBe('cache');
 
     act(() => {
@@ -166,7 +175,39 @@ describe('useFirestoreSubscriptions — paginación', () => {
     });
 
     expect(result.current.transactionsServerSettled).toBe(true);
+    expect(result.current.transactionsHeadExhaustive).toBe(true);
     expect(result.current.transactionsUnresolvedReason).toBeNull();
+  });
+
+  it('expone error, retry y recuperaciÃ³n del head sin autorizar una sesiÃ³n nueva', () => {
+    const { result } = renderHook(() => useFirestoreSubscriptions('user-1'));
+    const head = [transactionDocument('server', 0)];
+
+    act(() => findListener('/transactions').error(new Error('offline')));
+    expect(result.current.transactionsServerSettled).toBe(false);
+    expect(result.current.transactionsUnresolvedReason).toBe('error');
+
+    act(() => result.current.retryLoad());
+    expect(result.current.transactionsRetrying).toBe(true);
+    expect(result.current.transactionsServerSettled).toBe(false);
+
+    act(() => findLatestListener('/transactions').next(transactionSnapshot(head)));
+    expect(result.current.transactionsRetrying).toBe(false);
+    expect(result.current.transactionsServerSettled).toBe(true);
+  });
+
+  it('no reutiliza la autoridad confirmada cuando cambia de usuario', () => {
+    const { result, rerender } = renderHook(
+      ({ userId }) => useFirestoreSubscriptions(userId),
+      { initialProps: { userId: 'user-1' as string | null } },
+    );
+
+    act(() => findListener('/transactions').next(transactionSnapshot([transactionDocument('one', 0)])));
+    expect(result.current.transactionsServerSettled).toBe(true);
+
+    rerender({ userId: 'user-2' });
+    expect(result.current.transactionsServerSettled).toBe(false);
+    expect(result.current.transactionsUnresolvedReason).toBe('cache');
   });
 
   it('actualiza y elimina elementos antiguos cargados sin que reaparezcan con el snapshot realtime', async () => {

@@ -67,6 +67,7 @@ export interface FinanceContextValue {
    */
   balancesReady: boolean;
   transactionsServerSettled: boolean;
+  transactionsHeadExhaustive: boolean;
   transactionsUnresolvedReason: 'cache' | 'pending-writes' | 'error' | null;
   transactionsRetrying: boolean;
   accounts: Account[];
@@ -201,6 +202,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     loadingMoreTransactions,
     loadMoreTransactions,
     transactionsServerSettled,
+    transactionsHeadExhaustive,
     transactionsUnresolvedReason,
     transactionsRetrying,
     retryLoad,
@@ -223,7 +225,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
   // expulsa a la más antigua y el saldo salta por el monto expulsado). Solo
   // fetchea cuando la ventana está saturada; con <500 txs devuelve el array live.
   const { transactions: balanceTransactions, ready: balancesReady } =
-    useBalanceTransactions(userId, transactions, hasMoreTransactions, transactionsServerSettled);
+    useBalanceTransactions(userId, transactions, transactionsServerSettled, transactionsHeadExhaustive);
 
   // 2. Cuentas (depende de balanceTransactions + deleteTransaction)
   const {
@@ -361,6 +363,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     balanceTransactions,
     balancesReady,
     transactionsServerSettled,
+    transactionsHeadExhaustive,
     transactionsUnresolvedReason,
     transactionsRetrying,
     accounts,
@@ -449,7 +452,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     // Utilidades
     formatCurrency,
   }), [
-    transactions, balanceTransactions, balancesReady, transactionsServerSettled, transactionsUnresolvedReason, transactionsRetrying, accounts, categories, transactionBeneficiaries, recurringPayments, defaultAccount, totalBalance,
+    transactions, balanceTransactions, balancesReady, transactionsServerSettled, transactionsHeadExhaustive, transactionsUnresolvedReason, transactionsRetrying, accounts, categories, transactionBeneficiaries, recurringPayments, defaultAccount, totalBalance,
     transactionsLoading, accountsLoading,
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
     firestoreError, retryLoad,

@@ -11,6 +11,8 @@ El cambio base `stabilize-responsive-shell-and-ai-overlays` impedía un disparad
 - Hacer inmediata y contextual la privacidad ubicándola junto al título `Resumen general`.
 - Reducir el ruido del encabezado retirando privacidad e IA.
 - Proporcionar un único lanzador flotante de IA seguro en móvil y desktop.
+- Hacer de la marca `MoneyTrack` un retorno evidente y accesible a la vista inicial `Transacciones`.
+- Hacer que todo control semánticamente interactivo comunique clic mediante cursor de mano.
 - Preservar el estado global de privacidad, las rutas de autenticación/configuración y el retorno de foco.
 - Mantener targets táctiles WCAG 2.1 AA, safe areas y `prefers-reduced-motion`.
 
@@ -19,6 +21,7 @@ El cambio base `stabilize-responsive-shell-and-ai-overlays` impedía un disparad
 - Cambiar cálculos, persistencia financiera, formato de importes o la máscara actual.
 - Rediseñar el panel, mensajes, acciones o configuración de Gemini.
 - Modificar la estructura de navegación móvil o introducir dependencias/tokens nuevos.
+- Dar apariencia interactiva a contenedores sin semántica, acción o soporte de teclado.
 - Añadir accesos alternativos o atajos que dupliquen los dos controles.
 
 ## Decisions
@@ -56,6 +59,14 @@ Las pruebas de `StatsCards` comprobarán ubicación, tamaño, estado y propagaci
 
 Chrome validará claro/oscuro y al menos 390×844, 1214×768 y 1440×900, incluyendo scroll, panel abierto, navegación móvil, onboarding incompleto y ausencia de overflow.
 
+### 5. La marca retornará a `Transacciones` mediante el enrutador existente
+
+El texto `MoneyTrack` conservará su nombre accesible como `h1` del shell, mientras su contenido será un botón nativo llamado `Ir a Transacciones`, con objetivo táctil mínimo de 44 CSS px y foco visible. `AuthenticatedApp` le entregará un callback que ejecuta el `setView('transactions')` existente, de modo que la URL, el historial y el foco de transición conserven el mismo contrato de las demás entradas de navegación. No se añadirá una ruta, un estado ni una dependencia.
+
+### 6. El cursor de clic será una regla semántica global
+
+`utilities.css` aplicará `cursor: pointer` a enlaces, botones habilitados, inputs de acción, selects, `summary`, labels asociados y los roles ARIA interactivos usados por la aplicación. Los controles nativos deshabilitados y `aria-disabled="true"` usarán `cursor: not-allowed`. La regla no buscará elementos por listeners ni convertirá `div` o `span` sin rol en falsos controles.
+
 ## Risks / Trade-offs
 
 - **El control de privacidad deja de estar disponible en todas las vistas** → permanece en el resumen principal de Transacciones, que es la entrada de la aplicación, y su estado global persiste al navegar.
@@ -63,6 +74,8 @@ Chrome validará claro/oscuro y al menos 390×844, 1214×768 y 1440×900, incluy
 - **Ocultar el lanzador desmontándolo rompería el retorno de foco** → mantener el nodo montado e inerte mientras el panel está abierto.
 - **El badge de autorización podría duplicarse en Ajustes** → retirar `pendingSettingsCount` del encabezado cuando se migre el indicador al lanzador.
 - **Cambiar un contrato OPSX ya completado puede dejar documentación contradictoria** → el cambio base fue archivado y este SDD modifica explícitamente los requisitos afectados.
+- **La marca puede seguir pareciendo decorativa** → el botón nativo añade cursor, estados hover/active y anillo de foco sin alterar la identidad visual.
+- **Una regla global puede prometer clic sobre un control bloqueado** → las reglas posteriores de `disabled` y `aria-disabled` sustituyen el cursor por `not-allowed`.
 
 ## Migration Plan
 

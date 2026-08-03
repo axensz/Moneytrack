@@ -15,6 +15,28 @@ The mobile header MUST keep brand, theme, notifications, and settings operable w
 - **WHEN** the viewport is at least 640 CSS pixels wide
 - **THEN** the direct logout action MUST remain visible, privacy and assistant controls MUST remain outside the header, and the relative order of theme, notifications, settings, and logout MUST be preserved
 
+### Requirement: Brand returns to the default ledger view
+The `MoneyTrack` brand MUST be a native interactive control that reuses the existing view router to return to `Transacciones` without a full-page reload.
+
+#### Scenario: User activates the brand from another view
+- **WHEN** the user clicks or keyboard-activates the control named `Ir a Transacciones`
+- **THEN** the application MUST select the `transactions` view through the existing navigation callback and preserve the canonical default-view URL behavior
+
+#### Scenario: Header brand renders at any supported width
+- **WHEN** the header renders between 320 and 1440 CSS pixels wide
+- **THEN** the brand action MUST preserve the existing wordmark, expose a visible focus state, and provide a touch target of at least 44 CSS pixels without causing horizontal overflow
+
+### Requirement: Semantic controls expose consistent pointer affordance
+The application MUST show a pointer cursor for enabled native controls and supported interactive ARIA roles on pointer-capable devices, without making non-interactive containers appear actionable.
+
+#### Scenario: Pointer reaches an enabled control
+- **WHEN** the pointer is over an enabled link, button, action input, select, disclosure summary, associated label, or supported interactive ARIA role
+- **THEN** the computed cursor MUST be `pointer`
+
+#### Scenario: Pointer reaches a disabled control
+- **WHEN** a native control is disabled or an interactive element exposes `aria-disabled="true"`
+- **THEN** the computed cursor MUST be `not-allowed` instead of `pointer`
+
 ## ADDED Requirements
 
 ### Requirement: Ledger overview owns the global privacy action

@@ -26,6 +26,7 @@ interface HeaderProps {
   onOpenHelp: () => void;
   onOpenCategories: () => void;
   onOpenNotificationPreferences: () => void;
+  onGoToTransactions: () => void;
   onLogout: () => Promise<void>;
 }
 
@@ -42,6 +43,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenHelp,
   onOpenCategories,
   onOpenNotificationPreferences,
+  onGoToTransactions,
   onLogout,
 }) => {
   const settingsMenuRef = useRef<HTMLDivElement>(null);
@@ -125,9 +127,19 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="w-full min-w-0 px-3 sm:px-4 md:px-6 lg:px-8">
         <div className="flex min-w-0 justify-between items-center">
           <div className="flex min-w-0 items-center gap-2 sm:gap-3 flex-1">
-            <h1 className="text-lg sm:text-2xl lg:text-3xl font-bold leading-none whitespace-nowrap">
-              <span className="text-primary">Money</span>
-              <span className="text-foreground">Track</span>
+            <h1
+              className="text-lg sm:text-2xl lg:text-3xl font-bold leading-none whitespace-nowrap"
+              aria-label="MoneyTrack"
+            >
+              <button
+                type="button"
+                onClick={onGoToTransactions}
+                className="inline-flex min-h-11 items-center rounded-lg transition-opacity hover:opacity-80 active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+                aria-label="Ir a Transacciones"
+              >
+                <span className="text-primary">Money</span>
+                <span className="text-foreground">Track</span>
+              </button>
             </h1>
           </div>
 

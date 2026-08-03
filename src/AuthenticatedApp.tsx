@@ -428,6 +428,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         onOpenHelp={handleOpenHelpModal}
         onOpenCategories={handleOpenCategories}
         onOpenNotificationPreferences={handleOpenNotificationPreferences}
+        onGoToTransactions={() => setView('transactions')}
         onLogout={handleLogout}
       />
 

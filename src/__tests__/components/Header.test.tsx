@@ -35,6 +35,7 @@ function renderHeader(overrides: Partial<React.ComponentProps<typeof Header>> = 
     onOpenHelp: vi.fn(),
     onOpenCategories: vi.fn(),
     onOpenNotificationPreferences: vi.fn(),
+    onGoToTransactions: vi.fn(),
     onLogout: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -46,6 +47,22 @@ function renderHeader(overrides: Partial<React.ComponentProps<typeof Header>> = 
 }
 
 describe('Header', () => {
+  it('uses the MoneyTrack brand as the accessible return action to Transactions', () => {
+    const onGoToTransactions = vi.fn();
+    renderHeader({ onGoToTransactions });
+
+    const brandHeading = screen.getByRole('heading', { name: 'MoneyTrack' });
+    const brandAction = screen.getByRole('button', { name: 'Ir a Transacciones' });
+    expect(brandHeading).toHaveAttribute('aria-label', 'MoneyTrack');
+    expect(brandHeading).toContainElement(brandAction);
+    expect(brandAction).toHaveTextContent('MoneyTrack');
+    expect(brandAction).toHaveClass('min-h-11');
+
+    fireEvent.click(brandAction);
+
+    expect(onGoToTransactions).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps privacy and assistant actions outside the header and settings menu', () => {
     const { container } = renderHeader({ showSettingsMenu: true });
 
@@ -135,5 +152,24 @@ describe('Header', () => {
     expect(utilitiesSource).toContain(
       'button:not(.btn-type):not(.header-icon)',
     );
+  });
+
+  it('uses pointer cursors for semantic actions and blocked cursors for disabled controls', () => {
+    const utilitiesSource = readFileSync(
+      resolve(process.cwd(), 'app/styles/utilities.css'),
+      'utf8',
+    );
+
+    for (const selector of [
+      'a[href]:not([aria-disabled="true"])',
+      'button:not(:disabled)',
+      '[role="button"]:not([aria-disabled="true"])',
+      'summary',
+    ]) {
+      expect(utilitiesSource).toContain(selector);
+    }
+    expect(utilitiesSource).toContain('cursor: pointer;');
+    expect(utilitiesSource).toContain('[aria-disabled="true"]');
+    expect(utilitiesSource).toContain('cursor: not-allowed;');
   });
 });

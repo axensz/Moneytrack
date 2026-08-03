@@ -55,6 +55,41 @@
   border-radius: 4px;
 }
 
+/* Los controles interactivos deben comunicar clic antes de activarse.
+   Los selectores cubren elementos nativos y roles ARIA usados por la app;
+   los estados bloqueados prevalecen y no prometen una acción disponible. */
+a[href]:not([aria-disabled="true"]),
+button:not(:disabled),
+input:is(
+  [type="button"],
+  [type="submit"],
+  [type="reset"],
+  [type="checkbox"],
+  [type="radio"],
+  [type="range"],
+  [type="file"]
+):not(:disabled),
+select:not(:disabled),
+summary,
+label[for],
+[role="button"]:not([aria-disabled="true"]),
+[role="link"]:not([aria-disabled="true"]),
+[role="tab"]:not([aria-disabled="true"]),
+[role="menuitem"]:not([aria-disabled="true"]),
+[role="option"]:not([aria-disabled="true"]),
+[role="switch"]:not([aria-disabled="true"]),
+[role="checkbox"]:not([aria-disabled="true"]),
+[role="radio"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 /* Custom scrollbar for transaction lists */
 .scrollbar-thin {
   scrollbar-width: thin;

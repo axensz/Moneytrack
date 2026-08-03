@@ -29,3 +29,15 @@
 - [x] 5.1 Amend the SDD and add a failing `StatsCards` contract proving the privacy action shares the `Resumen general` row and is absent from every individual metric card.
 - [x] 5.2 Move the existing 44×44 privacy action from `Saldo actual` to the overview heading row without changing its global state, persistence, icons, or masking behavior.
 - [ ] 5.3 Re-run focused and broad validation, rebuild the graph, complete task 4.3 in Chrome, update PR #76, and keep it draft until the new CI checks pass.
+
+## 6. Brand return to Transactions
+
+- [x] 6.1 Amend the SDD and add a failing `Header` behavior test proving the `MoneyTrack` brand is a named native action with a 44px target that invokes the Transactions callback.
+- [x] 6.2 Wire the brand action to the existing `setView('transactions')` path without adding routes, state, dependencies, or a duplicate navigation implementation.
+- [ ] 6.3 Run focused and broad validation, rebuild the graph, update PR #76, and confirm the refreshed CI checks.
+
+## 7. Global pointer affordance
+
+- [x] 7.1 Add a failing design-system contract covering pointer cursors for semantic actions and blocked cursors for disabled controls.
+- [x] 7.2 Add the minimal global semantic selectors in `utilities.css`, without styling non-interactive containers or introducing a dependency.
+- [ ] 7.3 Verify computed cursors in the browser, re-run broad validation, and publish the combined refinement through PR #76.

@@ -52,16 +52,27 @@ const makeNotification = (
   createdAt,
 });
 
+const makeVersionedNotification = (
+  revision: number,
+  overrides: Partial<Notification> = {}
+): Notification => ({
+  ...makeNotification('event-recurring-rent-2026-08', revision === 1),
+  schemaVersion: 2,
+  eventKey: 'recurring:rent:2026-08',
+  revision,
+  stage: revision === 1 ? 'd3' : 'd1',
+  stageWindow: revision === 1 ? 'd3' : 'd1',
+  lifecycleStatus: 'active',
+  ...overrides,
+});
+
 const unreadCount = (notifications: Notification[]) =>
   notifications.filter((notification) => !notification.isRead).length;
 
 const firestorePage = (notifications: Notification[]) => ({
   docs: notifications.map((notification) => ({
     id: notification.id,
-    data: () => ({
-      isRead: notification.isRead,
-      createdAt: notification.createdAt,
-    }),
+    data: () => notification,
   })),
 });
 
@@ -195,5 +206,142 @@ describe('useNotificationStore - actualizacion optimista con datos externos', ()
       expect(M.batchCommit).toHaveBeenCalledTimes(14);
     });
     expect(M.getDocs).toHaveBeenCalledTimes(2);
+  });
+
+  it('conserva la revisión más alta y hace visible la siguiente tras un descarte', async () => {
+    const dismissed = makeVersionedNotification(2, {
+      isRead: true,
+      readRevision: 2,
+      dismissedRevision: 2,
+    });
+    localStorage.setItem('notifications', JSON.stringify([dismissed]));
+    const { result } = renderHook(() => useNotificationStore(null));
+
+    let staleCreated: boolean | undefined;
+    await act(async () => {
+      staleCreated = await result.current.addNotification(makeVersionedNotification(1));
+    });
+
+    expect(staleCreated).toBe(false);
+    expect(result.current.notifications).toEqual([]);
+
+    let advancedCreated: boolean | undefined;
+    await act(async () => {
+      advancedCreated = await result.current.addNotification(makeVersionedNotification(3));
+    });
+
+    expect(advancedCreated).toBe(true);
+    expect(result.current.notifications).toMatchObject([{
+      revision: 3,
+      isRead: false,
+      readRevision: 2,
+      dismissedRevision: 2,
+    }]);
+  });
+
+  it('normaliza el candidato v2 inicial a revisión 1 en vez de tratarlo como legacy', async () => {
+    const candidate = makeVersionedNotification(1);
+    delete candidate.revision;
+    localStorage.setItem('notifications', '[]');
+    const { result } = renderHook(() => useNotificationStore(null));
+
+    let created: boolean | undefined;
+    await act(async () => {
+      created = await result.current.addNotification(candidate);
+    });
+
+    expect(created).toBe(true);
+    expect(result.current.notifications).toMatchObject([{
+      id: 'event:recurring:rent:2026-08',
+      schemaVersion: 2,
+      revision: 1,
+    }]);
+  });
+
+  it('oculta de inmediato el descarte v2 externo y no conserva lectura al avanzar', async () => {
+    const current = makeVersionedNotification(2);
+    const { result, rerender } = renderHook(
+      ({ notifications }) => useNotificationStore('user-1', notifications),
+      { initialProps: { notifications: [current] } }
+    );
+
+    await act(async () => {
+      await result.current.updateNotification('event-recurring-rent-2026-08', {
+        isRead: true,
+        readRevision: 2,
+      });
+    });
+    expect(result.current.notifications[0]).toMatchObject({ isRead: true, readRevision: 2 });
+
+    rerender({ notifications: [makeVersionedNotification(3)] });
+    expect(result.current.notifications[0]).toMatchObject({ isRead: false, revision: 3 });
+
+    await act(async () => {
+      await result.current.updateNotification('event-recurring-rent-2026-08', {
+        dismissedRevision: 3,
+        dismissedAt: new Date(),
+      });
+    });
+
+    expect(result.current.notifications).toEqual([]);
+    expect(M.updateDoc).toHaveBeenLastCalledWith(
+      { __path: 'users/user-1/notifications/event-recurring-rent-2026-08' },
+      expect.objectContaining({ dismissedRevision: 3 })
+    );
+  });
+
+  it('no elimina directamente un evento v2 aunque se invoque la frontera store', async () => {
+    const versioned = makeVersionedNotification(3);
+    const { result } = renderHook(() => useNotificationStore('user-1', [versioned]));
+
+    await act(async () => {
+      await result.current.deleteNotification('event-recurring-rent-2026-08');
+    });
+
+    expect(M.deleteDoc).not.toHaveBeenCalled();
+    expect(M.updateDoc).toHaveBeenCalledWith(
+      { __path: 'users/user-1/notifications/event-recurring-rent-2026-08' },
+      expect.objectContaining({ dismissedRevision: 3 })
+    );
+  });
+
+  it('mantiene el borrado legacy, pero descarta la revisión actual de eventos v2 al limpiar todo', async () => {
+    const versioned = makeVersionedNotification(3);
+    const legacy = makeNotification('legacy-1');
+    const { result } = renderHook(() => useNotificationStore('user-1', [versioned, legacy]));
+    await finishInitialPrune();
+    M.getDocs.mockResolvedValueOnce(firestorePage([versioned, legacy]));
+
+    await act(async () => {
+      await result.current.clearAll();
+    });
+
+    expect(M.batchDelete).toHaveBeenCalledTimes(1);
+    expect(M.batchUpdate).toHaveBeenCalledTimes(1);
+    expect(M.batchUpdate).toHaveBeenCalledWith(
+      { __path: 'users/user-1/notifications/event-recurring-rent-2026-08' },
+      expect.objectContaining({ dismissedRevision: 3 })
+    );
+  });
+
+  it('marca una revisión v2 como leída sin preleer una revisión futura', async () => {
+    const versioned = makeVersionedNotification(2);
+    const { result, rerender } = renderHook(
+      ({ notifications }) => useNotificationStore('user-1', notifications),
+      { initialProps: { notifications: [versioned] } }
+    );
+    await finishInitialPrune();
+    M.getDocs.mockResolvedValueOnce(firestorePage([versioned]));
+
+    await act(async () => {
+      await result.current.markAllAsRead();
+    });
+
+    expect(M.batchUpdate).toHaveBeenCalledWith(
+      { __path: 'users/user-1/notifications/event-recurring-rent-2026-08' },
+      { isRead: true, readRevision: 2 }
+    );
+    rerender({ notifications: [makeVersionedNotification(3)] });
+    expect(result.current.notifications[0]).toMatchObject({ revision: 3, isRead: false });
   });
 });

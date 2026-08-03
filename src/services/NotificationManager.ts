@@ -8,6 +8,7 @@ import { logger } from '../utils/logger';
 import { localDateKey } from '../utils/dateUtils';
 import { appNotificationToBrowserPayload, showBrowserNotification } from '../lib/browserNotifications';
 import type { Notification, NotificationFilter, NotificationPreferences } from '../types/finance';
+import { isVersionedEventCandidate, isVersionedNotification } from '../utils/notificationEventLifecycle';
 
 interface NotificationManagerDeps {
     /** Devuelve true si creó la notificación; false si ya existía (dedup diario). */
@@ -86,7 +87,13 @@ export class NotificationManager {
      */
     async markAsRead(notificationId: string): Promise<void> {
         try {
-            await this.deps.updateNotification(notificationId, { isRead: true });
+            const notification = this.deps.notifications.find((item) => item.id === notificationId);
+            await this.deps.updateNotification(
+                notificationId,
+                isVersionedNotification(notification)
+                    ? { isRead: true, readRevision: notification.revision }
+                    : { isRead: true }
+            );
         } catch (error) {
             logger.error('Failed to mark notification as read', { notificationId, error });
             throw error;
@@ -110,6 +117,14 @@ export class NotificationManager {
      */
     async deleteNotification(notificationId: string): Promise<void> {
         try {
+            const notification = this.deps.notifications.find((item) => item.id === notificationId);
+            if (isVersionedNotification(notification)) {
+                await this.deps.updateNotification(notificationId, {
+                    dismissedRevision: notification.revision,
+                    dismissedAt: new Date(),
+                });
+                return;
+            }
             await this.deps.deleteNotification(notificationId);
         } catch (error) {
             logger.error('Failed to delete notification', { notificationId, error });
@@ -250,6 +265,9 @@ export class NotificationManager {
      * ✅ FIX #3: Generate a unique key for debouncing (incluye fecha para deduplicación diaria)
      */
     private getDebounceKey(notification: Omit<Notification, 'id' | 'createdAt'>): string {
+        if (isVersionedEventCandidate(notification as Notification)) {
+            return `${notification.eventKey}:${notification.revision ?? 1}`;
+        }
         const parts = [notification.type, notification.title];
 
         // Fecha LOCAL para deduplicación diaria (no UTC: en UTC-5 el corte caía a

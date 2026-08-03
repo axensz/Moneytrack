@@ -64,6 +64,22 @@ describe('NotificationManager (A3)', () => {
     expect(addNotification).toHaveBeenCalledTimes(2);
   });
 
+  it('no bloquea una revisión superior del mismo evento durante el debounce', async () => {
+    const { mgr, addNotification } = setup();
+    const event = {
+      schemaVersion: 2 as const,
+      eventKey: 'budget:b1:2026-08',
+      stage: 'warning' as const,
+      stageWindow: 'warning',
+      lifecycleStatus: 'active' as const,
+    };
+
+    await mgr.createNotification(notif({ ...event, revision: 1 }));
+    await mgr.createNotification(notif({ ...event, revision: 2, stage: 'critical', stageWindow: 'critical' }));
+
+    expect(addNotification).toHaveBeenCalledTimes(2);
+  });
+
   it('shouldShowToast: solo para severidad warning/error', () => {
     const { mgr } = setup();
     expect(mgr.shouldShowToast(notif({ severity: 'warning' }))).toBe(true);
@@ -115,5 +131,60 @@ describe('NotificationManager (A3)', () => {
     const unread = { id: '2', createdAt: new Date(), isRead: false } as Notification;
     const { mgr } = setup({}, [read, unread, { ...unread, id: '3' }]);
     expect(mgr.getUnreadCount()).toBe(2);
+  });
+
+  it('asocia lectura y descarte de un evento v2 a su revisión actual', async () => {
+    const versioned = {
+      ...notif(),
+      id: 'event-1',
+      createdAt: new Date(),
+      schemaVersion: 2 as const,
+      eventKey: 'recurring:rent:2026-08',
+      revision: 3,
+      stage: 'due' as const,
+      stageWindow: 'due',
+      lifecycleStatus: 'active' as const,
+    } as Notification;
+    const updateNotification = vi.fn().mockResolvedValue(undefined);
+    const deleteNotification = vi.fn().mockResolvedValue(undefined);
+    const mgr = new NotificationManager({
+      addNotification: vi.fn().mockResolvedValue(true),
+      updateNotification,
+      deleteNotification,
+      clearAll: vi.fn().mockResolvedValue(undefined),
+      markAllAsRead: vi.fn().mockResolvedValue(undefined),
+      notifications: [versioned],
+      preferences: DEFAULT_NOTIFICATION_PREFERENCES,
+    });
+
+    await mgr.markAsRead('event-1');
+    await mgr.deleteNotification('event-1');
+
+    expect(updateNotification).toHaveBeenNthCalledWith(1, 'event-1', { isRead: true, readRevision: 3 });
+    expect(updateNotification).toHaveBeenNthCalledWith(2, 'event-1', {
+      dismissedRevision: 3,
+      dismissedAt: expect.any(Date),
+    });
+    expect(deleteNotification).not.toHaveBeenCalled();
+  });
+
+  it('conserva el comportamiento legacy si el snapshot aún no contiene el id', async () => {
+    const updateNotification = vi.fn().mockResolvedValue(undefined);
+    const deleteNotification = vi.fn().mockResolvedValue(undefined);
+    const mgr = new NotificationManager({
+      addNotification: vi.fn().mockResolvedValue(true),
+      updateNotification,
+      deleteNotification,
+      clearAll: vi.fn().mockResolvedValue(undefined),
+      markAllAsRead: vi.fn().mockResolvedValue(undefined),
+      notifications: [],
+      preferences: DEFAULT_NOTIFICATION_PREFERENCES,
+    });
+
+    await mgr.markAsRead('not-yet-loaded');
+    await mgr.deleteNotification('not-yet-loaded');
+
+    expect(updateNotification).toHaveBeenCalledWith('not-yet-loaded', { isRead: true });
+    expect(deleteNotification).toHaveBeenCalledWith('not-yet-loaded');
   });
 });

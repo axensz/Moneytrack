@@ -32,4 +32,16 @@ describe('useNotificationPreferences — withDefaults (#1 anti-crash)', () => {
     expect(withDefaults(null)).toEqual(DEFAULT_NOTIFICATION_PREFERENCES);
     expect(withDefaults(undefined)).toEqual(DEFAULT_NOTIFICATION_PREFERENCES);
   });
+
+  it('migra un documento legacy sin versión ni zona horaria', () => {
+    const merged = withDefaults({ dailyExpenseReminder: { enabled: true } } as Partial<NotificationPreferences>);
+
+    expect(merged.schemaVersion).toBe(2);
+    expect(merged.timeZone).toBe(DEFAULT_NOTIFICATION_PREFERENCES.timeZone);
+    expect(merged.dailyExpenseReminder).toEqual({
+      ...DEFAULT_NOTIFICATION_PREFERENCES.dailyExpenseReminder,
+      enabled: true,
+    });
+  });
+
 });

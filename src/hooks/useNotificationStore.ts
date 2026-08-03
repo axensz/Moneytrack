@@ -26,6 +26,14 @@ import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
 import type { Notification } from '../types/finance';
 import { RULE_SAFE_SIMPLE_WRITE_LIMIT } from '../config/firestoreLimits';
+import {
+    advanceVersionedNotification,
+    eventDocumentId,
+    isNotificationDismissed,
+    isNotificationRead,
+    isVersionedEventCandidate,
+    isVersionedNotification,
+} from '../utils/notificationEventLifecycle';
 
 const MAX_NOTIFICATIONS = 100;
 const PRUNE_DAYS = 30;
@@ -54,12 +62,28 @@ const removeOptimisticIds = (current: Set<string>, ids: string[]): Set<string> =
     return changed ? next : current;
 };
 
+type StoredNotificationDocument = {
+    id: string;
+    isRead: boolean;
+    createdAt?: Date;
+    schemaVersion?: number;
+    revision?: number;
+    readRevision?: number;
+};
+
+const isVersionedStoredDocument = (notification: StoredNotificationDocument): boolean =>
+    notification.schemaVersion === 2
+    && Number.isInteger(notification.revision)
+    && notification.revision! > 0;
+
 export function useNotificationStore(userId: string | null, externalNotifications?: Notification[]) {
     // Firestore state (only used if no external data)
     const [firestoreNotifications, setFirestoreNotifications] = useState<Notification[]>([]);
     const [loading, setLoading] = useState(true);
     const [optimisticDeletedIds, setOptimisticDeletedIds] = useState<Set<string>>(() => new Set());
     const [optimisticReadIds, setOptimisticReadIds] = useState<Set<string>>(() => new Set());
+    const [optimisticReadRevisions, setOptimisticReadRevisions] = useState<Map<string, number>>(() => new Map());
+    const [optimisticDismissedRevisions, setOptimisticDismissedRevisions] = useState<Map<string, number>>(() => new Map());
 
     // Ref to avoid recreating addNotification on every snapshot update
     const firestoreNotificationsRef = useRef<Notification[]>([]);
@@ -115,12 +139,29 @@ export function useNotificationStore(userId: string | null, externalNotification
     const notifications = useMemo(
         () => sourceNotifications
             .filter((n) => !n.id || !optimisticDeletedIds.has(n.id))
-            .map((n) => (
-                n.id && optimisticReadIds.has(n.id) && !n.isRead
+            .filter((n) => !isNotificationDismissed(n))
+            .filter((n) => !(
+                n.id
+                && isVersionedNotification(n)
+                && optimisticDismissedRevisions.get(n.id) === n.revision
+            ))
+            .map((n) => {
+                if (n.id && isVersionedNotification(n)) {
+                    return optimisticReadRevisions.get(n.id) === n.revision && !isNotificationRead(n)
+                        ? { ...n, isRead: true, readRevision: n.revision }
+                        : n;
+                }
+                return n.id && optimisticReadIds.has(n.id) && !n.isRead
                     ? { ...n, isRead: true }
-                    : n
-            )),
-        [sourceNotifications, optimisticDeletedIds, optimisticReadIds]
+                    : n;
+            }),
+        [
+            sourceNotifications,
+            optimisticDeletedIds,
+            optimisticReadIds,
+            optimisticReadRevisions,
+            optimisticDismissedRevisions,
+        ]
     );
 
     firestoreNotificationsRef.current = sourceNotifications;
@@ -128,8 +169,10 @@ export function useNotificationStore(userId: string | null, externalNotification
 
     useEffect(() => {
         if (!userId) {
-            setOptimisticDeletedIds(new Set());
-            setOptimisticReadIds(new Set());
+            setOptimisticDeletedIds((current) => current.size === 0 ? current : new Set());
+            setOptimisticReadIds((current) => current.size === 0 ? current : new Set());
+            setOptimisticReadRevisions((current) => current.size === 0 ? current : new Map());
+            setOptimisticDismissedRevisions((current) => current.size === 0 ? current : new Map());
             return;
         }
 
@@ -149,10 +192,47 @@ export function useNotificationStore(userId: string | null, externalNotification
                 [...current].filter((id) => !sourceIds.has(id) || confirmedReadIds.has(id))
             )
         );
+        setOptimisticReadRevisions((current) => {
+            if (current.size === 0) return current;
+            const next = new Map(current);
+            let changed = false;
+            current.forEach((optimisticRevision, id) => {
+                const notification = sourceNotifications.find((item) => item.id === id);
+                if (
+                    !isVersionedNotification(notification)
+                    || notification.revision !== optimisticRevision
+                    || isNotificationRead(notification)
+                ) {
+                    next.delete(id);
+                    changed = true;
+                }
+            });
+            return changed ? next : current;
+        });
+        setOptimisticDismissedRevisions((current) => {
+            if (current.size === 0) return current;
+            const next = new Map(current);
+            let changed = false;
+            current.forEach((optimisticRevision, id) => {
+                const notification = sourceNotifications.find((item) => item.id === id);
+                if (
+                    !isVersionedNotification(notification)
+                    || notification.revision !== optimisticRevision
+                    || isNotificationDismissed(notification)
+                ) {
+                    next.delete(id);
+                    changed = true;
+                }
+            });
+            return changed ? next : current;
+        });
     }, [userId, sourceNotifications]);
 
     // ✅ FIX #2: Generar docId determinístico para deduplicación
     const generateDedupeDocId = useCallback((notification: Omit<Notification, 'id' | 'createdAt'>): string => {
+        if (isVersionedEventCandidate(notification as Notification)) {
+            return eventDocumentId(notification.eventKey!);
+        }
         const today = localDateKey(); // fecha LOCAL (no UTC): alinea el corte diario con el día del usuario
         const parts: string[] = [];
 
@@ -181,6 +261,35 @@ export function useNotificationStore(userId: string | null, externalNotification
     // Add notification con docId determinístico (verdaderamente idempotente)
     const addNotification = useCallback(
         async (notification: Omit<Notification, 'id' | 'createdAt'>): Promise<boolean> => {
+            const now = new Date();
+            if (isVersionedEventCandidate(notification as Notification)) {
+                const currentNotifications = userId
+                    ? firestoreNotificationsRef.current
+                    : localNotificationsRef.current;
+                const current = currentNotifications.find((existing) =>
+                    isVersionedNotification(existing) && existing.eventKey === notification.eventKey
+                );
+                const next = advanceVersionedNotification(current, {
+                    ...notification,
+                    createdAt: now,
+                } as Notification);
+                if (next === current) return false;
+
+                const id = current?.id ?? generateDedupeDocId(notification);
+                const stored: Notification = { ...next, id };
+
+                if (userId) {
+                    const data = { ...stored };
+                    delete data.id;
+                    await setDoc(doc(db, `users/${userId}/notifications`, id), data);
+                } else {
+                    const updated = [stored, ...localNotificationsRef.current.filter((existing) => existing.id !== id)]
+                        .slice(0, MAX_NOTIFICATIONS);
+                    setLocalNotifications(updated);
+                }
+                return true;
+            }
+
             if (userId) {
                 try {
                     const docId = generateDedupeDocId(notification);
@@ -195,7 +304,7 @@ export function useNotificationStore(userId: string | null, externalNotification
 
                     await setDoc(doc(db, `users/${userId}/notifications`, docId), {
                         ...notification,
-                        createdAt: new Date(),
+                        createdAt: now,
                     });
                     return true;
                 } catch (error) {
@@ -212,7 +321,7 @@ export function useNotificationStore(userId: string | null, externalNotification
                 const newNotification: Notification = {
                     ...notification,
                     id: docId,
-                    createdAt: new Date(),
+                    createdAt: now,
                 };
 
                 let updated = [newNotification, ...localNotificationsRef.current];
@@ -233,9 +342,22 @@ export function useNotificationStore(userId: string | null, externalNotification
             if (userId) {
                 const previousNotifications = visibleNotificationsRef.current;
                 const ids = [id];
+                const current = previousNotifications.find((notification) => notification.id === id);
 
                 if (hasExternalNotifications) {
-                    if (updates.isRead === true) {
+                    if (isVersionedNotification(current) && updates.readRevision === current.revision) {
+                        setOptimisticReadRevisions((revisions) => {
+                            const next = new Map(revisions);
+                            next.set(id, current.revision!);
+                            return next;
+                        });
+                    } else if (isVersionedNotification(current) && updates.dismissedRevision === current.revision) {
+                        setOptimisticDismissedRevisions((revisions) => {
+                            const next = new Map(revisions);
+                            next.set(id, current.revision!);
+                            return next;
+                        });
+                    } else if (updates.isRead === true) {
                         setOptimisticReadIds((current) => addOptimisticIds(current, ids));
                     } else if (updates.isRead === false) {
                         setOptimisticReadIds((current) => removeOptimisticIds(current, ids));
@@ -250,7 +372,19 @@ export function useNotificationStore(userId: string | null, externalNotification
                     await updateDoc(doc(db, `users/${userId}/notifications`, id), updates);
                 } catch (error) {
                     if (hasExternalNotifications) {
-                        if (updates.isRead === true) {
+                        if (isVersionedNotification(current) && updates.readRevision === current.revision) {
+                            setOptimisticReadRevisions((revisions) => {
+                                const next = new Map(revisions);
+                                next.delete(id);
+                                return next;
+                            });
+                        } else if (isVersionedNotification(current) && updates.dismissedRevision === current.revision) {
+                            setOptimisticDismissedRevisions((revisions) => {
+                                const next = new Map(revisions);
+                                next.delete(id);
+                                return next;
+                            });
+                        } else if (updates.isRead === true) {
                             setOptimisticReadIds((current) => removeOptimisticIds(current, ids));
                         }
                     } else {
@@ -271,6 +405,15 @@ export function useNotificationStore(userId: string | null, externalNotification
     // Delete notification
     const deleteNotification = useCallback(
         async (id: string) => {
+            const current = visibleNotificationsRef.current.find((notification) => notification.id === id);
+            if (isVersionedNotification(current)) {
+                await updateNotification(id, {
+                    dismissedRevision: current.revision,
+                    dismissedAt: new Date(),
+                });
+                return;
+            }
+
             if (userId) {
                 const previousNotifications = visibleNotificationsRef.current;
                 const ids = [id];
@@ -296,17 +439,17 @@ export function useNotificationStore(userId: string | null, externalNotification
                 setLocalNotifications((prev) => prev.filter((n) => n.id !== id));
             }
         },
-        [userId, hasExternalNotifications, setLocalNotifications]
+        [userId, hasExternalNotifications, setLocalNotifications, updateNotification]
     );
 
     // Read the complete collection, not only the visible 100-document window.
     const readAllNotificationDocuments = useCallback(async (): Promise<
-        Array<{ id: string; isRead: boolean; createdAt?: Date }>
+        StoredNotificationDocument[]
     > => {
         if (!userId) return [];
 
         const notificationsRef = collection(db, `users/${userId}/notifications`);
-        const documents: Array<{ id: string; isRead: boolean; createdAt?: Date }> = [];
+        const documents: StoredNotificationDocument[] = [];
         let cursor: QueryDocumentSnapshot<DocumentData> | undefined;
 
         while (true) {
@@ -330,6 +473,9 @@ export function useNotificationStore(userId: string | null, externalNotification
                     id: notificationDoc.id,
                     isRead: data.isRead === true,
                     createdAt: data.createdAt ? ensureDate(data.createdAt) : undefined,
+                    schemaVersion: data.schemaVersion,
+                    revision: data.revision,
+                    readRevision: data.readRevision,
                 });
             });
 
@@ -374,7 +520,9 @@ export function useNotificationStore(userId: string | null, externalNotification
                     const operations = storedNotifications
                         .filter(
                             (notification) =>
-                                notification.createdAt && notification.createdAt < cutoffDate
+                                !isVersionedStoredDocument(notification)
+                                && notification.createdAt
+                                && notification.createdAt < cutoffDate
                         )
                         .map((notification) => ({
                             type: 'delete' as const,
@@ -394,7 +542,8 @@ export function useNotificationStore(userId: string | null, externalNotification
             const currentLocalNotifications = localNotificationsRef.current;
             const freshNotifications = currentLocalNotifications.filter(
                 (notification) =>
-                    notification.createdAt && ensureDate(notification.createdAt) >= cutoffDate
+                    isVersionedNotification(notification)
+                    || (notification.createdAt && ensureDate(notification.createdAt) >= cutoffDate)
             );
             if (freshNotifications.length !== currentLocalNotifications.length) {
                 setLocalNotifications(freshNotifications);
@@ -418,23 +567,46 @@ export function useNotificationStore(userId: string | null, externalNotification
         if (userId) {
             const currentNotifications = visibleNotificationsRef.current;
             const previousNotifications = [...currentNotifications];
-            const visibleIds = notificationIds(previousNotifications);
+            const legacyVisibleIds = notificationIds(previousNotifications.filter((n) => !isVersionedNotification(n)));
+            const versionedVisible = previousNotifications.filter(isVersionedNotification);
+            const now = new Date();
 
             if (hasExternalNotifications) {
-                setOptimisticDeletedIds((current) => addOptimisticIds(current, visibleIds));
+                setOptimisticDeletedIds((current) => addOptimisticIds(current, legacyVisibleIds));
+                setOptimisticDismissedRevisions((current) => {
+                    const next = new Map(current);
+                    versionedVisible.forEach((notification) => next.set(notification.id!, notification.revision));
+                    return next;
+                });
             } else {
-                setFirestoreNotifications([]);
+                setFirestoreNotifications((current) => current.flatMap((notification) =>
+                    isVersionedNotification(notification)
+                        ? [{ ...notification, dismissedRevision: notification.revision, dismissedAt: now }]
+                        : []
+                ));
             }
 
             try {
                 const storedNotifications = await readAllNotificationDocuments();
-                const ids = storedNotifications.map((notification) => notification.id);
-                const ops = ids.map((id) => ({ type: 'delete' as const, id }));
+                const ops = storedNotifications.map((notification) =>
+                    isVersionedStoredDocument(notification)
+                        ? {
+                            type: 'update' as const,
+                            id: notification.id,
+                            data: { dismissedRevision: notification.revision, dismissedAt: now },
+                        }
+                        : { type: 'delete' as const, id: notification.id }
+                );
                 await commitInBatches(ops);
-                logger.info(`All notifications cleared successfully (${ids.length})`);
+                logger.info(`All notifications cleared successfully (${ops.length})`);
             } catch (error) {
                 if (hasExternalNotifications) {
-                    setOptimisticDeletedIds((current) => removeOptimisticIds(current, visibleIds));
+                    setOptimisticDeletedIds((current) => removeOptimisticIds(current, legacyVisibleIds));
+                    setOptimisticDismissedRevisions((current) => {
+                        const next = new Map(current);
+                        versionedVisible.forEach((notification) => next.delete(notification.id!));
+                        return next;
+                    });
                 } else {
                     setFirestoreNotifications(previousNotifications);
                 }
@@ -442,7 +614,12 @@ export function useNotificationStore(userId: string | null, externalNotification
                 throw error;
             }
         } else {
-            setLocalNotifications([]);
+            const now = new Date();
+            setLocalNotifications((current) => current.flatMap((notification) =>
+                isVersionedNotification(notification)
+                    ? [{ ...notification, dismissedRevision: notification.revision, dismissedAt: now }]
+                    : []
+            ));
         }
     }, [
         userId,
@@ -456,27 +633,49 @@ export function useNotificationStore(userId: string | null, externalNotification
     const markAllAsRead = useCallback(async () => {
         if (userId) {
             const currentNotifications = visibleNotificationsRef.current;
-            const unreadNotifications = currentNotifications.filter((n) => !n.isRead);
+            const unreadNotifications = currentNotifications.filter((n) => !isNotificationRead(n));
             const previousNotifications = [...currentNotifications];
-            const visibleUnreadIds = notificationIds(unreadNotifications);
+            const legacyUnreadIds = notificationIds(unreadNotifications.filter((n) => !isVersionedNotification(n)));
+            const versionedUnread = unreadNotifications.filter(isVersionedNotification);
 
             if (hasExternalNotifications) {
-                setOptimisticReadIds((current) => addOptimisticIds(current, visibleUnreadIds));
+                setOptimisticReadIds((current) => addOptimisticIds(current, legacyUnreadIds));
+                setOptimisticReadRevisions((current) => {
+                    const next = new Map(current);
+                    versionedUnread.forEach((notification) => next.set(notification.id!, notification.revision));
+                    return next;
+                });
             } else {
-                setFirestoreNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+                setFirestoreNotifications((current) => current.map((notification) =>
+                    isVersionedNotification(notification)
+                        ? { ...notification, isRead: true, readRevision: notification.revision }
+                        : { ...notification, isRead: true }
+                ));
             }
 
             try {
                 const storedNotifications = await readAllNotificationDocuments();
-                const ids = storedNotifications
-                    .filter((notification) => !notification.isRead)
-                    .map((notification) => notification.id);
-                const ops = ids.map((id) => ({ type: 'update' as const, id, data: { isRead: true } }));
+                const ops = storedNotifications
+                    .filter((notification) => isVersionedStoredDocument(notification)
+                        ? notification.readRevision !== notification.revision
+                        : !notification.isRead)
+                    .map((notification) => ({
+                        type: 'update' as const,
+                        id: notification.id,
+                        data: isVersionedStoredDocument(notification)
+                            ? { isRead: true, readRevision: notification.revision }
+                            : { isRead: true },
+                    }));
                 await commitInBatches(ops);
-                logger.info(`Marked ${ids.length} notifications as read`);
+                logger.info(`Marked ${ops.length} notifications as read`);
             } catch (error) {
                 if (hasExternalNotifications) {
-                    setOptimisticReadIds((current) => removeOptimisticIds(current, visibleUnreadIds));
+                    setOptimisticReadIds((current) => removeOptimisticIds(current, legacyUnreadIds));
+                    setOptimisticReadRevisions((current) => {
+                        const next = new Map(current);
+                        versionedUnread.forEach((notification) => next.delete(notification.id!));
+                        return next;
+                    });
                 } else {
                     setFirestoreNotifications(previousNotifications);
                 }
@@ -484,7 +683,11 @@ export function useNotificationStore(userId: string | null, externalNotification
                 throw error;
             }
         } else {
-            setLocalNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+            setLocalNotifications((current) => current.map((notification) =>
+                isVersionedNotification(notification)
+                    ? { ...notification, isRead: true, readRevision: notification.revision }
+                    : { ...notification, isRead: true }
+            ));
         }
     }, [
         userId,

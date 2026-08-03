@@ -22,4 +22,4 @@
 - [x] 4.1 Run `npm run test:run`, `npm run typecheck`, `npm run lint`, `npm run build`, `git diff --check`, and `openspec.cmd validate relocate-privacy-and-ai-controls --strict` on the final checkout.
 - [x] 4.2 Rebuild the code-review graph and confirm the diff touches only the approved shell/privacy/assistant surfaces and their tests, with no financial, Firestore, debt, metric, or navigation-domain mutation.
 - [ ] 4.3 Verify in Chrome at 390×844, 1214×768, and 1440×900: light/dark, privacy toggle, launcher geometry, pending state, open/close/Escape focus, onboarding coexistence, zero document overflow, and no console errors.
-- [ ] 4.4 Commit and push the focused implementation to PR #76, update its title/body to reflect the actual combined scope, and keep it draft until the fresh checks are green.
+- [x] 4.4 Commit and push the focused implementation to PR #76, update its title/body to reflect the actual combined scope, and keep it draft until the fresh checks are green.

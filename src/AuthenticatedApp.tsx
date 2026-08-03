@@ -48,6 +48,7 @@ import { clearFirestorePersistence } from './lib/firebaseDb';
 import type { User } from 'firebase/auth';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
 import { InstallPrompt } from './components/pwa/InstallPrompt';
+import { AssistantLauncher } from './components/chat/AssistantLauncher';
 const AIChatBot = lazy(() =>
   import('./components/chat/AIChatBot').then(m => ({ default: m.AIChatBot }))
 );
@@ -116,12 +117,10 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     firestoreError,
     retryLoad,
   } = useFinanceStatus();
-  // Estado de IA (BYOK): si hay key pero falta autorizar el consentimiento,
-  // mostramos un badge de "pendiente" sobre el botón de configuración.
+  // Estado de IA (BYOK): el launcher comunica si falta terminar la autorización.
   const { isConfigured: aiKeyConfigured, hasConsent: aiHasConsent } = useGeminiKey();
   const aiReady = Boolean(user && aiKeyConfigured && aiHasConsent);
   const aiAuthPending = aiKeyConfigured && !aiHasConsent;
-  const pendingSettingsCount = aiAuthPending ? 1 : 0;
 
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const { scrollContainerRef, handleViewChange, handleViewMounted, focusMainContent } = useViewTransitionFocus();
@@ -135,13 +134,25 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const [showNotifications, setShowNotifications] = useState(false);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
   const [hasMountedAssistant, setHasMountedAssistant] = useState(false);
-  const assistantTriggerRef = useRef<HTMLElement | null>(null);
+  const assistantTriggerRef = useRef<HTMLButtonElement | null>(null);
 
-  const handleOpenAssistant = useCallback((returnFocusTo: HTMLElement) => {
+  const handleOpenAssistant = useCallback((returnFocusTo: HTMLButtonElement) => {
     assistantTriggerRef.current = returnFocusTo;
     setHasMountedAssistant(true);
     setIsAssistantOpen(true);
   }, []);
+
+  const assistantLabel = !user
+    ? 'Inicia sesión para usar el asistente IA'
+    : aiReady
+      ? 'Abrir asistente IA'
+      : 'Activar asistente IA';
+
+  const activateAssistant = useCallback((trigger: HTMLButtonElement) => {
+    if (!user) setIsAuthModalOpen(true);
+    else if (!aiReady) setShowAISettingsModal(true);
+    else handleOpenAssistant(trigger);
+  }, [aiReady, handleOpenAssistant, user]);
 
   const [showForm, setShowForm] = useState(false);
   const [pendingBudgetDraft, setPendingBudgetDraft] = useState<BudgetDraft | null>(null);
@@ -417,12 +428,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         onOpenHelp={handleOpenHelpModal}
         onOpenCategories={handleOpenCategories}
         onOpenNotificationPreferences={handleOpenNotificationPreferences}
-        onOpenAISettings={() => setShowAISettingsModal(true)}
-        aiReady={aiReady}
-        onOpenAssistant={handleOpenAssistant}
         onLogout={handleLogout}
-        pendingSettingsCount={pendingSettingsCount}
-        aiAuthPending={aiAuthPending}
       />
 
       <div className="relative flex flex-col flex-1 min-h-0 min-w-0">
@@ -492,6 +498,13 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
           </div>
         </div>
       </main>
+
+      <AssistantLauncher
+        label={assistantLabel}
+        isOpen={isAssistantOpen}
+        isPending={aiAuthPending}
+        onActivate={activateAssistant}
+      />
 
       {hasMountedAssistant && aiReady && (
         <Suspense fallback={null}>

@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { TrendingUp, TrendingDown, Wallet, Calendar, Info } from 'lucide-react';
+import { TrendingUp, TrendingDown, Eye, EyeOff, Calendar, Info } from 'lucide-react';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 import { BalanceSettling } from './BalanceSettling';
 import { AnimateDigits } from '@/components/unlumen-ui/animate-digits';
@@ -29,7 +29,8 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
   hasAccounts = true,
   balanceSettling = false,
 }) => {
-  const { hideBalances } = useUIPreferences();
+  const { hideBalances, setHideBalances } = useUIPreferences();
+  const privacyLabel = hideBalances ? 'Mostrar valores' : 'Ocultar valores';
 
   const displayValue = (value: number) => hideBalances ? '••••••' : formatCurrency(value);
   const animatedValue = (value: number) => {
@@ -42,12 +43,21 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
       <h2 id="ledger-overview-title" className="text-base font-bold text-foreground mb-2 sm:mb-3">Resumen general</h2>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
         {/* Balance Card - Morado Premium (reusa .card-balance, no duplica el degradado) */}
-        <div className="card-balance col-span-2 lg:col-span-1 hover:shadow-lg">
+        <div className="card-balance min-w-0 col-span-2 lg:col-span-1 hover:shadow-lg">
           <div className="flex items-center justify-between mb-1.5 sm:mb-2">
             <span className="text-xs sm:text-sm font-medium text-balance-foreground">Saldo actual</span>
-            <div className="p-1.5 sm:p-2 rounded-lg bg-balance-accent">
-              <Wallet size={16} className="sm:w-[18px] sm:h-[18px] text-balance-value" />
-            </div>
+            <button
+              type="button"
+              onClick={() => setHideBalances(!hideBalances)}
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-balance-accent text-balance-value transition-colors hover:bg-balance-accent/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              aria-label={privacyLabel}
+              title={privacyLabel}
+              aria-pressed={hideBalances}
+            >
+              {hideBalances
+                ? <Eye size={20} aria-hidden="true" />
+                : <EyeOff size={20} aria-hidden="true" />}
+            </button>
           </div>
           <div className="text-lg sm:text-xl lg:text-2xl font-bold text-balance-value break-words">
             {balanceSettling ? (

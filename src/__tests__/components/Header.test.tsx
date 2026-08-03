@@ -2,10 +2,9 @@ import React from 'react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { User } from 'firebase/auth';
 import { Header } from '../../components/layout/Header';
-import { UIPreferencesProvider, useUIPreferences } from '../../contexts/UIPreferencesContext';
 
 vi.mock('../../components/theme/ThemeToggle', () => ({
   ThemeToggle: () => <button type="button" aria-label="Cambiar tema" className="header-icon" />,
@@ -36,65 +35,30 @@ function renderHeader(overrides: Partial<React.ComponentProps<typeof Header>> = 
     onOpenHelp: vi.fn(),
     onOpenCategories: vi.fn(),
     onOpenNotificationPreferences: vi.fn(),
-    onOpenAISettings: vi.fn(),
-    aiReady: false,
-    onOpenAssistant: vi.fn(),
     onLogout: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 
   return {
-    ...render(<UIPreferencesProvider><Header {...props} /></UIPreferencesProvider>),
+    ...render(<Header {...props} />),
     props,
   };
 }
 
-function PreferenceValue() {
-  const { hideBalances } = useUIPreferences();
-  return <output>{String(hideBalances)}</output>;
-}
-
 describe('Header', () => {
-  beforeEach(() => localStorage.removeItem('moneytrack_hide_values'));
+  it('keeps privacy and assistant actions outside the header and settings menu', () => {
+    const { container } = renderHeader({ showSettingsMenu: true });
 
-  it('toggles the shared privacy preference independently of the Transactions view', () => {
-    render(
-      <UIPreferencesProvider>
-        <Header
-          user={null}
-          setIsAuthModalOpen={vi.fn()}
-          showSettingsMenu={false}
-          setShowSettingsMenu={vi.fn()}
-          showNotifications={false}
-          setShowNotifications={vi.fn()}
-          onOpenHelp={vi.fn()}
-          onOpenCategories={vi.fn()}
-          onOpenNotificationPreferences={vi.fn()}
-          onOpenAISettings={vi.fn()}
-          aiReady={false}
-          onOpenAssistant={vi.fn()}
-          onLogout={vi.fn()}
-        />
-        <PreferenceValue />
-      </UIPreferencesProvider>,
-    );
-
-    const toggle = screen.getByRole('button', { name: 'Ocultar valores' });
-    expect(toggle).toHaveAttribute('type', 'button');
-    expect(toggle).toHaveAttribute('aria-pressed', 'false');
-    expect(toggle).toHaveClass('min-w-[44px]', 'min-h-[44px]');
-    expect(screen.getByRole('status')).toHaveTextContent('false');
-
-    fireEvent.click(toggle);
-
-    expect(screen.getByRole('button', { name: 'Mostrar valores' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('status')).toHaveTextContent('true');
+    expect(screen.queryByRole('button', { name: 'Ocultar valores' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mostrar valores' })).not.toBeInTheDocument();
+    expect(container.querySelector('[data-header-action="assistant"]')).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /asistente IA/i })).not.toBeInTheDocument();
   });
 
   it('keeps compact utility actions reachable and relocates logout through responsive affordances', () => {
     const { container } = renderHeader();
 
-    for (const name of ['Cambiar tema', 'Ocultar valores', 'Abrir notificaciones', 'Abrir menú de ajustes']) {
+    for (const name of ['Cambiar tema', 'Abrir notificaciones', 'Abrir menú de ajustes']) {
       expect(screen.getByRole('button', { name })).toHaveClass('header-icon');
     }
 
@@ -109,9 +73,7 @@ describe('Header', () => {
 
     const orderedExistingActions = [
       screen.getByRole('button', { name: 'Cambiar tema' }),
-      screen.getByRole('button', { name: 'Ocultar valores' }),
       screen.getByRole('button', { name: 'Abrir notificaciones' }),
-      container.querySelector<HTMLElement>('[data-header-action="assistant"]')!,
       screen.getByRole('button', { name: 'Abrir menú de ajustes' }),
       container.querySelector<HTMLElement>('[data-header-action="logout"]')!,
     ];
@@ -123,51 +85,14 @@ describe('Header', () => {
     });
   });
 
-  it('routes the guest assistant entry to authentication', () => {
+  it('keeps the guest authentication action available without reintroducing assistant controls', () => {
     const setIsAuthModalOpen = vi.fn();
-    const { container } = renderHeader({ user: null, showSettingsMenu: false, setIsAuthModalOpen });
-    const entry = container.querySelector<HTMLElement>('[data-header-action="assistant"]')!;
+    renderHeader({ user: null, showSettingsMenu: false, setIsAuthModalOpen });
 
-    expect(entry).toHaveAccessibleName('Inicia sesión para usar el asistente IA');
-    fireEvent.click(entry);
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión' }));
 
     expect(setIsAuthModalOpen).toHaveBeenCalledWith(true);
-  });
-
-  it('routes the unconfigured authenticated assistant entry to AI settings', () => {
-    const onOpenAISettings = vi.fn();
-    const { container } = renderHeader({ aiReady: false, showSettingsMenu: false, onOpenAISettings });
-    const entry = container.querySelector<HTMLElement>('[data-header-action="assistant"]')!;
-
-    expect(entry).toHaveAccessibleName('Activar asistente IA');
-    fireEvent.click(entry);
-
-    expect(onOpenAISettings).toHaveBeenCalledTimes(1);
-  });
-
-  it('routes a configured assistant entry to the controlled panel trigger', () => {
-    const onOpenAssistant = vi.fn();
-    const { container } = renderHeader({ aiReady: true, showSettingsMenu: false, onOpenAssistant });
-    const entry = container.querySelector<HTMLElement>('[data-header-action="assistant"]')!;
-
-    expect(entry).toHaveAccessibleName('Abrir asistente IA');
-    fireEvent.click(entry);
-
-    expect(onOpenAssistant).toHaveBeenCalledWith(entry);
-    expect(entry).toHaveClass('hidden', 'lg:inline-flex');
-  });
-
-  it('uses the labeled Settings action as the compact configured entry', () => {
-    const onOpenAssistant = vi.fn();
-    renderHeader({ aiReady: true, showSettingsMenu: true, onOpenAssistant });
-    const settingsTrigger = screen.getByRole('button', { name: 'Abrir menú de ajustes' });
-
-    const compactEntry = screen.getByRole('menuitem', { name: 'Abrir asistente IA' });
-
-    expect(compactEntry).toHaveClass('lg:hidden');
-    fireEvent.click(compactEntry);
-
-    expect(onOpenAssistant).toHaveBeenCalledWith(settingsTrigger);
+    expect(screen.queryByRole('button', { name: /asistente IA/i })).not.toBeInTheDocument();
   });
 
   it('transfiere el retorno de foco al trigger estable antes de abrir Ayuda', () => {
@@ -185,34 +110,17 @@ describe('Header', () => {
     expect(settingsTrigger).toHaveFocus();
   });
 
-  it.each([
-    {
-      viewport: 'desktop',
-      hideAssistant: true,
-      nextFromNotifications: 'Ayuda',
-    },
-    {
-      viewport: 'tablet',
-      hideAssistant: false,
-      nextFromNotifications: 'Abrir asistente IA',
-    },
-  ])('skips responsive-hidden Settings actions during $viewport keyboard navigation', ({
-    hideAssistant,
-    nextFromNotifications,
-  }) => {
-    renderHeader({ aiReady: true, showSettingsMenu: true });
+  it('skips the responsive-hidden logout action during settings keyboard navigation', () => {
+    renderHeader({ showSettingsMenu: true });
     const menu = screen.getByRole('menu', { name: 'Opciones de ajustes' });
     const notifications = screen.getByRole('menuitem', { name: 'Notificaciones' });
-    const assistant = screen.getByRole('menuitem', { name: 'Abrir asistente IA' });
     const help = screen.getByRole('menuitem', { name: 'Ayuda' });
     const logout = screen.getByRole('menuitem', { name: 'Cerrar sesión' });
-
     logout.style.display = 'none';
-    if (hideAssistant) assistant.style.display = 'none';
 
     notifications.focus();
     fireEvent.keyDown(menu, { key: 'ArrowDown' });
-    expect(screen.getByRole('menuitem', { name: nextFromNotifications })).toHaveFocus();
+    expect(help).toHaveFocus();
 
     fireEvent.keyDown(menu, { key: 'End' });
     expect(help).toHaveFocus();

@@ -4,20 +4,16 @@ import React, { useRef, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import {
   Bell,
-  Eye,
-  EyeOff,
   HelpCircle,
   LogIn,
   LogOut,
   Settings,
-  Sparkles,
   Tag,
   User as UserIcon,
 } from 'lucide-react';
 import { ThemeToggle } from '../theme/ThemeToggle';
 import { NotificationBell, NotificationCenter } from '../notifications/NotificationCenter';
 import { useDismissable } from '../../hooks/useDismissable';
-import { useUIPreferences } from '../../contexts/UIPreferencesContext';
 import type { User } from 'firebase/auth';
 
 interface HeaderProps {
@@ -30,12 +26,7 @@ interface HeaderProps {
   onOpenHelp: () => void;
   onOpenCategories: () => void;
   onOpenNotificationPreferences: () => void;
-  onOpenAISettings: () => void;
-  aiReady: boolean;
-  onOpenAssistant: (returnFocusTo: HTMLElement) => void;
   onLogout: () => Promise<void>;
-  pendingSettingsCount?: number;
-  aiAuthPending?: boolean;
 }
 
 const menuItemClass =
@@ -51,14 +42,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenHelp,
   onOpenCategories,
   onOpenNotificationPreferences,
-  onOpenAISettings,
-  aiReady,
-  onOpenAssistant,
   onLogout,
-  pendingSettingsCount = 0,
-  aiAuthPending = false,
 }) => {
-  const { hideBalances, setHideBalances } = useUIPreferences();
   const settingsMenuRef = useRef<HTMLDivElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
@@ -134,17 +119,6 @@ export const Header: React.FC<HeaderProps> = ({
   });
 
   const accountLabel = user?.displayName || user?.email || 'Usuario';
-  const assistantLabel = !user
-    ? 'Inicia sesión para usar el asistente IA'
-    : aiReady
-      ? 'Abrir asistente IA'
-      : 'Activar asistente IA';
-
-  const activateAssistant = useCallback((returnFocusTo: HTMLElement) => {
-    if (!user) setIsAuthModalOpen(true);
-    else if (!aiReady) onOpenAISettings();
-    else onOpenAssistant(returnFocusTo);
-  }, [aiReady, onOpenAISettings, onOpenAssistant, setIsAuthModalOpen, user]);
 
   return (
     <header className="w-full min-w-0 max-w-full overflow-x-clip flex items-center pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 sm:pt-[calc(0.75rem+env(safe-area-inset-top))] sm:pb-3 bg-card/90 backdrop-blur-md border-b border-border z-[100] shadow-sm shrink-0">
@@ -183,17 +157,6 @@ export const Header: React.FC<HeaderProps> = ({
 
             <ThemeToggle />
 
-            <button
-              type="button"
-              onClick={() => setHideBalances(!hideBalances)}
-              className="header-icon min-w-[44px] min-h-[44px]"
-              title={hideBalances ? 'Mostrar valores' : 'Ocultar valores'}
-              aria-label={hideBalances ? 'Mostrar valores' : 'Ocultar valores'}
-              aria-pressed={hideBalances}
-            >
-              {hideBalances ? <Eye size={20} aria-hidden="true" /> : <EyeOff size={20} aria-hidden="true" />}
-            </button>
-
             {user && (
               <div className="relative" ref={notificationsRef}>
                 <NotificationBell
@@ -204,17 +167,6 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             )}
 
-            <button
-              type="button"
-              data-header-action="assistant"
-              onClick={(event) => activateAssistant(event.currentTarget)}
-              className="header-icon hidden lg:inline-flex"
-              aria-label={assistantLabel}
-              title={assistantLabel}
-            >
-              <Sparkles size={20} aria-hidden="true" />
-            </button>
-
             <div className="relative" ref={settingsMenuRef}>
               <button
                 ref={settingsButtonRef}
@@ -222,23 +174,11 @@ export const Header: React.FC<HeaderProps> = ({
                   setShowSettingsMenu(!showSettingsMenu);
                 }}
                 className="header-icon"
-                aria-label={
-                  pendingSettingsCount > 0
-                    ? `Abrir menú de ajustes (${pendingSettingsCount} pendiente${pendingSettingsCount !== 1 ? 's' : ''})`
-                    : 'Abrir menú de ajustes'
-                }
+                aria-label="Abrir menú de ajustes"
                 aria-expanded={showSettingsMenu}
                 aria-haspopup="menu"
               >
                 <Settings size={20} aria-hidden="true" />
-                {pendingSettingsCount > 0 && (
-                  <span
-                    className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-bold leading-none text-white bg-destructive rounded-full ring-2 ring-card"
-                    aria-hidden="true"
-                  >
-                    {pendingSettingsCount}
-                  </span>
-                )}
               </button>
 
               {showSettingsMenu && (
@@ -266,25 +206,6 @@ export const Header: React.FC<HeaderProps> = ({
                       <span>Notificaciones</span>
                     </button>
                   )}
-                  <button
-                    onClick={(event) => {
-                      const returnFocusTo = settingsButtonRef.current ?? event.currentTarget;
-                      setShowSettingsMenu(false);
-                      activateAssistant(returnFocusTo);
-                    }}
-                    className={menuItemClass + ' lg:hidden'}
-                    role="menuitem"
-                  >
-                    <Sparkles size={18} aria-hidden="true" />
-                    <span>{assistantLabel}</span>
-                    {aiAuthPending && (
-                      <span
-                        className="ml-auto w-2 h-2 rounded-full bg-destructive"
-                        title="Autorización de IA pendiente"
-                        aria-label="Autorización de IA pendiente"
-                      />
-                    )}
-                  </button>
                   <div className="my-1 border-t border-border" aria-hidden="true" />
                   <button
                     onClick={() => openSettingsModal(onOpenHelp)}

@@ -129,4 +129,43 @@ describe('PaymentMonitor — umbrales de recordatorio (A3)', () => {
 
     expect(createNotification).toHaveBeenCalledTimes(2);
   });
+
+  it('no conserva el estado de un pago eliminado cuando se recrea y reactiva', async () => {
+    const createNotification = vi.fn().mockResolvedValue(undefined);
+    const original = makePayment({ id: 'p-original', dueDay: 15 });
+    const recreated = makePayment({ id: 'p-recreado', dueDay: 15, isActive: false });
+    const monitor = new PaymentMonitor({
+      createNotification,
+      recurringPayments: [original],
+      transactions: [],
+    });
+
+    await monitor.checkUpcomingPayments();
+    monitor.deps.recurringPayments = [];
+    await monitor.checkUpcomingPayments();
+    monitor.deps.recurringPayments = [recreated];
+    await monitor.checkUpcomingPayments();
+    monitor.deps.recurringPayments = [{ ...recreated, isActive: true }];
+    await monitor.checkUpcomingPayments();
+
+    expect(createNotification).toHaveBeenCalledTimes(2);
+    expect((createNotification.mock.calls[0][0] as { metadata: { recurringPaymentId: string } }).metadata.recurringPaymentId).toBe('p-original');
+    expect((createNotification.mock.calls[1][0] as { metadata: { recurringPaymentId: string } }).metadata.recurringPaymentId).toBe('p-recreado');
+  });
+
+  it('reintenta después de un rechazo sin persistir el guard diario', async () => {
+    const createNotification = vi.fn()
+      .mockRejectedValueOnce(new Error('notificación no disponible'))
+      .mockResolvedValueOnce(undefined);
+    const monitor = new PaymentMonitor({
+      createNotification,
+      recurringPayments: [makePayment({ dueDay: 15 })],
+      transactions: [],
+    });
+
+    await monitor.checkUpcomingPayments();
+    await monitor.checkUpcomingPayments();
+
+    expect(createNotification).toHaveBeenCalledTimes(2);
+  });
 });

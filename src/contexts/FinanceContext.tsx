@@ -129,6 +129,7 @@ export interface FinanceContextValue {
   addDebt: (debt: Omit<Debt, 'id' | 'createdAt'>) => Promise<void>;
   updateDebt: (id: string, updates: Partial<Debt>) => Promise<void>;
   deleteDebt: (id: string) => Promise<void>;
+  reassignDebtAccount: (debtId: string, nextAccountId?: string) => Promise<void>;
   registerDebtPayment: (debtId: string, amount: number) => Promise<void>;
   modifyDebtBalance: (debtId: string, amount: number, operation: 'add' | 'subtract') => Promise<void>;
   forgiveDebt: (debtId: string, reason: 'unpaid' | 'gift' | 'other') => Promise<void>;
@@ -260,6 +261,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     addDebt,
     updateDebt,
     deleteDebt,
+    reassignDebtAccount,
     registerDebtPayment,
     modifyDebtBalance,
     forgiveDebt,
@@ -268,6 +270,8 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
   } = useDebts(userId, transactions, userId ? firestoreData.debts : undefined, {
     addTransaction,
     deleteTransaction,
+    updateTransaction,
+    accounts,
   });
 
   // Borrado de transacciones con sincronización de préstamos.
@@ -403,6 +407,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     addDebt,
     updateDebt,
     deleteDebt,
+    reassignDebtAccount,
     registerDebtPayment,
     modifyDebtBalance,
     forgiveDebt,
@@ -439,7 +444,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     addCategory, deleteCategory, addTransactionBeneficiary, deleteTransactionBeneficiary,
     addRecurringPayment, updateRecurringPayment, deleteRecurringPayment,
     isPaidForMonth, getNextDueDate, getDaysUntilDue, getDaysOverdue, isOverdue, getPaymentHistory, recurringStats,
-    debts, addDebt, updateDebt, deleteDebt, registerDebtPayment, modifyDebtBalance, forgiveDebt,
+    debts, addDebt, updateDebt, deleteDebt, reassignDebtAccount, registerDebtPayment, modifyDebtBalance, forgiveDebt,
     getDebtTransactions, debtStats,
     budgets, addBudget, updateBudget, deleteBudget, budgetStatuses, budgetStats,
     savingsGoals, addGoal, updateGoal, deleteGoal, addSavings, goalStatuses, goalStats,

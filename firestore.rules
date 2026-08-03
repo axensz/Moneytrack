@@ -52,7 +52,8 @@ service cloud.firestore {
           'delete-account',
           'merge-credit-cards',
           'set-default-account',
-          'delete-debt'
+          'delete-debt',
+          'reassign-debt-account'
         ]
         && lock.acquiredAt is timestamp
         && lock.acquiredAt == request.time;

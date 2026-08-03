@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { HandCoins, Users, CheckCircle2, ArrowDownLeft, ArrowUpRight, Ban } from 'lucide-react';
+import { HandCoins, Users, CheckCircle2, ArrowDownLeft, ArrowUpRight, Ban, Trash2, WalletCards } from 'lucide-react';
 import { useDebtsDomain, useAccountDomain } from '../../../hooks/useFinanceSelectors';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { formatCurrency, parseCurrency, parseDateFromInput } from '../../../utils/formatters';
@@ -11,6 +11,7 @@ import { ConfirmDialog } from '../../modals/ConfirmDialog';
 import { ACTION_ICONS, sectionTitle, UI_TEXT } from '../../../config/ui';
 import type { Debt } from '../../../types/finance';
 import { DebtCard } from './components/DebtCard';
+import { DebtAccountDialog } from './components/DebtAccountDialog';
 import { NewDebtForm, type DebtFormErrors } from './components/NewDebtForm';
 import { FORGIVEN_LABELS } from './constants';
 import { createInitialDebtFormData } from './utils/debtForm';
@@ -33,6 +34,7 @@ export const DebtsView: React.FC = () => {
     addDebt,
     updateDebt,
     deleteDebt,
+    reassignDebtAccount,
     registerDebtPayment,
     modifyDebtBalance,
     forgiveDebt,
@@ -43,6 +45,7 @@ export const DebtsView: React.FC = () => {
 
   const [showForm, setShowForm] = useState(false);
   const [debtToDelete, setDebtToDelete] = useState<Debt | null>(null);
+  const [debtToReassign, setDebtToReassign] = useState<Debt | null>(null);
   const [showPaymentForm, setShowPaymentForm] = useState<string | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [showPaymentScheduleForm, setShowPaymentScheduleForm] = useState<string | null>(null);
@@ -151,10 +154,14 @@ export const DebtsView: React.FC = () => {
       return;
     }
 
-    await registerDebtPayment(debtId, amount);
-    showToast.success('Pago registrado');
-    setPaymentAmount('');
-    setShowPaymentForm(null);
+    try {
+      await registerDebtPayment(debtId, amount);
+      showToast.success('Pago registrado');
+      setPaymentAmount('');
+      setShowPaymentForm(null);
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : 'No se pudo registrar el pago');
+    }
   };
 
   const handleModifyBalance = async (debtId: string, operation: 'add' | 'subtract') => {
@@ -176,9 +183,13 @@ export const DebtsView: React.FC = () => {
   };
 
   const handleForgive = async (debtId: string, reason: NonNullable<Debt['forgivenReason']>) => {
-    await forgiveDebt(debtId, reason);
-    showToast.success('Deuda condonada');
-    setShowForgive(null);
+    try {
+      await forgiveDebt(debtId, reason);
+      showToast.success('Deuda condonada');
+      setShowForgive(null);
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : 'No se pudo condonar la deuda');
+    }
   };
 
   const handleOpenPaymentSchedule = (debt: Debt) => {
@@ -201,20 +212,39 @@ export const DebtsView: React.FC = () => {
       return;
     }
 
-    await updateDebt(debtId, paymentSchedule.updates);
-    showToast.success('Próximo pago actualizado');
-    setShowPaymentScheduleForm(null);
+    try {
+      await updateDebt(debtId, paymentSchedule.updates);
+      showToast.success('Próximo pago actualizado');
+      setShowPaymentScheduleForm(null);
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : 'No se pudo actualizar el próximo pago');
+    }
   };
 
   const handleDelete = (debt: Debt) => {
     setDebtToDelete(debt);
   };
 
+  const handleReassignAccount = async (nextAccountId?: string) => {
+    if (!debtToReassign?.id) return;
+    try {
+      await reassignDebtAccount(debtToReassign.id, nextAccountId);
+      showToast.success('Cuenta asociada actualizada');
+      setDebtToReassign(null);
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : 'No se pudo cambiar la cuenta asociada');
+    }
+  };
+
   const confirmDelete = async () => {
     if (!debtToDelete) return;
-    await deleteDebt(debtToDelete.id!);
-    showToast.success('Eliminado');
-    setDebtToDelete(null);
+    try {
+      await deleteDebt(debtToDelete.id!);
+      showToast.success('Eliminado');
+      setDebtToDelete(null);
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : 'No se pudo eliminar el préstamo');
+    }
   };
 
   const activeDebts = debts.filter(d => !d.isSettled);
@@ -336,6 +366,7 @@ export const DebtsView: React.FC = () => {
                   setPaymentAmount={setPaymentAmount}
                   onPayment={handlePayment}
                   onDelete={handleDelete}
+                  onChangeAccount={setDebtToReassign}
                   showBalanceModifier={showBalanceModifier}
                   setShowBalanceModifier={setShowBalanceModifier}
                   modifierAmount={modifierAmount}
@@ -377,6 +408,7 @@ export const DebtsView: React.FC = () => {
                   setPaymentAmount={setPaymentAmount}
                   onPayment={handlePayment}
                   onDelete={handleDelete}
+                  onChangeAccount={setDebtToReassign}
                   showBalanceModifier={showBalanceModifier}
                   setShowBalanceModifier={setShowBalanceModifier}
                   modifierAmount={modifierAmount}
@@ -413,12 +445,13 @@ export const DebtsView: React.FC = () => {
           <div className="mt-4">
             <button
               onClick={() => setShowSettled(!showSettled)}
-              className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+              className="min-h-11 rounded-lg px-2 text-sm text-gray-500 hover:bg-muted hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+              aria-expanded={showSettled}
             >
               {showSettled ? 'Ocultar' : 'Mostrar'} saldados ({settledDebts.length})
             </button>
             {showSettled && (
-              <div className="mt-2 space-y-2 opacity-60">
+              <div className="mt-2 space-y-2">
                 {settledDebts.map(debt => (
                   <div key={debt.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
                     <div>
@@ -432,11 +465,31 @@ export const DebtsView: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    {debt.forgivenReason ? (
-                      <Ban size={16} className="text-warning" />
-                    ) : (
-                      <CheckCircle2 size={16} className="text-success" />
-                    )}
+                    <div className="flex items-center gap-1">
+                      {debt.forgivenReason ? (
+                        <Ban size={16} className="text-warning" aria-hidden="true" />
+                      ) : (
+                        <CheckCircle2 size={16} className="text-success" aria-hidden="true" />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setDebtToReassign(debt)}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-primary hover:bg-purple-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:hover:bg-purple-900/30"
+                        aria-label={`Cambiar cuenta del ${debt.type === 'lent' ? 'préstamo' : 'deuda'} saldado de ${debt.personName}`}
+                        title="Cambiar cuenta"
+                      >
+                        <WalletCards size={16} aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(debt)}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-destructive hover:bg-destructive-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        aria-label={`Eliminar ${debt.type === 'lent' ? 'préstamo' : 'deuda'} saldado de ${debt.personName}`}
+                        title="Eliminar"
+                      >
+                        <Trash2 size={16} aria-hidden="true" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -446,6 +499,14 @@ export const DebtsView: React.FC = () => {
       </div>
 
       {/* Modal confirmación eliminar */}
+      <DebtAccountDialog
+        isOpen={!!debtToReassign}
+        debt={debtToReassign}
+        accounts={accounts}
+        onClose={() => setDebtToReassign(null)}
+        onSubmit={handleReassignAccount}
+      />
+
       <ConfirmDialog
         isOpen={!!debtToDelete}
         title={`Eliminar ${debtToDelete?.type === 'lent' ? 'préstamo' : 'deuda'}`}

@@ -1,0 +1,45 @@
+## 1. Lock contract and real rules
+
+- [x] 1.1 Add `@firebase/rules-unit-testing` `^5.0.1`, a focused `test:rules` npm script, and update `.github/workflows/nextjs.yml` so the existing Firebase emulator step runs the actual contract test instead of only `node --version`; verify `npm ci` accepts the resulting lockfile.
+- [x] 1.2 Create `src/__tests__/firestore/accountOperationLock.rules.test.ts` using `initializeTestEnvironment({ projectId: 'demo-moneytrack', firestore: { rules } })`; assert owner acquire/renew/release/reacquire succeeds, non-owner writes fail, and the current nested-merge release fails before the production fix.
+- [x] 1.3 Replace `{ merge: true }` with exact top-level `accountOperationLock` replacement semantics in `src/hooks/firestore/accountOrchestration.ts` and the final delete-debt batch in `src/hooks/useDebts.ts`; update the account/debt Firestore mocks to model `mergeFields` and run the rules test plus `accountCascadeDelete`, `accountMergeAndDefault`, and `debtCascadeDelete`.
+- [x] 1.4 Add `reassign-debt-account` to `AccountOperationKind` and the strict allow-list in `firestore.rules`; extend the emulator test to prove the new kind is accepted with the same exact shapes and all unknown kinds remain rejected.
+
+## 2. Atomic create and payment paths
+
+- [x] 2.1 Create authenticated regression cases in `src/__tests__/hooks/debtAtomicWrites.test.ts` that run the real `useDebts` callbacks and fail unless debt, transaction, and `usedCredit` are all staged in one Firestore transaction; cover lent, borrowed, no account, rejected account, and rejected commit.
+- [x] 2.2 Refactor authenticated `addDebt` in `src/hooks/useDebts.ts` to reserve debt/transaction refs, read any associated account, validate its persisted state, and set the debt, `LOAN_CATEGORY` transaction, and `usedCredit` delta in one `runTransaction`; publish the transaction cache only after commit and retain the current tracking-only branch.
+- [x] 2.3 Extend `src/__tests__/hooks/debtAtomicWrites.test.ts` with payment cases for partial/exact/overpayment, lent/borrowed credit effects, concurrent persisted-balance changes, and transaction/debt rejection; each failed case must leave every mocked document unchanged.
+- [x] 2.4 Refactor the authenticated `registerDebtPayment` path to read the persisted debt inside `runTransaction`, clamp once, and atomically set the payment transaction, remaining amount, settlement fields, and `usedCredit`; keep `registerDebtPayment.test.ts` as the guest-domain regression and publish cache only after success.
+- [x] 2.5 Add guest failure/rollback cases to `registerDebtPayment.test.ts` and a focused creation case; preserve local behavior while restoring the previous debt/transaction snapshot if a linked local mutation throws.
+
+## 3. Complete deletion and visible recovery
+
+- [x] 3.1 Extend `src/__tests__/hooks/debtCascadeDelete.test.ts` to assert the final lock map is an exact release tombstone, active and settled debts use the same cascade, linked payments across multiple accounts are removed, and rejected or over-capacity batches write nothing.
+- [x] 3.2 Update `src/components/views/debts/DebtsView.tsx` and `src/components/views/debts/components/DebtCard.tsx` so settled rows expose the same confirmed delete action, confirmation identifies linked-transaction removal, and delete/payment/forgive/schedule handlers show `showToast.error` without closing on failure.
+- [x] 3.3 Extend `src/__tests__/components/debtsViewFormBehavior.test.tsx` to cover settled deletion, error toasts, retained dialogs/forms after failure, accessible names, focus restoration, and 44×44 CSS pixel action targets.
+
+## 4. History-preserving account reassignment
+
+- [x] 4.1 Create `src/utils/debtAccountReassignment.ts` and `src/__tests__/utils/debtAccountReassignment.test.ts` with `buildDebtAccountReassignmentPlan(debt, linkedTransactions, accounts, nextAccountId)`; return zero/one principal transaction plus before/after credit adjustments, preserve every payment unchanged, reject multiple principals, and validate that no resulting credit debt is negative.
+- [x] 4.2 Add `reassignDebtAccount(debtId: string, nextAccountId?: string): Promise<void>` to `useDebts`, `FinanceContext`, and `useDebtsDomain`; for authenticated users acquire the new lease, read server debt/transactions/accounts, apply the pure plan in one capacity-checked batch, release exactly, and publish only the principal transaction cache mutation after success.
+- [x] 4.3 Cover authenticated reassignment in `src/__tests__/hooks/debtAccountReassignment.test.ts`: savings-to-credit, credit-to-savings, account removal, debt without principal, ambiguous principal, negative-credit rejection, lost lease, and batch failure must match the specification with no partial state.
+- [x] 4.4 Implement the guest reassignment path using the same planner and add local rollback coverage; changing a legacy debt without a principal must affect only `Debt.accountId` and future payments.
+- [x] 4.5 Create `src/components/views/debts/components/DebtAccountDialog.tsx` with the existing `BaseModal` contract and semantic inputs, then wire it through `DebtCard` and `DebtsView` for active and settled debts; show current account, “Sin cuenta”, the history-preservation explanation, pending state, success toast, and actionable failure toast.
+- [x] 4.6 Extend `src/__tests__/components/debtsViewFormBehavior.test.tsx` for keyboard/pointer opening, current selection, settled debt access, submit/cancel focus restoration, pending double-submit protection, and preserved dialog state after rejection.
+
+## 5. Dependency security baseline
+
+- [x] 5.1 Update `package.json` floors to `next`/`eslint-config-next` `^16.2.12` and `postcss`/its override `^8.5.25`, add the sharp `^0.35.3` override, and refresh only the required lock resolutions; confirm protobufjs ≥7.6.5, js-yaml ≥4.3.1, and brace-expansion lines ≥1.1.18/2.1.4/5.0.9 with `npm ls`.
+- [x] 5.2 Run a clean `npm ci` on Node.js 22 followed by `npm audit --json`; require exit code 0 and zero vulnerabilities, and inspect `package.json`/`package-lock.json` to ensure no new runtime package or unrelated major upgrade was introduced.
+- [x] 5.3 Re-run the Next.js surface check (`use server`, middleware/proxy files, rewrites, custom server, image optimizer) and verify `next.config.ts` still has `output: 'export'` and `images.unoptimized: true` after the dependency update.
+
+## 6. Integrated validation and delivery evidence
+
+- [x] 6.1 Run focused suites for rules, lock consumers, atomic debt writes, cascade deletion, reassignment, credit deltas, and debt UI; record exact passing counts and repair any regression before broad validation.
+- [x] 6.2 Run `npm run test:run`, `npm run typecheck`, `npm run lint`, `npm run build`, `git diff --check`, and `openspec.cmd validate repair-debt-lifecycle-and-account-links --strict`; every command must pass on the final checkout.
+- [x] 6.3 Rebuild/update the code-review graph, run `detect-changes`/affected-flow review, and confirm the diff does not alter unrelated shell, AI, metrics, mobile navigation, or user-owned untracked files.
+- [ ] 6.4 Verify in Chrome at desktop and mobile-responsive widths using disposable savings and credit debts: create, partial payment, reassign, settled delete, failure toast, modal focus, and no horizontal overflow; do not mutate “Isabella — Celular”.
+- [ ] 6.5 Push the focused commits to the existing PR branch, verify GitHub Actions, and after the secure lockfile reaches `main`, confirm Dependabot closes the 17 baseline alerts without dismissals; keep the PR draft until rules, app checks, and browser evidence are green.
+
+Validation evidence (2026-08-02): Firestore emulator rules 4/4; focused debt/lock/UI suites 96/96; broad Vitest 981 passed plus the same 4 emulator-only tests; typecheck, lint, static build, diff check, strict OPSX validation, and `npm audit` all passed. Chrome read-only verification passed at 375, 1214, and 1440 CSS pixels with 44×44 actions, modal focus restoration, account-selection state, settled actions, zero document overflow, and no console errors. The disposable write sequence in 6.4 remains intentionally unchecked until it is executed end to end.

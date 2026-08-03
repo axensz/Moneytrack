@@ -130,6 +130,7 @@ const selectDebtsDomain = (s: FinanceContextValue) => ({
   addDebt: s.addDebt,
   updateDebt: s.updateDebt,
   deleteDebt: s.deleteDebt,
+  reassignDebtAccount: s.reassignDebtAccount,
   registerDebtPayment: s.registerDebtPayment,
   modifyDebtBalance: s.modifyDebtBalance,
   forgiveDebt: s.forgiveDebt,

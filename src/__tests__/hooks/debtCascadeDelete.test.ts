@@ -14,12 +14,19 @@ import type { Account, Debt, Transaction } from '../../types/finance';
 const M = vi.hoisted(() => ({
   txStore: new Map<string, Record<string, unknown>>(),
   acctStore: new Map<string, Record<string, unknown>>(),
-  log: [] as Array<{ op: string; id?: string; path?: string; data?: Record<string, unknown> }>,
+  log: [] as Array<{
+    op: string;
+    id?: string;
+    path?: string;
+    data?: Record<string, unknown>;
+    options?: Record<string, unknown>;
+  }>,
   batchCommitCalls: 0,
   runTxnCalls: 0, // Alias heredado: representa el único commit atómico.
   lockAcquireCalls: 0,
   lockRenewCalls: 0,
   lockReleaseCalls: 0,
+  batchCommitShouldFail: false,
 }));
 
 const ref = (path: string, id: string) => ({ __path: path, __id: id, __key: `${path}/${id}` });
@@ -95,18 +102,26 @@ vi.mock('firebase/firestore', () => ({
   deleteDoc: async (r: { __id: string; __path: string }) => {
     M.log.push({ op: 'deleteDoc', id: r.__id, path: r.__path });
   },
-  writeBatch: () => ({
+  writeBatch: () => {
+    const staged: typeof M.log = [];
+    return {
       delete: (r: { __id: string; __path: string }) =>
-        M.log.push({ op: 'delete', id: r.__id, path: r.__path }),
+        staged.push({ op: 'delete', id: r.__id, path: r.__path }),
       update: (r: { __id: string }, data: Record<string, unknown>) =>
-        M.log.push({ op: 'update', id: r.__id, data }),
-      set: (r: { __id: string; __path: string }, data: Record<string, unknown>) =>
-        M.log.push({ op: 'set', id: r.__id, path: r.__path, data }),
+        staged.push({ op: 'update', id: r.__id, data }),
+      set: (
+        r: { __id: string; __path: string },
+        data: Record<string, unknown>,
+        options?: Record<string, unknown>
+      ) => staged.push({ op: 'set', id: r.__id, path: r.__path, data, options }),
       commit: async () => {
+        if (M.batchCommitShouldFail) throw new Error('batch rejected');
+        M.log.push(...staged);
         M.batchCommitCalls += 1;
         M.runTxnCalls += 1;
       },
-  }),
+    };
+  },
   // No usados con externalDebts (la suscripción se salta), pero deben existir al importar.
   onSnapshot: () => () => {},
   orderBy: () => ({}),
@@ -133,6 +148,16 @@ const renderDebts = (...clientAccountSnapshots: Account[][]) =>
     return useDebts(UID, [], [{ id: 'd1', personName: 'Juan', type: 'lent', originalAmount: 1, remainingAmount: 1, isSettled: false } as Debt], {});
   }).result;
 
+const renderSettledDebts = () =>
+  renderHook(() => useDebts(UID, [], [{
+    id: 'd1',
+    personName: 'Juan',
+    type: 'lent',
+    originalAmount: 1,
+    remainingAmount: 0,
+    isSettled: true,
+  } as Debt], {})).result;
+
 beforeEach(() => {
   M.txStore.clear();
   M.acctStore.clear();
@@ -142,6 +167,7 @@ beforeEach(() => {
   M.lockAcquireCalls = 0;
   M.lockRenewCalls = 0;
   M.lockReleaseCalls = 0;
+  M.batchCommitShouldFail = false;
   Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
 });
 
@@ -164,6 +190,13 @@ describe('useDebts.deleteDebt — borrado atómico (F-debt-cascade)', () => {
     expect(M.lockAcquireCalls).toBe(1);
     expect(M.lockRenewCalls).toBe(1);
     expect(M.lockReleaseCalls).toBe(0);
+    const releaseWrite = M.log.find(entry => entry.op === 'set' && entry.path === 'users');
+    expect(releaseWrite?.data?.accountOperationLock).toEqual({
+      id: 'delete-debt:test',
+      kind: 'delete-debt',
+      releasedAt: expect.any(Date),
+    });
+    expect(releaseWrite?.options).toEqual({ mergeFields: ['accountOperationLock'] });
     // Se borraron las dos transacciones del préstamo + la deuda; NO la de otra deuda.
     expect(deletedIds()).toEqual(expect.arrayContaining(['t-principal', 't-cobro', 'd1']));
     expect(deletedIds()).not.toContain('t-otra');
@@ -215,5 +248,45 @@ describe('useDebts.deleteDebt — borrado atómico (F-debt-cascade)', () => {
     expect(M.runTxnCalls).toBe(0);
     expect(M.log).toHaveLength(0);
     expect(M.txStore).toHaveLength(41);
+  });
+
+  it('usa la misma cascada para un préstamo saldado', async () => {
+    M.acctStore.set('sav', { ...sav });
+    seedTx({ id: 't-principal', type: 'expense', amount: 500_000, accountId: 'sav', category: 'Préstamo', debtId: 'd1', paid: true });
+    seedTx({ id: 't-pago', type: 'income', amount: 500_000, accountId: 'sav', category: 'Cobro Préstamo', debtId: 'd1', paid: true });
+
+    const result = renderSettledDebts();
+    await result.current.deleteDebt('d1');
+
+    expect(M.batchCommitCalls).toBe(1);
+    expect(deletedIds()).toEqual(expect.arrayContaining(['t-principal', 't-pago', 'd1']));
+  });
+
+  it('borra pagos históricos vinculados aunque hayan ocurrido en cuentas distintas', async () => {
+    const cc2: Account = { ...cc, id: 'cc-2', name: 'Mastercard', usedCredit: 200_000 };
+    M.acctStore.set('cc', { ...cc });
+    M.acctStore.set('cc-2', { ...cc2 });
+    seedTx({ id: 't-principal', type: 'expense', amount: 1_000_000, accountId: 'cc', category: 'Préstamo', debtId: 'd1', paid: true });
+    seedTx({ id: 't-pago', type: 'income', amount: 200_000, accountId: 'cc-2', category: 'Cobro Préstamo', debtId: 'd1', paid: true });
+
+    const result = renderDebts();
+    await result.current.deleteDebt('d1');
+
+    expect(deletedIds()).toEqual(expect.arrayContaining(['t-principal', 't-pago', 'd1']));
+    expect(accountUpdates('cc')[0].data?.usedCredit).toEqual({ __increment: -1_000_000 });
+    expect(accountUpdates('cc-2')[0].data?.usedCredit).toEqual({ __increment: 200_000 });
+  });
+
+  it('no aplica ninguna escritura y libera el lease si Firestore rechaza el batch', async () => {
+    M.acctStore.set('sav', { ...sav });
+    seedTx({ id: 't-principal', type: 'expense', amount: 500_000, accountId: 'sav', category: 'Préstamo', debtId: 'd1', paid: true });
+    M.batchCommitShouldFail = true;
+    const result = renderDebts();
+
+    await expect(result.current.deleteDebt('d1')).rejects.toThrow('batch rejected');
+
+    expect(M.batchCommitCalls).toBe(0);
+    expect(M.log).toEqual([]);
+    expect(M.lockReleaseCalls).toBe(1);
   });
 });

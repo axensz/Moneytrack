@@ -1,19 +1,19 @@
 ## Task 1: Freeze the contracts with failing tests
 
-- [ ] 1.1 Extend `useFirestoreSubscriptions.pagination.test.ts` to model `metadata.fromCache` and `hasPendingWrites`, proving a cached head below 500 never settles balance authority.
-- [ ] 1.2 Extend `useBalanceTransactions.test.ts` with cache `<500` → server `<500`, cache `<500` → server `500`, exact `499/500/501`, offline, error, user switch, and retry cases.
-- [ ] 1.3 Add a provider-level integration test from the head listener through `FinanceContext`, `useBalanceTransactions`, `useAccounts`, and the visible settling state.
-- [ ] 1.4 Invert the unsafe expectations in `addTransactionBalanceGate.test.ts` and `transactionEditValidation.test.ts`: unresolved authority MUST produce zero writer calls and preserve the form.
-- [ ] 1.5 Extend `metricScopeFilterIndependence.test.tsx` to change every lower filter independently and together while asserting all four General overview values remain identical and only list/CSV change.
+- [x] 1.1 Extend `useFirestoreSubscriptions.pagination.test.ts` to model `metadata.fromCache` and `hasPendingWrites`, proving a cached head below 500 never settles balance authority.
+- [x] 1.2 Extend `useBalanceTransactions.test.ts` with cache `<500` → server `<500`, cache `<500` → server `500`, exact `499/500/501`, offline, error, user switch, and retry cases.
+- [x] 1.3 Add a provider-level integration test from the head listener through `FinanceContext`, `useBalanceTransactions`, `useAccounts`, and the visible settling state.
+- [x] 1.4 Invert the unsafe expectations in `addTransactionBalanceGate.test.ts` and `transactionEditValidation.test.ts`: unresolved authority MUST produce zero writer calls and preserve the form.
+- [x] 1.5 Extend `metricScopeFilterIndependence.test.tsx` to change every lower filter independently and together while asserting all four General overview values remain identical and only list/CSV change.
 - [ ] 1.6 Add a table-driven ingress parity suite for manual, edit, AI, recurring, account adjustment, debt adapter, delete, and undo against the same monetary invariants.
 
 ## Task 2: Make server-confirmed readiness explicit
 
-- [ ] 2.1 Subscribe to the transaction head with metadata changes and expose `transactionsServerSettled`, unresolved reason, and retry state from `useFirestoreSubscriptions`/`FirestoreContext`.
-- [ ] 2.2 Update `useBalanceTransactions` so short cache snapshots cannot disable the full-history decision or return `ready=true`; preserve the current efficient path after short server confirmation.
-- [ ] 2.3 Propagate authoritative readiness through `FinanceContext` and selectors without coupling it to Transaction filter or pagination UI state.
-- [ ] 2.4 Replace add/edit validation omission with a reusable preflight that blocks only balance-sensitive intents and returns the confident, actionable settling copy.
-- [ ] 2.5 Re-run readiness, pagination-corruption, settling UI, add, edit, adjustment, export, and metric-scope suites before changing writers.
+- [x] 2.1 Subscribe to the transaction head with metadata changes and expose `transactionsServerSettled`, unresolved reason, and retry state from `useFirestoreSubscriptions`/`FirestoreContext`.
+- [x] 2.2 Update `useBalanceTransactions` so short cache snapshots cannot disable the full-history decision or return `ready=true`; preserve the current efficient path after short server confirmation.
+- [x] 2.3 Propagate authoritative readiness through `FinanceContext` and selectors without coupling it to Transaction filter or pagination UI state.
+- [x] 2.4 Replace add/edit validation omission with a reusable preflight that blocks only balance-sensitive intents and returns the confident, actionable settling copy.
+- [x] 2.5 Re-run readiness, pagination-corruption, settling UI, add, edit, adjustment, export, and metric-scope suites before changing writers.
 
 ## Task 3: Build the pure ledger mutation planner
 

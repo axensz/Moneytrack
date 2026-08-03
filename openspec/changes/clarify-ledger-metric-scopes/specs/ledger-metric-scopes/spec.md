@@ -29,6 +29,7 @@ the period or as-of scope needed to interpret each figure.
 #### Scenario: User reads overview labels
 - **WHEN** the overview is visible
 - **THEN** the user MUST be able to distinguish current balance, current-month flow, and current outstanding values without opening a filter
+- **THEN** the visible outstanding label MUST read `Pendiente`, while its contextual help MUST continue explaining that the value is current used credit across credit-card accounts
 
 ### Requirement: General overview belongs to Transactions
 The system MUST render the global overview only in the Transactions surface and

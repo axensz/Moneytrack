@@ -36,7 +36,7 @@ describe('StatsCards', () => {
     expect(screen.getByText('Saldo actual')).toBeInTheDocument();
     expect(screen.getByText(/Ingresos.*mes actual/)).toBeInTheDocument();
     expect(screen.getByText(/Gastos.*mes actual/)).toBeInTheDocument();
-    expect(screen.getByText(/Pendiente actual.*tarjetas de crédito/)).toBeInTheDocument();
+    expect(screen.getByText('Pendiente')).toBeInTheDocument();
     expect(screen.getByTitle(/Crédito usado actual.*no en Gastos/)).toBeInTheDocument();
   });
 

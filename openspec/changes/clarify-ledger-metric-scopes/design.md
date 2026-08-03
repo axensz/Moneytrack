@@ -43,6 +43,10 @@ state.
   accounts. It does not expand to loans, recurring payments, or other
   obligations.
 
+The visible card label is shortened to `Pendiente` to keep the summary easy to
+scan. The existing contextual help retains the precise credit-card scope, so
+the copy change does not broaden the metric or alter its calculation.
+
 Account, category, date, and search controls in Transactions will not alter
 this overview.
 

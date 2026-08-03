@@ -5,7 +5,7 @@
 
 import { logger } from '../utils/logger';
 import { formatCurrency } from '../utils/formatters';
-import { getNextDueDate, getCycleWindow, cycleKey } from '../utils/recurringDates';
+import { calendarDayDifference, getScheduledDueDate, getCycleWindow, cycleKey } from '../utils/recurringDates';
 import type { RecurringPayment, Transaction, Notification } from '../types/finance';
 import { viewActionUrl } from '../hooks/useViewRouting';
 
@@ -18,6 +18,7 @@ interface PaymentMonitorDeps {
 export class PaymentMonitor {
     public deps: PaymentMonitorDeps;
     private lastCheckDate: Date | null = null;
+    private lastCheckState: string | null = null;
 
     constructor(deps: PaymentMonitorDeps) {
         this.deps = deps;
@@ -29,6 +30,7 @@ export class PaymentMonitor {
      */
     async checkUpcomingPayments(): Promise<void> {
         try {
+            const currentState = this.getCurrentState();
             // Only run once per day
             if (this.lastCheckDate) {
                 const today = new Date();
@@ -36,7 +38,8 @@ export class PaymentMonitor {
                 if (
                     today.getDate() === lastCheck.getDate() &&
                     today.getMonth() === lastCheck.getMonth() &&
-                    today.getFullYear() === lastCheck.getFullYear()
+                    today.getFullYear() === lastCheck.getFullYear() &&
+                    this.lastCheckState === currentState
                 ) {
                     logger.info('Payment check already run today, skipping');
                     return;
@@ -55,7 +58,7 @@ export class PaymentMonitor {
                     continue; // Skip if already paid for current period
                 }
 
-                // Generate reminders based on days until due
+                // Cadencia aprobada: D-3, D-1, D0 y D+1/D+8/D+15.
                 if (daysUntilDue === 0) {
                     // Due today
                     await this.deps.createNotification({
@@ -98,10 +101,25 @@ export class PaymentMonitor {
                             amount: payment.amount,
                         },
                     });
+                } else if ([-1, -8, -15].includes(daysUntilDue)) {
+                    const overdueDays = Math.abs(daysUntilDue);
+                    await this.deps.createNotification({
+                        type: 'recurring',
+                        title: `Pago vencido: ${payment.name}`,
+                        message: `El pago de ${formatCurrency(payment.amount)} venció hace ${overdueDays} ${overdueDays === 1 ? 'día' : 'días'}`,
+                        severity: 'error',
+                        isRead: false,
+                        actionUrl: viewActionUrl('recurring'),
+                        metadata: {
+                            recurringPaymentId: payment.id,
+                            amount: payment.amount,
+                        },
+                    });
                 }
             }
 
             this.lastCheckDate = new Date();
+            this.lastCheckState = currentState;
             logger.info('Payment check completed', { paymentsChecked: activePayments.length });
         } catch (error) {
             logger.error('Payment monitor check failed', error);
@@ -113,14 +131,7 @@ export class PaymentMonitor {
      */
     getDaysUntilDue(payment: RecurringPayment): number {
         const today = new Date();
-        // Util compartido con la vista: fin de mes (clamp) + anual anclado en createdAt.
-        const nextDueDate = getNextDueDate(payment);
-
-        // Calculate difference in days
-        const diffTime = nextDueDate.getTime() - today.getTime();
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-        return diffDays;
+        return calendarDayDifference(today, getScheduledDueDate(payment, today));
     }
 
     /**
@@ -148,10 +159,25 @@ export class PaymentMonitor {
         });
     }
 
+    /** Solo los datos que cambian el estado de un recordatorio reabren el guard diario. */
+    private getCurrentState(): string {
+        return JSON.stringify({
+            payments: this.deps.recurringPayments.map(({ id, dueDay, frequency, isActive, createdAt }) => [
+                id, dueDay, frequency, isActive, createdAt ? new Date(createdAt).getTime() : null,
+            ]),
+            transactions: this.deps.transactions
+                .filter((t) => t.recurringPaymentId)
+                .map(({ id, recurringPaymentId, recurringCycle, paid, date }) => [
+                    id, recurringPaymentId, recurringCycle, paid, new Date(date).getTime(),
+                ]),
+        });
+    }
+
     /**
      * Reset last check date (useful for testing)
      */
     resetLastCheck(): void {
         this.lastCheckDate = null;
+        this.lastCheckState = null;
     }
 }

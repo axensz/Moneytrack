@@ -53,6 +53,8 @@ interface UseNotificationMonitoringProps {
     accounts: Account[];
     debts: Debt[];
     notificationManager: NotificationManager;
+    /** No evalúa placeholders mientras las fuentes autenticadas se hidratan. */
+    isHydrated?: boolean;
 }
 
 export function useNotificationMonitoring({
@@ -64,6 +66,7 @@ export function useNotificationMonitoring({
     accounts,
     debts,
     notificationManager,
+    isHydrated = true,
 }: UseNotificationMonitoringProps) {
     const txsForBalance = balanceTransactions ?? transactions;
     const prevTransactionIdsRef = useRef<Set<string>>(new Set());
@@ -182,6 +185,7 @@ export function useNotificationMonitoring({
     // idempotente: solo dispara al cruzar de día.
     useEffect(() => {
         const runDailyChecks = async () => {
+            if (!isHydrated) return;
             if (!monitorsRef.current.paymentMonitor || !monitorsRef.current.debtMonitor) return;
             try {
                 await monitorsRef.current.paymentMonitor?.checkUpcomingPayments();
@@ -199,7 +203,7 @@ export function useNotificationMonitoring({
         };
         document.addEventListener('visibilitychange', onVisible);
         return () => document.removeEventListener('visibilitychange', onVisible);
-    }, [notificationManager]);
+    }, [notificationManager, isHydrated, recurringPayments, transactions]);
 
     // Al cambiar de usuario (guest→login o cambio de cuenta sin recargar) se
     // reinicia el set de ids previos. Sin esto, las transacciones del nuevo

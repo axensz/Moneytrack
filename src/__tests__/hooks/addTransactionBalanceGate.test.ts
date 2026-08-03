@@ -2,10 +2,9 @@
  * useAddTransaction — gate de balancesReady (#3).
  *
  * El alta validaba el saldo contra `balanceTransactions`, pero NO estaba gateada
- * por balancesReady (a diferencia de la edición y el ajuste de cuenta). Mientras
- * el historial completo asienta, el array es la ventana paginada incompleta →
- * se rechazaban gastos LEGÍTIMOS con un falso "Saldo insuficiente". Ahora, con
- * balancesReady=false, se omite la validación de saldo/cupo.
+ * por balancesReady. Mientras el historial completo asienta, el array puede
+ * ser una ventana paginada incompleta: las mutaciones que reducen saldo deben
+ * bloquearse antes del writer y conservar el formulario.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
@@ -143,13 +142,16 @@ describe('useAddTransaction — gate de balancesReady (#3)', () => {
     expect(M.toastErrors.join(' ')).toMatch(/insuficiente/i);
   });
 
-  it('con saldos sin asentar (ready=false) NO valida saldo: guarda sin falso rechazo', async () => {
+  it('con saldos sin asentar bloquea el gasto antes del writer y conserva el formulario', async () => {
     const params = makeParams({ balancesReady: false });
     const { result } = renderHook(() => useAddTransaction(params));
     await act(async () => { await result.current.handleAddTransaction(expense150k); });
 
-    expect(params.addTransaction).toHaveBeenCalledTimes(1);
-    expect(M.toastErrors).toHaveLength(0);
+    expect(params.addTransaction).not.toHaveBeenCalled();
+    expect(params.addCreditPaymentAtomic).not.toHaveBeenCalled();
+    expect(params.setNewTransaction).not.toHaveBeenCalled();
+    expect(params.setShowForm).not.toHaveBeenCalled();
+    expect(M.toastErrors.join(' ')).toMatch(/conciliando.*historial/i);
   });
 
   it('doble submit concurrente crea UNA sola transacción (#tx-3)', async () => {

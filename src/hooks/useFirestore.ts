@@ -17,7 +17,9 @@ export function useFirestore(userId: string | null) {
     recurringPayments, debts, budgets, savingsGoals,
     notifications, notificationPreferences,
     loading, error,
-    hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions, retryLoad,
+    hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
+    transactionsServerSettled, transactionsUnresolvedReason, transactionsRetrying,
+    retryLoad,
   } = useFirestoreSubscriptions(userId);
 
   const { addTransaction, addCreditPaymentAtomic, deleteTransaction, updateTransaction } =
@@ -33,7 +35,9 @@ export function useFirestore(userId: string | null) {
     recurringPayments, debts, budgets, savingsGoals,
     notifications, notificationPreferences,
     loading, error,
-    hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions, retryLoad,
+    hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
+    transactionsServerSettled, transactionsUnresolvedReason, transactionsRetrying,
+    retryLoad,
     // Transactions CRUD
     addTransaction, addCreditPaymentAtomic, deleteTransaction, updateTransaction,
     // Accounts CRUD

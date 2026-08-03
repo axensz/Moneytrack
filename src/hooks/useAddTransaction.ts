@@ -19,6 +19,10 @@ import { calculateInterest } from '../utils/interestCalculator';
 import { parseDateWithTime, parseCurrency, roundMoney } from '../utils/formatters';
 import { cycleKey } from '../utils/recurringDates';
 import {
+  balanceReadinessBlock,
+  isBalanceSensitiveCreate,
+} from '../utils/ledgerReadiness';
+import {
   SUCCESS_MESSAGES,
   ERROR_MESSAGES,
   TRANSFER_CATEGORY,
@@ -131,6 +135,15 @@ export function useAddTransaction({
         return false;
       }
 
+      const readinessError = balanceReadinessBlock(
+        balancesReady,
+        isBalanceSensitiveCreate(newTransaction, selectedAccount),
+      );
+      if (readinessError) {
+        showToast.error(readinessError);
+        return false;
+      }
+
       // Validación usando Strategy Pattern. Mientras el historial completo no
       // asienta (balancesReady=false) se OMITE la validación de saldo/cupo
       // (transactions=undefined): de otro modo se valida contra la ventana
@@ -174,11 +187,6 @@ export function useAddTransaction({
         amount + (creditInterestResult?.totalInterestAmount ?? 0)
       );
 
-      if (selectedAccount.type === 'credit' && newTransaction.type === 'income' && !balancesReady) {
-        showToast.error('Los saldos aún se están calculando. Intenta el pago nuevamente en unos segundos.');
-        return false;
-      }
-
       const validation = TransactionValidator.validate(
         { ...newTransaction, amount: validationAmount.toString() },
         selectedAccount,
@@ -193,10 +201,6 @@ export function useAddTransaction({
       if (newTransaction.type === 'transfer' && newTransaction.toAccountId) {
         const destination = accounts.find(account => account.id === newTransaction.toAccountId);
         if (destination?.type === 'credit') {
-          if (!balancesReady) {
-            showToast.error('Los saldos aún se están calculando. Intenta la transferencia nuevamente en unos segundos.');
-            return false;
-          }
           const destinationValidation = TransactionValidator.validate(
             {
               ...newTransaction,
@@ -305,10 +309,6 @@ export function useAddTransaction({
         ) {
           const sourceAccount = accounts.find(acc => acc.id === newTransaction.toAccountId);
           if (sourceAccount) {
-            if (!balancesReady) {
-              showToast.error('Los saldos aún se están calculando. Intenta el pago nuevamente en unos segundos.');
-              return false;
-            }
             const sourceValidation = TransactionValidator.validate(
               {
                 type: 'expense',

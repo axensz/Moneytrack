@@ -71,6 +71,15 @@ function FilterScopeHarness() {
       <button type="button" onClick={() => { reset(); setFilterCategory('Comida'); }}>Categoría</button>
       <button type="button" onClick={() => { reset(); setDateRangePreset('custom'); setCustomStartDate('2026-07-15'); setCustomEndDate('2026-07-15'); }}>Fecha</button>
       <button type="button" onClick={() => { reset(); view.setSearchQuery('MERCADO'); }}>Búsqueda</button>
+      <button type="button" onClick={() => {
+        reset();
+        setFilterAccount('a');
+        setFilterCategory('Comida');
+        setDateRangePreset('custom');
+        setCustomStartDate('2026-07-15');
+        setCustomEndDate('2026-07-15');
+        view.setSearchQuery('MERCADO');
+      }}>Todos</button>
     </>
   );
 }
@@ -87,7 +96,7 @@ describe('Transaction filter scope', () => {
     expect(overview).toHaveTextContent('1000|100|100|0');
     expect(screen.getByTestId('visible-results')).toHaveTextContent('5');
 
-    for (const [label, expectedCount] of [['Cuenta', '4'], ['Categoría', '3'], ['Fecha', '4'], ['Búsqueda', '3']] as const) {
+    for (const [label, expectedCount] of [['Cuenta', '4'], ['Categoría', '3'], ['Fecha', '4'], ['Búsqueda', '3'], ['Todos', '1']] as const) {
       fireEvent.click(screen.getByRole('button', { name: label }));
       expect(screen.getByTestId('visible-results')).toHaveTextContent(expectedCount);
       expect(overview).toHaveTextContent('1000|100|100|0');

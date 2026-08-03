@@ -18,6 +18,10 @@ import { calculateInterest } from '../../../../utils/interestCalculator';
 import { showToast } from '../../../../utils/toastHelpers';
 import { logger } from '../../../../utils/logger';
 import { SUCCESS_MESSAGES } from '../../../../config/constants';
+import {
+  balanceReadinessBlock,
+  isBalanceSensitiveEdit,
+} from '../../../../utils/ledgerReadiness';
 
 interface UseTransactionsViewParams {
   transactions: Transaction[];
@@ -273,8 +277,12 @@ export const useTransactionsView = ({
       const amount = parseCurrency(editForm.amount);
       const original = transactions.find((t) => t.id === id);
       const account = original ? accountsById.get(original.accountId) : undefined;
-      if (original?.linkedTransactionId && !balancesReady) {
-        showToast.error('Los saldos aún se están calculando. Intenta editar el pago nuevamente en unos segundos.');
+      const readinessError = original && balanceReadinessBlock(
+        balancesReady,
+        isBalanceSensitiveEdit(original, amount, account),
+      );
+      if (readinessError) {
+        showToast.error(readinessError);
         return;
       }
       const amountChanged = original

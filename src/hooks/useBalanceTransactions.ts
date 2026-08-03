@@ -44,6 +44,7 @@ export function useBalanceTransactions(
   userId: string | null,
   liveTransactions: Transaction[],
   hasMoreTransactions: boolean,
+  transactionsServerSettled = !userId,
 ): BalanceTransactionsResult {
   // Al llegar al final de las páginas, hasMore pasa a false aunque la colección
   // siga siendo grande. Mantener el listener si ya hay un head completo evita
@@ -54,5 +55,8 @@ export function useBalanceTransactions(
     requiresFullHistory ? userId : null,
     liveTransactions,
   );
-  return { transactions, ready: settled };
+  return {
+    transactions,
+    ready: !userId || (requiresFullHistory ? settled : transactionsServerSettled),
+  };
 }

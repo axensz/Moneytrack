@@ -66,6 +66,9 @@ export interface FinanceContextValue {
    * debe mostrar "calculando" y bloquear el ajuste de saldo hasta que sea true.
    */
   balancesReady: boolean;
+  transactionsServerSettled: boolean;
+  transactionsUnresolvedReason: 'cache' | 'pending-writes' | 'error' | null;
+  transactionsRetrying: boolean;
   accounts: Account[];
   categories: Categories;
   transactionBeneficiaries: string[];
@@ -193,7 +196,16 @@ interface FinanceProviderProps {
 export function FinanceProvider({ userId, children }: FinanceProviderProps) {
   // Centralized Firestore data (all 7 collections from a single set of listeners)
   const firestoreData = useFirestoreData();
-  const { hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions, retryLoad, error: firestoreError } = firestoreData;
+  const {
+    hasMoreTransactions,
+    loadingMoreTransactions,
+    loadMoreTransactions,
+    transactionsServerSettled,
+    transactionsUnresolvedReason,
+    transactionsRetrying,
+    retryLoad,
+    error: firestoreError,
+  } = firestoreData;
 
   // 1. Transacciones (base de todo)
   const {
@@ -211,7 +223,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
   // expulsa a la más antigua y el saldo salta por el monto expulsado). Solo
   // fetchea cuando la ventana está saturada; con <500 txs devuelve el array live.
   const { transactions: balanceTransactions, ready: balancesReady } =
-    useBalanceTransactions(userId, transactions, hasMoreTransactions);
+    useBalanceTransactions(userId, transactions, hasMoreTransactions, transactionsServerSettled);
 
   // 2. Cuentas (depende de balanceTransactions + deleteTransaction)
   const {
@@ -348,6 +360,9 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     transactions,
     balanceTransactions,
     balancesReady,
+    transactionsServerSettled,
+    transactionsUnresolvedReason,
+    transactionsRetrying,
     accounts,
     categories,
     transactionBeneficiaries,
@@ -434,7 +449,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     // Utilidades
     formatCurrency,
   }), [
-    transactions, balanceTransactions, balancesReady, accounts, categories, transactionBeneficiaries, recurringPayments, defaultAccount, totalBalance,
+    transactions, balanceTransactions, balancesReady, transactionsServerSettled, transactionsUnresolvedReason, transactionsRetrying, accounts, categories, transactionBeneficiaries, recurringPayments, defaultAccount, totalBalance,
     transactionsLoading, accountsLoading,
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
     firestoreError, retryLoad,

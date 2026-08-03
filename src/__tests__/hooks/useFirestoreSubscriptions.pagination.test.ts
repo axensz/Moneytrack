@@ -16,7 +16,12 @@ type FakeSource = {
 const firestoreState = vi.hoisted(() => ({
   listeners: [] as Array<{
     source: FakeSource;
-    next: (snapshot: { docs: FakeDocument[]; exists?: () => boolean; data?: () => Record<string, unknown> }) => void;
+    next: (snapshot: {
+      docs: FakeDocument[];
+      metadata: { fromCache: boolean; hasPendingWrites: boolean };
+      exists?: () => boolean;
+      data?: () => Record<string, unknown>;
+    }) => void;
   }>,
   getDocs: vi.fn(),
 }));
@@ -35,8 +40,11 @@ vi.mock('firebase/firestore', () => ({
   startAfter: (cursor: FakeDocument) => ({ type: 'startAfter', cursor }),
   onSnapshot: (
     source: FakeSource,
-    next: (snapshot: { docs: FakeDocument[] }) => void
+    optionsOrNext: Record<string, unknown> | ((snapshot: { docs: FakeDocument[] }) => void),
+    nextOrError?: ((snapshot: { docs: FakeDocument[] }) => void) | ((error: Error) => void),
+    maybeError?: (error: Error) => void,
   ) => {
+    const next = typeof optionsOrNext === 'function' ? optionsOrNext : nextOrError as (snapshot: { docs: FakeDocument[] }) => void;
     firestoreState.listeners.push({ source, next });
     return () => {};
   },
@@ -61,7 +69,16 @@ const transactionDocument = (id: string, offsetDays: number): FakeDocument => ({
   }),
 });
 
-const transactionSnapshot = (docs: FakeDocument[]) => ({ docs });
+const transactionSnapshot = (
+  docs: FakeDocument[],
+  metadata: Partial<{ fromCache: boolean; hasPendingWrites: boolean }> = {},
+) => ({
+  docs,
+  metadata: {
+    fromCache: metadata.fromCache ?? false,
+    hasPendingWrites: metadata.hasPendingWrites ?? false,
+  },
+});
 
 const findListener = (suffix: string) => {
   const listener = firestoreState.listeners.find(item => item.source.path.endsWith(suffix));
@@ -130,6 +147,26 @@ describe('useFirestoreSubscriptions — paginación', () => {
     expect((startConstraint?.cursor as FakeDocument).id).toBe('older-499');
     expect(result.current.transactions.filter(item => item.id === 'older-10')).toHaveLength(1);
     expect(result.current.transactions.some(item => item.id === 'older-final')).toBe(true);
+  });
+
+  it('mantiene la autoridad sin asentar hasta recibir un head corto confirmado por servidor', () => {
+    const { result } = renderHook(() => useFirestoreSubscriptions('user-1'));
+    const cachedHead = [transactionDocument('cached', 0)];
+
+    act(() => {
+      findListener('/transactions').next(transactionSnapshot(cachedHead, { fromCache: true }));
+    });
+
+    expect(result.current.transactions).toHaveLength(1);
+    expect(result.current.transactionsServerSettled).toBe(false);
+    expect(result.current.transactionsUnresolvedReason).toBe('cache');
+
+    act(() => {
+      findListener('/transactions').next(transactionSnapshot(cachedHead));
+    });
+
+    expect(result.current.transactionsServerSettled).toBe(true);
+    expect(result.current.transactionsUnresolvedReason).toBeNull();
   });
 
   it('actualiza y elimina elementos antiguos cargados sin que reaparezcan con el snapshot realtime', async () => {

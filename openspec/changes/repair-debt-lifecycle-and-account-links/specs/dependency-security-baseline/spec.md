@@ -46,7 +46,7 @@ Security remediation MUST NOT enable a Next.js server feature that the GitHub Pa
 - **THEN** no middleware, proxy, Server Action, rewrite, custom server, or Image Optimization API is introduced
 
 ### Requirement: Dependency update remains focused and reproducible
-The remediation MUST change only direct security floors, required overrides, transitive lock resolutions needed for a secure tree, and the official rules-emulator test dependency.
+Within the root frontend manifest and dependency tree, the remediation MUST change only direct security floors, required overrides, transitive lock resolutions needed for a secure tree, and the official rules-emulator test dependency.
 
 #### Scenario: Install from the lockfile
 - **WHEN** CI runs `npm ci` on Node.js 22
@@ -54,6 +54,6 @@ The remediation MUST change only direct security floors, required overrides, tra
 - **THEN** typecheck, lint, tests, and build use the same resolved versions
 
 #### Scenario: Review manifest scope
-- **WHEN** the dependency diff is reviewed
-- **THEN** no new runtime package or unrelated major upgrade is present
-- **THEN** `@firebase/rules-unit-testing` `^5.0.1` is the only new development package
+- **WHEN** the root frontend dependency diff is reviewed
+- **THEN** no new root runtime package or unrelated major upgrade is present
+- **THEN** `@firebase/rules-unit-testing` `^5.0.1` is the only new development package in the root frontend manifest

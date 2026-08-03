@@ -25,7 +25,7 @@ Al 2 de agosto de 2026, GitHub reporta 17 alertas abiertas. Una simulación aisl
 - No rediseñar `DebtsView`, navegación, tarjetas o cálculos estadísticos.
 - No migrar pagos históricos a otra cuenta ni cambiar su importe, fecha o categoría.
 - No habilitar middleware, Server Actions, rewrites, servidor personalizado u optimización de imágenes.
-- No actualizar dependencias de runtime ajenas a las alertas, salvo las resoluciones transitivas inevitables del lockfile. La única dependencia nueva será `@firebase/rules-unit-testing` para el contrato del emulador.
+- No actualizar dependencias de runtime del frontend raíz ajenas a las alertas, salvo las resoluciones transitivas inevitables de su lockfile. La única dependencia nueva en ese paquete raíz será `@firebase/rules-unit-testing` para el contrato del emulador; esta restricción no define manifests aislados de backends futuros.
 - No eliminar ni modificar “Isabella — Celular” durante la implementación sin una nueva autorización expresa.
 
 ## Decisions

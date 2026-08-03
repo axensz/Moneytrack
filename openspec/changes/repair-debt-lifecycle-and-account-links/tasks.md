@@ -31,7 +31,7 @@
 ## 5. Dependency security baseline
 
 - [x] 5.1 Update `package.json` floors to `next`/`eslint-config-next` `^16.2.12` and `postcss`/its override `^8.5.25`, add the sharp `^0.35.3` override, and refresh only the required lock resolutions; confirm protobufjs ≥7.6.5, js-yaml ≥4.3.1, and brace-expansion lines ≥1.1.18/2.1.4/5.0.9 with `npm ls`.
-- [x] 5.2 Run a clean `npm ci` on Node.js 22 followed by `npm audit --json`; require exit code 0 and zero vulnerabilities, and inspect `package.json`/`package-lock.json` to ensure no new runtime package or unrelated major upgrade was introduced.
+- [x] 5.2 Run a clean `npm ci` on Node.js 22 followed by `npm audit --json`; require exit code 0 and zero vulnerabilities, and inspect the root `package.json`/`package-lock.json` to ensure no new root runtime package or unrelated major upgrade was introduced.
 - [x] 5.3 Re-run the Next.js surface check (`use server`, middleware/proxy files, rewrites, custom server, image optimizer) and verify `next.config.ts` still has `output: 'export'` and `images.unoptimized: true` after the dependency update.
 
 ## 6. Integrated validation and delivery evidence

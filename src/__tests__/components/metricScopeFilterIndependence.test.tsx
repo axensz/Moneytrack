@@ -2,6 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useLedgerOverview } from '../../hooks/useGlobalStats';
+import { useCSVExport } from '../../hooks/useCSVExport';
 import { useTransactionsView } from '../../components/views/transactions/hooks/useTransactionsView';
 import type { Account, DateRangePreset, Transaction } from '../../types/finance';
 
@@ -37,6 +38,7 @@ function FilterScopeHarness() {
   const [customStartDate, setCustomStartDate] = React.useState('');
   const [customEndDate, setCustomEndDate] = React.useState('');
   const overview = useLedgerOverview(history, accounts, 1_000);
+  const { exportTransactionsCSV } = useCSVExport();
   const view = useTransactionsView({
     transactions: history,
     balanceTransactions: history,
@@ -68,6 +70,7 @@ function FilterScopeHarness() {
       <output data-testid="overview">{`${overview.totalBalance}|${overview.totalIncome}|${overview.totalExpenses}|${overview.pendingExpenses}`}</output>
       <output data-testid="visible-results">{view.filteredTransactions.length}</output>
       <output data-testid="csv-results">{view.filteredBalanceTransactions.length}</output>
+      <button type="button" onClick={() => exportTransactionsCSV(view.filteredBalanceTransactions, accounts)}>Exportar CSV real</button>
       <button type="button" onClick={() => { reset(); setFilterAccount('a'); }}>Cuenta</button>
       <button type="button" onClick={() => { reset(); setFilterCategory('Comida'); }}>Categoría</button>
       <button type="button" onClick={() => { reset(); setDateRangePreset('custom'); setCustomStartDate('2026-07-15'); setCustomEndDate('2026-07-15'); }}>Fecha</button>
@@ -85,7 +88,11 @@ function FilterScopeHarness() {
   );
 }
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe('Transaction filter scope', () => {
   it('keeps the rendered overview stable while each real Transaction criterion changes the visible result', () => {
@@ -104,5 +111,37 @@ describe('Transaction filter scope', () => {
       expect(screen.getByTestId('csv-results')).toHaveTextContent(expectedCount);
       expect(overview).toHaveTextContent('1000|100|100|0');
     }
+  });
+
+  it('exports the actual filtered CSV without changing the General overview', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 20, 12));
+    class CapturedBlob {
+      readonly text: string;
+
+      constructor(parts: unknown[]) {
+        this.text = parts.join('');
+      }
+    }
+    const blobs: CapturedBlob[] = [];
+    const createObjectURL = vi.fn((blob: CapturedBlob) => {
+      blobs.push(blob);
+      return 'blob:csv';
+    });
+    vi.stubGlobal('Blob', CapturedBlob);
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL: vi.fn() });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+
+    render(<FilterScopeHarness />);
+    fireEvent.click(screen.getByRole('button', { name: 'Todos' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Exportar CSV real' }));
+
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    const csv = blobs[0].text;
+    expect(csv).toContain('Mercado');
+    expect(csv).not.toContain('NÃ³mina');
+    expect(csv).not.toContain('PanaderÃ­a');
+    expect(screen.getByTestId('overview')).toHaveTextContent('1000|100|100|0');
   });
 });

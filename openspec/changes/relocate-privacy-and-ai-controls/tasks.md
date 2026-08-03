@@ -34,10 +34,10 @@
 
 - [x] 6.1 Amend the SDD and add a failing `Header` behavior test proving the `MoneyTrack` brand is a named native action with a 44px target that invokes the Transactions callback.
 - [x] 6.2 Wire the brand action to the existing `setView('transactions')` path without adding routes, state, dependencies, or a duplicate navigation implementation.
-- [ ] 6.3 Run focused and broad validation, rebuild the graph, update PR #76, and confirm the refreshed CI checks.
+- [x] 6.3 Run focused and broad validation, rebuild the graph, update PR #76, and confirm the refreshed CI checks.
 
 ## 7. Global pointer affordance
 
 - [x] 7.1 Add a failing design-system contract covering pointer cursors for semantic actions and blocked cursors for disabled controls.
 - [x] 7.2 Add the minimal global semantic selectors in `utilities.css`, without styling non-interactive containers or introducing a dependency.
-- [ ] 7.3 Verify computed cursors in the browser, re-run broad validation, and publish the combined refinement through PR #76.
+- [x] 7.3 Verify computed cursors in the browser, re-run broad validation, and publish the combined refinement through PR #76.

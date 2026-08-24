@@ -96,6 +96,14 @@ export interface FinanceContextValue {
     creditTx: Omit<Transaction, 'id' | 'createdAt'>,
     sourceTx: Omit<Transaction, 'id' | 'createdAt'>
   ) => Promise<void>;
+  addRecurringTransactionAtomic: (
+    tx: Omit<Transaction, 'id' | 'createdAt'>
+  ) => Promise<void>;
+  linkRecurringTransactionAtomic: (
+    transactionId: string,
+    recurringPaymentId: string,
+    recurringCycle: string
+  ) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
   updateTransaction: (id: string, updates: Partial<Transaction>) => Promise<void>;
 
@@ -218,6 +226,8 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     transactions,
     addTransaction,
     addCreditPaymentAtomic,
+    addRecurringTransactionAtomic,
+    linkRecurringTransactionAtomic,
     deleteTransaction,
     updateTransaction,
     loading: transactionsLoading,
@@ -263,7 +273,11 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     isOverdue,
     getPaymentHistory,
     stats: recurringStats,
-  } = useRecurringPayments(userId, transactions, userId ? firestoreData.recurringPayments : undefined);
+  } = useRecurringPayments(
+    userId,
+    balanceTransactions,
+    userId ? firestoreData.recurringPayments : undefined
+  );
 
   // 4. Categorías (depende de transactions)
   const { categories, addCategory, deleteCategory } = useCategories(transactions, userId);
@@ -393,6 +407,8 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     // Transaction CRUD
     addTransaction,
     addCreditPaymentAtomic,
+    addRecurringTransactionAtomic,
+    linkRecurringTransactionAtomic,
     deleteTransaction: deleteTransactionWithDebtSync,
     updateTransaction,
 
@@ -460,7 +476,8 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     transactionsLoading, accountsLoading,
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
     firestoreError, retryLoad,
-    addTransaction, addCreditPaymentAtomic, deleteTransactionWithDebtSync, updateTransaction,
+    addTransaction, addCreditPaymentAtomic, addRecurringTransactionAtomic, linkRecurringTransactionAtomic,
+    deleteTransactionWithDebtSync, updateTransaction,
     addAccount, updateAccount, deleteAccount, mergeCreditCards, setDefaultAccount,
     getAccountBalance, getCreditUsed, getTransactionCountForAccount,
     addCategory, deleteCategory, addTransactionBeneficiary, deleteTransactionBeneficiary,

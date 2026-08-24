@@ -60,7 +60,9 @@ interface UseAddTransactionParams {
     creditTx: Omit<Transaction, 'id' | 'createdAt'>,
     sourceTx: Omit<Transaction, 'id' | 'createdAt'>
   ) => Promise<void>;
-  updateRecurringPayment: (id: string, updates: Partial<RecurringPayment>) => Promise<void>;
+  addRecurringTransactionAtomic: (
+    transaction: Omit<Transaction, 'id' | 'createdAt'>
+  ) => Promise<void>;
   setNewTransaction: (transaction: NewTransaction) => void;
   setShowForm: (show: boolean) => void;
   setShowWelcomeModal: (show: boolean) => void;
@@ -77,7 +79,7 @@ export function useAddTransaction({
   balancesReady = true,
   addTransaction,
   addCreditPaymentAtomic,
-  updateRecurringPayment,
+  addRecurringTransactionAtomic,
   setNewTransaction,
   setShowForm,
   setShowWelcomeModal,
@@ -232,16 +234,11 @@ export function useAddTransaction({
           return false;
         }
 
-        // Pago periódico elegido (si hay): se usa para actualizar el monto base
-        // y para estampar el ciclo (recurringCycle) al construir la transacción.
+        // Pago periódico elegido (si hay): se estampa el ciclo y el writer
+        // autenticado actualiza monto base + última fecha dentro del mismo batch.
         const recurringPayment = newTransaction.recurringPaymentId
           ? recurringPayments.find((p) => p.id === newTransaction.recurringPaymentId)
           : undefined;
-
-        // Si el monto difiere del base, actualizarlo.
-        if (recurringPayment && recurringPayment.amount !== amount) {
-          await updateRecurringPayment(recurringPayment.id!, { amount });
-        }
 
         // Determinar categoría
         const isTCPayment = selectedAccount.type === 'credit' && newTransaction.type === 'income';
@@ -340,6 +337,8 @@ export function useAddTransaction({
             // Cuenta origen no encontrada — solo registrar el ingreso al crédito
             await addTransaction(transactionData);
           }
+        } else if (recurringPayment && transactionData.paid) {
+          await addRecurringTransactionAtomic(transactionData);
         } else {
           await addTransaction(transactionData);
         }
@@ -365,7 +364,7 @@ export function useAddTransaction({
       balancesReady,
       addTransaction,
       addCreditPaymentAtomic,
-      updateRecurringPayment,
+      addRecurringTransactionAtomic,
       setShowWelcomeModal,
     ]
   );

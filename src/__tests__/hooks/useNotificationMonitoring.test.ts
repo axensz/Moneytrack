@@ -195,6 +195,30 @@ describe('useNotificationMonitoring — guard anti-flood por paginación', () =>
     expect(debtSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('feeds the payment monitor with complete balance history instead of the paginated head', () => {
+    const head = [tx(new Date(2026, 5, 9))];
+    const historicalRecurring = tx(new Date(2025, 5, 9), {
+      id: 'historical-recurring',
+      recurringPaymentId: 'rent',
+      recurringCycle: '2025-5-5',
+    });
+    const complete = [...head, historicalRecurring];
+
+    const { result } = renderHook(() => useNotificationMonitoring({
+      userId: 'user1',
+      transactions: head,
+      balanceTransactions: complete,
+      budgets: [],
+      recurringPayments: [],
+      accounts: [],
+      debts: [],
+      notificationManager,
+      isHydrated: true,
+    }));
+
+    expect(result.current.monitors.paymentMonitor?.deps.transactions).toBe(complete);
+  });
+
   it('transacción sin createdAt (doc legacy vía paginación) NO dispara alertas', async () => {
     const initial = [tx(new Date(2026, 1, 1))];
     const { result, rerender } = mount(initial);

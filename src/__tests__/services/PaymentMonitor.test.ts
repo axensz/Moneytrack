@@ -108,6 +108,21 @@ describe('PaymentMonitor — umbrales de recordatorio (A3)', () => {
     expect(monitor.isAlreadyPaid(payment)).toBe(true);
   });
 
+  it('does not suppress a reminder for a pending transaction in the matching cycle', () => {
+    const payment = makePayment({ dueDay: 15 });
+    const monitor = new PaymentMonitor({
+      createNotification: vi.fn().mockResolvedValue(undefined),
+      recurringPayments: [payment],
+      transactions: [{
+        id: 'tx-pendiente', type: 'expense', amount: payment.amount, category: payment.category,
+        description: payment.name, date: new Date(2026, 5, 15), paid: false, accountId: 'acc1',
+        recurringPaymentId: payment.id, recurringCycle: '2026-5-15',
+      }],
+    });
+
+    expect(monitor.isAlreadyPaid(payment)).toBe(false);
+  });
+
   it('recalcula el ciclo el mismo día después de desvincular un pago persistido', async () => {
     const createNotification = vi.fn().mockResolvedValue(undefined);
     const payment = makePayment({ dueDay: 15 });

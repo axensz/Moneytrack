@@ -5,7 +5,8 @@
 
 import { logger } from '../utils/logger';
 import { formatCurrency } from '../utils/formatters';
-import { calendarDayDifference, getScheduledDueDate, getCycleWindow, cycleKey } from '../utils/recurringDates';
+import { calendarDayDifference, getScheduledDueDate } from '../utils/recurringDates';
+import { recurringTransactionSatisfiesCycle } from '../utils/recurringPayments';
 import type { RecurringPayment, Transaction, Notification } from '../types/finance';
 import { viewActionUrl } from '../hooks/useViewRouting';
 
@@ -145,18 +146,9 @@ export class PaymentMonitor {
     isAlreadyPaid(payment: RecurringPayment): boolean {
         if (!payment.id) return false;
 
-        const targetKey = cycleKey(payment);
-        const { start, end } = getCycleWindow(payment);
-        const startMs = start.getTime();
-        const endMs = end.getTime();
-
-        return this.deps.transactions.some((t) => {
-            if (t.recurringPaymentId !== payment.id || !t.paid) return false;
-            // Estampa explícita manda sobre la fecha (paridad con la vista).
-            if (t.recurringCycle) return t.recurringCycle === targetKey;
-            const tMs = new Date(t.date).getTime();
-            return tMs >= startMs && tMs < endMs;
-        });
+        return this.deps.transactions.some((transaction) => (
+            recurringTransactionSatisfiesCycle(payment, transaction)
+        ));
     }
 
     /** Solo los datos que cambian el estado de un recordatorio reabren el guard diario. */

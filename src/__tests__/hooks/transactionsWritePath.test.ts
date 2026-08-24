@@ -170,6 +170,7 @@ const UID = 'u1';
 const acctKey = (id: string) => `users/${UID}/accounts/${id}`;
 const txKey = (id: string) => `users/${UID}/transactions/${id}`;
 const debtKey = (id: string) => `users/${UID}/debts/${id}`;
+const recurringKey = (id: string) => `users/${UID}/recurringPayments/${id}`;
 
 const savings: Account = {
   id: 'sav', name: 'Ahorros', type: 'savings', isDefault: true, initialBalance: 1_000_000,
@@ -191,6 +192,15 @@ const seedTx = (id: string, data: Partial<Transaction>) =>
     accountId: 'sav',
     ...data,
   } as unknown as Record<string, unknown>);
+const seedRecurring = (id = 'rent') => mockState.store.set(recurringKey(id), {
+  name: 'Arriendo',
+  amount: 1_200,
+  category: 'Vivienda',
+  dueDay: 5,
+  frequency: 'monthly',
+  isActive: true,
+  createdAt: new Date('2026-01-01'),
+});
 
 const updatesOn = (key: string) => mockState.writeLog.filter(w => w.op === 'update' && w.key === key);
 const sets = () => mockState.writeLog.filter(w => w.op === 'set');
@@ -497,6 +507,191 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
         makeTx({ type: 'expense', amount: 150_000, accountId: 'sav', category: 'Pago Crédito' })
       )).rejects.toThrow(/pagar más/i);
       expect(sets()).toHaveLength(0);
+    });
+  });
+
+  describe('recurring cycle aggregate', () => {
+    const recurringDraft = (overrides: Partial<Transaction> = {}) => makeTx({
+      amount: 1_200,
+      category: 'Vivienda',
+      description: 'Arriendo',
+      date: new Date('2026-06-06T12:00:00'),
+      paid: true,
+      accountId: 'sav',
+      recurringPaymentId: 'rent',
+      recurringCycle: '2026-5-5',
+      ...overrides,
+    });
+
+    it('materializes one deterministic transaction and metadata across exact retries', async () => {
+      seedAccount(savings);
+      seedRecurring();
+      const crud = renderCRUD([]);
+
+      await crud.current.addRecurringTransactionAtomic(recurringDraft());
+      await crud.current.addRecurringTransactionAtomic(recurringDraft({
+        date: new Date('2026-06-06T12:00:01'),
+      }));
+
+      const operationId = 'ledger-mutation:recurring:rent:2026-5-5';
+      expect(mockState.batchCommits).toBe(1);
+      expect(mockState.store.get(txKey(operationId))).toMatchObject({
+        recurringPaymentId: 'rent',
+        recurringCycle: '2026-5-5',
+        mutationKind: 'recurring-post',
+        mutationSource: 'recurring',
+      });
+      expect(mockState.store.get(recurringKey('rent'))).toMatchObject({
+        amount: 1_200,
+        lastPaidAmount: 1_200,
+        lastPaidDate: new Date('2026-06-06T12:00:00'),
+      });
+      expect(cacheMutations).toHaveLength(2);
+    });
+
+    it('does not duplicate a paid legacy row outside the head', async () => {
+      seedAccount(savings);
+      seedRecurring();
+      seedTx('legacy-paid', {
+        amount: 1_150,
+        date: new Date('2026-06-06T08:00:00'),
+        recurringPaymentId: 'rent',
+        recurringCycle: undefined,
+      });
+      const crud = renderCRUD([]);
+
+      await crud.current.addRecurringTransactionAtomic(recurringDraft());
+
+      expect(sets().filter((entry) => entry.key.startsWith(`users/${UID}/transactions/`)))
+        .toHaveLength(0);
+      expect(mockState.store.get(recurringKey('rent'))).toMatchObject({
+        lastPaidAmount: 1_150,
+        lastPaidDate: new Date('2026-06-06T08:00:00'),
+      });
+    });
+
+    it('rejects a pending link target with zero writes', async () => {
+      seedAccount(savings);
+      seedRecurring();
+      seedTx('pending', { paid: false, recurringPaymentId: undefined });
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.linkRecurringTransactionAtomic(
+        'pending',
+        'rent',
+        '2026-5-5',
+      )).rejects.toThrow(/pagad[ao]/i);
+
+      expect(mockState.writeLog).toHaveLength(0);
+    });
+
+    it('rejects a cycle key that does not match the recurring due day', async () => {
+      seedAccount(savings);
+      seedRecurring();
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.addRecurringTransactionAtomic(recurringDraft({
+        recurringCycle: '2026-5-6',
+      }))).rejects.toThrow(/no corresponde/i);
+
+      expect(mockState.writeLog).toHaveLength(0);
+      expect(cacheMutations).toHaveLength(0);
+    });
+
+    it('links a paid expense and updates last-paid metadata in the same commit', async () => {
+      seedAccount(savings);
+      seedRecurring();
+      seedTx('existing', {
+        amount: 1_350,
+        date: new Date('2026-06-07T08:00:00'),
+        recurringPaymentId: undefined,
+      });
+      const crud = renderCRUD([]);
+
+      await crud.current.linkRecurringTransactionAtomic('existing', 'rent', '2026-5-5');
+
+      expect(mockState.batchCommits).toBe(1);
+      expect(mockState.store.get(txKey('existing'))).toMatchObject({
+        recurringPaymentId: 'rent',
+        recurringCycle: '2026-5-5',
+        mutationKind: 'recurring-post',
+      });
+      expect(mockState.store.get(recurringKey('rent'))).toMatchObject({
+        amount: 1_350,
+        lastPaidAmount: 1_350,
+        lastPaidDate: new Date('2026-06-07T08:00:00'),
+      });
+    });
+
+    it('keeps both transaction and recurring metadata unchanged when the batch fails', async () => {
+      seedAccount(savings);
+      seedRecurring();
+      mockState.failBatchCommit = true;
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.addRecurringTransactionAtomic(recurringDraft()))
+        .rejects.toThrow('batch rejected');
+
+      expect(mockState.store.has(txKey('ledger-mutation:recurring:rent:2026-5-5'))).toBe(false);
+      expect(mockState.store.get(recurringKey('rent'))).not.toHaveProperty('lastPaidDate');
+      expect(cacheMutations).toHaveLength(0);
+    });
+
+    it('recovers after a committed batch loses its acknowledgement', async () => {
+      seedAccount(savings);
+      seedRecurring();
+      mockState.failAfterBatchCommit = true;
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.addRecurringTransactionAtomic(recurringDraft()))
+        .resolves.toBeUndefined();
+
+      expect(mockState.batchCommits).toBe(1);
+      expect(mockState.store.has(txKey('ledger-mutation:recurring:rent:2026-5-5'))).toBe(true);
+      expect(cacheMutations).toHaveLength(1);
+    });
+
+    it('recovers a linked transaction after the commit acknowledgement is lost', async () => {
+      seedAccount(savings);
+      seedRecurring();
+      seedTx('existing-ack', { recurringPaymentId: undefined });
+      mockState.failAfterBatchCommit = true;
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.linkRecurringTransactionAtomic(
+        'existing-ack',
+        'rent',
+        '2026-5-5',
+      )).resolves.toBeUndefined();
+
+      expect(mockState.store.get(txKey('existing-ack'))).toMatchObject({
+        recurringPaymentId: 'rent',
+        recurringCycle: '2026-5-5',
+      });
+      expect(cacheMutations).toHaveLength(1);
+    });
+
+    it('can unlink and relink the same paid row without creating money', async () => {
+      seedAccount(savings);
+      seedRecurring();
+      seedTx('relink', { recurringPaymentId: undefined });
+      const crud = renderCRUD([]);
+
+      await crud.current.linkRecurringTransactionAtomic('relink', 'rent', '2026-5-5');
+      await crud.current.updateTransaction('relink', {
+        recurringPaymentId: null,
+        recurringCycle: null,
+      } as unknown as Partial<Transaction>);
+      await crud.current.linkRecurringTransactionAtomic('relink', 'rent', '2026-5-5');
+
+      expect(mockState.store.get(txKey('relink'))).toMatchObject({
+        recurringPaymentId: 'rent',
+        recurringCycle: '2026-5-5',
+      });
+      expect(sets().filter((entry) => entry.key.startsWith(`users/${UID}/transactions/`)))
+        .toHaveLength(0);
+      expect([...mockState.store.keys()].filter((key) => key.startsWith(`users/${UID}/transactions/`)))
+        .toEqual([txKey('relink')]);
     });
   });
 

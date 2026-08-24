@@ -36,4 +36,3 @@
 - Add write-path tests for double invocation, cross-attempt retry, ambiguous acknowledgement, outside-head duplicates, pending targets, atomic failure, and relinking.
 - Run recurring, transaction writer, form, monitoring, notification, readiness, typecheck, lint, and diff checks.
 - Update OpenSpec Task 7 only for requirements demonstrated by tests and evidence.
-

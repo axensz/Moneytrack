@@ -45,7 +45,7 @@ const makeParams = (overrides: Record<string, unknown> = {}): Params =>
     defaultAccount: savings,
     addTransaction: vi.fn(async () => {}),
     addCreditPaymentAtomic: vi.fn(async () => {}),
-    updateRecurringPayment: vi.fn(async () => {}),
+    addRecurringTransactionAtomic: vi.fn(async () => {}),
     setNewTransaction: vi.fn(),
     setShowForm: vi.fn(),
     setShowWelcomeModal: vi.fn(),
@@ -170,6 +170,43 @@ describe('useAddTransaction — gate de balancesReady (#3)', () => {
     });
 
     expect(params.addTransaction).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useAddTransaction — pago periódico autenticable', () => {
+  it('routes a paid recurring expense through the aggregate writer without a prior template write', async () => {
+    const recurringPayment = {
+      id: 'rent', name: 'Arriendo', amount: 100_000, category: 'Vivienda',
+      dueDay: 5, frequency: 'monthly' as const, isActive: true,
+    };
+    const account = { ...savings, initialBalance: 500_000 };
+    const legacyTemplateWrite = vi.fn(async () => undefined);
+    const params = makeParams({
+      accounts: [account],
+      defaultAccount: account,
+      recurringPayments: [recurringPayment],
+      updateRecurringPayment: legacyTemplateWrite,
+    });
+    const { result } = renderHook(() => useAddTransaction(params));
+
+    await act(async () => {
+      await result.current.handleAddTransaction({
+        ...expense150k,
+        amount: '120000',
+        category: 'Vivienda',
+        recurringPaymentId: 'rent',
+      });
+    });
+
+    expect(params.addRecurringTransactionAtomic).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 120_000,
+        recurringPaymentId: 'rent',
+        recurringCycle: expect.any(String),
+      })
+    );
+    expect(params.addTransaction).not.toHaveBeenCalled();
+    expect(legacyTemplateWrite).not.toHaveBeenCalled();
   });
 });
 

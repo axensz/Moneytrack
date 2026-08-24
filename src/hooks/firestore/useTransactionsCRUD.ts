@@ -13,8 +13,9 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../lib/firebaseDb';
 import { LOAN_PAYMENT_CATEGORY, TRANSFER_CATEGORY } from '../../config/constants';
-import type { Transaction, Account } from '../../types/finance';
+import type { Transaction, Account, RecurringPayment } from '../../types/finance';
 import { getAccountReferenceIds } from '../../utils/accountTransactions';
+import { ensureDate } from '../../utils/dateUtils';
 import { isOffline, stripUndefined } from '../../utils/firestoreHelpers';
 import { validateCreditPaymentPair } from '../../utils/creditPaymentPairs';
 import { roundMoney } from '../../utils/formatters';
@@ -25,9 +26,14 @@ import {
 } from '../../utils/ledgerMutation';
 import { validateTransactionUpdate } from '../../utils/transactionValidation';
 import {
+  isRecurringCycleKeyForPayment,
+  recurringTransactionSatisfiesCycleKey,
+} from '../../utils/recurringPayments';
+import {
   collectLedgerMutationAccountIds,
   executeAuthenticatedLedgerMutation,
   loadServerLedgerTransaction,
+  loadServerLedgerTransactionsByRecurringPayment,
   planCreditAuthorityChanges,
   validateLedgerMutationOperationId,
 } from './ledgerMutationOrchestration';
@@ -162,6 +168,84 @@ const loadCommittedOperation = async (
   return existing;
 };
 
+const recurringCycleOperationId = (
+  recurringPaymentId: string,
+  recurringCycle: string
+): string => validateLedgerMutationOperationId(
+  `ledger-mutation:recurring:${recurringPaymentId}:${recurringCycle}`
+);
+
+const loadServerRecurringPayment = async (
+  userId: string,
+  recurringPaymentId: string
+): Promise<RecurringPayment> => {
+  const snapshot = await getDocFromServer(
+    doc(db, `users/${userId}/recurringPayments`, recurringPaymentId)
+  );
+  if (!snapshot.exists()) {
+    throw new Error('El pago periódico ya no existe. Actualiza e intenta de nuevo.');
+  }
+  const data = snapshot.data();
+  if (
+    typeof data.name !== 'string'
+    || typeof data.category !== 'string'
+    || typeof data.amount !== 'number'
+    || !Number.isFinite(data.amount)
+    || data.amount <= 0
+    || typeof data.dueDay !== 'number'
+    || !Number.isInteger(data.dueDay)
+    || data.dueDay < 1
+    || data.dueDay > 31
+    || (data.frequency !== 'monthly' && data.frequency !== 'yearly')
+    || typeof data.isActive !== 'boolean'
+  ) {
+    throw new LedgerMutationValidationError(
+      'INVALID_ACCOUNT_AUTHORITY',
+      'El pago periódico no tiene una estructura válida'
+    );
+  }
+  const createdAt = data.createdAt === undefined ? undefined : ensureDate(data.createdAt);
+  if (createdAt && !Number.isFinite(createdAt.getTime())) {
+    throw new LedgerMutationValidationError(
+      'INVALID_ACCOUNT_AUTHORITY',
+      'El pago periódico no tiene una fecha de creación válida'
+    );
+  }
+  return {
+    ...data,
+    id: recurringPaymentId,
+    name: data.name,
+    category: data.category,
+    amount: data.amount,
+    dueDay: data.dueDay,
+    frequency: data.frequency,
+    isActive: data.isActive,
+    createdAt,
+  } as RecurringPayment;
+};
+
+const assertRecurringPaidDraft = (
+  transaction: Omit<Transaction, 'id' | 'createdAt'>
+): { recurringPaymentId: string; recurringCycle: string } => {
+  validateTransactionSchema(transaction);
+  if (transaction.type !== 'expense' || transaction.paid !== true) {
+    throw new Error('Solo un gasto pagado puede completar un ciclo periódico.');
+  }
+  if (!transaction.recurringPaymentId || !transaction.recurringCycle) {
+    throw new Error('El pago periódico requiere una identidad de ciclo.');
+  }
+  return {
+    recurringPaymentId: transaction.recurringPaymentId,
+    recurringCycle: transaction.recurringCycle,
+  };
+};
+
+const recurringMetadata = (transaction: Transaction) => ({
+  amount: transaction.amount,
+  lastPaidAmount: transaction.amount,
+  lastPaidDate: transaction.date,
+});
+
 interface UseTransactionsCRUDReturn {
   addTransaction: (
     transaction: Omit<Transaction, 'id' | 'createdAt'>
@@ -169,6 +253,14 @@ interface UseTransactionsCRUDReturn {
   addCreditPaymentAtomic: (
     creditTx: Omit<Transaction, 'id' | 'createdAt'>,
     sourceTx: Omit<Transaction, 'id' | 'createdAt'>
+  ) => Promise<void>;
+  addRecurringTransactionAtomic: (
+    transaction: Omit<Transaction, 'id' | 'createdAt'>
+  ) => Promise<void>;
+  linkRecurringTransactionAtomic: (
+    transactionId: string,
+    recurringPaymentId: string,
+    recurringCycle: string
   ) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
   updateTransaction: (
@@ -430,6 +522,286 @@ export function useTransactionsCRUD(
           } catch {
             // Conservar el error del commit. Un reintento volverá a validar el ID.
           }
+        }
+        throw error;
+      }
+    },
+    [userId]
+  );
+
+  const addRecurringTransactionAtomic = useCallback(
+    async (transaction: Omit<Transaction, 'id' | 'createdAt'>) => {
+      if (!userId) return;
+      if (isOffline()) throw new Error(OFFLINE_WRITE_ERROR);
+      const { recurringPaymentId, recurringCycle } = assertRecurringPaidDraft(transaction);
+      const operationId = recurringCycleOperationId(recurringPaymentId, recurringCycle);
+      const transactionRef = doc(db, `users/${userId}/transactions`, operationId);
+      const publish = (committed: Transaction) => {
+        publishTransactionCacheMutation({
+          userId,
+          type: 'update',
+          transactions: [committed],
+        });
+      };
+      const loadCommitted = async (): Promise<Transaction | null> => {
+        const committed = await loadServerLedgerTransaction(userId, operationId);
+        if (!committed) return null;
+        if (
+          committed.operationId !== operationId
+          || committed.mutationKind !== 'recurring-post'
+          || committed.recurringPaymentId !== recurringPaymentId
+          || committed.recurringCycle !== recurringCycle
+          || committed.paid !== true
+        ) {
+          throw new Error('La identidad del ciclo pertenece a otra mutación financiera.');
+        }
+        return committed;
+      };
+
+      const alreadyCommitted = await loadCommitted();
+      if (alreadyCommitted) {
+        publish(alreadyCommitted);
+        return;
+      }
+
+      try {
+        const committed = await executeAuthenticatedLedgerMutation(
+          userId,
+          async ({ loadContext }) => {
+            const [payment, linkedTransactions] = await Promise.all([
+              loadServerRecurringPayment(userId, recurringPaymentId),
+              loadServerLedgerTransactionsByRecurringPayment(userId, recurringPaymentId),
+            ]);
+            if (!isRecurringCycleKeyForPayment(payment, recurringCycle)) {
+              throw new Error('La identidad del ciclo no corresponde al pago periódico.');
+            }
+            const duplicate = linkedTransactions.find(candidate => (
+              recurringTransactionSatisfiesCycleKey(payment, candidate, recurringCycle)
+            ));
+            if (duplicate) {
+              const context = await loadContext([]);
+              return {
+                intent: {
+                  kind: 'recurring-post' as const,
+                  before: [],
+                  after: [],
+                  metadata: { operationId, mutationSource: 'recurring' as const },
+                },
+                context,
+                writeCount: 1,
+                stage: (batch) => {
+                  batch.update(
+                    doc(db, `users/${userId}/recurringPayments`, recurringPaymentId),
+                    recurringMetadata(duplicate)
+                  );
+                },
+                result: duplicate,
+              };
+            }
+
+            const createdAt = new Date();
+            const draft = {
+              ...stripUndefined(transaction),
+              id: operationId,
+              amount: normalizeLedgerAmount(transaction.amount),
+              createdAt,
+              operationId,
+              mutationKind: 'recurring-post' as const,
+              mutationSource: 'recurring' as const,
+            } as Transaction;
+            const context = await loadContext([draft.accountId]);
+            const normalized = {
+              ...draft,
+              accountId: context.canonicalAccountId(draft.accountId),
+            };
+            const intent = {
+              kind: 'recurring-post' as const,
+              before: [],
+              after: [normalized],
+              metadata: { operationId, mutationSource: 'recurring' as const },
+            };
+            const creditChanges = planCreditAuthorityChanges(intent, context);
+
+            return {
+              intent,
+              context,
+              writeCount: 2 + creditChanges.length,
+              stage: (batch) => {
+                const persisted = { ...normalized };
+                delete persisted.id;
+                batch.set(transactionRef, persisted);
+                batch.update(
+                  doc(db, `users/${userId}/recurringPayments`, recurringPaymentId),
+                  recurringMetadata(normalized)
+                );
+                creditChanges.forEach(({ accountId, delta }) => {
+                  batch.update(doc(db, `users/${userId}/accounts`, accountId), {
+                    usedCredit: increment(delta),
+                  });
+                });
+              },
+              result: normalized,
+            };
+          },
+          { operationId }
+        );
+        publish(committed);
+      } catch (error) {
+        const committed = await loadCommitted();
+        if (committed) {
+          publish(committed);
+          return;
+        }
+        throw error;
+      }
+    },
+    [userId]
+  );
+
+  const linkRecurringTransactionAtomic = useCallback(
+    async (
+      transactionId: string,
+      recurringPaymentId: string,
+      recurringCycle: string
+    ) => {
+      if (!userId) return;
+      if (isOffline()) throw new Error(OFFLINE_WRITE_ERROR);
+      const operationId = recurringCycleOperationId(recurringPaymentId, recurringCycle);
+      const publish = (linked: Transaction) => publishTransactionCacheMutation({
+        userId,
+        type: 'update',
+        transactions: [linked],
+      });
+      try {
+        const linked = await executeAuthenticatedLedgerMutation(
+          userId,
+          async ({ loadContext }) => {
+            const [payment, transaction, linkedTransactions] = await Promise.all([
+              loadServerRecurringPayment(userId, recurringPaymentId),
+              loadServerLedgerTransaction(userId, transactionId),
+              loadServerLedgerTransactionsByRecurringPayment(userId, recurringPaymentId),
+            ]);
+            if (!isRecurringCycleKeyForPayment(payment, recurringCycle)) {
+              throw new Error('La identidad del ciclo no corresponde al pago periódico.');
+            }
+            if (!transaction) {
+              throw new Error('La transacción ya no existe. Actualiza e intenta de nuevo.');
+            }
+            if (transaction.type !== 'expense' || transaction.paid !== true) {
+              throw new Error('Solo un gasto pagado puede vincularse a un ciclo periódico.');
+            }
+            if (
+              transaction.recurringPaymentId
+              && transaction.recurringPaymentId !== recurringPaymentId
+            ) {
+              throw new Error('La transacción ya pertenece a otro pago periódico.');
+            }
+            if (
+              transaction.recurringPaymentId === recurringPaymentId
+              && transaction.recurringCycle === recurringCycle
+            ) {
+              const context = await loadContext([]);
+              return {
+                intent: {
+                  kind: 'recurring-post' as const,
+                  before: [],
+                  after: [],
+                  metadata: { operationId, mutationSource: 'recurring' as const },
+                },
+                context,
+                writeCount: 0,
+                stage: () => undefined,
+                result: transaction,
+              };
+            }
+
+            const duplicate = linkedTransactions.find(candidate => (
+              candidate.id !== transactionId
+              && recurringTransactionSatisfiesCycleKey(payment, candidate, recurringCycle)
+            ));
+            if (duplicate) {
+              const context = await loadContext([]);
+              return {
+                intent: {
+                  kind: 'recurring-post' as const,
+                  before: [],
+                  after: [],
+                  metadata: { operationId, mutationSource: 'recurring' as const },
+                },
+                context,
+                writeCount: 0,
+                stage: () => undefined,
+                result: duplicate,
+              };
+            }
+
+            const candidate = {
+              ...transaction,
+              recurringPaymentId,
+              recurringCycle,
+              operationId,
+              mutationKind: 'recurring-post' as const,
+              mutationSource: 'recurring' as const,
+            } as Transaction;
+            const context = await loadContext([candidate.accountId]);
+            const normalized = {
+              ...candidate,
+              accountId: context.canonicalAccountId(candidate.accountId),
+            };
+            const intent = {
+              kind: 'recurring-post' as const,
+              before: [transaction],
+              after: [normalized],
+              metadata: { operationId, mutationSource: 'recurring' as const },
+            };
+
+            return {
+              intent,
+              context,
+              writeCount: 2,
+              stage: (batch) => {
+                batch.update(doc(db, `users/${userId}/transactions`, transactionId), {
+                  recurringPaymentId,
+                  recurringCycle,
+                  operationId,
+                  mutationKind: 'recurring-post',
+                  mutationSource: 'recurring',
+                });
+                batch.update(
+                  doc(db, `users/${userId}/recurringPayments`, recurringPaymentId),
+                  recurringMetadata(normalized)
+                );
+              },
+              result: normalized,
+            };
+          },
+          { operationId }
+        );
+        publish(linked);
+      } catch (error) {
+        try {
+          const committed = await loadServerLedgerTransaction(userId, transactionId);
+          if (
+            committed
+            && committed.recurringPaymentId === recurringPaymentId
+            && committed.recurringCycle === recurringCycle
+            && committed.paid === true
+          ) {
+            publish(committed);
+            return;
+          }
+          const payment = await loadServerRecurringPayment(userId, recurringPaymentId);
+          const duplicate = (
+            await loadServerLedgerTransactionsByRecurringPayment(userId, recurringPaymentId)
+          ).find(candidate => (
+            recurringTransactionSatisfiesCycleKey(payment, candidate, recurringCycle)
+          ));
+          if (duplicate) {
+            publish(duplicate);
+            return;
+          }
+        } catch {
+          // Conservar el error original; un reintento vuelve a leer autoridad.
         }
         throw error;
       }
@@ -758,6 +1130,8 @@ export function useTransactionsCRUD(
   return {
     addTransaction,
     addCreditPaymentAtomic,
+    addRecurringTransactionAtomic,
+    linkRecurringTransactionAtomic,
     deleteTransaction,
     updateTransaction,
   };

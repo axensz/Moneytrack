@@ -70,6 +70,8 @@ export function useTransactions(userId: string | null) {
     loading: firestoreLoading,
     addTransaction: firestoreAddTransaction,
     addCreditPaymentAtomic: firestoreAddCreditPaymentAtomic,
+    addRecurringTransactionAtomic: firestoreAddRecurringTransactionAtomic,
+    linkRecurringTransactionAtomic: firestoreLinkRecurringTransactionAtomic,
     deleteTransaction: firestoreDeleteTransaction,
     updateTransaction: firestoreUpdateTransaction
   } = useFirestoreData();
@@ -174,6 +176,49 @@ export function useTransactions(userId: string | null) {
     }
   };
 
+  const addRecurringTransactionAtomic = async (
+    transaction: Omit<Transaction, 'id' | 'createdAt'>
+  ) => {
+    if (userId) {
+      await firestoreAddRecurringTransactionAtomic(transaction);
+      return;
+    }
+    const newTransaction: Transaction = {
+      ...transaction,
+      id: generateId(),
+      createdAt: new Date(),
+      mutationKind: 'recurring-post',
+      mutationSource: 'recurring',
+    };
+    setLocalTransactions(previous => [newTransaction, ...previous]);
+  };
+
+  const linkRecurringTransactionAtomic = async (
+    transactionId: string,
+    recurringPaymentId: string,
+    recurringCycle: string
+  ) => {
+    if (userId) {
+      await firestoreLinkRecurringTransactionAtomic(
+        transactionId,
+        recurringPaymentId,
+        recurringCycle
+      );
+      return;
+    }
+    setLocalTransactions(previous => previous.map(transaction => (
+      transaction.id === transactionId
+        ? {
+            ...transaction,
+            recurringPaymentId,
+            recurringCycle,
+            mutationKind: 'recurring-post',
+            mutationSource: 'recurring',
+          }
+        : transaction
+    )));
+  };
+
   const deleteTransaction = async (id: string) => {
     if (userId) {
       await firestoreDeleteTransaction(id);
@@ -227,6 +272,8 @@ export function useTransactions(userId: string | null) {
     loading,
     addTransaction,
     addCreditPaymentAtomic,
+    addRecurringTransactionAtomic,
+    linkRecurringTransactionAtomic,
     deleteTransaction,
     togglePaid,
     updateTransaction

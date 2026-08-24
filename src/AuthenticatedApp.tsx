@@ -92,6 +92,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     balancesReady,
     addTransaction,
     addCreditPaymentAtomic,
+    addRecurringTransactionAtomic,
   } = useTransactionDomain();
   const {
     accounts,
@@ -109,7 +110,6 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   } = useBeneficiaryDomain();
   const {
     recurringPayments,
-    updateRecurringPayment,
   } = useRecurringDomain();
   const {
     transactionsLoading,
@@ -243,7 +243,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const { handleAddTransaction, handleAddAndContinue } = useAddTransaction({
     accounts, transactions: balanceTransactions, balancesReady, recurringPayments,
     defaultAccount: defaultAccount || null,
-    addTransaction, addCreditPaymentAtomic, updateRecurringPayment,
+    addTransaction, addCreditPaymentAtomic, addRecurringTransactionAtomic,
     setNewTransaction, setShowForm, setShowWelcomeModal,
   });
 

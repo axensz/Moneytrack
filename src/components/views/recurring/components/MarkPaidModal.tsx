@@ -1,18 +1,18 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { PlusCircle, Link2, ChevronLeft } from 'lucide-react';
 import { showToast } from '../../../../utils/toastHelpers';
 import { logger } from '../../../../utils/logger';
 import type { RecurringPayment, Account, Transaction } from '../../../../types/finance';
-import { cycleKey } from '../../../../utils/recurringDates';
+import { getRecurringLinkCandidates } from '../../../../utils/recurringPayments';
 import { BaseModal } from '../../../modals/BaseModal';
 
 interface MarkPaidModalProps {
   isOpen: boolean;
   payment: RecurringPayment | null;
   accounts: Account[];
-  /** Ventana paginada de transacciones (gastos recientes para vincular). */
+  /** Historial completo confirmado (gastos pagados para vincular). */
   transactions: Transaction[];
   defaultAccountId?: string;
   formatCurrency: (amount: number) => string;
@@ -44,6 +44,7 @@ export const MarkPaidModal: React.FC<MarkPaidModalProps> = ({
   const [mode, setMode] = useState<Mode>('choose');
   const [accountId, setAccountId] = useState('');
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
 
   // Reset al abrir.
   React.useEffect(() => {
@@ -51,30 +52,17 @@ export const MarkPaidModal: React.FC<MarkPaidModalProps> = ({
       setMode('choose');
       setAccountId(payment?.accountId || defaultAccountId || accounts[0]?.id || '');
       setBusy(false);
+      busyRef.current = false;
     }
   }, [isOpen, payment, defaultAccountId, accounts]);
 
-  // Candidatos a vincular: gastos SIN periódico, MÁS los ya ligados a ESTE pago
-  // que aún no cubren el ciclo actual (p. ej. un pago creado desde el formulario
-  // que quedó atribuido a otro ciclo por su fecha). Al elegirlo, onLinkExisting
-  // re-estampa el ciclo actual → marca pagado sin duplicar el gasto.
-  // ponytail: solo la ventana paginada en memoria (gastos recientes), suficiente
-  // para un pago reciente.
   const candidates = useMemo(() => {
-    const currentKey = payment ? cycleKey(payment, new Date()) : '';
-    return transactions
-      .filter((t) => {
-        if (t.type !== 'expense') return false;
-        if (!t.recurringPaymentId) return true;
-        if (t.recurringPaymentId !== payment?.id) return false; // ligado a otro pago
-        return t.recurringCycle !== currentKey; // ligado a este pago, otro ciclo
-      })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 30);
+    return payment ? getRecurringLinkCandidates(transactions, payment) : [];
   }, [transactions, payment]);
 
   const run = async (fn: () => Promise<void>, okMsg: string) => {
-    if (busy) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     try {
       await fn();
@@ -84,6 +72,7 @@ export const MarkPaidModal: React.FC<MarkPaidModalProps> = ({
       showToast.error('No se pudo guardar');
       logger.error('MarkPaidModal', error);
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };

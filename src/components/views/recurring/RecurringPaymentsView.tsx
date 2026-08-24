@@ -43,7 +43,14 @@ export const RecurringPaymentsView: React.FC = () => {
     recurringStats: stats,
   } = useRecurringDomain();
   const { accounts, defaultAccount } = useAccountDomain();
-  const { transactions, addTransaction, updateTransaction, deleteTransaction } = useTransactionDomain();
+  const {
+    balanceTransactions,
+    balancesReady,
+    addRecurringTransactionAtomic,
+    linkRecurringTransactionAtomic,
+    updateTransaction,
+    deleteTransaction,
+  } = useTransactionDomain();
   const { categories } = useCategoryDomain();
   const formatCurrency = useFormatCurrency();
   const { hideBalances } = useUIPreferences();
@@ -87,6 +94,40 @@ export const RecurringPaymentsView: React.FC = () => {
   const [deletePaymentTx, setDeletePaymentTx] = useState<Transaction | null>(null);
   const [busyDelete, setBusyDelete] = useState(false);
 
+  if (!balancesReady) {
+    return (
+      <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+        <div className="card">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h2 id="view-heading-recurring" tabIndex={-1} className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                {sectionTitle('recurring')}
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Gestiona tus suscripciones y pagos recurrentes
+              </p>
+            </div>
+            <button onClick={() => setShowForm(true)} className="btn-primary">
+              <NewIcon size={18} />
+              {UI_TEXT.actions.new} pago
+            </button>
+          </div>
+        </div>
+        <div role="status" aria-live="polite" className="card text-sm text-muted-foreground">
+          Calculando el historial completo antes de determinar pagos, pendientes y vencimientos…
+        </div>
+        <PaymentFormModal
+          isOpen={showForm}
+          editingPayment={editingPayment}
+          accounts={accounts}
+          categories={categories.expense}
+          onClose={closeForm}
+          onSubmit={handleSubmit}
+        />
+      </div>
+    );
+  }
+
   const runDelete = async (fn: () => Promise<void>, okMsg: string) => {
     if (!deletePaymentTx?.id || busyDelete) return;
     setBusyDelete(true);
@@ -123,10 +164,9 @@ export const RecurringPaymentsView: React.FC = () => {
   // Ambos caminos estampan el ciclo actual → el pago aparece pagado sin depender
   // de la fecha (ver cycleKey / recurringCycle).
   const registerPaid = async (payment: RecurringPayment, accountId: string) => {
-    // ponytail: usa el writer canónico (mismo que el formulario) → saldos OK.
-    // Omite la detección de duplicados del formulario; añadir si genera dobles
-    // registros desde la tarjeta.
-    await addTransaction({
+    // El writer canónico reserva (pago, ciclo), vuelve a leer autoridad y
+    // confirma transacción + metadatos en un solo batch.
+    await addRecurringTransactionAtomic({
       type: 'expense',
       amount: payment.amount,
       category: payment.category,
@@ -140,10 +180,11 @@ export const RecurringPaymentsView: React.FC = () => {
   };
 
   const linkExisting = async (payment: RecurringPayment, transactionId: string) => {
-    await updateTransaction(transactionId, {
-      recurringPaymentId: payment.id,
-      recurringCycle: cycleKey(payment, new Date()),
-    });
+    await linkRecurringTransactionAtomic(
+      transactionId,
+      payment.id!,
+      cycleKey(payment, new Date())
+    );
   };
 
   return (
@@ -335,7 +376,7 @@ export const RecurringPaymentsView: React.FC = () => {
         isOpen={!!markPaidPayment}
         payment={markPaidPayment}
         accounts={accounts}
-        transactions={transactions}
+        transactions={balanceTransactions}
         defaultAccountId={defaultAccount?.id}
         formatCurrency={displayAmount}
         onClose={() => setMarkPaidPayment(null)}

@@ -42,7 +42,7 @@
 - Consumes: existing `Transaction` and `Account` unions.
 - Produces: `LedgerMutationKind`, `LedgerMutationSource`, `LedgerMutationMetadata`, `LedgerTransactionEffect`, and `LedgerMutationIntent`.
 
-- [ ] **Step 1: Write the compile-time/runtime shape test**
+- [x] **Step 1: Write the compile-time/runtime shape test**
 
 Create `src/__tests__/utils/ledgerMutation.test.ts` with the imports and fixture below. The first test deliberately imports contracts that do not yet exist.
 
@@ -97,13 +97,13 @@ describe('ledger mutation contracts', () => {
 });
 ```
 
-- [ ] **Step 2: Run typecheck to verify RED**
+- [x] **Step 2: Run typecheck to verify RED**
 
 Run: `npm.cmd run typecheck`
 
 Expected: FAIL because the ledger contracts and optional `Transaction` fields do not exist on `types/finance`. Vitest alone is not the RED gate for a type-only change because its transformer erases type imports.
 
-- [ ] **Step 3: Add the exact optional contracts**
+- [x] **Step 3: Add the exact optional contracts**
 
 Add these unions/interfaces to `src/types/finance.ts`, and add the five optional metadata fields to `Transaction`:
 
@@ -165,7 +165,7 @@ expectedBefore?: number;
 targetBalance?: number;
 ```
 
-- [ ] **Step 4: Verify GREEN and type compatibility**
+- [x] **Step 4: Verify GREEN and type compatibility**
 
 Run: `npm.cmd run test:run -- src/__tests__/utils/ledgerMutation.test.ts`
 
@@ -175,7 +175,7 @@ Run: `npm.cmd run typecheck`
 
 Expected: PASS with historical `Transaction` fixtures unchanged.
 
-- [ ] **Step 5: Commit the contract**
+- [x] **Step 5: Commit the contract**
 
 ```powershell
 git add -- src/types/finance.ts src/__tests__/utils/ledgerMutation.test.ts
@@ -195,7 +195,7 @@ git commit -m "feat: define ledger mutation contracts"
   - `planLedgerMutation(intent: LedgerMutationIntent, assets: readonly LedgerAssetAuthority[]): LedgerMutationPlan`
   - `LedgerMutationValidationError` with stable codes.
 
-- [ ] **Step 1: Add failing normalization cases**
+- [x] **Step 1: Add failing normalization cases**
 
 Append table tests for the persistence boundary:
 
@@ -227,13 +227,13 @@ describe('normalizeLedgerAmount', () => {
 });
 ```
 
-- [ ] **Step 2: Verify normalization RED**
+- [x] **Step 2: Verify normalization RED**
 
 Run: `npm.cmd run test:run -- src/__tests__/utils/ledgerMutation.test.ts`
 
 Expected: FAIL because `src/utils/ledgerMutation.ts` does not exist.
 
-- [ ] **Step 3: Implement the minimal normalizer**
+- [x] **Step 3: Implement the minimal normalizer**
 
 Create `src/utils/ledgerMutation.ts` with stable error codes and a floating-residue tolerance that accepts IEEE-754 noise but rejects genuine sub-cent inputs:
 
@@ -284,13 +284,13 @@ export function normalizeLedgerAmount(value: number): number {
 }
 ```
 
-- [ ] **Step 4: Verify normalization GREEN**
+- [x] **Step 4: Verify normalization GREEN**
 
 Run: `npm.cmd run test:run -- src/__tests__/utils/ledgerMutation.test.ts`
 
 Expected: PASS for contract and normalization tests.
 
-- [ ] **Step 5: Add failing planner and negative-rule cases**
+- [x] **Step 5: Add failing planner and negative-rule cases**
 
 Append fixtures covering create, edit, delete, restore, transfer, credit-payment pair, recurring post, and balance adjustment. Use the same generic before/after API for every kind:
 
@@ -354,13 +354,13 @@ describe('planLedgerMutation', () => {
 });
 ```
 
-- [ ] **Step 6: Verify planner RED**
+- [x] **Step 6: Verify planner RED**
 
 Run: `npm.cmd run test:run -- src/__tests__/utils/ledgerMutation.test.ts`
 
 Expected: FAIL because `planLedgerMutation` and its output types are not implemented.
 
-- [ ] **Step 7: Implement signed effects and the planner**
+- [x] **Step 7: Implement signed effects and the planner**
 
 Add these public shapes and implement `signedEffects` with the exact rules: unpaid rows contribute zero; income credits `accountId`; expense debits `accountId`; transfer debits `accountId` and credits `toAccountId`; before effects are subtracted from after effects; all amounts pass `normalizeLedgerAmount`.
 
@@ -393,8 +393,8 @@ const addEffect = (
   transaction: LedgerTransactionEffect,
   direction: 1 | -1
 ): void => {
-  if (!transaction.paid) return;
   const amount = normalizeLedgerAmount(transaction.amount) * direction;
+  if (!transaction.paid) return;
   if (transaction.type === 'income') addDelta(deltas, transaction.accountId, amount);
   if (transaction.type === 'expense') addDelta(deltas, transaction.accountId, -amount);
   if (transaction.type === 'transfer') {
@@ -459,13 +459,13 @@ export function planLedgerMutation(
 
 The function above throws `INVALID_ACCOUNT_AUTHORITY` for a missing account ID or non-finite current balance. It throws `INSUFFICIENT_FUNDS` with the existing Spanish message and `accountId` when `worsensAsset` is true.
 
-- [ ] **Step 8: Verify planner GREEN**
+- [x] **Step 8: Verify planner GREEN**
 
 Run: `npm.cmd run test:run -- src/__tests__/utils/ledgerMutation.test.ts`
 
 Expected: PASS for all normalization, intent, delta, transfer, and negative-rule cases.
 
-- [ ] **Step 9: Commit the pure planner**
+- [x] **Step 9: Commit the pure planner**
 
 ```powershell
 git add -- src/utils/ledgerMutation.ts src/__tests__/utils/ledgerMutation.test.ts
@@ -482,7 +482,7 @@ git commit -m "feat: plan ledger mutations before persistence"
 - Consumes: existing `isHistoricalCreditPaymentPair`, `ensureDate`, and `getAccountReferenceIds`.
 - Produces: `validateCreditPaymentPair(creditTransaction, sourceTransaction, account): CreditPaymentPairValidation`.
 
-- [ ] **Step 1: Add failing pair-validation table**
+- [x] **Step 1: Add failing pair-validation table**
 
 Extend the existing import and add this reciprocal current-pair helper plus table cases. Assert stable reason codes rather than prose:
 
@@ -531,13 +531,13 @@ it.each([
 
 Also retain one test proving `isHistoricalCreditPaymentPair` still accepts the exact unlinked legacy shape and rejects ambiguity.
 
-- [ ] **Step 2: Verify pair-validation RED**
+- [x] **Step 2: Verify pair-validation RED**
 
 Run: `npm.cmd run test:run -- src/__tests__/utils/creditPaymentPairs.test.ts`
 
 Expected: FAIL because `validateCreditPaymentPair` and its reason union do not exist.
 
-- [ ] **Step 3: Implement the smallest current-pair validator**
+- [x] **Step 3: Implement the smallest current-pair validator**
 
 Add:
 
@@ -612,13 +612,13 @@ Add `roundMoney` to the module imports from `./formatters`; reuse the existing p
 
 Validate in fail-fast order: counterpart exists; both IDs and reciprocal IDs; `income` credit / `expense` source roles; credit row belongs to `getAccountReferenceIds(account)` and source row does not; normalized amount equality; `ensureDate(...).getTime()` equality; equal `paid`. Return the two rows only on success. Do not change the legacy matcher.
 
-- [ ] **Step 4: Verify pair-validation GREEN**
+- [x] **Step 4: Verify pair-validation GREEN**
 
 Run: `npm.cmd run test:run -- src/__tests__/utils/creditPaymentPairs.test.ts`
 
 Expected: PASS for legacy and current pair cases.
 
-- [ ] **Step 5: Commit reciprocal validation**
+- [x] **Step 5: Commit reciprocal validation**
 
 ```powershell
 git add -- src/utils/creditPaymentPairs.ts src/__tests__/utils/creditPaymentPairs.test.ts
@@ -634,7 +634,7 @@ git commit -m "feat: validate reciprocal credit payment pairs"
 - Consumes: `planLedgerMutation`, all `LedgerMutationSource` values, and the generic before/after contract implemented by Task 2.
 - Produces: one regression matrix proving every named ingress label receives the same insufficient-funds invariant. It intentionally does not route real writers; authenticated adapters belong to the next plan.
 
-- [ ] **Step 1: Add the table-driven ingress parity test**
+- [x] **Step 1: Add the table-driven ingress parity test**
 
 Create `src/__tests__/integration/ledgerIngressParity.test.ts` with the complete matrix below. Each row asserts a 100,000.01 net debit against 100,000 rejects with `INSUFFICIENT_FUNDS`; then repeats with 100,000 and asserts the after balance is zero.
 
@@ -735,13 +735,13 @@ describe('ledger ingress parity', () => {
 });
 ```
 
-- [ ] **Step 2: Verify the complete parity matrix**
+- [x] **Step 2: Verify the complete parity matrix**
 
 Run: `npm.cmd run test:run -- src/__tests__/integration/ledgerIngressParity.test.ts`
 
 Expected: PASS for rejection and exact-affordability rows across create, edit, credit payment, AI, recurring, account adjustment, debt, delete, and restore. A failure is fixed in `ledgerMutation.ts`; the test must not special-case an ingress.
 
-- [ ] **Step 3: Commit the parity contract**
+- [x] **Step 3: Commit the parity contract**
 
 ```powershell
 git add -- src/__tests__/integration/ledgerIngressParity.test.ts
@@ -758,7 +758,7 @@ git commit -m "test: enforce ledger invariant parity across ingresses"
 - Consumes: Tasks 1–4 and the existing repository validation scripts.
 - Produces: evidence for OpenSpec 1.6 and 3.1–3.5. Task 3.6 remains unchecked until the real form adapters are routed in the authenticated-facade plan.
 
-- [ ] **Step 1: Run the focused ledger foundation suite**
+- [x] **Step 1: Run the focused ledger foundation suite**
 
 Run:
 
@@ -768,7 +768,9 @@ npm.cmd run test:run -- src/__tests__/utils/ledgerMutation.test.ts src/__tests__
 
 Expected: all selected files pass, zero failures.
 
-- [ ] **Step 2: Run broad static and test validation**
+Evidence (2026-08-24): 7 selected files passed, 158 tests passed, zero failures. The run also included `addTransactionBalanceGate.test.ts`.
+
+- [x] **Step 2: Run broad static and test validation**
 
 Run each command independently:
 
@@ -781,7 +783,9 @@ git diff --check
 
 Expected: all exit 0. Do not run `npm run build` until the branch is ready for its integrated checkpoint because the build mutates `public/sw.js`.
 
-- [ ] **Step 3: Validate OpenSpec strictly**
+Evidence (2026-08-24): 135 test files passed and 1 was skipped; 1,109 tests passed and 4 were skipped. `typecheck`, `lint`, and `git diff --check` all exited 0.
+
+- [x] **Step 3: Validate OpenSpec strictly**
 
 Run the repository-local executable if present:
 
@@ -793,17 +797,21 @@ If that executable is absent, locate the already-installed `openspec.cmd` with `
 
 Expected: strict validation passes.
 
-- [ ] **Step 4: Update task evidence conservatively**
+Evidence (2026-08-24): cached `@fission-ai/openspec` 1.10.0 returned `Change 'harden-transaction-ledger-integrity' is valid` with `--type change --strict --no-interactive`; no dependency was installed.
+
+- [x] **Step 4: Update task evidence conservatively**
 
 Mark 1.6 and 3.1–3.5 complete only after Steps 1–3 pass. Leave 3.6 and 4.x onward unchecked.
 
 Update this plan's completed checkboxes to match actual evidence; never pre-check a step.
 
-- [ ] **Step 5: Refresh and review the graph**
+- [x] **Step 5: Refresh and review the graph**
 
 Run the code-review graph incremental update, then `detect_changes` and `get_affected_flows` for the changed files. Require no notification-file drift and no unexplained high-risk untested planner node.
 
-- [ ] **Step 6: Commit the verified foundation checkpoint**
+Evidence (2026-08-24): the incremental graph reached 3,130 nodes, 35,510 edges, and 363 files. The scoped six-file review reported risk 0.55 and zero affected runtime flows; direct `tests_for` queries linked 1 suite to `normalizeLedgerAmount`, 10 tests/suites to `planLedgerMutation`, and 2 to `validateCreditPaymentPair`. The global graph also surfaced the pre-existing dirty notification files, but `git diff --name-only origin/main...HEAD` contains no notification path.
+
+- [x] **Step 6: Commit the verified foundation checkpoint**
 
 ```powershell
 git add -- openspec/changes/harden-transaction-ledger-integrity/tasks.md docs/superpowers/plans/2026-08-24-build-ledger-mutation-foundation.md
@@ -811,3 +819,5 @@ git commit -m "docs: record ledger mutation foundation evidence"
 ```
 
 Do not push or open a PR until the diff has been independently reviewed and the next authenticated-facade plan has a stable base SHA.
+
+Evidence (2026-08-24): committed locally as `docs: record ledger mutation foundation evidence`; only this plan and the OpenSpec task ledger were staged for the checkpoint.

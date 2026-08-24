@@ -5,7 +5,7 @@
 - [x] 1.3 Add a provider-level integration test from the head listener through `FinanceContext`, `useBalanceTransactions`, `useAccounts`, and the visible settling state.
 - [x] 1.4 Invert the unsafe expectations in `addTransactionBalanceGate.test.ts` and `transactionEditValidation.test.ts`: unresolved authority MUST produce zero writer calls and preserve the form.
 - [x] 1.5 Extend `metricScopeFilterIndependence.test.tsx` to change every lower filter independently and together while asserting all four General overview values remain identical and only list/CSV change.
-- [ ] 1.6 Add a table-driven ingress parity suite for manual, edit, AI, recurring, account adjustment, debt adapter, delete, and undo against the same monetary invariants.
+- [x] 1.6 Add a table-driven ingress parity suite for manual, edit, AI, recurring, account adjustment, debt adapter, delete, and undo against the same monetary invariants.
 
 ## Task 2: Make server-confirmed readiness explicit
 
@@ -17,11 +17,11 @@
 
 ## Task 3: Build the pure ledger mutation planner
 
-- [ ] 3.1 Define typed mutation intents and optional audit/idempotency metadata in `types/finance.ts`, keeping every new transaction field optional for historical compatibility.
-- [ ] 3.2 Extract one pure money normalizer that requires `Number.isFinite`, positive configured range, and `roundMoney` at the persistence boundary; add table tests for COP cents, interest, `NaN`, `Infinity`, maximum, and float residue.
-- [ ] 3.3 Implement a pure before/after delta planner for create, edit, delete, restore, transfer, card payment, recurring post, and balance adjustment across all affected account IDs.
-- [ ] 3.4 Define the ordinary-negative rule in planner tests: a mutation cannot cross a non-negative asset below zero or worsen a historical negative, but corrective intents can improve it.
-- [ ] 3.5 Implement reciprocal linked-payment validation as a pure function and test missing, one-way, wrong-role, wrong-account, mismatched-amount/date, and valid historical pairs.
+- [x] 3.1 Define typed mutation intents and optional audit/idempotency metadata in `types/finance.ts`, keeping every new transaction field optional for historical compatibility.
+- [x] 3.2 Extract one pure money normalizer that requires `Number.isFinite`, positive configured range, and `roundMoney` at the persistence boundary; add table tests for COP cents, interest, `NaN`, `Infinity`, maximum, and float residue.
+- [x] 3.3 Implement a pure before/after delta planner for create, edit, delete, restore, transfer, card payment, recurring post, and balance adjustment across all affected account IDs.
+- [x] 3.4 Define the ordinary-negative rule in planner tests: a mutation cannot cross a non-negative asset below zero or worsen a historical negative, but corrective intents can improve it.
+- [x] 3.5 Implement reciprocal linked-payment validation as a pure function and test missing, one-way, wrong-role, wrong-account, mismatched-amount/date, and valid historical pairs.
 - [ ] 3.6 Replace duplicated UI-only balance checks with adapters to the planner while preserving `TransactionValidator` form errors and current interest/TRM behavior.
 
 ## Task 4: Serialize authenticated balance-sensitive writes

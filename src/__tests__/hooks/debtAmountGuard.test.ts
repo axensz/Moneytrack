@@ -18,7 +18,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useDebts } from '../../hooks/useDebts';
-import type { Debt, Transaction } from '../../types/finance';
+import type { Account, Debt, Transaction } from '../../types/finance';
 
 const SEED_DEBT: Debt = {
   id: 'debt-1',
@@ -167,5 +167,133 @@ describe('F3-debt-guard: useDebts rechaza montos <= 0', () => {
 
       expect(currentDebt(result).remainingAmount).toBe(1000);
     });
+  });
+});
+
+const SAVINGS: Account = {
+  id: 'savings',
+  name: 'Ahorros',
+  type: 'savings',
+  isDefault: true,
+  initialBalance: 1_000,
+};
+
+const guestTransaction = (overrides: Partial<Transaction> = {}): Transaction => ({
+  id: 'tx-existing',
+  type: 'expense',
+  amount: 100,
+  category: 'Prueba',
+  description: 'Movimiento existente',
+  date: new Date('2026-08-24T12:00:00-05:00'),
+  paid: true,
+  accountId: SAVINGS.id!,
+  ...overrides,
+});
+
+const renderGuestLedgerDebts = (
+  seed: Debt[] = [],
+  transactions: Transaction[] = []
+) => {
+  localStorage.setItem('debts', JSON.stringify(seed));
+  const addTransaction = vi.fn<
+    (tx: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>
+  >(async () => undefined);
+  const rendered = renderHook(() => useDebts(null, transactions, undefined, {
+    addTransaction,
+    accounts: [SAVINGS],
+  }));
+  return { ...rendered, addTransaction };
+};
+
+describe('debt ledger source-funds guard in guest mode', () => {
+  it('rejects lent origination that would overdraw savings before any local write', async () => {
+    const { result, addTransaction } = renderGuestLedgerDebts();
+
+    await expect(act(async () => {
+      await result.current.addDebt({
+        personName: 'Ana',
+        type: 'lent',
+        originalAmount: 1_000.01,
+        remainingAmount: 1_000.01,
+        accountId: SAVINGS.id,
+        isSettled: false,
+      });
+    })).rejects.toMatchObject({ code: 'INSUFFICIENT_FUNDS' });
+
+    expect(addTransaction).not.toHaveBeenCalled();
+    expect(result.current.debts).toEqual([]);
+  });
+
+  it('allows exact lent origination and reaches zero', async () => {
+    const { result, addTransaction } = renderGuestLedgerDebts();
+
+    await act(async () => {
+      await result.current.addDebt({
+        personName: 'Ana',
+        type: 'lent',
+        originalAmount: 1_000,
+        remainingAmount: 1_000,
+        accountId: SAVINGS.id,
+        isSettled: false,
+      });
+    });
+
+    expect(addTransaction).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'expense',
+      amount: 1_000,
+      accountId: 'savings',
+    }));
+    expect(result.current.debts).toHaveLength(1);
+  });
+
+  it('rejects borrowed repayment that would overdraw savings and preserves the debt', async () => {
+    const debt: Debt = {
+      ...SEED_DEBT,
+      type: 'borrowed',
+      accountId: SAVINGS.id,
+      originalAmount: 1_000.01,
+      remainingAmount: 1_000.01,
+    };
+    const { result, addTransaction } = renderGuestLedgerDebts([debt]);
+
+    await expect(act(async () => {
+      await result.current.registerDebtPayment(debt.id!, 1_000.01);
+    })).rejects.toMatchObject({ code: 'INSUFFICIENT_FUNDS' });
+
+    expect(addTransaction).not.toHaveBeenCalled();
+    expect(result.current.debts[0].remainingAmount).toBe(1_000.01);
+  });
+
+  it('rejects worsening a historical negative and allows an improving origination', async () => {
+    const history = [guestTransaction({ amount: 1_100 })];
+    const worsening = renderGuestLedgerDebts([], history);
+
+    await expect(act(async () => {
+      await worsening.result.current.addDebt({
+        personName: 'Ana',
+        type: 'lent',
+        originalAmount: 1,
+        remainingAmount: 1,
+        accountId: SAVINGS.id,
+        isSettled: false,
+      });
+    })).rejects.toMatchObject({ code: 'INSUFFICIENT_FUNDS' });
+
+    const improving = renderGuestLedgerDebts([], history);
+    await act(async () => {
+      await improving.result.current.addDebt({
+        personName: 'Ana',
+        type: 'borrowed',
+        originalAmount: 50,
+        remainingAmount: 50,
+        accountId: SAVINGS.id,
+        isSettled: false,
+      });
+    });
+
+    expect(improving.addTransaction).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'income',
+      amount: 50,
+    }));
   });
 });

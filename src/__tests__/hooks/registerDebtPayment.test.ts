@@ -31,9 +31,20 @@ const makeDebt = (o: Partial<Debt> = {}): Partial<Debt> => ({
   ...o,
 });
 
+const DEFAULT_ACCOUNTS: Account[] = [{
+  id: 'acc-1',
+  name: 'Ahorros',
+  type: 'savings',
+  isDefault: true,
+  initialBalance: 1_000_000,
+}];
+
 const renderDebts = (addTransaction?: ReturnType<typeof vi.fn>) =>
   renderHook(() =>
-    useDebts(null, [], undefined, addTransaction ? { addTransaction: addTransaction as unknown as AddTransactionFn } : {})
+    useDebts(null, [], undefined, addTransaction ? {
+      addTransaction: addTransaction as unknown as AddTransactionFn,
+      accounts: DEFAULT_ACCOUNTS,
+    } : {})
   ).result;
 
 beforeEach(() => {

@@ -34,8 +34,14 @@ import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
 import { safeFirestoreOperation, checkNetworkConnection, stripUndefined } from '../utils/firestoreHelpers';
 import { generateId } from '../utils/formatters';
-import { normalizeLedgerAmount } from '../utils/ledgerMutation';
+import {
+  LedgerMutationValidationError,
+  normalizeLedgerAmount,
+  planLedgerMutation,
+} from '../utils/ledgerMutation';
 import { creditDeltasByAccount } from '../utils/creditDeltas';
+import { BalanceCalculator } from '../utils/balanceCalculator';
+import { getAccountReferenceIds } from '../utils/accountTransactions';
 import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../config/constants';
 import type { Debt, Transaction, Account } from '../types/finance';
 import {
@@ -116,6 +122,40 @@ export function useDebts(
   }, [userId, hasExternalDebts]);
 
   const debts = externalDebts ?? (userId ? firestoreDebts : localDebts);
+
+  const assertGuestLedgerMutation = useCallback((
+    transaction: Omit<Transaction, 'id' | 'createdAt'>
+  ) => {
+    const account = operationAccounts.find(candidate =>
+      getAccountReferenceIds(candidate).includes(transaction.accountId)
+    );
+    if (!account?.id) {
+      throw new LedgerMutationValidationError(
+        'INVALID_ACCOUNT_AUTHORITY',
+        'No se pudo validar la cuenta asociada',
+        transaction.accountId
+      );
+    }
+
+    const normalizedTransaction = {
+      ...transaction,
+      accountId: account.id,
+    };
+    planLedgerMutation(
+      {
+        kind: 'create',
+        before: [],
+        after: [normalizedTransaction],
+        metadata: { mutationSource: 'debt' },
+      },
+      [{
+        account: { id: account.id, type: account.type },
+        currentBalance: BalanceCalculator.calculateAccountBalance(account, transactions),
+      }]
+    );
+
+    return normalizedTransaction;
+  }, [operationAccounts, transactions]);
 
   // CRUD Operations
   const addDebt = useCallback(async (debt: Omit<Debt, 'id' | 'createdAt'>) => {
@@ -215,15 +255,18 @@ export function useDebts(
         });
       }
     } else {
-      // Guest mode keeps the debt lifecycle local; the balance guard is added
-      // in the next task before either local collection is mutated.
       debtId = generateId();
       const createdAt = new Date();
-      if (debt.accountId && addTransaction) {
+      const originalAmount = normalizeLedgerAmount(debt.originalAmount);
+      const remainingAmount = normalizeLedgerAmount(debt.remainingAmount);
+      if (debt.accountId) {
+        if (!addTransaction) {
+          throw new Error('No se puede registrar el movimiento de la deuda');
+        }
         const isLent = debt.type === 'lent';
-        await addTransaction({
+        const transaction = assertGuestLedgerMutation({
           type: isLent ? 'expense' : 'income',
-          amount: debt.originalAmount,
+          amount: originalAmount,
           category: LOAN_CATEGORY,
           description: isLent
             ? `Préstamo a ${debt.personName}`
@@ -233,11 +276,18 @@ export function useDebts(
           accountId: debt.accountId,
           debtId,
         });
+        await addTransaction(transaction);
       }
-      const newDebt: Debt = { ...debt, id: debtId, createdAt };
+      const newDebt: Debt = {
+        ...debt,
+        originalAmount,
+        remainingAmount,
+        id: debtId,
+        createdAt,
+      };
       setLocalDebts(prev => [newDebt, ...prev]);
     }
-  }, [userId, setLocalDebts, addTransaction]);
+  }, [userId, setLocalDebts, addTransaction, assertGuestLedgerMutation]);
 
   const updateDebt = useCallback(async (id: string, updates: Partial<Debt>) => {
     if (userId) {
@@ -633,14 +683,20 @@ export function useDebts(
 
     const debt = debts.find(d => d.id === debtId);
     if (!debt) return;
+    if (debt.isSettled || debt.remainingAmount <= 0) return;
 
-    const effectiveAmount = Math.min(amount, debt.remainingAmount);
-    const newRemaining = Math.max(0, debt.remainingAmount - effectiveAmount);
+    const requestedAmount = normalizeLedgerAmount(amount);
+    const remainingAmount = normalizeLedgerAmount(debt.remainingAmount);
+    const effectiveAmount = Math.min(requestedAmount, remainingAmount);
+    const newRemaining = Math.max(0, remainingAmount - effectiveAmount);
     const isSettled = newRemaining === 0;
 
-    if (debt.accountId && addTransaction && effectiveAmount > 0) {
+    if (debt.accountId && effectiveAmount > 0) {
+      if (!addTransaction) {
+        throw new Error('No se puede registrar el movimiento del pago');
+      }
       const isLent = debt.type === 'lent';
-      await addTransaction({
+      const transaction = assertGuestLedgerMutation({
         type: isLent ? 'income' : 'expense',
         amount: effectiveAmount,
         category: LOAN_PAYMENT_CATEGORY,
@@ -652,6 +708,7 @@ export function useDebts(
         accountId: debt.accountId,
         debtId,
       });
+      await addTransaction(transaction);
     }
 
     await updateDebt(debtId, {
@@ -659,7 +716,7 @@ export function useDebts(
       isSettled,
       ...(isSettled ? { settledAt: new Date() } : {}),
     });
-  }, [userId, debts, updateDebt, addTransaction]);
+  }, [userId, debts, updateDebt, addTransaction, assertGuestLedgerMutation]);
 
   // Modify debt balance (add or subtract from original amount)
   const modifyDebtBalance = useCallback(async (

@@ -20,7 +20,7 @@
 
 import React, { createContext, useContext, useMemo, useCallback, useRef, useLayoutEffect } from 'react';
 import { createStore, useStoreSelector, type ExternalStore } from './financeStore';
-import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../config/constants';
+import { LOAN_PAYMENT_CATEGORY } from '../config/constants';
 import { useTransactions } from '../hooks/useTransactions';
 import { useBalanceTransactions } from '../hooks/useBalanceTransactions';
 import { useAccounts } from '../hooks/useAccounts';
@@ -37,6 +37,7 @@ import { formatCurrency } from '../utils/formatters';
 import type { Transaction, Account, Categories, RecurringPayment, Debt, Budget, SavingsGoal } from '../types/finance';
 import type { BudgetStatus } from '../hooks/useBudgets';
 import type { GoalStatus } from '../hooks/useSavingsGoals';
+import { executeDebtAwareTransactionDelete } from '../utils/debtAwareTransactionDelete';
 
 // ─── Tipos ────────────────────────────────────────────────
 
@@ -104,7 +105,8 @@ export interface FinanceContextValue {
     recurringPaymentId: string,
     recurringCycle: string
   ) => Promise<void>;
-  deleteTransaction: (id: string) => Promise<void>;
+  restoreTransaction: (tx: Transaction) => Promise<void>;
+  deleteTransaction: (id: string) => Promise<Transaction | null>;
   updateTransaction: (id: string, updates: Partial<Transaction>) => Promise<void>;
 
   // ── Account CRUD ──
@@ -228,6 +230,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     addCreditPaymentAtomic,
     addRecurringTransactionAtomic,
     linkRecurringTransactionAtomic,
+    restoreTransaction,
     deleteTransaction,
     updateTransaction,
     loading: transactionsLoading,
@@ -295,12 +298,14 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     deleteDebt,
     reassignDebtAccount,
     registerDebtPayment,
+    restoreDebtPayment,
     modifyDebtBalance,
     forgiveDebt,
     getDebtTransactions,
     stats: debtStats,
   } = useDebts(userId, transactions, userId ? firestoreData.debts : undefined, {
     addTransaction,
+    restoreTransaction,
     deleteTransaction,
     updateTransaction,
     accounts,
@@ -318,34 +323,26 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
   // CRUDO. Este wrapper es el que se expone a las vistas. Así evitamos la
   // recursión deleteDebt → deleteTransaction → deleteDebt.
   const deleteTransactionWithDebtSync = useCallback(
-    async (id: string) => {
-      const tx = transactions.find(t => t.id === id);
-      const debt = tx?.debtId ? debts.find(d => d.id === tx.debtId) : undefined;
-
-      if (tx && debt) {
-        // Movimiento principal del préstamo → deshacer la deuda completa.
-        // deleteDebt ya elimina esta transacción (y las demás vinculadas) + la deuda.
-        if (tx.category === LOAN_CATEGORY) {
-          await deleteDebt(debt.id!);
-          return;
-        }
-        // Pago/cobro del préstamo → revertir el saldo pendiente y borrar la tx.
-        if (tx.category === LOAN_PAYMENT_CATEGORY) {
-          await deleteTransaction(id);
-          if (!userId) {
-            await updateDebt(debt.id!, {
-              remainingAmount: debt.remainingAmount + tx.amount,
-              isSettled: false,
-              settledAt: undefined,
-            });
-          }
-          return;
-        }
-      }
-
-      await deleteTransaction(id);
-    },
+    (id: string) => executeDebtAwareTransactionDelete(id, {
+      userId,
+      transactions,
+      debts,
+      deleteTransaction,
+      deleteDebt,
+      updateDebt,
+    }),
     [transactions, debts, userId, deleteTransaction, deleteDebt, updateDebt]
+  );
+
+  const restoreTransactionWithDebtSync = useCallback(
+    async (transaction: Transaction) => {
+      if (transaction.debtId && transaction.category === LOAN_PAYMENT_CATEGORY) {
+        await restoreDebtPayment(transaction);
+        return;
+      }
+      await restoreTransaction(transaction);
+    },
+    [restoreDebtPayment, restoreTransaction]
   );
 
   // 6. Presupuestos — uses centralized data when authenticated
@@ -409,6 +406,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     addCreditPaymentAtomic,
     addRecurringTransactionAtomic,
     linkRecurringTransactionAtomic,
+    restoreTransaction: restoreTransactionWithDebtSync,
     deleteTransaction: deleteTransactionWithDebtSync,
     updateTransaction,
 
@@ -477,7 +475,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
     firestoreError, retryLoad,
     addTransaction, addCreditPaymentAtomic, addRecurringTransactionAtomic, linkRecurringTransactionAtomic,
-    deleteTransactionWithDebtSync, updateTransaction,
+    restoreTransactionWithDebtSync, deleteTransactionWithDebtSync, updateTransaction,
     addAccount, updateAccount, deleteAccount, mergeCreditCards, setDefaultAccount,
     getAccountBalance, getCreditUsed, getTransactionCountForAccount,
     addCategory, deleteCategory, addTransactionBeneficiary, deleteTransactionBeneficiary,

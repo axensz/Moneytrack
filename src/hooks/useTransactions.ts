@@ -20,6 +20,12 @@ import { generateId } from '../utils/formatters';
 import { ensureDate } from '../utils/dateUtils';
 import { getAccountReferenceIds } from '../utils/accountTransactions';
 import { reconcileUsedCredit } from '../utils/creditDeltas';
+import { BalanceCalculator } from '../utils/balanceCalculator';
+import { planLedgerMutation } from '../utils/ledgerMutation';
+import {
+  getTransactionRestorePolicy,
+  transactionMatchesRestoreSnapshot,
+} from '../utils/transactionRestorePolicy';
 import {
   CURRENT_PAYMENT_PAIR_MODEL_VERSION,
   findHistoricalCreditPaymentPairs,
@@ -72,6 +78,7 @@ export function useTransactions(userId: string | null) {
     addCreditPaymentAtomic: firestoreAddCreditPaymentAtomic,
     addRecurringTransactionAtomic: firestoreAddRecurringTransactionAtomic,
     linkRecurringTransactionAtomic: firestoreLinkRecurringTransactionAtomic,
+    restoreTransaction: firestoreRestoreTransaction,
     deleteTransaction: firestoreDeleteTransaction,
     updateTransaction: firestoreUpdateTransaction
   } = useFirestoreData();
@@ -219,16 +226,69 @@ export function useTransactions(userId: string | null) {
     )));
   };
 
+  const restoreTransaction = async (transaction: Transaction) => {
+    if (userId) {
+      await firestoreRestoreTransaction(transaction);
+      return;
+    }
+
+    const policy = getTransactionRestorePolicy(transaction, localAccounts);
+    if (!policy.allowed) throw new Error(policy.reason);
+
+    const transactionId = transaction.id!;
+    const existing = localTransactions.find(candidate => candidate.id === transactionId);
+    if (existing) {
+      if (transactionMatchesRestoreSnapshot(existing, transaction)) return;
+      throw new Error('La identidad original ya pertenece a otra transacción.');
+    }
+
+    const account = localAccounts.find(candidate => (
+      getAccountReferenceIds(candidate).includes(transaction.accountId)
+    ));
+    if (!account?.id) {
+      throw new Error('No se pudo validar la cuenta de la transacción eliminada.');
+    }
+    const restored: Transaction = {
+      ...transaction,
+      id: transactionId,
+      accountId: account.id,
+      createdAt: transaction.createdAt ?? new Date(),
+      mutationKind: 'restore',
+      mutationSource: 'undo',
+    };
+    planLedgerMutation(
+      {
+        kind: 'restore',
+        before: [],
+        after: [restored],
+        metadata: { mutationSource: 'undo' },
+      },
+      [{
+        account: { id: account.id, type: account.type },
+        currentBalance: BalanceCalculator.calculateAccountBalance(account, localTransactions),
+      }]
+    );
+
+    setLocalTransactions(previous => {
+      const concurrent = previous.find(candidate => candidate.id === transactionId);
+      if (!concurrent) return [restored, ...previous];
+      if (transactionMatchesRestoreSnapshot(concurrent, transaction)) return previous;
+      throw new Error('La identidad original ya pertenece a otra transacción.');
+    });
+  };
+
   const deleteTransaction = async (id: string) => {
     if (userId) {
-      await firestoreDeleteTransaction(id);
-    } else {
-      setLocalTransactions(prev => {
-        const transaction = prev.find(t => t.id === id);
-        const ids = new Set([id, transaction?.linkedTransactionId].filter(Boolean));
-        return prev.filter(t => !t.id || !ids.has(t.id));
-      });
+      return firestoreDeleteTransaction(id);
     }
+    const transaction = localTransactions.find(candidate => candidate.id === id);
+    if (!transaction) return null;
+    setLocalTransactions(prev => {
+      const current = prev.find(candidate => candidate.id === id);
+      const ids = new Set([id, current?.linkedTransactionId].filter(Boolean));
+      return prev.filter(candidate => !candidate.id || !ids.has(candidate.id));
+    });
+    return transaction;
   };
 
   const togglePaid = async (id: string) => {
@@ -274,6 +334,7 @@ export function useTransactions(userId: string | null) {
     addCreditPaymentAtomic,
     addRecurringTransactionAtomic,
     linkRecurringTransactionAtomic,
+    restoreTransaction,
     deleteTransaction,
     togglePaid,
     updateTransaction

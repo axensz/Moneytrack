@@ -14,7 +14,7 @@
  * afectar saldos (comportamiento histórico).
  */
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   collection,
   onSnapshot,
@@ -33,7 +33,7 @@ import { db } from '../lib/firebaseDb';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
 import { safeFirestoreOperation, checkNetworkConnection, stripUndefined } from '../utils/firestoreHelpers';
-import { generateId } from '../utils/formatters';
+import { generateId, roundMoney } from '../utils/formatters';
 import {
   LedgerMutationValidationError,
   normalizeLedgerAmount,
@@ -58,10 +58,12 @@ import {
   planCreditAuthorityChanges,
 } from './firestore/ledgerMutationOrchestration';
 import { buildDebtAccountReassignmentPlan } from '../utils/debtAccountReassignment';
+import { transactionMatchesRestoreSnapshot } from '../utils/transactionRestorePolicy';
 
 interface DebtTransactionOps {
   addTransaction?: (tx: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
-  deleteTransaction?: (id: string) => Promise<void>;
+  restoreTransaction?: (tx: Transaction) => Promise<void>;
+  deleteTransaction?: (id: string) => Promise<unknown>;
   updateTransaction?: (id: string, updates: Partial<Transaction>) => Promise<void>;
   accounts?: Account[];
 }
@@ -72,7 +74,14 @@ export function useDebts(
   externalDebts?: Debt[],
   txOps: DebtTransactionOps = {}
 ) {
-  const { addTransaction, deleteTransaction, updateTransaction, accounts: operationAccounts = [] } = txOps;
+  const {
+    addTransaction,
+    restoreTransaction,
+    deleteTransaction,
+    updateTransaction,
+    accounts: operationAccounts = [],
+  } = txOps;
+  const restoredDebtPaymentIds = useRef(new Set<string>());
   // Firestore state
   const [firestoreDebts, setFirestoreDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -718,6 +727,79 @@ export function useDebts(
     });
   }, [userId, debts, updateDebt, addTransaction, assertGuestLedgerMutation]);
 
+  const restoreDebtPayment = useCallback(async (transaction: Transaction) => {
+    if (
+      !transaction.id
+      || !transaction.debtId
+      || transaction.category !== LOAN_PAYMENT_CATEGORY
+    ) {
+      throw new Error('La transacción no es un pago de deuda restaurable.');
+    }
+    if (!restoreTransaction) {
+      throw new Error('No se puede restaurar el movimiento del pago.');
+    }
+
+    if (userId) {
+      await restoreTransaction(transaction);
+      return;
+    }
+    if (restoredDebtPaymentIds.current.has(transaction.id)) return;
+    const existing = transactions.find(candidate => candidate.id === transaction.id);
+    if (existing) {
+      if (
+        existing.mutationKind === 'restore'
+        && existing.mutationSource === 'undo'
+        && transactionMatchesRestoreSnapshot(existing, transaction)
+      ) {
+        restoredDebtPaymentIds.current.add(transaction.id);
+        return;
+      }
+      throw new Error('La identidad original ya pertenece a otra transacción.');
+    }
+
+    const debt = debts.find(candidate => candidate.id === transaction.debtId);
+    const amount = normalizeLedgerAmount(transaction.amount);
+    const remainingAmount = debt ? normalizeLedgerAmount(debt.remainingAmount) : 0;
+    const expectedType = debt?.type === 'lent'
+      ? 'income'
+      : debt?.type === 'borrowed'
+        ? 'expense'
+        : null;
+    if (
+      !debt
+      || expectedType !== transaction.type
+      || debt.accountId !== transaction.accountId
+      || remainingAmount < amount
+    ) {
+      throw new Error('No se puede restaurar el pago con el saldo pendiente actual.');
+    }
+
+    const ledgerTransaction = { ...transaction };
+    delete ledgerTransaction.id;
+    delete ledgerTransaction.createdAt;
+    delete ledgerTransaction.operationId;
+    delete ledgerTransaction.mutationKind;
+    delete ledgerTransaction.mutationSource;
+    assertGuestLedgerMutation(ledgerTransaction);
+
+    await restoreTransaction(transaction);
+    const nextRemaining = roundMoney(remainingAmount - amount);
+    const isSettled = nextRemaining === 0;
+    await updateDebt(debt.id!, {
+      remainingAmount: nextRemaining,
+      isSettled,
+      settledAt: isSettled ? transaction.date : undefined,
+    });
+    restoredDebtPaymentIds.current.add(transaction.id);
+  }, [
+    userId,
+    restoreTransaction,
+    debts,
+    transactions,
+    assertGuestLedgerMutation,
+    updateDebt,
+  ]);
+
   // Modify debt balance (add or subtract from original amount)
   const modifyDebtBalance = useCallback(async (
     debtId: string,
@@ -810,6 +892,7 @@ export function useDebts(
     deleteDebt,
     reassignDebtAccount,
     registerDebtPayment,
+    restoreDebtPayment,
     modifyDebtBalance,
     forgiveDebt,
     getDebtTransactions,

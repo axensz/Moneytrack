@@ -70,11 +70,13 @@
 
 ## Task 8: Make delete and undo aggregate-aware
 
-- [ ] 8.1 Add auth and guest round-trip tests for delete → undo of standalone expense/income, card purchase, linked card payment, debt principal, and debt payment.
-- [ ] 8.2 Implement idempotent restore for a standalone row using its original identity or stable restore operation and the same before/after balance guard.
-- [ ] 8.3 Hide generic Undo for linked/card/debt/cascade rows unless an aggregate restore command is available; add accessible explanatory copy.
-- [ ] 8.4 Integrate debt-payment restore with `remainingAmount`, settlement fields, transaction, and any credit delta in one operation inside the debt-owned change.
-- [ ] 8.5 Integrate debt-principal restore only if debt plus original operation can be recreated atomically; otherwise test that no orphan `debtId` can be written.
+- [x] 8.1 Add auth and guest round-trip tests for delete → undo of standalone expense/income, card purchase, linked card payment, debt principal, and debt payment.
+- [x] 8.2 Implement idempotent restore for a standalone row using its original identity or stable restore operation and the same before/after balance guard.
+- [x] 8.3 Hide generic Undo for linked/card/debt/cascade rows unless an aggregate restore command is available; add accessible explanatory copy.
+- [x] 8.4 Integrate debt-payment restore with `remainingAmount`, settlement fields, transaction, and any credit delta in one operation inside the debt-owned change.
+- [x] 8.5 Integrate debt-principal restore only if debt plus original operation can be recreated atomically; otherwise test that no orphan `debtId` can be written.
+
+  Evidence 2026-08-24: authenticated delete returns the server-authoritative snapshot removed under the lease, so Undo cannot recreate an earlier UI version. Restore preserves that original document ID under `ledger-mutation:undo:<transaction>:restore`, reloads server authority, applies the balance planner, and treats exact retry or lost acknowledgement as success. Debt-payment restore commits the row, `remainingAmount`, settlement fields, credit delta, and lease release in one batch; principal deletion routes through the debt cascade even with stale local debt state, while linked/card, periodic, transfer, adjustment, migration, and malformed aggregate snapshots are rejected without partial writes. Guest mode preserves the same logical aggregate behavior and remount retry semantics pending the durable envelope in Task 9. The UI synchronously guards double click, exposes Undo only for supported authoritative snapshots, and directs unsupported rows to Cuentas, Deudas, Pagos periódicos, Transacciones, or reconciliation. Focused verification passed 128 tests; the full regression passed 1,270 tests (5 skipped), plus typecheck, lint, and diff validation.
 
 ## Task 9: Make guest persistence durable and conflict-aware
 

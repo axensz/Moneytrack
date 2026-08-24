@@ -36,7 +36,7 @@ export interface AccountUpdateOptions {
 export function useAccounts(
   userId: string | null,
   transactions: Transaction[],
-  deleteTransactionFn: (id: string) => Promise<void>,
+  deleteTransactionFn: (id: string) => Promise<unknown>,
   // false mientras el primer fetch del historial completo está en vuelo (ventana
   // paginada): cualquier cálculo derivado de `transactions` puede subcontar.
   balancesReady: boolean = true

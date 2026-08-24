@@ -22,6 +22,7 @@ import {
   balanceReadinessBlock,
   isBalanceSensitiveEdit,
 } from '../../../../utils/ledgerReadiness';
+import { getTransactionRestorePolicy } from '../../../../utils/transactionRestorePolicy';
 
 interface UseTransactionsViewParams {
   transactions: Transaction[];
@@ -35,9 +36,9 @@ interface UseTransactionsViewParams {
   setCustomStartDate: (date: string) => void;
   customEndDate: string;
   setCustomEndDate: (date: string) => void;
-  deleteTransaction: (id: string) => Promise<void>;
+  deleteTransaction: (id: string) => Promise<Transaction | null | void>;
   updateTransaction: (id: string, updates: Partial<Transaction>) => Promise<void>;
-  onRestore?: (transaction: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
+  onRestore?: (transaction: Transaction) => Promise<void>;
   /** Historial completo para validar saldo/cupo (nunca la ventana paginada). */
   balanceTransactions: Transaction[];
   /** false mientras el historial completo asienta: se omite la validación. */
@@ -408,26 +409,38 @@ export const useTransactionsView = ({
       const toastId = toast.loading('Eliminando...');
 
       try {
-        await deleteTransaction(transaction.id!);
+        const deletedTransaction = await deleteTransaction(transaction.id!);
+        const restorePolicy = deletedTransaction
+          ? getTransactionRestorePolicy(deletedTransaction, accounts)
+          : {
+              allowed: false as const,
+              kind: 'unsupported' as const,
+              reason: 'No se puede deshacer porque el movimiento ya había cambiado o no existe.',
+            };
+        let restorableSnapshot: Transaction | null = null;
+        if (deletedTransaction && restorePolicy.allowed) {
+          restorableSnapshot = deletedTransaction;
+        }
 
         // Guard anti doble-clic en "Deshacer": el handler es async y sin esto un
         // segundo clic re-crea la transacción (duplicado). Flag por-toast. (#tx-4)
         let isRestoring = false;
         toast.success(
           (t) => (
-            <div className="flex items-center gap-2">
-              <span>Eliminado</span>
-              {onRestore && !transaction.linkedTransactionId && (
+            <div className="flex items-start gap-2">
+              <span>
+                {restorePolicy.allowed
+                  ? 'Eliminado'
+                  : `Eliminado. ${restorePolicy.reason}`}
+              </span>
+              {onRestore && restorableSnapshot && (
                 <button
                   onClick={async () => {
                     if (isRestoring) return;
                     isRestoring = true;
                     toast.dismiss(t.id);
-                    const transactionToRestore = { ...transaction };
-                    delete transactionToRestore.id;
-                    delete transactionToRestore.createdAt;
                     try {
-                      await onRestore(transactionToRestore);
+                      await onRestore(restorableSnapshot);
                       toast.success('Restaurado');
                     } catch {
                       isRestoring = false; // permitir reintento si falló
@@ -447,7 +460,7 @@ export const useTransactionsView = ({
         toast.error('Error al eliminar', { id: toastId });
       }
     },
-    [deleteTransaction, onRestore]
+    [accounts, deleteTransaction, onRestore]
   );
 
   const getRecurringPaymentName = useCallback(

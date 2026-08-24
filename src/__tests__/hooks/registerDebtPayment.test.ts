@@ -15,6 +15,7 @@ import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../../config/constants';
 import type { Account, Debt, Transaction } from '../../types/finance';
 
 type AddTransactionFn = (tx: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
+type RestoreTransactionFn = (tx: Transaction) => Promise<void>;
 
 const seedDebts = (debts: Partial<Debt>[]) =>
   localStorage.setItem('debts', JSON.stringify(debts));
@@ -286,5 +287,84 @@ describe('registerDebtPayment (código real de useDebts) — A1', () => {
     });
     expect(result.current.debts[0].accountId).toBeUndefined();
     expect(deleteTransaction).toHaveBeenLastCalledWith('principal');
+  });
+});
+
+describe('restoreDebtPayment — modo invitado', () => {
+  const deletedPayment: Transaction = {
+    id: 'payment-1',
+    type: 'income',
+    amount: 300,
+    category: LOAN_PAYMENT_CATEGORY,
+    description: 'Cobro de Juan',
+    date: new Date('2026-08-24T12:00:00.000Z'),
+    createdAt: new Date('2026-08-24T12:01:00.000Z'),
+    paid: true,
+    accountId: 'acc-1',
+    debtId: 'd1',
+  };
+
+  const renderRestore = (restoreTransaction: ReturnType<typeof vi.fn>) =>
+    renderHook(() => useDebts(null, [], undefined, {
+      restoreTransaction: restoreTransaction as unknown as RestoreTransactionFn,
+      accounts: DEFAULT_ACCOUNTS,
+    })).result;
+
+  it('restaura la fila y vuelve a aplicar el pago al saldo pendiente', async () => {
+    seedDebts([makeDebt({ remainingAmount: 1000, isSettled: false })]);
+    const restoreTransaction = vi.fn().mockResolvedValue(undefined);
+    const result = renderRestore(restoreTransaction);
+
+    await act(async () => {
+      await result.current.restoreDebtPayment(deletedPayment);
+      await result.current.restoreDebtPayment(deletedPayment);
+    });
+
+    expect(restoreTransaction).toHaveBeenCalledOnce();
+    expect(restoreTransaction).toHaveBeenCalledWith(deletedPayment);
+    expect(result.current.debts[0]).toMatchObject({
+      remainingAmount: 700,
+      isSettled: false,
+    });
+  });
+
+  it('no cambia la deuda si falla la restauración y rechaza sobre-restaurar', async () => {
+    seedDebts([makeDebt({ remainingAmount: 1000, isSettled: false })]);
+    const failedRestore = vi.fn().mockRejectedValue(new Error('storage rejected'));
+    const failed = renderRestore(failedRestore);
+
+    await expect(act(async () => {
+      await failed.current.restoreDebtPayment(deletedPayment);
+    })).rejects.toThrow('storage rejected');
+    expect(failed.current.debts[0].remainingAmount).toBe(1000);
+
+    localStorage.clear();
+    seedDebts([makeDebt({ remainingAmount: 200, isSettled: false })]);
+    const overRestore = vi.fn().mockResolvedValue(undefined);
+    const over = renderRestore(overRestore);
+    await expect(over.current.restoreDebtPayment(deletedPayment)).rejects.toThrow(/saldo pendiente/i);
+    expect(overRestore).not.toHaveBeenCalled();
+    expect(over.current.debts[0].remainingAmount).toBe(200);
+  });
+
+  it('trata como éxito un retry tras remount cuando la fila restaurada ya existe', async () => {
+    seedDebts([makeDebt({ remainingAmount: 700, isSettled: false })]);
+    const alreadyRestored: Transaction = {
+      ...deletedPayment,
+      mutationKind: 'restore',
+      mutationSource: 'undo',
+    };
+    const restoreTransaction = vi.fn().mockResolvedValue(undefined);
+    const result = renderHook(() => useDebts(null, [alreadyRestored], undefined, {
+      restoreTransaction: restoreTransaction as unknown as RestoreTransactionFn,
+      accounts: DEFAULT_ACCOUNTS,
+    })).result;
+
+    await act(async () => {
+      await result.current.restoreDebtPayment(deletedPayment);
+    });
+
+    expect(restoreTransaction).not.toHaveBeenCalled();
+    expect(result.current.debts[0].remainingAmount).toBe(700);
   });
 });

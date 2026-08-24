@@ -10,10 +10,16 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import type { Account, Transaction } from '../../types/finance';
 
+const M = vi.hoisted(() => ({
+  restoreTransaction: vi.fn(),
+}));
+
 vi.mock('../../contexts/FirestoreContext', () => ({
   useFirestoreData: () => ({
     transactions: [], loading: false,
     addTransaction: vi.fn(), addCreditPaymentAtomic: vi.fn(),
+    addRecurringTransactionAtomic: vi.fn(), linkRecurringTransactionAtomic: vi.fn(),
+    restoreTransaction: M.restoreTransaction,
     deleteTransaction: vi.fn(), updateTransaction: vi.fn(),
   }),
 }));
@@ -24,7 +30,10 @@ const base = { category: 'Pago', description: '', date: new Date('2026-06-15'), 
 const creditTx = { ...base, type: 'income' as const, amount: 50_000, accountId: 'tc' };
 const sourceTx = { ...base, type: 'expense' as const, amount: 50_000, accountId: 'sav' };
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  M.restoreTransaction.mockReset().mockResolvedValue(undefined);
+});
 
 describe('useTransactions.addCreditPaymentAtomic — modo invitado (#tx-1)', () => {
   it('crea AMBAS transacciones del par (ingreso a TC + gasto en origen) en localStorage', async () => {
@@ -100,5 +109,76 @@ describe('useTransactions.addCreditPaymentAtomic — modo invitado (#tx-1)', () 
       const accounts = JSON.parse(localStorage.getItem('accounts')!) as Account[];
       expect(accounts[0].paymentPairModelVersion).toBe(1);
     });
+  });
+});
+
+describe('useTransactions.restoreTransaction — modo invitado', () => {
+  const savings: Account = {
+    id: 'sav', name: 'Ahorros', type: 'savings', isDefault: true, initialBalance: 100_000,
+  };
+  const snapshot: Transaction = {
+    id: 'tx-restored',
+    type: 'expense',
+    amount: 42_000,
+    category: 'Mercado',
+    description: 'Compra eliminada',
+    date: new Date('2026-08-24T12:00:00.000Z'),
+    createdAt: new Date('2026-08-24T12:01:00.000Z'),
+    paid: true,
+    accountId: 'sav',
+  };
+
+  it('restaura el ID original una sola vez aunque se repita la orden', async () => {
+    localStorage.setItem('accounts', JSON.stringify([savings]));
+    const { result } = renderHook(() => useTransactions(null));
+
+    await act(async () => {
+      await result.current.restoreTransaction(snapshot);
+      await result.current.restoreTransaction(snapshot);
+    });
+
+    const restored = result.current.transactions.filter(item => item.id === snapshot.id);
+    expect(restored).toHaveLength(1);
+    expect(restored[0]).toMatchObject({
+      id: snapshot.id,
+      amount: snapshot.amount,
+      mutationKind: 'restore',
+      mutationSource: 'undo',
+    });
+  });
+
+  it('delega la restauración autenticada a la autoridad Firestore', async () => {
+    const { result } = renderHook(() => useTransactions('user-1'));
+
+    await act(async () => {
+      await result.current.restoreTransaction(snapshot);
+    });
+
+    expect(M.restoreTransaction).toHaveBeenCalledOnce();
+    expect(M.restoreTransaction).toHaveBeenCalledWith(snapshot);
+  });
+
+  it('rechaza agregados incompletos y colisiones del ID original', async () => {
+    localStorage.setItem('accounts', JSON.stringify([
+      savings,
+      { id: 'tc', name: 'Visa', type: 'credit', isDefault: false, initialBalance: 0 },
+    ] as Account[]));
+    localStorage.setItem('transactions', JSON.stringify([{
+      ...snapshot,
+      amount: 99_000,
+    }]));
+    const { result } = renderHook(() => useTransactions(null));
+
+    await expect(result.current.restoreTransaction(snapshot)).rejects.toThrow(/identidad original/i);
+    await expect(result.current.restoreTransaction({
+      ...snapshot,
+      id: 'linked',
+      linkedTransactionId: 'counterpart',
+    })).rejects.toThrow(/movimiento financiero|vinculado/i);
+    await expect(result.current.restoreTransaction({
+      ...snapshot,
+      id: 'card',
+      accountId: 'tc',
+    })).rejects.toThrow(/tarjeta|movimiento financiero/i);
   });
 });

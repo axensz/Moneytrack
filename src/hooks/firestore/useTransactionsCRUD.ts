@@ -12,7 +12,11 @@ import {
   deleteField,
 } from 'firebase/firestore';
 import { db } from '../../lib/firebaseDb';
-import { LOAN_PAYMENT_CATEGORY, TRANSFER_CATEGORY } from '../../config/constants';
+import {
+  LOAN_PAYMENT_CATEGORY,
+  SPECIAL_CATEGORIES,
+  TRANSFER_CATEGORY,
+} from '../../config/constants';
 import type { Transaction, Account, RecurringPayment } from '../../types/finance';
 import { getAccountReferenceIds } from '../../utils/accountTransactions';
 import { ensureDate } from '../../utils/dateUtils';
@@ -246,6 +250,46 @@ const recurringMetadata = (transaction: Transaction) => ({
   lastPaidDate: transaction.date,
 });
 
+const restoreOperationId = (transactionId: string): string => (
+  validateLedgerMutationOperationId(`ledger-mutation:undo:${transactionId}:restore`)
+);
+
+const assertRestorableSnapshot = (transaction: Transaction): void => {
+  if (!transaction.id) throw new Error('No se puede restaurar una fila sin identidad original.');
+  validateTransactionSchema(transaction);
+  if (transaction.mutationKind === 'migration' || transaction.mutationSource === 'migration') {
+    throw new Error('No se puede restaurar una fila de migración sin reconciliarla.');
+  }
+  if (transaction.linkedTransactionId) {
+    throw new Error('No se puede restaurar un pago vinculado sin su agregado completo.');
+  }
+  if (transaction.recurringPaymentId) {
+    throw new Error('No se puede restaurar un pago periódico sin su agregado completo.');
+  }
+  if (transaction.mutationKind === 'credit-payment') {
+    throw new Error('No se puede restaurar una mitad de pago sin su agregado completo.');
+  }
+  if (transaction.mutationKind === 'recurring-post' || transaction.mutationSource === 'recurring') {
+    throw new Error('No se puede restaurar una fila periódica incompleta.');
+  }
+  if (transaction.mutationSource === 'debt' && !transaction.debtId) {
+    throw new Error('No se puede restaurar una fila de deuda incompleta.');
+  }
+  if (transaction.type === 'transfer') {
+    throw new Error('No se puede restaurar una transferencia desde el deshacer genérico.');
+  }
+  if (
+    transaction.mutationKind === 'balance-adjustment'
+    || transaction.mutationSource === 'account'
+    || SPECIAL_CATEGORIES.groupedAdjustmentCategories.includes(transaction.category)
+  ) {
+    throw new Error('No se puede restaurar un ajuste de saldo desde el deshacer genérico.');
+  }
+  if (transaction.debtId && transaction.category !== LOAN_PAYMENT_CATEGORY) {
+    throw new Error('No se puede restaurar el movimiento principal de una deuda sin recrearla.');
+  }
+};
+
 interface UseTransactionsCRUDReturn {
   addTransaction: (
     transaction: Omit<Transaction, 'id' | 'createdAt'>
@@ -262,7 +306,8 @@ interface UseTransactionsCRUDReturn {
     recurringPaymentId: string,
     recurringCycle: string
   ) => Promise<void>;
-  deleteTransaction: (id: string) => Promise<void>;
+  restoreTransaction: (transaction: Transaction) => Promise<void>;
+  deleteTransaction: (id: string) => Promise<Transaction | null>;
   updateTransaction: (
     id: string,
     updates: Partial<Transaction>
@@ -809,11 +854,162 @@ export function useTransactionsCRUD(
     [userId]
   );
 
-  const deleteTransaction = useCallback(
-    async (id: string) => {
+  const restoreTransaction = useCallback(
+    async (transaction: Transaction) => {
       if (!userId) return;
       if (isOffline()) throw new Error(OFFLINE_WRITE_ERROR);
-      const deletedTransactionIds = await executeAuthenticatedLedgerMutation(
+      assertRestorableSnapshot(transaction);
+
+      const transactionId = transaction.id!;
+      const operationId = restoreOperationId(transactionId);
+      const requested = { ...transaction } as Partial<Transaction>;
+      delete requested.id;
+      delete requested.operationId;
+      delete requested.mutationKind;
+      delete requested.mutationSource;
+      const publish = (restored: Transaction) => publishTransactionCacheMutation({
+        userId,
+        type: 'update',
+        transactions: [restored],
+      });
+      const loadRestored = async (): Promise<Transaction | null> => {
+        const existing = await loadServerLedgerTransaction(userId, transactionId);
+        if (!existing) return null;
+        if (
+          existing.operationId !== operationId
+          || existing.mutationKind !== 'restore'
+          || existing.mutationSource !== 'undo'
+          || !transactionMatchesRequest(existing, requested)
+        ) {
+          throw new Error('La identidad original ya pertenece a otra transacción.');
+        }
+        return existing;
+      };
+
+      const alreadyRestored = await loadRestored();
+      if (alreadyRestored) {
+        publish(alreadyRestored);
+        return;
+      }
+
+      try {
+        const restored = await executeAuthenticatedLedgerMutation(
+          userId,
+          async ({ loadContext }) => {
+            const collision = await loadServerLedgerTransaction(userId, transactionId);
+            if (collision) {
+              throw new Error('La identidad original ya pertenece a otra transacción.');
+            }
+
+            const normalizedAmount = normalizeLedgerAmount(transaction.amount);
+            const draft = {
+              ...stripUndefined(transaction as unknown as Record<string, unknown>),
+              id: transactionId,
+              amount: normalizedAmount,
+              createdAt: transaction.createdAt ?? new Date(),
+              operationId,
+              mutationKind: 'restore' as const,
+              mutationSource: 'undo' as const,
+            } as Transaction;
+            let debtRef: ReturnType<typeof doc> | null = null;
+            let debtUpdate: Record<string, unknown> | null = null;
+
+            if (draft.debtId) {
+              debtRef = doc(db, `users/${userId}/debts`, draft.debtId);
+              const debtSnapshot = await getDocFromServer(debtRef);
+              if (!debtSnapshot.exists()) {
+                throw new Error('No se puede restaurar el pago porque la deuda ya no existe.');
+              }
+              const debt = debtSnapshot.data();
+              const expectedType = debt.type === 'lent'
+                ? 'income'
+                : debt.type === 'borrowed'
+                  ? 'expense'
+                  : null;
+              if (
+                expectedType === null
+                || draft.type !== expectedType
+                || typeof debt.remainingAmount !== 'number'
+                || !Number.isFinite(debt.remainingAmount)
+                || debt.remainingAmount < normalizedAmount
+                || typeof debt.accountId !== 'string'
+                || debt.accountId !== draft.accountId
+              ) {
+                throw new Error('No se puede restaurar el pago con el saldo pendiente actual.');
+              }
+              const remainingAmount = roundMoney(debt.remainingAmount - normalizedAmount);
+              const isSettled = remainingAmount === 0;
+              debtUpdate = {
+                remainingAmount,
+                isSettled,
+                settledAt: isSettled ? draft.date : deleteField(),
+              };
+            }
+
+            const context = await loadContext([draft.accountId]);
+            const normalized = {
+              ...draft,
+              accountId: context.canonicalAccountId(draft.accountId),
+            };
+            const sourceAccount = context.accounts.find(
+              account => account.id === normalized.accountId
+            );
+            if (!draft.debtId && sourceAccount?.type === 'credit') {
+              throw new Error('No se puede restaurar una transacción de tarjeta sin reconciliarla.');
+            }
+            const intent = {
+              kind: 'restore' as const,
+              before: [],
+              after: [normalized],
+              metadata: { operationId, mutationSource: 'undo' as const },
+            };
+            const creditChanges = planCreditAuthorityChanges(intent, context);
+
+            return {
+              intent,
+              context,
+              writeCount: 1 + (debtRef ? 1 : 0) + creditChanges.length,
+              stage: (batch) => {
+                const persisted = { ...normalized };
+                delete persisted.id;
+                batch.set(
+                  doc(db, `users/${userId}/transactions`, transactionId),
+                  persisted
+                );
+                if (debtRef && debtUpdate) batch.update(debtRef, debtUpdate);
+                creditChanges.forEach(({ accountId, delta }) => {
+                  batch.update(doc(db, `users/${userId}/accounts`, accountId), {
+                    usedCredit: increment(delta),
+                  });
+                });
+              },
+              result: normalized,
+            };
+          },
+          { operationId }
+        );
+        publish(restored);
+      } catch (error) {
+        try {
+          const restored = await loadRestored();
+          if (restored) {
+            publish(restored);
+            return;
+          }
+        } catch {
+          // Conservar el error original; el reintento volverá a comprobar el ID.
+        }
+        throw error;
+      }
+    },
+    [userId]
+  );
+
+  const deleteTransaction = useCallback(
+    async (id: string) => {
+      if (!userId) return null;
+      if (isOffline()) throw new Error(OFFLINE_WRITE_ERROR);
+      const deleted = await executeAuthenticatedLedgerMutation(
         userId,
         async ({ operationId, loadContext }) => {
           const primary = await loadServerLedgerTransaction(userId, id);
@@ -829,7 +1025,10 @@ export function useTransactionsCRUD(
               context,
               writeCount: 0,
               stage: () => undefined,
-              result: [] as string[],
+              result: {
+                transaction: null as Transaction | null,
+                transactionIds: [] as string[],
+              },
             };
           }
 
@@ -898,18 +1097,22 @@ export function useTransactionsCRUD(
                 });
               });
             },
-            result: transactionIds,
+            result: {
+              transaction: primary,
+              transactionIds,
+            },
           };
         }
       );
 
-      if (deletedTransactionIds.length > 0) {
+      if (deleted.transactionIds.length > 0) {
         publishTransactionCacheMutation({
           userId,
           type: 'delete',
-          transactionIds: deletedTransactionIds,
+          transactionIds: deleted.transactionIds,
         });
       }
+      return deleted.transaction;
     },
     [userId]
   );
@@ -1132,6 +1335,7 @@ export function useTransactionsCRUD(
     addCreditPaymentAtomic,
     addRecurringTransactionAtomic,
     linkRecurringTransactionAtomic,
+    restoreTransaction,
     deleteTransaction,
     updateTransaction,
   };

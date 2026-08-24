@@ -48,6 +48,7 @@ const selectTransactionDomain = (s: FinanceContextValue) => ({
   addCreditPaymentAtomic: s.addCreditPaymentAtomic,
   addRecurringTransactionAtomic: s.addRecurringTransactionAtomic,
   linkRecurringTransactionAtomic: s.linkRecurringTransactionAtomic,
+  restoreTransaction: s.restoreTransaction,
   deleteTransaction: s.deleteTransaction,
   updateTransaction: s.updateTransaction,
   transactionsLoading: s.transactionsLoading,

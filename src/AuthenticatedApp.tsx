@@ -93,6 +93,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     addTransaction,
     addCreditPaymentAtomic,
     addRecurringTransactionAtomic,
+    restoreTransaction,
   } = useTransactionDomain();
   const {
     accounts,
@@ -289,8 +290,8 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const handleCloseHelpModal = useCallback(() => setShowHelpModal(false), []);
   const handleCloseNotificationPreferences = useCallback(() => setShowNotificationPreferences(false), []);
   const handleRestoreTransaction = useCallback(
-    (t: Omit<import('./types/finance').Transaction, 'id' | 'createdAt'>) => addTransaction(t),
-    [addTransaction]
+    (transaction: import('./types/finance').Transaction) => restoreTransaction(transaction),
+    [restoreTransaction]
   );
 
   // Stable callbacks for TransactionForm (use ref to avoid re-creation on every keystroke)

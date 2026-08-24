@@ -19,6 +19,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import type { Transaction, Account } from '../../types/finance';
+import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../../config/constants';
 
 // Estado compartido entre el mock (hoisted) y los tests.
 const mockState = vi.hoisted(() => ({
@@ -695,6 +696,196 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
     });
   });
 
+  describe('restoreTransaction', () => {
+    const deleted = (overrides: Partial<Transaction> = {}): Transaction => ({
+      ...makeTx({ amount: 200, accountId: 'sav' }),
+      id: 'original-row',
+      createdAt: new Date('2026-06-01T12:00:00'),
+      ...overrides,
+    });
+
+    it.each(['expense', 'income'] as const)(
+      'restores a standalone %s under its original identity exactly once',
+      async (type) => {
+        seedAccount({ ...savings, initialBalance: 1_000 });
+        const crud = renderCRUD([]);
+        const snapshot = deleted({ type });
+        const { id, ...persisted } = snapshot;
+        seedTx(id!, persisted);
+
+        await crud.current.deleteTransaction(id!);
+        expect(mockState.store.has(txKey(id!))).toBe(false);
+        await crud.current.restoreTransaction(snapshot);
+        await crud.current.restoreTransaction(snapshot);
+
+        expect(mockState.batchCommits).toBe(2);
+        expect(mockState.store.get(txKey('original-row'))).toMatchObject({
+          type,
+          operationId: 'ledger-mutation:undo:original-row:restore',
+          mutationKind: 'restore',
+          mutationSource: 'undo',
+        });
+        expect(cacheMutations).toHaveLength(3);
+      }
+    );
+
+    it('rejects an occupied original ID with a different payload', async () => {
+      seedAccount(savings);
+      seedTx('original-row', { amount: 999, description: 'another row' });
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.restoreTransaction(deleted()))
+        .rejects.toThrow(/identidad original|otra transacción/i);
+
+      expect(mockState.batchCommits).toBe(0);
+    });
+
+    it.each([
+      ['card purchase', deleted({ accountId: 'cc' })],
+      ['linked payment', deleted({ linkedTransactionId: 'pair-2' })],
+      ['debt principal', deleted({ debtId: 'debt-1', category: LOAN_CATEGORY })],
+      ['recurring payment', deleted({ recurringPaymentId: 'rent', recurringCycle: '2026-5-5' })],
+      ['transfer', deleted({ type: 'transfer', toAccountId: 'cash' })],
+      ['migration row', deleted({ mutationKind: 'migration', mutationSource: 'migration' })],
+      ['incomplete debt aggregate', deleted({ mutationSource: 'debt' })],
+    ])('rejects unsupported %s snapshots with zero writes', async (_label, snapshot) => {
+      seedAccount(savings);
+      seedAccount(credit);
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.restoreTransaction(snapshot as Transaction))
+        .rejects.toThrow(/restaurar|deshacer/i);
+
+      expect(mockState.writeLog).toHaveLength(0);
+      expect(cacheMutations).toHaveLength(0);
+    });
+
+    it('restores a debt payment and debt state atomically', async () => {
+      seedAccount(savings);
+      mockState.store.set(debtKey('debt-1'), {
+        personName: 'Ana', type: 'lent', originalAmount: 1_000,
+        remainingAmount: 500, isSettled: false, accountId: 'sav',
+        createdAt: new Date('2026-01-01'),
+      });
+      const crud = renderCRUD([]);
+      const payment = deleted({
+        type: 'income', amount: 200, category: LOAN_PAYMENT_CATEGORY,
+        debtId: 'debt-1', accountId: 'sav',
+      });
+      const { id, ...persisted } = payment;
+      seedTx(id!, persisted);
+
+      await crud.current.deleteTransaction(id!);
+      expect(mockState.store.get(debtKey('debt-1'))).toMatchObject({
+        remainingAmount: 700,
+        isSettled: false,
+      });
+      await crud.current.restoreTransaction(payment);
+
+      expect(mockState.store.get(txKey('original-row'))).toMatchObject({
+        debtId: 'debt-1', mutationKind: 'restore', mutationSource: 'undo',
+      });
+      expect(mockState.store.get(debtKey('debt-1'))).toMatchObject({
+        remainingAmount: 500,
+        isSettled: false,
+      });
+      expect(mockState.batchCommits).toBe(2);
+    });
+
+    it('never recreates only half of a deleted card aggregate', async () => {
+      seedAccount(savings);
+      seedAccount(credit);
+      const crud = renderCRUD([]);
+      const cardPurchase = deleted({ id: 'card-purchase', accountId: 'cc' });
+      const { id: cardId, ...persistedCard } = cardPurchase;
+      seedTx(cardId!, persistedCard);
+
+      await crud.current.deleteTransaction(cardId!);
+      const writesAfterCardDelete = mockState.writeLog.length;
+      await expect(crud.current.restoreTransaction(cardPurchase)).rejects.toThrow(/tarjeta/i);
+      expect(mockState.store.has(txKey(cardId!))).toBe(false);
+      expect(mockState.writeLog).toHaveLength(writesAfterCardDelete);
+
+      const bank = deleted({
+        id: 'pay-bank',
+        type: 'expense',
+        accountId: 'sav',
+        category: 'Pago Crédito',
+        linkedTransactionId: 'pay-card',
+      });
+      seedTx('pay-bank', bank);
+      seedTx('pay-card', {
+        ...bank,
+        id: undefined,
+        type: 'income',
+        accountId: 'cc',
+        linkedTransactionId: 'pay-bank',
+      });
+
+      await crud.current.deleteTransaction('pay-bank');
+      const writesAfterPairDelete = mockState.writeLog.length;
+      await expect(crud.current.restoreTransaction(bank)).rejects.toThrow(/vinculado/i);
+      expect(mockState.store.has(txKey('pay-bank'))).toBe(false);
+      expect(mockState.store.has(txKey('pay-card'))).toBe(false);
+      expect(mockState.writeLog).toHaveLength(writesAfterPairDelete);
+    });
+
+    it('rejects debt-payment restoration that would make remainingAmount negative', async () => {
+      seedAccount(savings);
+      mockState.store.set(debtKey('debt-1'), {
+        personName: 'Ana', type: 'lent', originalAmount: 1_000,
+        remainingAmount: 100, isSettled: false, accountId: 'sav',
+        createdAt: new Date('2026-01-01'),
+      });
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.restoreTransaction(deleted({
+        type: 'income', amount: 200, category: LOAN_PAYMENT_CATEGORY,
+        debtId: 'debt-1', accountId: 'sav',
+      }))).rejects.toThrow(/saldo pendiente|restaurar/i);
+
+      expect(mockState.writeLog).toHaveLength(0);
+    });
+
+    it('restores settlement and the credit delta in the same debt-payment batch', async () => {
+      seedAccount(credit);
+      mockState.store.set(debtKey('debt-1'), {
+        personName: 'Banco', type: 'borrowed', originalAmount: 1_000,
+        remainingAmount: 200, isSettled: false, accountId: 'cc',
+        createdAt: new Date('2026-01-01'),
+      });
+      const crud = renderCRUD([]);
+      const payment = deleted({
+        type: 'expense', amount: 200, category: LOAN_PAYMENT_CATEGORY,
+        debtId: 'debt-1', accountId: 'cc',
+      });
+
+      await crud.current.restoreTransaction(payment);
+
+      expect(mockState.batchCommits).toBe(1);
+      expect(mockState.store.get(debtKey('debt-1'))).toMatchObject({
+        remainingAmount: 0,
+        isSettled: true,
+        settledAt: payment.date,
+      });
+      expect(mockState.store.get(acctKey('cc'))).toMatchObject({
+        usedCredit: 1_000_200,
+      });
+    });
+
+    it('recovers an exact restore after a lost commit acknowledgement', async () => {
+      seedAccount(savings);
+      mockState.failAfterBatchCommit = true;
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.restoreTransaction(deleted())).resolves.toBeUndefined();
+
+      expect(mockState.batchCommits).toBe(1);
+      expect(mockState.store.has(txKey('original-row'))).toBe(true);
+      expect(cacheMutations).toHaveLength(1);
+    });
+  });
+
   describe('caller-supplied edit authority', () => {
     it('preserves stable AI audit metadata and treats an already-applied retry as success', async () => {
       seedAccount(savings);
@@ -781,6 +972,23 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
   });
 
   describe('deleteTransaction', () => {
+    it('returns the authoritative server snapshot that was actually deleted', async () => {
+      seedAccount(savings);
+      seedTx('server-current', {
+        type: 'expense', amount: 321, description: 'Servidor', accountId: 'sav',
+      });
+      const crud = renderCRUD([]);
+
+      const deleted = await crud.current.deleteTransaction('server-current');
+
+      expect(deleted).toMatchObject({
+        id: 'server-current',
+        amount: 321,
+        description: 'Servidor',
+      });
+      expect(mockState.store.has(txKey('server-current'))).toBe(false);
+    });
+
     it('rechaza borrar un ingreso si el saldo persistido quedaría negativo', async () => {
       seedAccount({ ...savings, initialBalance: 0 });
       seedTx('income-delete', makeTx({

@@ -27,6 +27,7 @@ export function useFirestore(userId: string | null) {
     addCreditPaymentAtomic,
     addRecurringTransactionAtomic,
     linkRecurringTransactionAtomic,
+    restoreTransaction,
     deleteTransaction,
     updateTransaction,
   } =
@@ -50,6 +51,7 @@ export function useFirestore(userId: string | null) {
     addCreditPaymentAtomic,
     addRecurringTransactionAtomic,
     linkRecurringTransactionAtomic,
+    restoreTransaction,
     deleteTransaction,
     updateTransaction,
     // Accounts CRUD

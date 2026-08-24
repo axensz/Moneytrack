@@ -13,6 +13,8 @@ const M = vi.hoisted(() => ({
   failCommit: false,
   failRenew: false,
   releaseError: false,
+  leaseHeld: false,
+  nextOperation: 0,
 }));
 
 vi.mock('../../lib/firebaseDb', () => ({ db: { __db: true } }));
@@ -20,6 +22,10 @@ vi.mock('../../lib/firebaseDb', () => ({ db: { __db: true } }));
 vi.mock('../../hooks/firestore/accountOrchestration', () => ({
   acquireAccountOperationLock: async () => {
     M.events.push('acquire');
+    if (M.leaseHeld) {
+      throw new Error('Ya hay otra operación en curso');
+    }
+    M.leaseHeld = true;
   },
   renewAccountOperationLock: async () => {
     M.events.push('renew');
@@ -28,12 +34,16 @@ vi.mock('../../hooks/firestore/accountOrchestration', () => ({
   releaseAccountOperationLock: async () => {
     M.events.push('safe-release');
     if (M.releaseError) throw new Error('release failed');
+    M.leaseHeld = false;
   },
-  createAccountOperationId: () => 'ledger-mutation:operation-1',
-  createAccountOperationRelease: () => ({
+  createAccountOperationId: () => {
+    M.nextOperation += 1;
+    return `ledger-mutation:operation-${M.nextOperation}`;
+  },
+  createAccountOperationRelease: (id: string, kind: string) => ({
     accountOperationLock: {
-      id: 'ledger-mutation:operation-1',
-      kind: 'ledger-mutation',
+      id,
+      kind,
       releasedAt: { __serverTimestamp: true },
     },
   }),
@@ -84,6 +94,9 @@ vi.mock('firebase/firestore', () => ({
         M.events.push('commit');
         if (M.failCommit) throw new Error('commit rejected');
         M.batchCommits += 1;
+        if (writes.some(write => write.operation === 'release:set')) {
+          M.leaseHeld = false;
+        }
         return writes;
       },
     };
@@ -123,6 +136,8 @@ beforeEach(() => {
   M.failCommit = false;
   M.failRenew = false;
   M.releaseError = false;
+  M.leaseHeld = false;
+  M.nextOperation = 0;
   M.accounts.set('savings', {
     name: 'Ahorros',
     type: 'savings',
@@ -367,6 +382,32 @@ describe('executeAuthenticatedLedgerMutation', () => {
 
     expect(M.events).toEqual(['acquire', 'prepare', 'safe-release']);
     expect(M.batchCommits).toBe(0);
+  });
+
+  it('rejects a concurrent attempt and accepts an exact-balance retry after release', async () => {
+    let markPrepared!: () => void;
+    let releasePreparation!: () => void;
+    const prepared = new Promise<void>(resolve => { markPrepared = resolve; });
+    const preparationGate = new Promise<void>(resolve => { releasePreparation = resolve; });
+
+    const holdingAttempt = executeAuthenticatedLedgerMutation(UID, async () => {
+      M.events.push('prepare');
+      markPrepared();
+      await preparationGate;
+      throw new Error('cancelled preparation');
+    });
+    await prepared;
+
+    await expect(executeAuthenticatedLedgerMutation(UID, prepareCreate()))
+      .rejects.toThrow(/otra operación/i);
+    expect(M.batchCommits).toBe(0);
+
+    releasePreparation();
+    await expect(holdingAttempt).rejects.toThrow('cancelled preparation');
+    await expect(executeAuthenticatedLedgerMutation(UID, prepareCreate(1_000)))
+      .resolves.toBe('committed');
+
+    expect(M.batchCommits).toBe(1);
   });
 });
 

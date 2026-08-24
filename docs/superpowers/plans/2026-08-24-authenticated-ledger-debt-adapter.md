@@ -28,12 +28,12 @@
 - Modify: `src/__tests__/firestore/accountOperationLock.rules.test.ts`
 - Create: `src/__tests__/hooks/accountOperationKind.test.ts`
 
-- [ ] Add a compile/runtime contract that calls `createAccountOperationId('ledger-mutation')` and expects the prefix.
-- [ ] Run the focused test and `npm.cmd run typecheck`; require RED from the missing union member.
-- [ ] Add only `'ledger-mutation'` to `AccountOperationKind` and the strict rules allow-list.
-- [ ] Extend the emulator contract to acquire/release the new kind while retaining owner/non-owner and exact-map assertions.
-- [ ] Run the focused unit test, typecheck, and the rules test (the rules case may be skipped only when the emulator is absent).
-- [ ] Commit as `feat: authorize shared ledger mutation lease`.
+- [x] Add a compile/runtime contract that calls `createAccountOperationId('ledger-mutation')` and expects the prefix.
+- [x] Run the focused test and `npm.cmd run typecheck`; require RED from the missing union member.
+- [x] Add only `'ledger-mutation'` to `AccountOperationKind` and the strict rules allow-list.
+- [x] Extend the emulator contract to acquire/release the new kind while retaining owner/non-owner and exact-map assertions.
+- [x] Run the focused unit test, typecheck, and the rules test (the rules case may be skipped only when the emulator is absent).
+- [x] Commit as `feat: authorize shared ledger mutation lease`.
 
 ## Task 2: Load and validate server-current ledger context
 
@@ -58,14 +58,14 @@ export async function loadServerLedgerContext(
 ): Promise<LedgerServerContext>;
 ```
 
-- [ ] Write failing tests for: source and destination query coverage; document-ID deduplication; merged credit aliases; savings balance derived from complete paid history; missing account; malformed amount/type/date/account reference; and non-finite calculated authority.
-- [ ] Run the new suite and capture RED before adding production code.
-- [ ] Load the server accounts collection once, resolve every requested reference to one canonical account, query transaction rows by both reference fields for every canonical account reference, and deduplicate by Firestore document ID.
-- [ ] Decode each transaction into a `Transaction` with its document ID and reject invalid type, finite positive amount, paid flag, source ID, transfer destination, or date.
-- [ ] Build one canonical authority per affected account with `BalanceCalculator.calculateAccountBalance`; keep credit accounts in context for credit-delta validation even though the ordinary-negative rule applies only to savings/cash.
-- [ ] Normalize planning references to canonical account IDs through a small exported pure helper and test alias-to-canonical before/after edits.
-- [ ] Run the new suite, balance calculator regressions, and typecheck GREEN.
-- [ ] Commit as `feat: load authoritative ledger context`.
+- [x] Write failing tests for: source and destination query coverage; document-ID deduplication; merged credit aliases; savings balance derived from complete paid history; missing account; malformed amount/type/date/account reference; and non-finite calculated authority.
+- [x] Run the new suite and capture RED before adding production code.
+- [x] Load the server accounts collection once, resolve every requested reference to one canonical account, query transaction rows by both reference fields for every canonical account reference, and deduplicate by Firestore document ID.
+- [x] Decode each transaction into a `Transaction` with its document ID and reject invalid type, finite positive amount, paid flag, source ID, transfer destination, or date.
+- [x] Build one canonical authority per affected account with `BalanceCalculator.calculateAccountBalance`; keep credit accounts in context for credit-delta validation even though the ordinary-negative rule applies only to savings/cash.
+- [x] Normalize planning references to canonical account IDs through a small exported pure helper and test alias-to-canonical before/after edits.
+- [x] Run the new suite, balance calculator regressions, and typecheck GREEN.
+- [x] Commit as `feat: load authoritative ledger context`.
 
 ## Task 3: Execute a prepared mutation under the shared lease
 
@@ -92,13 +92,13 @@ export async function executeAuthenticatedLedgerMutation<TResult>(
 ): Promise<TResult>;
 ```
 
-- [ ] Add failing tests proving exact order: acquire -> server prepare -> pure plan -> renew -> stage -> release tombstone -> one commit.
-- [ ] Add failing cases for plan rejection, lost renewal, batch rejection, and preparation rejection; require zero domain writes and a best-effort safe release without masking the original error.
-- [ ] Add a write-limit test where `writeCount + release` exceeds `RULE_SAFE_SIMPLE_WRITE_LIMIT`.
-- [ ] Implement the minimal executor using the existing lock functions and one `writeBatch`; attach the generated `operationId`, `mutationKind`, and `mutationSource` only in the debt adapter, not generically.
-- [ ] Add `planCreditAuthorityChanges` tests for absent, null, negative, non-finite, overpayment, and valid persisted `usedCredit`; return rounded per-card deltas for the caller to stage.
-- [ ] Run the orchestration suite and typecheck GREEN.
-- [ ] Commit as `feat: execute authenticated ledger mutations`.
+- [x] Add failing tests proving exact order: acquire -> server prepare -> pure plan -> renew -> stage -> release tombstone -> one commit.
+- [x] Add failing cases for plan rejection, lost renewal, batch rejection, and preparation rejection; require zero domain writes and a best-effort safe release without masking the original error.
+- [x] Add a write-limit test where `writeCount + release` exceeds `RULE_SAFE_SIMPLE_WRITE_LIMIT`.
+- [x] Implement the minimal executor using the existing lock functions and one `writeBatch`; attach the generated `operationId`, `mutationKind`, and `mutationSource` only in the debt adapter, not generically.
+- [x] Add `planCreditAuthorityChanges` tests for absent, null, negative, non-finite, overpayment, and valid persisted `usedCredit`; return rounded per-card deltas for the caller to stage.
+- [x] Run the orchestration suite and typecheck GREEN.
+- [x] Commit as `feat: execute authenticated ledger mutations`.
 
 ## Task 4: Route authenticated debt origination and repayment through the facade
 
@@ -108,14 +108,14 @@ export async function executeAuthenticatedLedgerMutation<TResult>(
 - Modify: `src/__tests__/hooks/debtAtomicWrites.test.ts`
 - Modify: `src/__tests__/hooks/registerDebtPayment.test.ts`
 
-- [ ] Add RED cases where a lent origination of 1,000.01 against 1,000 savings and a borrowed repayment of 1,000.01 against 1,000 savings reject with zero debt/transaction/account writes.
-- [ ] Add a two-attempt/concurrency case: the first prepared mutation holds the lease and the second fails before writes; after release a valid exact-balance attempt commits to zero.
-- [ ] Replace only authenticated `addDebt` and `registerDebtPayment` transaction bodies with `executeAuthenticatedLedgerMutation` prepare callbacks.
-- [ ] Persist normalized amounts plus `operationId`, `mutationKind: 'create'`, and `mutationSource: 'debt'` on created debt transactions.
-- [ ] Stage debt document, optional transaction, any credit-authority increments, and the release tombstone in the facade's one final batch.
-- [ ] Preserve tracking-only debt behavior, payment clamping against the server debt, settlement fields, current error copy, and cache publication after commit.
-- [ ] Run `debtAtomicWrites`, `registerDebtPayment`, delete/reassign debt regressions, and typecheck GREEN.
-- [ ] Commit as `fix: guard authenticated debt ledger mutations`.
+- [x] Add RED cases where a lent origination of 1,000.01 against 1,000 savings and a borrowed repayment of 1,000.01 against 1,000 savings reject with zero debt/transaction/account writes.
+- [x] Add a two-attempt/concurrency case: the first prepared mutation holds the lease and the second fails before writes; after release a valid exact-balance attempt commits to zero.
+- [x] Replace only authenticated `addDebt` and `registerDebtPayment` transaction bodies with `executeAuthenticatedLedgerMutation` prepare callbacks.
+- [x] Persist normalized amounts plus `operationId`, `mutationKind: 'create'`, and `mutationSource: 'debt'` on created debt transactions.
+- [x] Stage debt document, optional transaction, any credit-authority increments, and the release tombstone in the facade's one final batch.
+- [x] Preserve tracking-only debt behavior, payment clamping against the server debt, settlement fields, current error copy, and cache publication after commit.
+- [x] Run `debtAtomicWrites`, `registerDebtPayment`, delete/reassign debt regressions, and typecheck GREEN.
+- [x] Commit as `fix: guard authenticated debt ledger mutations`.
 
 ## Task 5: Apply the same source-funds guard before guest debt writes
 
@@ -125,12 +125,12 @@ export async function executeAuthenticatedLedgerMutation<TResult>(
 - Modify: `src/__tests__/hooks/debtAmountGuard.test.ts`
 - Modify: `src/__tests__/hooks/registerDebtPayment.test.ts`
 
-- [ ] Add RED tests for unaffordable lent origination and borrowed repayment with a savings account; assert `addTransaction` is not called and local debt state is unchanged.
-- [ ] Add exact-affordability controls and historical-negative improvement/worsening cases.
-- [ ] Build the candidate debt transaction first, require its account in `txOps.accounts`, calculate current authority with `BalanceCalculator` over the complete guest transactions array, and call the same pure planner before `addTransaction` or `setLocalDebts`.
-- [ ] Keep tracking-only debt unchanged and preserve the existing amount/error semantics.
-- [ ] Run the guest debt suites and the ledger planner suite GREEN.
-- [ ] Commit as `fix: prevent guest debt overdrafts`.
+- [x] Add RED tests for unaffordable lent origination and borrowed repayment with a savings account; assert `addTransaction` is not called and local debt state is unchanged.
+- [x] Add exact-affordability controls and historical-negative improvement/worsening cases.
+- [x] Build the candidate debt transaction first, require its account in `txOps.accounts`, calculate current authority with `BalanceCalculator` over the complete guest transactions array, and call the same pure planner before `addTransaction` or `setLocalDebts`.
+- [x] Keep tracking-only debt unchanged and preserve the existing amount/error semantics.
+- [x] Run the guest debt suites and the ledger planner suite GREEN.
+- [x] Commit as `fix: prevent guest debt overdrafts`.
 
 ## Task 6: Verify and record only proven OpenSpec work
 
@@ -139,11 +139,20 @@ export async function executeAuthenticatedLedgerMutation<TResult>(
 - Modify: `openspec/changes/harden-transaction-ledger-integrity/tasks.md`
 - Modify: this plan
 
-- [ ] Run focused facade, debt, ledger, credit-delta, cache, account-lock, and dependent lifecycle suites.
-- [ ] Run `npm.cmd run test:run`, `npm.cmd run typecheck`, `npm.cmd run lint`, and `git diff --check` independently.
-- [ ] Run strict OpenSpec validation using the already cached CLI; do not install a dependency.
-- [ ] Rebuild the code-review graph, run a scoped `detect_changes`, inspect affected flows and `tests_for` the facade/context/debt planner.
-- [ ] Mark only 4.1, 4.2, 4.3, and 6.5 complete when every gate above proves them; keep 3.6 and 4.4 onward open.
-- [ ] Commit as `docs: record authenticated debt ledger evidence`.
+- [x] Run focused facade, debt, ledger, credit-delta, cache, account-lock, and dependent lifecycle suites.
+- [x] Run `npm.cmd run test:run`, `npm.cmd run typecheck`, `npm.cmd run lint`, and `git diff --check` independently.
+- [x] Run strict OpenSpec validation using the already cached CLI; do not install a dependency.
+- [x] Rebuild the code-review graph, run a scoped `detect_changes`, inspect affected flows and `tests_for` the facade/context/debt planner.
+- [x] Mark only 4.1, 4.2, 4.3, and 6.5 complete when every gate above proves them; keep 3.6 and 4.4 onward open.
+- [x] Commit as `docs: record authenticated debt ledger evidence`.
+
+## Verification evidence (2026-08-24)
+
+- TDD RED was captured for the missing lease kind, missing orchestration module, executor ordering/failures, authenticated overdrafts, guest overdrafts, and concurrent lease contention.
+- Focused facade/debt/ledger/credit/cache/lock/lifecycle run: 12 files passed, 1 rules-emulator file skipped; 143 tests passed and 5 skipped. The emulator-only cases remain skipped because `FIRESTORE_EMULATOR_HOST` is absent.
+- Final integrated run after the concurrency contract: 137 files passed, 1 skipped; 1,140 tests passed and 5 skipped.
+- `npm.cmd run typecheck`, `npm.cmd run lint`, `git diff --check`, and strict OpenSpec validation all exited 0.
+- Full code-review graph rebuild: 367 files, 3,849 nodes, 37,585 edges, 231 flows, and 12 communities. Scoped review reported 17 affected flows and direct tests for `loadServerLedgerContext`, `executeAuthenticatedLedgerMutation`, `planCreditAuthorityChanges`, and `planLedgerMutation`.
+- Implementation commits: `34b82c3`, `f36331e`, `ae888d1`, `1066b09`, and `611e1c7`. General transaction CRUD remains intentionally outside this checkpoint.
 
 Do not push or open a PR at this checkpoint. The next plan routes the general transaction create/transfer/update/delete/card-payment adapters onto this stable facade.

@@ -26,9 +26,9 @@
 
 ## Task 4: Serialize authenticated balance-sensitive writes
 
-- [ ] 4.1 Add a ledger mutation kind to the existing `AccountOperationKind` and strict Firestore allow-list; do not copy or fork the lease implementation.
-- [ ] 4.2 Add server query helpers that, after acquiring the lease, load affected accounts and all transactions referencing them by source or destination, deduplicate rows, and reject invalid records.
-- [ ] 4.3 Implement the authenticated ledger facade: preflight, acquire, server-current plan, atomic final commit with exact release tombstone, safe release on failure, and post-commit cache publication.
+- [x] 4.1 Add a ledger mutation kind to the existing `AccountOperationKind` and strict Firestore allow-list; do not copy or fork the lease implementation.
+- [x] 4.2 Add server query helpers that, after acquiring the lease, load affected accounts and all transactions referencing them by source or destination, deduplicate rows, and reject invalid records.
+- [x] 4.3 Implement the authenticated ledger facade: preflight, acquire, server-current plan, atomic final commit with exact release tombstone, safe release on failure, and post-commit cache publication.
 - [ ] 4.4 Route ordinary savings/cash creates and transfers through the facade; add two-client tests where only the affordable subset commits.
 - [ ] 4.5 Route edits and deletes through before/after validation, including deleting income/incoming transfer and editing a debit upward; prove all failed cases leave documents/cache unchanged.
 - [ ] 4.6 Route mixed card-payment pairs through the facade so source funds, both rows, reciprocal IDs, and `usedCredit` update are one operation.
@@ -50,7 +50,7 @@
 - [ ] 6.2 Give confirmed AI actions a stable operation ID, complete balance context, and the canonical facade; commit a missing category with the action or keep category creation strictly post-commit and non-authoritative.
 - [ ] 6.3 Refactor account edit plus balance adjustment into one exact-target operation using server-current before balance, rounded delta, audit metadata, and the existing lease.
 - [ ] 6.4 Extend `mergeCreditCardsDomain` to accept the desired post-merge debt so merge and adjustment commit together, or split them into two explicitly reported successful intentions.
-- [ ] 6.5 Add debt-domain adapter tests proving lent origination/borrowed repayment cannot bypass source funds while preserving the atomic lifecycle owned by `repair-debt-lifecycle-and-account-links`.
+- [x] 6.5 Add debt-domain adapter tests proving lent origination/borrowed repayment cannot bypass source funds while preserving the atomic lifecycle owned by `repair-debt-lifecycle-and-account-links`.
 - [ ] 6.6 Ensure cache mutation, form closure, success toast, monitoring, and notification observation run only after commit for every routed entry point.
 - [ ] 6.7 Add failure injection after each step of manual, AI, adjustment, merge, recurring, and debt-integrated actions; assert no misleading success and no partial financial state.
 

@@ -53,7 +53,10 @@ vi.mock('firebase/firestore', () => ({
 
 vi.mock('../../lib/firebaseDb', () => ({ db: {} }));
 
-import { useAllTransactions } from '../../hooks/useAllTransactions';
+import {
+  useAllTransactions,
+  useAllTransactionsWithStatus,
+} from '../../hooks/useAllTransactions';
 import {
   subscribeTransactionCacheMutations,
   type TransactionCacheMutation,
@@ -125,6 +128,32 @@ describe('useAllTransactions — historial realtime completo', () => {
   it('crea una sola suscripción completa al montar un usuario autenticado', () => {
     renderHook(() => useAllTransactions('user1', [tx({ id: 't1' })]));
     expect(subscriptionCount).toBe(1);
+  });
+
+  it('conserva evidencia de filas inválidas sin exponerlas como transacciones', () => {
+    const valid = tx({ id: 'valid' });
+    const invalid = documentFor(tx({ id: 'invalid' }));
+    const invalidData = invalid.data();
+    invalid.data = () => ({ ...invalidData, paid: 'sí' });
+    const { result } = renderHook(() => (
+      useAllTransactionsWithStatus('user1', [valid])
+    ));
+
+    act(() => {
+      listeners[0].next({
+        docs: [documentFor(valid), invalid],
+        metadata: { fromCache: false, hasPendingWrites: false },
+        docChanges: () => [],
+      });
+    });
+
+    expect(result.current.transactions.map(transaction => transaction.id)).toEqual(['valid']);
+    expect(result.current.issues).toEqual([
+      expect.objectContaining({
+        transactionId: 'invalid',
+        code: 'invalid-paid',
+      }),
+    ]);
   });
 
   it('no se resuscribe por cambios live y conserva como autoridad el snapshot completo', async () => {

@@ -112,6 +112,26 @@ beforeEach(() => {
 });
 
 describe('useFirestoreSubscriptions — paginación', () => {
+  it('reporta filas inválidas del head sin mezclarlas con el ledger', () => {
+    const invalid = transactionDocument('invalid', 1);
+    const invalidData = invalid.data();
+    invalid.data = () => ({ ...invalidData, accountId: '' });
+    const { result } = renderHook(() => useFirestoreSubscriptions('user-1'));
+
+    act(() => emitCoreSnapshots([
+      transactionDocument('valid', 0),
+      invalid,
+    ]));
+
+    expect(result.current.transactions.map(transaction => transaction.id)).toEqual(['valid']);
+    expect(result.current.transactionDecodeIssues).toEqual([
+      expect.objectContaining({
+        transactionId: 'invalid',
+        code: 'invalid-account',
+      }),
+    ]);
+  });
+
   it('mantiene el cursor de páginas aunque cambie el snapshot realtime y deduplica solapamientos', async () => {
     const head = Array.from({ length: 500 }, (_, index) => (
       transactionDocument(`head-${index}`, index)

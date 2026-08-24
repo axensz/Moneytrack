@@ -28,6 +28,10 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../lib/firebaseDb';
 import { logger } from '../../utils/logger';
+import {
+  collectDecodedTransactions,
+  type TransactionDecodeIssue,
+} from '../../utils/transactionDecoder';
 import type { Transaction, Account, Category, RecurringPayment, Debt, Budget, SavingsGoal, Notification, NotificationPreferences } from '../../types/finance';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../../types/finance';
 import {
@@ -44,15 +48,6 @@ const MAX_NOTIFICATIONS = 100;
 const LOADING_TIMEOUT_MS = 10000;
 
 // Runtime type guards
-function isValidTransaction(data: DocumentData): boolean {
-  return (
-    typeof data.type === 'string' &&
-    typeof data.amount === 'number' &&
-    typeof data.category === 'string' &&
-    typeof data.accountId === 'string'
-  );
-}
-
 function isValidAccount(data: DocumentData): boolean {
   return (
     typeof data.name === 'string' &&
@@ -65,16 +60,24 @@ function isValidCategory(data: DocumentData): boolean {
   return typeof data.type === 'string' && typeof data.name === 'string';
 }
 
-function transactionFromSnapshot(snapshot: QueryDocumentSnapshot<DocumentData>): Transaction {
-  return {
-    id: snapshot.id,
-    ...snapshot.data(),
-    date: snapshot.data().date?.toDate() || new Date(),
-  } as Transaction;
-}
+const replaceTransactionDecodeIssues = (
+  previous: readonly TransactionDecodeIssue[],
+  documentIds: readonly string[],
+  next: readonly TransactionDecodeIssue[],
+): TransactionDecodeIssue[] => {
+  const replacedIds = new Set(documentIds);
+  return [
+    ...previous.filter(issue => !replacedIds.has(issue.transactionId)),
+    ...next,
+  ].sort((left, right) => (
+    left.transactionId.localeCompare(right.transactionId)
+    || left.code.localeCompare(right.code)
+  ));
+};
 
 export interface FirestoreData {
   transactions: Transaction[];
+  transactionDecodeIssues: TransactionDecodeIssue[];
   accounts: Account[];
   categories: Category[];
   transactionBeneficiaries: string[];
@@ -100,6 +103,7 @@ const COLLECTION_NAMES = ['transactions', 'accounts', 'categories', 'recurringPa
 
 export function useFirestoreSubscriptions(userId: string | null): FirestoreData {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactionDecodeIssues, setTransactionDecodeIssues] = useState<TransactionDecodeIssue[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [transactionBeneficiaries, setTransactionBeneficiaries] = useState<string[]>([]);
@@ -123,6 +127,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
   const hasMoreTransactionsRef = useRef(false);
   const [loadingMoreTransactions, setLoadingMoreTransactions] = useState(false);
   const realtimeTransactionsRef = useRef<Transaction[]>([]);
+  const realtimeTransactionDocumentIdsRef = useRef<Set<string>>(new Set());
   const nextPageCursorRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
   const paginationStartedRef = useRef(false);
   const loadingMoreRef = useRef(false);
@@ -166,6 +171,8 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     hasMoreTransactionsRef.current = false;
     setLoadingMoreTransactions(false);
     realtimeTransactionsRef.current = [];
+    realtimeTransactionDocumentIdsRef.current.clear();
+    setTransactionDecodeIssues([]);
     nextPageCursorRef.current = null;
     paginationStartedRef.current = false;
     loadingMoreRef.current = false;
@@ -206,6 +213,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
 
     if (!userId) {
       setTransactions([]);
+      setTransactionDecodeIssues([]);
       setAccounts([]);
       setCategories([]);
       setTransactionBeneficiaries([]);
@@ -281,9 +289,18 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
             : snap.metadata.fromCache ? 'cache' : 'pending-writes',
           retrying: false,
         });
-        const nextTransactions = snap.docs
-          .filter(d => isValidTransaction(d.data()))
-          .map(transactionFromSnapshot);
+        const decoded = collectDecodedTransactions(snap.docs);
+        const nextTransactions = decoded.transactions;
+        const currentDocumentIds = snap.docs.map(document => document.id);
+        const replacedDocumentIds = [
+          ...realtimeTransactionDocumentIdsRef.current,
+          ...currentDocumentIds,
+        ];
+        setTransactionDecodeIssues(previous => replaceTransactionDecodeIssues(
+          previous,
+          replacedDocumentIds,
+          decoded.issues,
+        ));
 
         if (paginationStartedRef.current) {
           const previousRealtimeTransactions = realtimeTransactionsRef.current;
@@ -298,6 +315,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
           ));
         }
         realtimeTransactionsRef.current = nextTransactions;
+        realtimeTransactionDocumentIdsRef.current = new Set(currentDocumentIds);
         setTransactions(nextTransactions);
 
         if (!paginationStartedRef.current) {
@@ -473,6 +491,17 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
         });
       }
 
+      const affectedIds = mutation.type === 'delete'
+        ? mutation.transactionIds
+        : mutation.transactions
+            .map(transaction => transaction.id)
+            .filter((id): id is string => Boolean(id));
+      setTransactionDecodeIssues(previous => replaceTransactionDecodeIssues(
+        previous,
+        affectedIds,
+        [],
+      ));
+
       setOlderTransactions(previous => (
         applyTransactionCacheMutation(previous, mutation, {
           // Cuando el usuario ya llegó al final, una alta remota con fecha
@@ -507,9 +536,13 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
         paginationGenerationRef.current !== generation
       ) return;
 
-      const newTxs = snap.docs
-        .filter(d => isValidTransaction(d.data()))
-        .map(transactionFromSnapshot);
+      const decoded = collectDecodedTransactions(snap.docs);
+      const newTxs = decoded.transactions;
+      setTransactionDecodeIssues(previous => replaceTransactionDecodeIssues(
+        previous,
+        snap.docs.map(document => document.id),
+        decoded.issues,
+      ));
       const hasMore = snap.docs.length >= PAGE_SIZE;
       setOlderTransactions(previous => {
         const merged = mergePaginatedTransactions(previous, newTxs, {
@@ -570,6 +603,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
 
   return {
     transactions: allTransactions,
+    transactionDecodeIssues,
     accounts,
     categories,
     transactionBeneficiaries,

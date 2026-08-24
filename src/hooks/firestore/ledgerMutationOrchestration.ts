@@ -18,14 +18,16 @@ import type {
 import { getAccountReferenceIds } from '../../utils/accountTransactions';
 import { BalanceCalculator } from '../../utils/balanceCalculator';
 import { creditDeltasByAccount } from '../../utils/creditDeltas';
-import { ensureDate } from '../../utils/dateUtils';
 import { roundMoney } from '../../utils/formatters';
 import {
   LedgerMutationValidationError,
-  normalizeLedgerAmount,
   planLedgerMutation,
   type LedgerAssetAuthority,
 } from '../../utils/ledgerMutation';
+import {
+  requireDecodedTransaction,
+  TransactionDecodeError,
+} from '../../utils/transactionDecoder';
 import {
   acquireAccountOperationLock,
   assertAtomicBatchCapacity,
@@ -111,56 +113,14 @@ const decodeAccount = (snapshot: ServerDocumentSnapshot): Account => {
 };
 
 const decodeTransaction = (snapshot: ServerDocumentSnapshot): Transaction => {
-  const data = snapshot.data();
-  const type = data.type;
-  if (type !== 'income' && type !== 'expense' && type !== 'transfer') {
-    return invalidRecord(`La transacción ${snapshot.id} tiene un tipo inválido`);
-  }
-  if (typeof data.amount !== 'number') {
-    return invalidRecord(`La transacción ${snapshot.id} tiene un monto inválido`);
-  }
-
-  let amount: number;
   try {
-    amount = normalizeLedgerAmount(data.amount);
-  } catch {
-    return invalidRecord(`La transacción ${snapshot.id} tiene un monto inválido`);
+    return requireDecodedTransaction(snapshot);
+  } catch (error) {
+    if (error instanceof TransactionDecodeError) {
+      return invalidRecord(error.message);
+    }
+    throw error;
   }
-  if (typeof data.paid !== 'boolean') {
-    return invalidRecord(`La transacción ${snapshot.id} tiene un estado de pago inválido`);
-  }
-  if (typeof data.accountId !== 'string' || data.accountId.length === 0) {
-    return invalidRecord(`La transacción ${snapshot.id} tiene una cuenta inválida`);
-  }
-  if (
-    type === 'transfer' &&
-    (typeof data.toAccountId !== 'string' || data.toAccountId.length === 0)
-  ) {
-    return invalidRecord(`La transferencia ${snapshot.id} tiene un destino inválido`);
-  }
-
-  const date = ensureDate(data.date);
-  if (!Number.isFinite(date.getTime())) {
-    return invalidRecord(`La transacción ${snapshot.id} tiene una fecha inválida`);
-  }
-  const createdAt = data.createdAt === undefined ? undefined : ensureDate(data.createdAt);
-  if (createdAt && !Number.isFinite(createdAt.getTime())) {
-    return invalidRecord(`La transacción ${snapshot.id} tiene una fecha de creación inválida`);
-  }
-
-  return {
-    ...data,
-    id: snapshot.id,
-    type,
-    amount,
-    paid: data.paid,
-    accountId: data.accountId,
-    toAccountId: typeof data.toAccountId === 'string' ? data.toAccountId : undefined,
-    category: typeof data.category === 'string' ? data.category : '',
-    description: typeof data.description === 'string' ? data.description : '',
-    date,
-    createdAt,
-  } as Transaction;
 };
 
 export async function loadServerLedgerTransaction(

@@ -80,7 +80,7 @@ describe('useAccounts.deleteAccount — modo invitado (#accounts-1)', () => {
   it('preserva transacciones ajenas creadas despues de montar los hooks', async () => {
     localStorage.setItem('accounts', JSON.stringify([
       { id: 'bank', name: 'Banco', type: 'savings', isDefault: true, initialBalance: 0 },
-      { id: 'card', name: 'Visa', type: 'credit', isDefault: false, initialBalance: 0, creditLimit: 1_000_000 },
+      { id: 'card', name: 'Visa', type: 'credit', isDefault: false, initialBalance: 0, creditLimit: 1_000_000, usedCredit: 100 },
     ] as Account[]));
 
     const accountsHook = renderHook(() => useAccounts(null, [], vi.fn()));
@@ -236,5 +236,41 @@ describe('useAccounts.mergeCreditCards — deuda objetivo en modo invitado', () 
       expectedBefore: 500,
       targetBalance: 400,
     });
+  });
+
+  it('recalcula la deuda fusionada desde el envelope ganador de otra pestaña', async () => {
+    const guestAccounts: Account[] = [
+      { id: 'bank', name: 'Banco', type: 'savings', isDefault: true, initialBalance: 0 },
+      { id: 'source', name: 'Visa 1', type: 'credit', isDefault: false, initialBalance: 0, usedCredit: 300, bankAccountId: 'bank' },
+      { id: 'destination', name: 'Visa 2', type: 'credit', isDefault: false, initialBalance: 0, usedCredit: 200, bankAccountId: 'bank' },
+    ];
+    localStorage.setItem('accounts', JSON.stringify(guestAccounts));
+    const { result } = renderHook(() => useAccounts(null, [], vi.fn()));
+    await waitFor(() => expect(result.current.accounts).toHaveLength(3));
+
+    const current = readGuestLedgerEnvelope();
+    const remote = {
+      ...current,
+      revision: current.revision + 1,
+      commitId: 'remote-card-payment',
+      committedAt: '2026-08-24T13:00:00.000Z',
+      data: {
+        ...current.data,
+        accounts: current.data.accounts.map(account => account.id === 'source'
+          ? { ...account, usedCredit: 250 }
+          : account),
+      },
+    };
+    localStorage.setItem('moneytrack_guest_ledger_v1', JSON.stringify(remote));
+
+    await act(async () => {
+      await result.current.mergeCreditCards({
+        sourceAccountIds: ['source'],
+        destination: { id: 'destination', name: 'Visa 2' },
+      });
+    });
+
+    expect(readGuestLedgerEnvelope().data.accounts.find(account => account.id === 'destination'))
+      .toMatchObject({ usedCredit: 450 });
   });
 });

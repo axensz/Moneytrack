@@ -150,6 +150,31 @@ describe('F3-debt-guard: useDebts rechaza montos <= 0', () => {
       expect(currentDebt(result).originalAmount).toBe(1250);
     });
 
+    it('recalcula contra el envelope ganador y no pisa un pago de otra pestaña', async () => {
+      const { result } = renderGuestDebts();
+      const current = readGuestLedgerEnvelope();
+      const remote = createGuestLedgerEnvelope({
+        ...current.data,
+        debts: current.data.debts.map(debt => debt.id === 'debt-1'
+          ? { ...debt, remainingAmount: 900 }
+          : debt),
+      }, {
+        revision: current.revision + 1,
+        commitId: 'remote-payment',
+        committedAt: '2026-08-24T13:00:00.000Z',
+      });
+      localStorage.setItem(GUEST_LEDGER_STORAGE_KEY, JSON.stringify(remote));
+
+      await act(async () => {
+        await result.current.modifyDebtBalance('debt-1', 50, 'add');
+      });
+
+      expect(readGuestLedgerEnvelope().data.debts[0]).toMatchObject({
+        originalAmount: 1050,
+        remainingAmount: 950,
+      });
+    });
+
     it("'add' con monto NEGATIVO lanza y deja el saldo intacto (antes lo REDUCÍA)", async () => {
       const { result } = renderGuestDebts();
 

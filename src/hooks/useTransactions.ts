@@ -326,7 +326,7 @@ export function useTransactions(userId: string | null) {
         }]
       );
       draft.transactions.unshift(restored);
-    }, { operationId: `guest-undo:${transactionId}:restore` });
+    }, { operationId: `guest-undo:${transactionId}:restore:${generateId()}` });
   };
 
   const deleteTransaction = async (id: string) => {
@@ -342,7 +342,7 @@ export function useTransactions(userId: string | null) {
       draft.transactions = draft.transactions.filter(candidate => (
         !candidate.id || !ids.has(candidate.id)
       ));
-    }, { operationId: `guest-delete:${id}` });
+    }, { operationId: `guest-delete:${id}:${generateId()}` });
     return deleted;
   };
 
@@ -360,7 +360,7 @@ export function useTransactions(userId: string | null) {
               ? { ...item, paid: !current.paid }
               : item
           ));
-        }, { operationId: `guest-toggle-paid:${id}:${!transaction.paid}` });
+        }, { operationId: `guest-toggle-paid:${id}:${!transaction.paid}:${generateId()}` });
       }
     }
   };

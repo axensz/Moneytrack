@@ -66,6 +66,33 @@ describe('useGuestLedger', () => {
       .toHaveLength(1);
   });
 
+  it('does not expose legacy collections when the envelope cannot be verified', async () => {
+    localStorage.setItem('accounts', JSON.stringify([account]));
+    localStorage.setItem('transactions', JSON.stringify([income('legacy-income')]));
+    localStorage.setItem('debts', JSON.stringify([]));
+    localStorage.setItem('recurringPayments', JSON.stringify([]));
+    const originalSetItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ) {
+      if (key === GUEST_LEDGER_STORAGE_KEY) {
+        throw new DOMException('quota', 'QuotaExceededError');
+      }
+      originalSetItem.call(this, key, value);
+    });
+
+    const { result } = renderHook(() => useGuestLedger());
+
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.accounts).toEqual([]);
+    expect(result.current.transactions).toEqual([]);
+    expect(localStorage.getItem(GUEST_LEDGER_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem('accounts')).not.toBeNull();
+    expect(localStorage.getItem('transactions')).not.toBeNull();
+  });
+
   it('keeps visible state unchanged and rejects when persistence fails', async () => {
     seed();
     const { result } = renderHook(() => useGuestLedger());

@@ -177,6 +177,24 @@ describe('useTransactions.restoreTransaction — modo invitado', () => {
     });
   });
 
+  it('permite borrar de nuevo una fila después de restaurarla', async () => {
+    localStorage.setItem('accounts', JSON.stringify([savings]));
+    localStorage.setItem('transactions', JSON.stringify([snapshot]));
+    const { result } = renderHook(() => useTransactions(null));
+    await waitFor(() => expect(result.current.transactions).toHaveLength(1));
+
+    let deleted: Transaction | null = null;
+    await act(async () => {
+      deleted = await result.current.deleteTransaction(snapshot.id!);
+    });
+    await act(async () => {
+      await result.current.restoreTransaction(deleted!);
+      await result.current.deleteTransaction(snapshot.id!);
+    });
+
+    expect(readGuestLedgerEnvelope().data.transactions).toEqual([]);
+  });
+
   it('delega la restauración autenticada a la autoridad Firestore', async () => {
     const { result } = renderHook(() => useTransactions('user-1'));
 

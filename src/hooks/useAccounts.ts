@@ -372,22 +372,85 @@ export function useAccounts(
         desiredDebt: normalizedDesiredDebt,
       });
     } else {
-      const desiredDebtAdjustment = normalizedDesiredDebt === undefined
-        ? null
-        : buildBalanceTargetAdjustment({
-            account: destinationAccount,
-            currentValue: mergedUsedCredit,
-            targetBalance: normalizedDesiredDebt,
-            operationId: `guest-merge-credit-cards:${generateId()}`,
-            transactionId: generateId(),
-          });
+      const guestMergeOperationId = `guest-merge-credit-cards:${generateId()}`;
       await mutateGuestLedger(draft => {
-        const existingLocalDestination = draft.accounts.find(account => account.id === destination.id);
+        const localSourceAccounts = uniqueSourceIds.map(id => (
+          draft.accounts.find(account => account.id === id)
+        ));
+        const missingLocalSourceId = uniqueSourceIds.find((_, index) => !localSourceAccounts[index]);
+        if (missingLocalSourceId) {
+          throw new Error(`La cuenta origen ${missingLocalSourceId} ya no existe`);
+        }
+        const invalidLocalSource = localSourceAccounts.find(account => account?.type !== 'credit');
+        if (invalidLocalSource) {
+          throw new Error(`La cuenta origen ${invalidLocalSource.name} ya no es una tarjeta de crédito`);
+        }
+        const existingLocalDestination = destination.id
+          ? draft.accounts.find(account => account.id === destination.id)
+          : undefined;
+        if (destination.id && !existingLocalDestination) {
+          throw new Error(`La cuenta destino ${destination.id} ya no existe`);
+        }
+        if (existingLocalDestination && existingLocalDestination.type !== 'credit') {
+          throw new Error(`La cuenta destino ${existingLocalDestination.name} ya no es una tarjeta de crédito`);
+        }
+
+        const localCardsToConsolidate = [
+          existingLocalDestination,
+          ...localSourceAccounts,
+        ].filter((account): account is Account => Boolean(account));
+        const localBankIds = localCardsToConsolidate
+          .map(account => account.bankAccountId)
+          .filter((id): id is string => Boolean(id));
+        if (
+          localBankIds.length !== localCardsToConsolidate.length
+          || new Set(localBankIds).size !== 1
+        ) {
+          throw new Error('Las tarjetas cambiaron y ya no pertenecen al mismo banco');
+        }
+        if (localCardsToConsolidate.some(account => (
+          typeof account.usedCredit !== 'number'
+          || !Number.isFinite(account.usedCredit)
+          || account.usedCredit < 0
+        ))) {
+          throw new Error('Las tarjetas requieren reconciliación antes de unificarse');
+        }
+        const localMergedUsedCredit = localCardsToConsolidate.reduce(
+          (sum, account) => sum + (account.usedCredit ?? 0),
+          0,
+        );
+        const localShouldMakeDefault =
+          (destination.isDefault ?? existingLocalDestination?.isDefault ?? false)
+          || localSourceAccounts.some(account => account?.isDefault);
         const localDestinationAccount: Account = {
-          ...(existingLocalDestination ?? destinationAccount),
-          ...destinationAccount,
-          createdAt: existingLocalDestination?.createdAt ?? destinationAccount.createdAt,
+          ...(existingLocalDestination ?? {
+            id: destinationId,
+            type: 'credit' as const,
+            initialBalance: 0,
+            createdAt: new Date(),
+            isDefault: localShouldMakeDefault,
+          }),
+          ...destination,
+          id: destinationId,
+          type: 'credit',
+          initialBalance: 0,
+          isDefault: localShouldMakeDefault,
+          createdAt: existingLocalDestination?.createdAt ?? new Date(),
+          mergedAccountIds: Array.from(new Set(
+            localCardsToConsolidate.flatMap(getAccountReferenceIds)
+          )).filter(referenceId => referenceId !== destinationId),
+          usedCredit: normalizedDesiredDebt ?? localMergedUsedCredit,
+          creditDebtModelVersion: CURRENT_CREDIT_DEBT_MODEL_VERSION,
         };
+        const localDesiredDebtAdjustment = normalizedDesiredDebt === undefined
+          ? null
+          : buildBalanceTargetAdjustment({
+              account: localDestinationAccount,
+              currentValue: localMergedUsedCredit,
+              targetBalance: normalizedDesiredDebt,
+              operationId: guestMergeOperationId,
+              transactionId: generateId(),
+            });
 
         const withoutSourcesAndDestination = draft.accounts.filter(account =>
           account.id !== destinationId && (!account.id || !sourceIdSet.has(account.id))
@@ -396,7 +459,7 @@ export function useAccounts(
         draft.accounts = [
           ...withoutSourcesAndDestination.map(account => ({
             ...account,
-            isDefault: shouldMakeDestinationDefault ? false : account.isDefault,
+            isDefault: localShouldMakeDefault ? false : account.isDefault,
           })),
           localDestinationAccount,
         ];
@@ -405,8 +468,8 @@ export function useAccounts(
           accountId: migrateAccountReference(transactionItem.accountId) ?? transactionItem.accountId,
           toAccountId: migrateAccountReference(transactionItem.toAccountId),
         }));
-        draft.transactions = desiredDebtAdjustment
-          ? [...rewritten, desiredDebtAdjustment]
+        draft.transactions = localDesiredDebtAdjustment
+          ? [...rewritten, localDesiredDebtAdjustment]
           : rewritten;
         draft.recurringPayments = draft.recurringPayments.map(payment => ({
         ...payment,
@@ -417,8 +480,7 @@ export function useAccounts(
         accountId: migrateAccountReference(debt.accountId) ?? debt.accountId,
         }));
       }, {
-        operationId: desiredDebtAdjustment?.operationId
-          ?? `guest-merge-credit-cards:${destinationId}:${generateId()}`,
+        operationId: guestMergeOperationId,
       });
     }
   };

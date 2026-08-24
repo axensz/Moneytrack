@@ -3,6 +3,7 @@ import type { Account, Debt, RecurringPayment, Transaction } from '../../types/f
 import {
   GUEST_LEDGER_RECOVERY_KEY,
   GUEST_LEDGER_STORAGE_KEY,
+  createGuestLedgerFallbackLock,
   createGuestLedgerEnvelope,
   ensureGuestLedgerEnvelope,
   exportGuestLedgerRecovery,
@@ -15,6 +16,8 @@ import {
 
 class MemoryStorage implements GuestLedgerStorage {
   readonly values = new Map<string, string>();
+  get length() { return this.values.size; }
+  key = vi.fn((index: number) => Array.from(this.values.keys())[index] ?? null);
   getItem = vi.fn((key: string) => this.values.get(key) ?? null);
   setItem = vi.fn((key: string, value: string) => {
     this.values.set(key, value);
@@ -361,6 +364,63 @@ describe('guest ledger durable envelope', () => {
     expect(persisted.data.debts[0].remainingAmount).toBe(70);
     expect(persisted.data.accounts.find(item => item.id === card.id)?.usedCredit).toBe(60);
     expect(starts).toBeGreaterThan(5);
+  });
+
+  it('preserves legacy card authority and applies only the committed ledger delta', async () => {
+    const storage = new MemoryStorage();
+    storage.values.set('accounts', JSON.stringify([{
+      id: 'legacy-card',
+      name: 'Visa legacy',
+      type: 'credit',
+      initialBalance: 0,
+      isDefault: true,
+      usedCredit: 50,
+    } satisfies Account]));
+    storage.values.set('transactions', JSON.stringify([]));
+    storage.values.set('debts', JSON.stringify([]));
+    storage.values.set('recurringPayments', JSON.stringify([]));
+
+    const migrated = await ensureGuestLedgerEnvelope({ storage, lock: noLock });
+    expect(migrated.data.accounts[0].usedCredit).toBe(50);
+
+    const paid = await mutateGuestLedger(draft => {
+      draft.transactions.push({
+        ...transaction('legacy-card-payment', 'income', 20),
+        accountId: 'legacy-card',
+      });
+    }, { storage, operationId: 'legacy-card-payment', lock: noLock });
+
+    expect(paid.data.accounts[0].usedCredit).toBe(30);
+  });
+
+  it('serializes independent fallback clients before either can overwrite the same revision', async () => {
+    const storage = new MemoryStorage();
+    seed(storage);
+    const firstLock = createGuestLedgerFallbackLock(storage, { pollDelayMs: 1 });
+    const secondLock = createGuestLedgerFallbackLock(storage, { pollDelayMs: 1 });
+    let releaseFirst!: () => void;
+    let firstEntered!: () => void;
+    const firstIsInside = new Promise<void>(resolve => { firstEntered = resolve; });
+    const holdFirst = new Promise<void>(resolve => { releaseFirst = resolve; });
+
+    const first = mutateGuestLedger(async draft => {
+      firstEntered();
+      await holdFirst;
+      draft.transactions.push(transaction('fallback-a', 'income', 10));
+    }, { storage, operationId: 'fallback-a', lock: firstLock });
+
+    await firstIsInside;
+    const second = mutateGuestLedger(draft => {
+      draft.transactions.push(transaction('fallback-b', 'expense', 5));
+    }, { storage, operationId: 'fallback-b', lock: secondLock });
+    await Promise.resolve();
+    expect(storage.getItem(GUEST_LEDGER_STORAGE_KEY)).not.toContain('fallback-b');
+
+    releaseFirst();
+    await Promise.all([first, second]);
+
+    expect(readGuestLedgerEnvelope({ storage }).data.transactions.map(item => item.id).sort())
+      .toEqual(['fallback-a', 'fallback-b']);
   });
 
   it('migrates legacy critical keys with stable IDs and completes interrupted cleanup idempotently', async () => {

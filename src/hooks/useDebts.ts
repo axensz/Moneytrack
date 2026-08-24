@@ -830,7 +830,7 @@ export function useDebts(
             }
           : candidate
       ));
-    }, { operationId: `guest-undo:${transaction.id}:restore-debt-payment` });
+    }, { operationId: `guest-undo:${transaction.id}:restore-debt-payment:${generateId()}` });
   }, [
     userId,
     restoreTransaction,
@@ -844,6 +844,36 @@ export function useDebts(
     amount: number,
     operation: 'add' | 'subtract'
   ) => {
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error('El monto debe ser mayor a cero');
+    }
+
+    if (!userId) {
+      await mutateGuestLedger(draft => {
+        const debt = draft.debts.find(candidate => candidate.id === debtId);
+        if (!debt) throw new Error('Préstamo no encontrado');
+        if (debt.isSettled) throw new Error('No puedes modificar un préstamo ya saldado');
+        if (operation === 'subtract' && amount > debt.remainingAmount) {
+          throw new Error('No puedes restar más del saldo pendiente');
+        }
+
+        const direction = operation === 'add' ? 1 : -1;
+        const originalAmount = roundMoney(debt.originalAmount + direction * amount);
+        const remainingAmount = roundMoney(debt.remainingAmount + direction * amount);
+        const isSettled = remainingAmount === 0;
+        draft.debts = draft.debts.map(candidate => candidate.id === debtId
+          ? {
+              ...candidate,
+              originalAmount,
+              remainingAmount,
+              isSettled,
+              ...(isSettled ? { settledAt: new Date() } : {}),
+            }
+          : candidate);
+      }, { operationId: `guest-modify-debt:${debtId}:${generateId()}` });
+      return;
+    }
+
     const debt = debts.find(d => d.id === debtId);
     if (!debt) {
       throw new Error('Préstamo no encontrado');
@@ -856,10 +886,6 @@ export function useDebts(
     // Invariante de dominio: la magnitud a sumar/restar debe ser positiva finita. Sin
     // este guard, un `add` con monto negativo reducía la deuda (y un `subtract` con
     // negativo la aumentaba) sin transacción compensatoria. Audit F-debt-neg.
-    if (!Number.isFinite(amount) || amount <= 0) {
-      throw new Error('El monto debe ser mayor a cero');
-    }
-
     let newOriginalAmount: number;
     let newRemainingAmount: number;
 
@@ -884,7 +910,7 @@ export function useDebts(
       isSettled,
       ...(isSettled ? { settledAt: new Date() } : {}),
     });
-  }, [debts, updateDebt]);
+  }, [userId, mutateGuestLedger, debts, updateDebt]);
 
   // Condonar una deuda: marcarla saldada con motivo, SIN mover dinero. El dinero
   // ya se movió al prestar/recibir; condonar solo deja de esperarlo (no revierte

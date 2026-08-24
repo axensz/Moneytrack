@@ -6,7 +6,7 @@ import {
   ensureGuestLedgerEnvelope,
   mutateGuestLedger,
   parseGuestLedgerEnvelope,
-  readGuestLedgerEnvelope,
+  readPersistedGuestLedgerEnvelope,
   subscribeGuestLedger,
   type GuestLedgerEnvelope,
   type GuestLedgerMutationOptions,
@@ -27,7 +27,7 @@ const emptyEnvelope = (): GuestLedgerEnvelope => createGuestLedgerEnvelope({
 
 const initialEnvelope = (): GuestLedgerEnvelope => {
   try {
-    return readGuestLedgerEnvelope();
+    return readPersistedGuestLedgerEnvelope() ?? emptyEnvelope();
   } catch (error) {
     logger.error('No se pudo leer el guest ledger', error);
     return emptyEnvelope();
@@ -45,6 +45,12 @@ export function useGuestLedger() {
       setEnvelope(current => next.revision >= current.revision ? next : current);
     };
     const unsubscribe = subscribeGuestLedger(adopt);
+    try {
+      const persisted = readPersistedGuestLedgerEnvelope();
+      if (persisted) adopt(persisted);
+    } catch (error) {
+      logger.error('No se pudo adoptar el guest ledger verificado', error);
+    }
     const handleStorage = (event: StorageEvent) => {
       if (
         event.key !== GUEST_LEDGER_STORAGE_KEY

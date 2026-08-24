@@ -6,6 +6,7 @@ type StoredDocument = Record<string, unknown>;
 type MockRef = { __path: string; __id: string; id: string };
 
 const M = vi.hoisted(() => ({
+  users: new Map<string, StoredDocument>(),
   accounts: new Map<string, StoredDocument>(),
   debts: new Map<string, StoredDocument>(),
   transactions: new Map<string, StoredDocument>(),
@@ -15,6 +16,7 @@ const M = vi.hoisted(() => ({
 }));
 
 const collectionStore = (path: string) => {
+  if (path === 'users') return M.users;
   if (path.endsWith('/accounts')) return M.accounts;
   if (path.endsWith('/debts')) return M.debts;
   if (path.endsWith('/transactions')) return M.transactions;
@@ -44,12 +46,14 @@ vi.mock('../../utils/firestoreHelpers', () => ({
 }));
 
 vi.mock('../../hooks/firestore/accountOrchestration', () => ({
-  acquireAccountOperationLock: vi.fn(),
+  acquireAccountOperationLock: vi.fn(async () => undefined),
   assertAtomicBatchCapacity: vi.fn(),
-  createAccountOperationId: vi.fn(() => 'test-operation'),
-  createAccountOperationRelease: vi.fn(),
-  releaseAccountOperationLock: vi.fn(),
-  renewAccountOperationLock: vi.fn(),
+  createAccountOperationId: vi.fn(() => 'ledger-mutation:test-operation'),
+  createAccountOperationRelease: vi.fn((id: string, kind: string) => ({
+    accountOperationLock: { id, kind, releasedAt: { __serverTimestamp: true } },
+  })),
+  releaseAccountOperationLock: vi.fn(async () => undefined),
+  renewAccountOperationLock: vi.fn(async () => undefined),
 }));
 
 vi.mock('../../hooks/firestore/transactionPaginationCache', () => ({
@@ -102,11 +106,55 @@ vi.mock('firebase/firestore', () => ({
   deleteField: () => ({ __deleteField: true }),
   onSnapshot: () => () => undefined,
   orderBy: () => ({}),
-  query: () => ({}),
-  where: () => ({}),
-  getDocsFromServer: vi.fn(),
-  getDocFromServer: vi.fn(),
-  writeBatch: vi.fn(),
+  query: (source: { __path: string }, ...filters: Array<{ field: string; value: unknown }>) => ({
+    ...source,
+    __filters: filters,
+  }),
+  where: (field: string, _operator: string, value: unknown) => ({ field, value }),
+  getDocsFromServer: async (reference: {
+    __path: string;
+    __filters?: Array<{ field: string; value: unknown }>;
+  }) => {
+    const filters = reference.__filters ?? [];
+    const docs = [...collectionStore(reference.__path).entries()]
+      .filter(([, data]) => filters.every(filter => data[filter.field] === filter.value))
+      .map(([id, data]) => ({ id, data: () => data }));
+    return { docs };
+  },
+  getDocFromServer: async (ref: MockRef) => {
+    const data = collectionStore(ref.__path).get(ref.__id);
+    return { exists: () => Boolean(data), data: () => data ?? {} };
+  },
+  writeBatch: () => {
+    const staged: Array<{
+      kind: 'set' | 'update' | 'delete';
+      ref: MockRef;
+      data?: StoredDocument;
+    }> = [];
+    return {
+      set: (ref: MockRef, data: StoredDocument) => staged.push({ kind: 'set', ref, data }),
+      update: (ref: MockRef, data: StoredDocument) => staged.push({ kind: 'update', ref, data }),
+      delete: (ref: MockRef) => staged.push({ kind: 'delete', ref }),
+      commit: async () => {
+        if (M.failCommit) throw new Error('commit rejected');
+        staged.forEach(({ kind, ref, data }) => {
+          const store = collectionStore(ref.__path);
+          if (kind === 'delete') {
+            store.delete(ref.__id);
+            return;
+          }
+          store.set(
+            ref.__id,
+            kind === 'set'
+              ? (data ?? {})
+              : applyUpdate(store.get(ref.__id) ?? {}, data ?? {})
+          );
+        });
+        M.transactionCommits += 1;
+      },
+    };
+  },
+  serverTimestamp: () => ({ __serverTimestamp: true }),
 }));
 
 import { useDebts } from '../../hooks/useDebts';
@@ -121,6 +169,14 @@ const creditAccount: Account = {
   initialBalance: 0,
   creditLimit: 5_000_000,
   usedCredit: 0,
+};
+
+const savingsAccount: Account = {
+  id: 'savings',
+  name: 'Ahorros',
+  type: 'savings',
+  isDefault: false,
+  initialBalance: 1_000,
 };
 
 const newDebt = (): Omit<Debt, 'id' | 'createdAt'> => ({
@@ -140,6 +196,7 @@ const existingDebt = (updates: Partial<Debt> = {}): Debt => ({
 });
 
 beforeEach(() => {
+  M.users.clear();
   M.accounts.clear();
   M.debts.clear();
   M.transactions.clear();
@@ -151,6 +208,41 @@ beforeEach(() => {
 });
 
 describe('useDebts authenticated atomic writes', () => {
+  it('rejects lent origination that would overdraw persisted savings', async () => {
+    M.accounts.set('savings', { ...savingsAccount });
+    const { result } = renderHook(() => useDebts(UID, [], [], {}));
+
+    await expect(result.current.addDebt({
+      ...newDebt(),
+      accountId: 'savings',
+      originalAmount: 1_000.01,
+      remainingAmount: 1_000.01,
+    })).rejects.toMatchObject({ code: 'INSUFFICIENT_FUNDS' });
+
+    expect(M.transactionCommits).toBe(0);
+    expect(M.debts.size).toBe(0);
+    expect(M.transactions.size).toBe(0);
+  });
+
+  it('rejects borrowed repayment that would overdraw persisted savings', async () => {
+    M.accounts.set('savings', { ...savingsAccount });
+    const debt = existingDebt({
+      type: 'borrowed',
+      accountId: 'savings',
+      originalAmount: 1_000.01,
+      remainingAmount: 1_000.01,
+    });
+    M.debts.set(debt.id!, { ...debt, id: undefined });
+    const { result } = renderHook(() => useDebts(UID, [], [debt], {}));
+
+    await expect(result.current.registerDebtPayment(debt.id!, 1_000.01))
+      .rejects.toMatchObject({ code: 'INSUFFICIENT_FUNDS' });
+
+    expect(M.transactionCommits).toBe(0);
+    expect(M.transactions.size).toBe(0);
+    expect(M.debts.get(debt.id!)).toMatchObject({ remainingAmount: 1_000.01 });
+  });
+
   it('creates the debt, original transaction, and usedCredit in one transaction', async () => {
     const { result } = renderHook(() => useDebts(UID, [], [], {}));
 
@@ -164,6 +256,9 @@ describe('useDebts authenticated atomic writes', () => {
       amount: 1_000_000,
       accountId: 'credit',
       debtId: [...M.debts.keys()][0],
+      operationId: 'ledger-mutation:test-operation',
+      mutationKind: 'create',
+      mutationSource: 'debt',
     });
     expect(M.accounts.get('credit')?.usedCredit).toBe(1_000_000);
   });

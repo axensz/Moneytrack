@@ -20,7 +20,6 @@ import {
   onSnapshot,
   query,
   orderBy,
-  runTransaction,
   updateDoc,
   doc,
   getDocsFromServer,
@@ -35,6 +34,7 @@ import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
 import { safeFirestoreOperation, checkNetworkConnection, stripUndefined } from '../utils/firestoreHelpers';
 import { generateId } from '../utils/formatters';
+import { normalizeLedgerAmount } from '../utils/ledgerMutation';
 import { creditDeltasByAccount } from '../utils/creditDeltas';
 import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../config/constants';
 import type { Debt, Transaction, Account } from '../types/finance';
@@ -47,6 +47,10 @@ import {
   renewAccountOperationLock,
 } from './firestore/accountOrchestration';
 import { publishTransactionCacheMutation } from './firestore/transactionPaginationCache';
+import {
+  executeAuthenticatedLedgerMutation,
+  planCreditAuthorityChanges,
+} from './firestore/ledgerMutationOrchestration';
 import { buildDebtAccountReassignmentPlan } from '../utils/debtAccountReassignment';
 
 interface DebtTransactionOps {
@@ -115,9 +119,6 @@ export function useDebts(
 
   // CRUD Operations
   const addDebt = useCallback(async (debt: Omit<Debt, 'id' | 'createdAt'>) => {
-    // Limpiar campos undefined antes de enviar a Firestore
-    const cleanDebt = stripUndefined(debt);
-
     let debtId: string;
     if (userId) {
       if (!checkNetworkConnection()) {
@@ -127,14 +128,22 @@ export function useDebts(
       const debtRef = doc(collection(db, `users/${userId}/debts`));
       debtId = debtRef.id;
       const createdAt = new Date();
-      let createdTransaction: Transaction | null = null;
+      const originalAmount = normalizeLedgerAmount(debt.originalAmount);
+      const remainingAmount = normalizeLedgerAmount(debt.remainingAmount);
+      const cleanDebt = stripUndefined({
+        ...debt,
+        originalAmount,
+        remainingAmount,
+      });
 
-      await safeFirestoreOperation(
-        () => runTransaction(db, async firestoreTransaction => {
+      const createdTransaction = await safeFirestoreOperation(
+        () => executeAuthenticatedLedgerMutation(
+          userId,
+          async ({ operationId, loadContext }) => {
           const transactionData = debt.accountId
             ? {
                 type: debt.type === 'lent' ? 'expense' as const : 'income' as const,
-                amount: debt.originalAmount,
+                amount: originalAmount,
                 category: LOAN_CATEGORY,
                 description: debt.type === 'lent'
                   ? `Préstamo a ${debt.personName}`
@@ -143,54 +152,57 @@ export function useDebts(
                 paid: true,
                 accountId: debt.accountId,
                 debtId,
+                operationId,
+                mutationKind: 'create' as const,
+                mutationSource: 'debt' as const,
               }
             : null;
-          const accountRef = transactionData
-            ? doc(db, `users/${userId}/accounts`, transactionData.accountId)
+          const context = await loadContext(
+            transactionData ? [transactionData.accountId] : []
+          );
+          const transactionRef = transactionData
+            ? doc(collection(db, `users/${userId}/transactions`))
             : null;
-          const accountSnapshot = accountRef
-            ? await firestoreTransaction.get(accountRef)
+          const transactionWithMetadata = transactionData && transactionRef
+            ? {
+                id: transactionRef.id,
+                ...transactionData,
+                createdAt,
+              } as Transaction
             : null;
+          const intent = {
+            kind: 'create' as const,
+            before: [],
+            after: transactionWithMetadata ? [transactionWithMetadata] : [],
+            metadata: { operationId, mutationSource: 'debt' as const },
+          };
+          const creditChanges = planCreditAuthorityChanges(intent, context);
 
-          if (accountRef && !accountSnapshot?.exists()) {
-            throw new Error('La cuenta asociada al préstamo no existe');
-          }
-
-          firestoreTransaction.set(debtRef, {
-            ...cleanDebt,
-            createdAt,
-          });
-
-          if (transactionData && accountRef && accountSnapshot) {
-            const transactionRef = doc(collection(db, `users/${userId}/transactions`));
-            const account = {
-              id: transactionData.accountId,
-              ...(accountSnapshot.data() as Omit<Account, 'id'>),
-            } as Account;
-            const deltas = creditDeltasByAccount(transactionData, [account]);
-
-            for (const [accountId, delta] of deltas) {
-              const currentUsedCredit = account.usedCredit ?? 0;
-              if (currentUsedCredit + delta < -0.01) {
-                throw new Error('El movimiento dejaría una deuda negativa en la tarjeta');
+          return {
+            intent,
+            context,
+            writeCount: 1 + (transactionRef ? 1 : 0) + creditChanges.length,
+            stage: (batch) => {
+              batch.set(debtRef, {
+                ...cleanDebt,
+                createdAt,
+              });
+              if (transactionWithMetadata && transactionRef) {
+                const persistedTransaction = { ...transactionWithMetadata };
+                delete persistedTransaction.id;
+                batch.set(transactionRef, persistedTransaction);
               }
-              firestoreTransaction.update(
-                doc(db, `users/${userId}/accounts`, accountId),
-                { usedCredit: increment(delta) }
-              );
-            }
-
-            const transactionWithMetadata = {
-              ...transactionData,
-              createdAt,
-            };
-            firestoreTransaction.set(transactionRef, transactionWithMetadata);
-            createdTransaction = {
-              id: transactionRef.id,
-              ...transactionWithMetadata,
-            } as Transaction;
-          }
-        }),
+              creditChanges.forEach(({ accountId, delta }) => {
+                batch.update(
+                  doc(db, `users/${userId}/accounts`, accountId),
+                  { usedCredit: increment(delta) }
+                );
+              });
+            },
+            result: transactionWithMetadata,
+          };
+        }
+        ),
         'addDebt',
         { maxRetries: 2 }
       );
@@ -203,6 +215,8 @@ export function useDebts(
         });
       }
     } else {
+      // Guest mode keeps the debt lifecycle local; the balance guard is added
+      // in the next task before either local collection is mutated.
       debtId = generateId();
       const createdAt = new Date();
       if (debt.accountId && addTransaction) {
@@ -502,11 +516,13 @@ export function useDebts(
         throw new Error('Sin conexión a internet');
       }
 
-      let createdTransaction: Transaction | null = null;
-      await safeFirestoreOperation(
-        () => runTransaction(db, async firestoreTransaction => {
+      const requestedAmount = normalizeLedgerAmount(amount);
+      const createdTransaction = await safeFirestoreOperation(
+        () => executeAuthenticatedLedgerMutation(
+          userId,
+          async ({ operationId, loadContext }) => {
           const debtRef = doc(db, `users/${userId}/debts`, debtId);
-          const debtSnapshot = await firestoreTransaction.get(debtRef);
+          const debtSnapshot = await getDocFromServer(debtRef);
           if (!debtSnapshot.exists()) {
             throw new Error('El préstamo cambió o ya no existe. Actualiza e intenta de nuevo.');
           }
@@ -515,10 +531,26 @@ export function useDebts(
             ...(debtSnapshot.data() as Omit<Debt, 'id'>),
             id: debtId,
           } as Debt;
-          const effectiveAmount = Math.min(amount, persistedDebt.remainingAmount);
-          if (effectiveAmount <= 0 || persistedDebt.isSettled) return;
+          if (persistedDebt.isSettled || persistedDebt.remainingAmount <= 0) {
+            const context = await loadContext([]);
+            return {
+              intent: {
+                kind: 'create' as const,
+                before: [],
+                after: [],
+                metadata: { operationId, mutationSource: 'debt' as const },
+              },
+              context,
+              writeCount: 0,
+              stage: () => undefined,
+              result: null,
+            };
+          }
 
-          const newRemaining = Math.max(0, persistedDebt.remainingAmount - effectiveAmount);
+          const persistedRemaining = normalizeLedgerAmount(persistedDebt.remainingAmount);
+          const effectiveAmount = Math.min(requestedAmount, persistedRemaining);
+
+          const newRemaining = Math.max(0, persistedRemaining - effectiveAmount);
           const isSettled = newRemaining === 0;
           const createdAt = new Date();
           const transactionData = persistedDebt.accountId
@@ -533,55 +565,58 @@ export function useDebts(
                 paid: true,
                 accountId: persistedDebt.accountId,
                 debtId,
+                operationId,
+                mutationKind: 'create' as const,
+                mutationSource: 'debt' as const,
               }
             : null;
-          const accountRef = transactionData
-            ? doc(db, `users/${userId}/accounts`, transactionData.accountId)
+          const context = await loadContext(
+            transactionData ? [transactionData.accountId] : []
+          );
+          const transactionRef = transactionData
+            ? doc(collection(db, `users/${userId}/transactions`))
             : null;
-          const accountSnapshot = accountRef
-            ? await firestoreTransaction.get(accountRef)
+          const transactionWithMetadata = transactionData && transactionRef
+            ? {
+                id: transactionRef.id,
+                ...transactionData,
+                createdAt,
+              } as Transaction
             : null;
+          const intent = {
+            kind: 'create' as const,
+            before: [],
+            after: transactionWithMetadata ? [transactionWithMetadata] : [],
+            metadata: { operationId, mutationSource: 'debt' as const },
+          };
+          const creditChanges = planCreditAuthorityChanges(intent, context);
 
-          if (accountRef && !accountSnapshot?.exists()) {
-            throw new Error('La cuenta asociada al préstamo no existe');
-          }
-
-          firestoreTransaction.update(debtRef, {
-            remainingAmount: newRemaining,
-            isSettled,
-            ...(isSettled ? { settledAt: createdAt } : {}),
-          });
-
-          if (transactionData && accountRef && accountSnapshot) {
-            const transactionRef = doc(collection(db, `users/${userId}/transactions`));
-            const account = {
-              id: transactionData.accountId,
-              ...(accountSnapshot.data() as Omit<Account, 'id'>),
-            } as Account;
-            const deltas = creditDeltasByAccount(transactionData, [account]);
-
-            for (const [accountId, delta] of deltas) {
-              const currentUsedCredit = account.usedCredit ?? 0;
-              if (currentUsedCredit + delta < -0.01) {
-                throw new Error('El pago excede la deuda disponible en la tarjeta');
+          return {
+            intent,
+            context,
+            writeCount: 1 + (transactionRef ? 1 : 0) + creditChanges.length,
+            stage: (batch) => {
+              batch.update(debtRef, {
+                remainingAmount: newRemaining,
+                isSettled,
+                ...(isSettled ? { settledAt: createdAt } : {}),
+              });
+              if (transactionWithMetadata && transactionRef) {
+                const persistedTransaction = { ...transactionWithMetadata };
+                delete persistedTransaction.id;
+                batch.set(transactionRef, persistedTransaction);
               }
-              firestoreTransaction.update(
-                doc(db, `users/${userId}/accounts`, accountId),
-                { usedCredit: increment(delta) }
-              );
-            }
-
-            const transactionWithMetadata = {
-              ...transactionData,
-              createdAt,
-            };
-            firestoreTransaction.set(transactionRef, transactionWithMetadata);
-            createdTransaction = {
-              id: transactionRef.id,
-              ...transactionWithMetadata,
-            } as Transaction;
-          }
-        }),
+              creditChanges.forEach(({ accountId, delta }) => {
+                batch.update(
+                  doc(db, `users/${userId}/accounts`, accountId),
+                  { usedCredit: increment(delta) }
+                );
+              });
+            },
+            result: transactionWithMetadata,
+          };
+        }
+        ),
         'registerDebtPayment',
         { maxRetries: 2 }
       );

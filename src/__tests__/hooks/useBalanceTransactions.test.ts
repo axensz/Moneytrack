@@ -94,14 +94,14 @@ describe('useBalanceTransactions — fuente de saldos bajo paginación', () => {
     listeners = [];
   });
 
-  it('ventana no saturada: no se suscribe, devuelve live y ready=true', async () => {
+  it('head corto autenticado sin confirmación del servidor conserva la lista pero no habilita saldos', async () => {
     const live = [tx('t1')];
     const { result } = renderHook(() => useBalanceTransactions('user1', live, false));
     await Promise.resolve();
 
     expect(subscriptionCount).toBe(0);
     expect(result.current.transactions).toEqual(live);
-    expect(result.current.ready).toBe(true);
+    expect(result.current.ready).toBe(false);
   });
 
   it('modo invitado: no se suscribe aunque hasMore sea true', async () => {
@@ -112,6 +112,59 @@ describe('useBalanceTransactions — fuente de saldos bajo paginación', () => {
     expect(subscriptionCount).toBe(0);
     expect(result.current.transactions).toEqual(live);
     expect(result.current.ready).toBe(true);
+  });
+
+  it('head corto confirmado por servidor habilita saldos sin abrir un listener completo', () => {
+    const live = [tx('t1')];
+    const { result, rerender } = renderHook(
+      ({ serverSettled, headExhaustive }) => useBalanceTransactions('user1', live, serverSettled, headExhaustive),
+      { initialProps: { serverSettled: false, headExhaustive: false } },
+    );
+
+    expect(result.current.ready).toBe(false);
+    rerender({ serverSettled: true, headExhaustive: true });
+
+    expect(subscriptionCount).toBe(0);
+    expect(result.current.ready).toBe(true);
+  });
+
+  it('usa el head exhaustivo confirmado y no el hasMore de la UI', () => {
+    const live = [tx('t1')];
+    const { result } = renderHook(
+      () => useBalanceTransactions('user1', live, true, true),
+    );
+
+    expect(subscriptionCount).toBe(0);
+    expect(result.current.ready).toBe(true);
+  });
+
+  it('un head que crece de caché corto a 500 espera el historial completo confirmado', async () => {
+    const cachedHead = [tx('cached')];
+    const serverHead = Array.from({ length: 500 }, (_, index) => tx(`server-${index}`));
+    const { result, rerender } = renderHook(
+      ({ live, serverSettled, headExhaustive }) => useBalanceTransactions('user1', live, serverSettled, headExhaustive),
+      { initialProps: { live: cachedHead, serverSettled: false, headExhaustive: false } },
+    );
+
+    expect(result.current.ready).toBe(false);
+    rerender({ live: serverHead, serverSettled: true, headExhaustive: false });
+
+    expect(subscriptionCount).toBe(1);
+    expect(result.current.ready).toBe(false);
+    emitSnapshot(serverHead);
+    await waitFor(() => expect(result.current.ready).toBe(true));
+  });
+
+  it.each([
+    [499, true, 0],
+    [500, false, 1],
+    [501, false, 1],
+  ])('clasifica un head confirmado de %i filas sin usar hasMore como autoridad', (count, expectedReady, expectedSubscriptions) => {
+    const live = Array.from({ length: count }, (_, index) => tx(`t${index}`));
+    const { result } = renderHook(() => useBalanceTransactions('user1', live, true, count < 500));
+
+    expect(subscriptionCount).toBe(expectedSubscriptions);
+    expect(result.current.ready).toBe(expectedReady);
   });
 
   it('ventana saturada: el primer snapshot completo incluye movimientos antiguos', async () => {
@@ -202,13 +255,13 @@ describe('useBalanceTransactions — fuente de saldos bajo paginación', () => {
       (_, index) => tx(`t${index}`),
     );
     const { result, rerender } = renderHook(
-      ({ hasMore }) => useBalanceTransactions('user1', loadedHistory, hasMore),
-      { initialProps: { hasMore: true } },
+      ({ headExhaustive }) => useBalanceTransactions('user1', loadedHistory, true, headExhaustive),
+      { initialProps: { headExhaustive: false } },
     );
     emitSnapshot(loadedHistory);
     await waitFor(() => expect(result.current.ready).toBe(true));
 
-    rerender({ hasMore: false });
+    rerender({ headExhaustive: false });
 
     expect(subscriptionCount).toBe(1);
     expect(unsubscribeCount).toBe(0);
@@ -219,13 +272,13 @@ describe('useBalanceTransactions — fuente de saldos bajo paginación', () => {
   it('cancela la suscripción completa cuando la ventana deja de estar saturada', async () => {
     const recent = tx('t1');
     const { result, rerender } = renderHook(
-      ({ hasMore }) => useBalanceTransactions('user1', [recent], hasMore),
-      { initialProps: { hasMore: true } },
+      ({ serverSettled, headExhaustive }) => useBalanceTransactions('user1', [recent], serverSettled, headExhaustive),
+      { initialProps: { serverSettled: true, headExhaustive: false } },
     );
     emitSnapshot([recent]);
     await waitFor(() => expect(result.current.ready).toBe(true));
 
-    rerender({ hasMore: false });
+    rerender({ serverSettled: true, headExhaustive: true });
 
     expect(unsubscribeCount).toBe(1);
     expect(result.current.transactions).toEqual([recent]);

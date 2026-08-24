@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Ban, CalendarClock, DollarSign, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Ban, CalendarClock, DollarSign, Trash2, WalletCards, X } from 'lucide-react';
 import { ACTION_ICONS } from '../../../../config/ui';
 import { ensureDate } from '../../../../utils/dateUtils';
 import { getDebtNextPaymentInfo } from '../../../../utils/debtPaymentSchedule';
@@ -20,6 +20,7 @@ export interface DebtCardProps {
   setPaymentAmount: (v: string) => void;
   onPayment: (id: string) => void;
   onDelete: (debt: Debt) => void;
+  onChangeAccount: (debt: Debt) => void;
   showBalanceModifier: string | null;
   setShowBalanceModifier: (id: string | null) => void;
   modifierAmount: string;
@@ -47,6 +48,7 @@ export const DebtCard: React.FC<DebtCardProps> = React.memo(({
   setPaymentAmount,
   onPayment,
   onDelete,
+  onChangeAccount,
   showBalanceModifier,
   setShowBalanceModifier,
   modifierAmount,
@@ -162,13 +164,22 @@ export const DebtCard: React.FC<DebtCardProps> = React.memo(({
           </div>
         </div>
 
-        <div className="flex w-full items-center justify-end gap-1 border-t border-gray-100 pt-2 dark:border-gray-700 sm:ml-2 sm:w-auto sm:border-t-0 sm:pt-0">
+        <div className="flex w-full flex-wrap items-center justify-end gap-1 border-t border-gray-100 pt-2 dark:border-gray-700 sm:ml-2 sm:w-auto sm:border-t-0 sm:pt-0">
           <button
             onClick={() => onOpenPaymentSchedule(debt)}
-            className="p-1.5 rounded-lg hover:bg-sky-50 dark:hover:bg-sky-900/30 text-sky-600 dark:text-sky-400"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-sky-600 dark:text-sky-400 hover:bg-sky-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:hover:bg-sky-900/30"
+            aria-label={`Próximo pago de ${debt.personName}`}
             title="Próximo pago"
           >
             <CalendarClock size={16} />
+          </button>
+          <button
+            onClick={() => onChangeAccount(debt)}
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-primary hover:bg-purple-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:hover:bg-purple-900/30"
+            aria-label={`Cambiar cuenta de ${debt.personName}`}
+            title="Cambiar cuenta"
+          >
+            <WalletCards size={16} />
           </button>
           <button
             onClick={() => {
@@ -181,7 +192,8 @@ export const DebtCard: React.FC<DebtCardProps> = React.memo(({
                 setShowPaymentScheduleForm(null);
               }
             }}
-            className="p-1.5 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/30 text-purple-600 dark:text-purple-400"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-purple-600 dark:text-purple-400 hover:bg-purple-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:hover:bg-purple-900/30"
+            aria-label={`Modificar saldo de ${debt.personName}`}
             title="Modificar saldo"
           >
             <EditIcon size={16} />
@@ -196,21 +208,24 @@ export const DebtCard: React.FC<DebtCardProps> = React.memo(({
                 setShowPaymentScheduleForm(null);
               }
             }}
-            className="p-1.5 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/30 text-green-600 dark:text-green-400"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-green-600 dark:text-green-400 hover:bg-green-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:hover:bg-green-900/30"
+            aria-label={`Registrar pago de ${debt.personName}`}
             title="Registrar pago"
           >
             <DollarSign size={16} />
           </button>
           <button
             onClick={() => setShowForgive(showForgive === debt.id ? null : debt.id!)}
-            className="p-1.5 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/30 text-amber-600 dark:text-amber-400"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-amber-600 dark:text-amber-400 hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:hover:bg-amber-900/30"
+            aria-label={`Condonar deuda de ${debt.personName}`}
             title="Condonar"
           >
             <Ban size={16} />
           </button>
           <button
             onClick={() => onDelete(debt)}
-            className="p-1.5 rounded-lg hover:bg-destructive-muted text-destructive"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-destructive-muted text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            aria-label={`Eliminar ${debt.type === 'lent' ? 'préstamo' : 'deuda'} de ${debt.personName}`}
             title="Eliminar"
           >
             <Trash2 size={14} />

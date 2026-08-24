@@ -43,7 +43,8 @@ export type AccountOperationKind =
   | 'delete-account'
   | 'merge-credit-cards'
   | 'set-default-account'
-  | 'delete-debt';
+  | 'delete-debt'
+  | 'reassign-debt-account';
 
 interface AccountOperationLock {
   id: string;
@@ -119,7 +120,7 @@ export async function acquireAccountOperationLock(
           acquiredAt: serverTimestamp(),
         },
       },
-      { merge: true }
+      { mergeFields: ['accountOperationLock'] }
     );
   });
 }
@@ -141,7 +142,7 @@ export async function releaseAccountOperationLock(
       transaction.set(
         userRef,
         createAccountOperationRelease(operationId, kind),
-        { merge: true }
+        { mergeFields: ['accountOperationLock'] }
       );
     }
   });
@@ -176,7 +177,7 @@ export async function renewAccountOperationLock(
           acquiredAt: serverTimestamp(),
         },
       },
-      { merge: true }
+      { mergeFields: ['accountOperationLock'] }
     );
   });
 }
@@ -390,7 +391,7 @@ export async function deleteAccountCascade(
         batch.set(
           doc(db, 'users', userId),
           createAccountOperationRelease(operationId, 'delete-account'),
-          { merge: true }
+          { mergeFields: ['accountOperationLock'] }
         );
         await batch.commit();
         committed = true;
@@ -696,7 +697,7 @@ export async function mergeCreditCardsOrchestrated(
       batch.set(
         doc(db, 'users', userId),
         createAccountOperationRelease(operationId, 'merge-credit-cards'),
-        { merge: true }
+        { mergeFields: ['accountOperationLock'] }
       );
       await batch.commit();
       committed = true;
@@ -776,7 +777,7 @@ export async function setDefaultAccountAtomic(
         batch.set(
           doc(db, 'users', userId),
           createAccountOperationRelease(operationId, 'set-default-account'),
-          { merge: true }
+          { mergeFields: ['accountOperationLock'] }
         );
         await batch.commit();
         committed = true;

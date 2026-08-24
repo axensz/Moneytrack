@@ -8,12 +8,17 @@ import { logger } from '../utils/logger';
 import { localDateKey } from '../utils/dateUtils';
 import { appNotificationToBrowserPayload, showBrowserNotification } from '../lib/browserNotifications';
 import type { Notification, NotificationFilter, NotificationPreferences } from '../types/finance';
+import {
+    getCanonicalEventRevision,
+    isVersionedEventCandidate,
+    isVersionedNotification,
+} from '../utils/notificationEventLifecycle';
 
 interface NotificationManagerDeps {
     /** Devuelve true si creó la notificación; false si ya existía (dedup diario). */
     addNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => Promise<boolean>;
     updateNotification: (id: string, updates: Partial<Notification>) => Promise<void>;
-    deleteNotification: (id: string) => Promise<void>;
+    deleteNotification: (id: string, expectedRevision?: number) => Promise<void>;
     clearAll: () => Promise<void>;
     markAllAsRead: () => Promise<void>;
     notifications: Notification[];
@@ -37,46 +42,56 @@ export class NotificationManager {
      * La deduplicación ahora se maneja en addNotification con docId determinístico
      */
     async createNotification(notification: Omit<Notification, 'id' | 'createdAt'>): Promise<void> {
+        const canonicalRevision = isVersionedEventCandidate(notification as Notification)
+            ? getCanonicalEventRevision(notification as Notification)
+            : undefined;
+        if (canonicalRevision === null) {
+            logger.warn('Invalid versioned notification stage, skipping', { notification });
+            return;
+        }
+        const candidate = canonicalRevision === undefined
+            ? notification
+            : { ...notification, revision: canonicalRevision };
         // Check if notification type is enabled
-        if (!this.isNotificationTypeEnabled(notification.type)) {
-            logger.info(`Notification type ${notification.type} is disabled, skipping`);
+        if (!this.isNotificationTypeEnabled(candidate.type)) {
+            logger.info(`Notification type ${candidate.type} is disabled, skipping`);
             return;
         }
 
         // Check for duplicate (debouncing en memoria - previene llamadas rápidas)
-        if (this.isDuplicate(notification)) {
-            logger.info('Duplicate notification detected (debounce), skipping', { notification });
+        if (this.isDuplicate(candidate)) {
+            logger.info('Duplicate notification detected (debounce), skipping', { notification: candidate });
             return;
         }
 
         try {
             // Store notification (addNotification maneja deduplicación con docId)
-            const created = await this.deps.addNotification(notification);
+            const created = await this.deps.addNotification(candidate);
 
             // Si ya existía (dedup diario por docId), NO mostrar toast: al recargar
             // los daily checks reintentan la misma notificación; sin esto el toast
             // re-aparecía aunque no se creara nada nuevo (minor de la revisión).
             if (!created) {
-                logger.info('Notification already exists today, skipping toast', { notification });
+                logger.info('Notification already exists today, skipping toast', { notification: candidate });
                 return;
             }
 
             // Update debounce map
-            const dedupeKey = this.getDebounceKey(notification);
+            const dedupeKey = this.getDebounceKey(candidate);
             this.debounceMap.set(dedupeKey, Date.now());
 
             // Show toast if appropriate
-            if (this.shouldShowToast(notification)) {
-                this.queueToast(notification);
+            if (this.shouldShowToast(candidate)) {
+                this.queueToast(candidate);
             }
 
             if (this.shouldShowBrowserNotification()) {
-                void showBrowserNotification(appNotificationToBrowserPayload(notification));
+                void showBrowserNotification(appNotificationToBrowserPayload(candidate));
             }
 
-            logger.info('Notification created', { notification });
+            logger.info('Notification created', { notification: candidate });
         } catch (error) {
-            logger.error('Failed to create notification', { notification, error });
+            logger.error('Failed to create notification', { notification: candidate, error });
             throw error;
         }
     }
@@ -86,7 +101,13 @@ export class NotificationManager {
      */
     async markAsRead(notificationId: string): Promise<void> {
         try {
-            await this.deps.updateNotification(notificationId, { isRead: true });
+            const notification = this.deps.notifications.find((item) => item.id === notificationId);
+            await this.deps.updateNotification(
+                notificationId,
+                isVersionedNotification(notification)
+                    ? { isRead: true, readRevision: notification.revision }
+                    : { isRead: true }
+            );
         } catch (error) {
             logger.error('Failed to mark notification as read', { notificationId, error });
             throw error;
@@ -110,6 +131,12 @@ export class NotificationManager {
      */
     async deleteNotification(notificationId: string): Promise<void> {
         try {
+            const notification = this.deps.notifications.find((item) => item.id === notificationId);
+            if (!notification) return;
+            if (isVersionedNotification(notification)) {
+                await this.deps.deleteNotification(notificationId, notification.revision);
+                return;
+            }
             await this.deps.deleteNotification(notificationId);
         } catch (error) {
             logger.error('Failed to delete notification', { notificationId, error });
@@ -250,6 +277,9 @@ export class NotificationManager {
      * ✅ FIX #3: Generate a unique key for debouncing (incluye fecha para deduplicación diaria)
      */
     private getDebounceKey(notification: Omit<Notification, 'id' | 'createdAt'>): string {
+        if (isVersionedEventCandidate(notification as Notification)) {
+            return `${notification.eventKey}:${notification.revision ?? 1}`;
+        }
         const parts = [notification.type, notification.title];
 
         // Fecha LOCAL para deduplicación diaria (no UTC: en UTC-5 el corte caía a

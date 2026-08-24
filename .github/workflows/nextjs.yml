@@ -57,7 +57,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Validate Firestore rules
-        run: npx --yes firebase-tools@15.24.0 emulators:exec --only firestore --project demo-moneytrack "node --version"
+        run: npm run test:rules
       - name: Lint
         run: npm run lint
       - name: Typecheck

@@ -32,6 +32,21 @@ interface UseModalA11yOptions {
 const FOCUSABLE_SELECTOR =
   'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
+function getTabbableElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter((element) => {
+    if (
+      element.hasAttribute('disabled') ||
+      element.hidden ||
+      element.getAttribute('aria-hidden') === 'true'
+    ) {
+      return false;
+    }
+
+    const style = getComputedStyle(element);
+    return style.display !== 'none' && style.visibility !== 'hidden';
+  });
+}
+
 // Estado COMPARTIDO entre instancias para coordinar modales APILADOS.
 let openModalCount = 0;
 let savedBodyOverflow = '';
@@ -71,7 +86,11 @@ export function useModalA11y<T extends HTMLElement = HTMLDivElement>({
 
     if (autoFocusContainer) {
       // Diferir para permitir el render del contenido.
-      requestAnimationFrame(() => modalRef.current?.focus());
+      requestAnimationFrame(() => {
+        const modal = modalRef.current;
+        if (!modal) return;
+        (getTabbableElements(modal)[0] ?? modal).focus();
+      });
     }
 
     return () => {
@@ -113,19 +132,28 @@ export function useModalA11y<T extends HTMLElement = HTMLDivElement>({
   const onKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key !== 'Tab' || !modalRef.current) return;
 
-    const focusable = modalRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
+    const focusable = getTabbableElements(modalRef.current);
     if (focusable.length === 0) return;
 
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
+    const activeElement = document.activeElement;
+    const isOutsideBoundary =
+      activeElement === modalRef.current || !modalRef.current.contains(activeElement);
+
+    if (isOutsideBoundary) {
+      (e.shiftKey ? last : first).focus();
+      e.preventDefault();
+      return;
+    }
 
     if (e.shiftKey) {
-      if (document.activeElement === first) {
+      if (activeElement === first) {
         last.focus();
         e.preventDefault();
       }
     } else {
-      if (document.activeElement === last) {
+      if (activeElement === last) {
         first.focus();
         e.preventDefault();
       }

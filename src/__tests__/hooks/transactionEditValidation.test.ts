@@ -139,11 +139,14 @@ describe('#8 — la edición valida saldo/cupo excluyendo la original', () => {
     expect(M.toastErrors.join(' ')).toMatch(/cupo|insuficiente/i);
   });
 
-  it('con saldos sin asentar (balancesReady=false) no valida saldo: guarda', async () => {
+  it('con saldos sin asentar bloquea una edición debitante y mantiene lo escrito', async () => {
     const params = makeParams({ balancesReady: false });
-    await editAndSave(params, expenseSav, '150000');
+    const result = await editAndSave(params, expenseSav, '150000');
 
-    expect(params.updateTransaction).toHaveBeenCalledTimes(1);
+    expect(params.updateTransaction).not.toHaveBeenCalled();
+    expect(result.current.editingTransaction).toBe('e1');
+    expect(result.current.editForm.amount).toBe('150000');
+    expect(M.toastErrors.join(' ')).toMatch(/conciliando.*historial/i);
   });
 });
 

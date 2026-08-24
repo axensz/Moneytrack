@@ -54,6 +54,10 @@ const selectTransactionDomain = (s: FinanceContextValue) => ({
   loadMoreTransactions: s.loadMoreTransactions,
   balanceTransactions: s.balanceTransactions,
   balancesReady: s.balancesReady,
+  transactionsServerSettled: s.transactionsServerSettled,
+  transactionsHeadExhaustive: s.transactionsHeadExhaustive,
+  transactionsUnresolvedReason: s.transactionsUnresolvedReason,
+  transactionsRetrying: s.transactionsRetrying,
 }) as const;
 
 export function useTransactionDomain() {
@@ -130,6 +134,7 @@ const selectDebtsDomain = (s: FinanceContextValue) => ({
   addDebt: s.addDebt,
   updateDebt: s.updateDebt,
   deleteDebt: s.deleteDebt,
+  reassignDebtAccount: s.reassignDebtAccount,
   registerDebtPayment: s.registerDebtPayment,
   modifyDebtBalance: s.modifyDebtBalance,
   forgiveDebt: s.forgiveDebt,

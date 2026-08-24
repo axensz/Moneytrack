@@ -198,6 +198,20 @@ export interface ValidationResult {
 }
 
 // 🆕 NOTIFICACIONES
+export type NotificationSchemaVersion = 2;
+
+export type NotificationEventStage =
+  | 'daily'
+  | 'd3'
+  | 'd1'
+  | 'due'
+  | 'overdue'
+  | 'warning'
+  | 'critical'
+  | 'exceeded';
+
+export type NotificationLifecycleStatus = 'scheduled' | 'active' | 'resolved';
+
 export interface Notification {
   id?: string;
   type: 'budget' | 'recurring' | 'unusual_spending' | 'low_balance' | 'debt' | 'info';
@@ -208,6 +222,21 @@ export interface Notification {
   createdAt: Date;
   actionUrl?: string;
   metadata?: NotificationMetadata;
+  /** Solo los eventos v2 participan en el ciclo versionado; los legacy quedan intactos. */
+  schemaVersion?: NotificationSchemaVersion;
+  eventKey?: string;
+  revision?: number;
+  stage?: NotificationEventStage;
+  stageWindow?: string;
+  overdueOccurrence?: number;
+  lifecycleStatus?: NotificationLifecycleStatus;
+  /** La revisión previa resuelta cuando el documento canónico avanza. */
+  resolvedRevision?: number;
+  readRevision?: number;
+  dismissedRevision?: number;
+  scheduledAt?: Date;
+  resolvedAt?: Date;
+  dismissedAt?: Date;
 }
 
 export interface NotificationMetadata {
@@ -221,9 +250,15 @@ export interface NotificationMetadata {
   percentage?: number;
   amount?: number;
   threshold?: number;
+  /** Datos estables de la fuente que completan la identidad v2. */
+  recurringCycle?: string;
+  localDate?: string;
 }
 
 export interface NotificationPreferences {
+  schemaVersion?: NotificationSchemaVersion;
+  /** Zona IANA compartida por recordatorios, quiet hours y reintentos. */
+  timeZone?: string;
   enabled: {
     budget: boolean;
     recurring: boolean;
@@ -260,6 +295,8 @@ export interface NotificationFilter {
 }
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  schemaVersion: 2,
+  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Bogota',
   enabled: {
     budget: true,
     recurring: true,

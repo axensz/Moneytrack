@@ -22,7 +22,7 @@ interface FinanceNotificationBridgeProps {
 export function FinanceNotificationBridge({
   userId,
 }: FinanceNotificationBridgeProps) {
-  const { transactions, balanceTransactions } = useTransactionDomain();
+  const { transactions, balanceTransactions, transactionsLoading } = useTransactionDomain();
   const { accounts } = useAccountDomain();
   const { recurringPayments } = useRecurringDomain();
   const { budgets } = useBudgetsDomain();
@@ -41,6 +41,7 @@ export function FinanceNotificationBridge({
     accounts,
     debts,
     notificationManager,
+    isHydrated: !transactionsLoading,
   });
   useDailyExpenseReminder(notificationManager, notificationPreferences);
 

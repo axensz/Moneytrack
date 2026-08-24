@@ -23,3 +23,8 @@
 - [x] 4.2 Run focused mobile regressions for the shared overview, Transaction-filter, and export paths without performing mobile visual remediation.
 - [x] 4.3 Run type checking, linting, the production build, and the complete automated test suite.
 - [x] 4.4 Verify overview placement, labels, and filter independence in the running desktop app at 1024, 1280, and 1440 pixel widths in light and dark themes.
+
+## 5. Simplify the outstanding label
+
+- [x] 5.1 Update the rendered overview contract so the visible outstanding label is exactly `Pendiente` while retaining its contextual credit-card explanation.
+- [x] 5.2 Replace only the visible label in `StatsCards`, without changing selectors, values, formatting, privacy, or card layout.

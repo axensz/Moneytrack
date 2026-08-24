@@ -34,6 +34,30 @@ export const lastDayOfMonth = (y: number, m: number): number =>
 export const effectiveDueDay = (dueDay: number, y: number, m: number): number =>
   Math.min(dueDay, lastDayOfMonth(y, m));
 
+/** Normaliza una fecha al día local para comparaciones de calendario. */
+export const localCalendarDay = (date: Date): Date =>
+  new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+/** Fecha programada del período actual (puede quedar en pasado si está vencido). */
+export const getScheduledDueDate = (
+  payment: RecurringPayment,
+  refDate: Date = new Date()
+): Date => {
+  const reference = localCalendarDay(refDate);
+  const year = reference.getFullYear();
+  const month = payment.frequency === 'yearly'
+    ? getYearlyAnchorMonth(payment, reference.getMonth())
+    : reference.getMonth();
+  return new Date(year, month, effectiveDueDay(payment.dueDay, year, month));
+};
+
+/** Diferencia de días calendario, inmune a la hora del día y a DST. */
+export const calendarDayDifference = (from: Date, to: Date): number => {
+  const fromDay = Date.UTC(from.getFullYear(), from.getMonth(), from.getDate());
+  const toDay = Date.UTC(to.getFullYear(), to.getMonth(), to.getDate());
+  return Math.round((toDay - fromDay) / (1000 * 60 * 60 * 24));
+};
+
 /**
  * Mes ancla de vencimiento para pagos anuales: el mes en que se configuró
  * (payment.createdAt). Si no hay createdAt, fallback al mes de referencia.
@@ -59,8 +83,9 @@ export const getNextDueDate = (
   payment: RecurringPayment,
   refDate: Date = new Date()
 ): Date => {
-  const currentMonth = refDate.getMonth();
-  const currentYear = refDate.getFullYear();
+  const reference = localCalendarDay(refDate);
+  const currentMonth = reference.getMonth();
+  const currentYear = reference.getFullYear();
 
   if (payment.frequency === 'yearly') {
     // #8: anclar el mes de vencimiento al mes en que se configuró el pago.
@@ -71,7 +96,7 @@ export const getNextDueDate = (
       anchorMonth,
       effectiveDueDay(payment.dueDay, currentYear, anchorMonth)
     );
-    if (refDate <= dueThisYear) return dueThisYear;
+    if (reference <= dueThisYear) return dueThisYear;
     const nextYear = currentYear + 1;
     return new Date(
       nextYear,
@@ -86,7 +111,7 @@ export const getNextDueDate = (
     currentMonth,
     effectiveDueDay(payment.dueDay, currentYear, currentMonth)
   );
-  if (refDate <= dueThisMonth) return dueThisMonth;
+  if (reference <= dueThisMonth) return dueThisMonth;
   return new Date(
     currentYear,
     currentMonth + 1,
@@ -109,8 +134,9 @@ export const getCycleWindow = (
   payment: RecurringPayment,
   refDate: Date = new Date()
 ): { start: Date; end: Date } => {
-  const refYear = refDate.getFullYear();
-  const refMonth = refDate.getMonth();
+  const reference = localCalendarDay(refDate);
+  const refYear = reference.getFullYear();
+  const refMonth = reference.getMonth();
 
   if (payment.frequency === 'yearly') {
     const anchorMonth = getYearlyAnchorMonth(payment, refMonth);
@@ -120,7 +146,7 @@ export const getCycleWindow = (
       anchorMonth,
       effectiveDueDay(payment.dueDay, refYear, anchorMonth)
     );
-    if (refDate >= dueThisYear) {
+    if (reference >= dueThisYear) {
       // El ciclo actual empezó en el vencimiento de este año
       const nextYear = refYear + 1;
       return {
@@ -150,7 +176,7 @@ export const getCycleWindow = (
     refMonth,
     effectiveDueDay(payment.dueDay, refYear, refMonth)
   );
-  if (refDate >= dueThisMonth) {
+  if (reference >= dueThisMonth) {
     return {
       start: dueThisMonth,
       end: new Date(

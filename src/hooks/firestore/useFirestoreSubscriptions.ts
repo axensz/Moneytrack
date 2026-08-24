@@ -89,6 +89,10 @@ export interface FirestoreData {
   hasMoreTransactions: boolean;
   loadingMoreTransactions: boolean;
   loadMoreTransactions: () => Promise<void>;
+  transactionsServerSettled: boolean;
+  transactionsHeadExhaustive: boolean;
+  transactionsUnresolvedReason: 'cache' | 'pending-writes' | 'error' | null;
+  transactionsRetrying: boolean;
   retryLoad: () => void;
 }
 
@@ -126,12 +130,31 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
   const deletedTransactionIdsRef = useRef<Set<string>>(new Set());
   const updatedTransactionsByIdRef = useRef<Map<string, Transaction>>(new Map());
   const [retryTrigger, setRetryTrigger] = useState(0);
+  const [transactionsServerSettledForUserId, setTransactionsServerSettledForUserId] = useState<string | null>(null);
+  const [transactionsHeadExhaustiveForUserId, setTransactionsHeadExhaustiveForUserId] = useState<string | null>(null);
+  const [transactionsReadiness, setTransactionsReadiness] = useState<{
+    userId: string | null;
+    reason: 'cache' | 'pending-writes' | 'error' | null;
+    retrying: boolean;
+  }>({ userId: null, reason: null, retrying: false });
+
+  const transactionsServerSettled = !userId || transactionsServerSettledForUserId === userId;
+  const transactionsHeadExhaustive = !userId || transactionsHeadExhaustiveForUserId === userId;
+  const transactionsUnresolvedReason = userId && transactionsReadiness.userId === userId
+    ? transactionsReadiness.reason
+    : userId ? 'cache' : null;
+  const transactionsRetrying = userId !== null
+    && transactionsReadiness.userId === userId
+    && transactionsReadiness.retrying;
 
   const retryLoad = useCallback(() => {
     setError(null);
     setLoadedForUserId(null);
+    setTransactionsServerSettledForUserId(null);
+    setTransactionsHeadExhaustiveForUserId(null);
+    setTransactionsReadiness({ userId, reason: 'cache', retrying: true });
     setRetryTrigger(prev => prev + 1);
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     const generation = paginationGenerationRef.current + 1;
@@ -148,6 +171,13 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     loadingMoreRef.current = false;
     deletedTransactionIdsRef.current.clear();
     updatedTransactionsByIdRef.current.clear();
+    setTransactionsServerSettledForUserId(null);
+    setTransactionsHeadExhaustiveForUserId(null);
+    setTransactionsReadiness(previous => (
+      previous.userId === userId && previous.retrying
+        ? previous
+        : { userId, reason: userId ? 'cache' : null, retrying: false }
+    ));
 
     const isActive = () => (
       isMountedRef.current && paginationGenerationRef.current === generation
@@ -166,6 +196,11 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
       logger.error(`Error en ${name}`, err);
       if (!isActive()) return;
       setError(new Error(`Error al cargar ${name}: ${err.message}`));
+      if (name === 'transacciones') {
+        setTransactionsServerSettledForUserId(null);
+        setTransactionsHeadExhaustiveForUserId(null);
+        setTransactionsReadiness({ userId, reason: 'error', retrying: false });
+      }
       setLoadedForUserId(userId);
     };
 
@@ -229,10 +264,23 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     const base = `users/${userId}`;
 
     // 1. Transactions (limited, ordered by date)
-    subscribeQuery(
+    unsubscribes.push(onSnapshot(
       query(collection(db, `${base}/transactions`), orderBy('date', 'desc'), limit(PAGE_SIZE)),
-      'transacciones',
+      { includeMetadataChanges: true },
       (snap) => {
+        if (!isActive()) return;
+        const settledFromServer = !snap.metadata.fromCache && !snap.metadata.hasPendingWrites;
+        setTransactionsServerSettledForUserId(settledFromServer ? userId : null);
+        setTransactionsHeadExhaustiveForUserId(
+          settledFromServer && snap.docs.length < PAGE_SIZE ? userId : null
+        );
+        setTransactionsReadiness({
+          userId,
+          reason: settledFromServer
+            ? null
+            : snap.metadata.fromCache ? 'cache' : 'pending-writes',
+          retrying: false,
+        });
         const nextTransactions = snap.docs
           .filter(d => isValidTransaction(d.data()))
           .map(transactionFromSnapshot);
@@ -262,8 +310,9 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
         }
         loadedCollections.current.transactions = true;
         checkAllLoaded();
-      }
-    );
+      },
+      handleError('transacciones')
+    ));
 
     // 2. Accounts
     subscribeQuery(
@@ -519,5 +568,26 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     [transactions, olderTransactions]
   );
 
-  return { transactions: allTransactions, accounts, categories, transactionBeneficiaries, recurringPayments, debts, budgets, savingsGoals, notifications, notificationPreferences, loading, error, hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions, retryLoad };
+  return {
+    transactions: allTransactions,
+    accounts,
+    categories,
+    transactionBeneficiaries,
+    recurringPayments,
+    debts,
+    budgets,
+    savingsGoals,
+    notifications,
+    notificationPreferences,
+    loading,
+    error,
+    hasMoreTransactions,
+    loadingMoreTransactions,
+    loadMoreTransactions,
+    transactionsServerSettled,
+    transactionsHeadExhaustive,
+    transactionsUnresolvedReason,
+    transactionsRetrying,
+    retryLoad,
+  };
 }

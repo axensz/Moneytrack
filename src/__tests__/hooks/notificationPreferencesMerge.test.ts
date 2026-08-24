@@ -12,6 +12,7 @@ vi.mock('../../lib/firebaseDb', () => ({ db: {} }));
 vi.mock('firebase/firestore', () => ({ doc: vi.fn(), onSnapshot: vi.fn(), setDoc: vi.fn() }));
 
 import { withDefaults } from '../../hooks/useNotificationPreferences';
+import type { PartialNotificationPreferences } from '../../hooks/useNotificationPreferences';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../../types/finance';
 import type { NotificationPreferences } from '../../types/finance';
 
@@ -32,4 +33,33 @@ describe('useNotificationPreferences — withDefaults (#1 anti-crash)', () => {
     expect(withDefaults(null)).toEqual(DEFAULT_NOTIFICATION_PREFERENCES);
     expect(withDefaults(undefined)).toEqual(DEFAULT_NOTIFICATION_PREFERENCES);
   });
+
+  it('migra un documento legacy sin versión ni zona horaria', () => {
+    const merged = withDefaults({ dailyExpenseReminder: { enabled: true } } as Partial<NotificationPreferences>);
+
+    expect(merged.schemaVersion).toBe(2);
+    expect(merged.timeZone).toBe(DEFAULT_NOTIFICATION_PREFERENCES.timeZone);
+    expect(merged.dailyExpenseReminder).toEqual({
+      ...DEFAULT_NOTIFICATION_PREFERENCES.dailyExpenseReminder,
+      enabled: true,
+    });
+  });
+
+  it('preserves every nested partial value and fills only missing keys', () => {
+    const partial: PartialNotificationPreferences = {
+      enabled: { recurring: false },
+      thresholds: { budgetCritical: 97 },
+      quietHours: { startHour: 21 },
+      browserNotifications: { enabled: true },
+      dailyExpenseReminder: { minute: 15 },
+    };
+    const merged = withDefaults(partial);
+
+    expect(merged.enabled).toEqual({ ...DEFAULT_NOTIFICATION_PREFERENCES.enabled, recurring: false });
+    expect(merged.thresholds).toEqual({ ...DEFAULT_NOTIFICATION_PREFERENCES.thresholds, budgetCritical: 97 });
+    expect(merged.quietHours).toEqual({ ...DEFAULT_NOTIFICATION_PREFERENCES.quietHours, startHour: 21 });
+    expect(merged.browserNotifications).toEqual({ enabled: true });
+    expect(merged.dailyExpenseReminder).toEqual({ ...DEFAULT_NOTIFICATION_PREFERENCES.dailyExpenseReminder, minute: 15 });
+  });
+
 });

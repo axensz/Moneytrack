@@ -1,0 +1,63 @@
+## MODIFIED Requirements
+
+### Requirement: Mobile header keeps priority actions reachable
+The mobile header MUST keep brand, theme, notifications, and settings operable while privacy moves to the ledger overview and the assistant moves to its floating launcher.
+
+#### Scenario: Authenticated mobile header renders
+- **WHEN** the authenticated header renders below 640 CSS pixels
+- **THEN** theme, notifications, and settings MUST remain fully visible with stable accessible names and touch targets of at least 44×44 CSS pixels, while privacy and assistant controls MUST NOT occupy the header
+
+#### Scenario: User needs to sign out on mobile
+- **WHEN** an authenticated mobile user opens the settings menu
+- **THEN** a clearly labeled `Cerrar sesión` action MUST be available without horizontal scrolling or a clipped trigger
+
+#### Scenario: Wider header renders
+- **WHEN** the viewport is at least 640 CSS pixels wide
+- **THEN** the direct logout action MUST remain visible, privacy and assistant controls MUST remain outside the header, and the relative order of theme, notifications, settings, and logout MUST be preserved
+
+### Requirement: Brand returns to the default ledger view
+The `MoneyTrack` brand MUST be a native interactive control that reuses the existing view router to return to `Transacciones` without a full-page reload.
+
+#### Scenario: User activates the brand from another view
+- **WHEN** the user clicks or keyboard-activates the control named `Ir a Transacciones`
+- **THEN** the application MUST select the `transactions` view through the existing navigation callback and preserve the canonical default-view URL behavior
+
+#### Scenario: Header brand renders at any supported width
+- **WHEN** the header renders between 320 and 1440 CSS pixels wide
+- **THEN** the brand action MUST preserve the existing wordmark, expose a visible focus state, and provide a touch target of at least 44 CSS pixels without causing horizontal overflow
+
+### Requirement: Semantic controls expose consistent pointer affordance
+The application MUST show a pointer cursor for enabled native controls and supported interactive ARIA roles on pointer-capable devices, without making non-interactive containers appear actionable.
+
+#### Scenario: Pointer reaches an enabled control
+- **WHEN** the pointer is over an enabled link, button, action input, select, disclosure summary, associated label, or supported interactive ARIA role
+- **THEN** the computed cursor MUST be `pointer`
+
+#### Scenario: Pointer reaches a disabled control
+- **WHEN** a native control is disabled or an interactive element exposes `aria-disabled="true"`
+- **THEN** the computed cursor MUST be `not-allowed` instead of `pointer`
+
+## ADDED Requirements
+
+### Requirement: Ledger overview owns the global privacy action
+The `Resumen general` header MUST expose the only direct balance-privacy control, keep it immediately reachable, and continue using the existing global persisted preference.
+
+#### Scenario: Values are visible
+- **WHEN** `hideBalances` is false
+- **THEN** the action on the same row as `Resumen general` MUST be named `Ocultar valores`, expose `aria-pressed="false"`, and provide at least a 44×44 CSS pixel target
+
+#### Scenario: User hides values
+- **WHEN** the user activates `Ocultar valores`
+- **THEN** all existing consumers of the shared privacy preference MUST mask their monetary values immediately and the same action MUST become `Mostrar valores` with `aria-pressed="true"`
+
+#### Scenario: Balances are settling
+- **WHEN** the ledger overview displays `Calculando…`
+- **THEN** the privacy action MUST remain visible and operable without replacing or falsifying the settling state
+
+#### Scenario: Overview renders on a narrow viewport
+- **WHEN** the ledger overview renders between 320 and 639 CSS pixels wide
+- **THEN** the title and privacy action MUST remain on one responsive header row without clipping, overlapping, or causing horizontal overflow, and no individual metric card MUST contain the privacy action
+
+#### Scenario: User navigates away and returns
+- **WHEN** the user changes views after hiding or showing values
+- **THEN** the existing persisted privacy state MUST remain unchanged

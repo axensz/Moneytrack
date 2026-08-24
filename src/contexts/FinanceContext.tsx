@@ -66,6 +66,10 @@ export interface FinanceContextValue {
    * debe mostrar "calculando" y bloquear el ajuste de saldo hasta que sea true.
    */
   balancesReady: boolean;
+  transactionsServerSettled: boolean;
+  transactionsHeadExhaustive: boolean;
+  transactionsUnresolvedReason: 'cache' | 'pending-writes' | 'error' | null;
+  transactionsRetrying: boolean;
   accounts: Account[];
   categories: Categories;
   transactionBeneficiaries: string[];
@@ -129,6 +133,7 @@ export interface FinanceContextValue {
   addDebt: (debt: Omit<Debt, 'id' | 'createdAt'>) => Promise<void>;
   updateDebt: (id: string, updates: Partial<Debt>) => Promise<void>;
   deleteDebt: (id: string) => Promise<void>;
+  reassignDebtAccount: (debtId: string, nextAccountId?: string) => Promise<void>;
   registerDebtPayment: (debtId: string, amount: number) => Promise<void>;
   modifyDebtBalance: (debtId: string, amount: number, operation: 'add' | 'subtract') => Promise<void>;
   forgiveDebt: (debtId: string, reason: 'unpaid' | 'gift' | 'other') => Promise<void>;
@@ -192,7 +197,17 @@ interface FinanceProviderProps {
 export function FinanceProvider({ userId, children }: FinanceProviderProps) {
   // Centralized Firestore data (all 7 collections from a single set of listeners)
   const firestoreData = useFirestoreData();
-  const { hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions, retryLoad, error: firestoreError } = firestoreData;
+  const {
+    hasMoreTransactions,
+    loadingMoreTransactions,
+    loadMoreTransactions,
+    transactionsServerSettled,
+    transactionsHeadExhaustive,
+    transactionsUnresolvedReason,
+    transactionsRetrying,
+    retryLoad,
+    error: firestoreError,
+  } = firestoreData;
 
   // 1. Transacciones (base de todo)
   const {
@@ -210,7 +225,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
   // expulsa a la más antigua y el saldo salta por el monto expulsado). Solo
   // fetchea cuando la ventana está saturada; con <500 txs devuelve el array live.
   const { transactions: balanceTransactions, ready: balancesReady } =
-    useBalanceTransactions(userId, transactions, hasMoreTransactions);
+    useBalanceTransactions(userId, transactions, transactionsServerSettled, transactionsHeadExhaustive);
 
   // 2. Cuentas (depende de balanceTransactions + deleteTransaction)
   const {
@@ -260,6 +275,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     addDebt,
     updateDebt,
     deleteDebt,
+    reassignDebtAccount,
     registerDebtPayment,
     modifyDebtBalance,
     forgiveDebt,
@@ -268,6 +284,8 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
   } = useDebts(userId, transactions, userId ? firestoreData.debts : undefined, {
     addTransaction,
     deleteTransaction,
+    updateTransaction,
+    accounts,
   });
 
   // Borrado de transacciones con sincronización de préstamos.
@@ -344,6 +362,10 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     transactions,
     balanceTransactions,
     balancesReady,
+    transactionsServerSettled,
+    transactionsHeadExhaustive,
+    transactionsUnresolvedReason,
+    transactionsRetrying,
     accounts,
     categories,
     transactionBeneficiaries,
@@ -403,6 +425,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     addDebt,
     updateDebt,
     deleteDebt,
+    reassignDebtAccount,
     registerDebtPayment,
     modifyDebtBalance,
     forgiveDebt,
@@ -429,7 +452,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     // Utilidades
     formatCurrency,
   }), [
-    transactions, balanceTransactions, balancesReady, accounts, categories, transactionBeneficiaries, recurringPayments, defaultAccount, totalBalance,
+    transactions, balanceTransactions, balancesReady, transactionsServerSettled, transactionsHeadExhaustive, transactionsUnresolvedReason, transactionsRetrying, accounts, categories, transactionBeneficiaries, recurringPayments, defaultAccount, totalBalance,
     transactionsLoading, accountsLoading,
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
     firestoreError, retryLoad,
@@ -439,7 +462,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     addCategory, deleteCategory, addTransactionBeneficiary, deleteTransactionBeneficiary,
     addRecurringPayment, updateRecurringPayment, deleteRecurringPayment,
     isPaidForMonth, getNextDueDate, getDaysUntilDue, getDaysOverdue, isOverdue, getPaymentHistory, recurringStats,
-    debts, addDebt, updateDebt, deleteDebt, registerDebtPayment, modifyDebtBalance, forgiveDebt,
+    debts, addDebt, updateDebt, deleteDebt, reassignDebtAccount, registerDebtPayment, modifyDebtBalance, forgiveDebt,
     getDebtTransactions, debtStats,
     budgets, addBudget, updateBudget, deleteBudget, budgetStatuses, budgetStats,
     savingsGoals, addGoal, updateGoal, deleteGoal, addSavings, goalStatuses, goalStats,

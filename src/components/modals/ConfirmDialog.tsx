@@ -71,13 +71,13 @@ export function ConfirmDialog({
         {message}
       </div>
       <div className="flex gap-3 mt-6">
-        <button onClick={onClose} disabled={isConfirming} className="flex-1 btn-cancel disabled:opacity-50">
+        <button onClick={onClose} disabled={isConfirming} className="min-h-11 flex-1 btn-cancel disabled:opacity-50">
           {cancelLabel}
         </button>
         <button
           onClick={handleConfirm}
           disabled={isConfirming}
-          className={`flex-1 px-4 py-2 text-sm font-semibold rounded-xl text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${confirmClass}`}
+          className={`min-h-11 flex-1 px-4 py-2 text-sm font-semibold rounded-xl text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${confirmClass}`}
         >
           {confirmLabel}
         </button>

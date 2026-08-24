@@ -14,6 +14,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useNotificationMonitoring } from '../../hooks/useNotificationMonitoring';
 import type { NotificationManager } from '../../services/NotificationManager';
+import { PaymentMonitor } from '../../services/PaymentMonitor';
+import { DebtMonitor } from '../../services/DebtMonitor';
 import type { Transaction } from '../../types/finance';
 
 const notificationManager = {
@@ -46,9 +48,9 @@ function tx(createdAt: Date, overrides: Partial<Transaction> = {}): Transaction 
   } as Transaction;
 }
 
-function mount(initial: Transaction[]) {
+function mount(initial: Transaction[], isHydrated = true) {
   return renderHook(
-    ({ transactions }) =>
+    ({ transactions, hydrated = true }: { transactions: Transaction[]; hydrated?: boolean }) =>
       useNotificationMonitoring({
         userId: 'user1',
         transactions,
@@ -57,8 +59,9 @@ function mount(initial: Transaction[]) {
         accounts: [],
         debts: [],
         notificationManager,
-      }),
-    { initialProps: { transactions: initial } }
+        isHydrated: hydrated,
+      } as Parameters<typeof useNotificationMonitoring>[0]),
+    { initialProps: { transactions: initial, hydrated: isHydrated } }
   );
 }
 
@@ -82,7 +85,7 @@ describe('useNotificationMonitoring — guard anti-flood por paginación', () =>
     // "Cargar más": entran 200 transacciones históricas (ids nuevos, createdAt viejo).
     const olderPage = Array.from({ length: 200 }, () => tx(old));
     await act(async () => {
-      rerender({ transactions: [...initial, ...olderPage] });
+      rerender({ transactions: [...initial, ...olderPage], hydrated: true });
     });
 
     expect(spy).not.toHaveBeenCalled();
@@ -102,7 +105,7 @@ describe('useNotificationMonitoring — guard anti-flood por paginación', () =>
 
     const fresh = tx(new Date(2026, 5, 9, 11, 59, 30)); // creada hace 30s
     await act(async () => {
-      rerender({ transactions: [...initial, fresh] });
+      rerender({ transactions: [...initial, fresh], hydrated: true });
     });
 
     expect(spy).toHaveBeenCalledTimes(1);
@@ -115,7 +118,7 @@ describe('useNotificationMonitoring — guard anti-flood por paginación', () =>
     const clearCache = vi.spyOn(result.current.monitors.budgetMonitor!, 'clearCache');
 
     await act(async () => {
-      rerender({ transactions: [old, tx(new Date(2026, 1, 2))] });
+      rerender({ transactions: [old, tx(new Date(2026, 1, 2))], hydrated: true });
     });
 
     expect(clearCache).toHaveBeenCalled();
@@ -134,7 +137,7 @@ describe('useNotificationMonitoring — guard anti-flood por paginación', () =>
     // Creada hace 5 min: real, pero >2 min → bajo la ventana vieja se perdía.
     const skewed = tx(new Date(2026, 5, 9, 11, 55, 0));
     await act(async () => {
-      rerender({ transactions: [...initial, skewed] });
+      rerender({ transactions: [...initial, skewed], hydrated: true });
     });
 
     expect(spy).toHaveBeenCalledTimes(1);
@@ -176,6 +179,22 @@ describe('useNotificationMonitoring — guard anti-flood por paginación', () =>
     expect(debtSpy).toHaveBeenCalled();
   });
 
+  it('espera la primera fuente hidratada y la evalúa una sola vez', async () => {
+    const paymentSpy = vi.spyOn(PaymentMonitor.prototype, 'checkUpcomingPayments').mockResolvedValue(undefined);
+    const debtSpy = vi.spyOn(DebtMonitor.prototype, 'checkOverdueDebts').mockResolvedValue(undefined);
+    const { rerender } = mount([], false);
+
+    expect(paymentSpy).not.toHaveBeenCalled();
+    expect(debtSpy).not.toHaveBeenCalled();
+
+    await act(async () => {
+      rerender({ transactions: [tx(new Date(2026, 5, 9, 11, 59, 30))], hydrated: true });
+    });
+
+    expect(paymentSpy).toHaveBeenCalledTimes(1);
+    expect(debtSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('transacción sin createdAt (doc legacy vía paginación) NO dispara alertas', async () => {
     const initial = [tx(new Date(2026, 1, 1))];
     const { result, rerender } = mount(initial);
@@ -186,7 +205,7 @@ describe('useNotificationMonitoring — guard anti-flood por paginación', () =>
     const legacy = tx(new Date(2026, 1, 1));
     delete (legacy as Partial<Transaction>).createdAt;
     await act(async () => {
-      rerender({ transactions: [...initial, legacy] });
+      rerender({ transactions: [...initial, legacy], hydrated: true });
     });
 
     expect(spy).not.toHaveBeenCalled();

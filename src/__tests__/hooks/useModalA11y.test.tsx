@@ -20,6 +20,11 @@ function TestModal({
   if (!isOpen) return null;
   return (
     <div ref={modalRef} onKeyDown={onKeyDown} tabIndex={-1} role="dialog" data-testid="dialog">
+      <button data-testid="hidden" hidden>hidden</button>
+      <button data-testid="aria-hidden" aria-hidden="true">aria hidden</button>
+      <button data-testid="display-none" style={{ display: 'none' }}>display none</button>
+      <button data-testid="visibility-hidden" style={{ visibility: 'hidden' }}>visibility hidden</button>
+      <button data-testid="disabled" disabled>disabled</button>
       <button data-testid="first">first</button>
       <input data-testid="inp" />
       <button data-testid="last">last</button>
@@ -64,6 +69,18 @@ describe('useModalA11y (A5)', () => {
     document.body.removeChild(trigger);
   });
 
+  it('enfoca el primer control visible y habilitado al abrir', async () => {
+    const { getByTestId } = render(
+      <TestModal isOpen onClose={() => {}} autoFocusContainer />
+    );
+
+    await act(async () => {
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    });
+
+    expect(document.activeElement).toBe(getByTestId('first'));
+  });
+
   it('focus-trap: Tab en el último elemento cicla al primero', () => {
     const { getByTestId } = render(<TestModal isOpen onClose={() => {}} />);
     const dialog = getByTestId('dialog');
@@ -85,5 +102,41 @@ describe('useModalA11y (A5)', () => {
     first.focus();
     fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
     expect(document.activeElement).toBe(last);
+  });
+
+  it('focus-trap: recupera Shift+Tab desde el contenedor y desde foco externo', () => {
+    const { getByTestId } = render(<TestModal isOpen onClose={() => {}} />);
+    const dialog = getByTestId('dialog');
+    const last = getByTestId('last');
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+
+    dialog.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(last);
+
+    outside.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(last);
+
+    outside.remove();
+  });
+
+  it('focus-trap: recupera Tab desde el contenedor y desde foco externo', () => {
+    const { getByTestId } = render(<TestModal isOpen onClose={() => {}} />);
+    const dialog = getByTestId('dialog');
+    const first = getByTestId('first');
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+
+    dialog.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(document.activeElement).toBe(first);
+
+    outside.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(document.activeElement).toBe(first);
+
+    outside.remove();
   });
 });

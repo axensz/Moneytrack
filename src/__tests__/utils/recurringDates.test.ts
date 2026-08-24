@@ -49,6 +49,12 @@ describe('recurringDates — helpers puros', () => {
 });
 
 describe('recurringDates — getNextDueDate', () => {
+  it('conserva el vencimiento de hoy aunque la referencia sea mediodía', () => {
+    const p = payment({ dueDay: 15, frequency: 'monthly' });
+    const due = getNextDueDate(p, new Date(2026, 5, 15, 12, 0, 0));
+    expect(due).toEqual(new Date(2026, 5, 15));
+  });
+
   it('(a) dueDay 31 en febrero cae el 28/29, no inválido ni 28 fijo', () => {
     const p = payment({ dueDay: 31, frequency: 'monthly' });
     // Referencia: 1 feb 2025 (no bisiesto) -> vencimiento 28 feb

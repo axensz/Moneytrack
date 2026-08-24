@@ -179,7 +179,16 @@ const credit: Account = {
 
 const seedAccount = (a: Account) => mockState.store.set(acctKey(a.id!), a as unknown as Record<string, unknown>);
 const seedTx = (id: string, data: Partial<Transaction>) =>
-  mockState.store.set(txKey(id), data as unknown as Record<string, unknown>);
+  mockState.store.set(txKey(id), {
+    type: 'expense',
+    amount: 100,
+    category: 'Prueba',
+    description: 'Seed',
+    date: new Date('2026-06-01'),
+    paid: true,
+    accountId: 'sav',
+    ...data,
+  } as unknown as Record<string, unknown>);
 
 const updatesOn = (key: string) => mockState.writeLog.filter(w => w.op === 'update' && w.key === key);
 const sets = () => mockState.writeLog.filter(w => w.op === 'set');
@@ -497,6 +506,119 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
   });
 
   describe('deleteTransaction', () => {
+    it('rechaza borrar un ingreso si el saldo persistido quedaría negativo', async () => {
+      seedAccount({ ...savings, initialBalance: 0 });
+      seedTx('income-delete', makeTx({
+        type: 'income', amount: 100, accountId: 'sav',
+      }));
+      seedTx('existing-expense', makeTx({
+        type: 'expense', amount: 50, accountId: 'sav',
+      }));
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.deleteTransaction('income-delete'))
+        .rejects.toMatchObject({ code: 'INSUFFICIENT_FUNDS' });
+
+      expect(mockState.writeLog).toHaveLength(0);
+      expect(cacheMutations).toHaveLength(0);
+    });
+
+    it('rechaza borrar una transferencia entrante si sobregira el destino', async () => {
+      seedAccount({ ...savings, initialBalance: 1_000 });
+      mockState.store.set(acctKey('cash'), {
+        id: 'cash', name: 'Efectivo', type: 'cash', isDefault: false, initialBalance: 0,
+      });
+      seedTx('incoming-transfer', makeTx({
+        type: 'transfer', amount: 100, accountId: 'sav', toAccountId: 'cash',
+      }));
+      seedTx('cash-expense', makeTx({
+        type: 'expense', amount: 50, accountId: 'cash',
+      }));
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.deleteTransaction('incoming-transfer'))
+        .rejects.toMatchObject({ code: 'INSUFFICIENT_FUNDS' });
+
+      expect(mockState.writeLog).toHaveLength(0);
+      expect(cacheMutations).toHaveLength(0);
+    });
+
+    it('rechaza un puntero enlazado no recíproco sin borrar la fila ajena', async () => {
+      seedAccount(savings);
+      seedAccount(credit);
+      seedTx('pay-card', makeTx({
+        type: 'income', amount: 100, accountId: 'cc', category: 'Pago Crédito',
+        linkedTransactionId: 'unrelated',
+      }));
+      seedTx('unrelated', makeTx({
+        type: 'expense', amount: 100, accountId: 'sav', category: 'Pago Crédito',
+      }));
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.deleteTransaction('pay-card'))
+        .rejects.toThrow(/reconcili|enlace|par/i);
+
+      expect(mockState.writeLog).toHaveLength(0);
+      expect(mockState.store.has(txKey('unrelated'))).toBe(true);
+    });
+
+    it('rechaza un enlace cuya contraparte ya no existe', async () => {
+      seedAccount(credit);
+      seedTx('pay-card', makeTx({
+        type: 'income', amount: 100, accountId: 'cc', category: 'Pago Crédito',
+        linkedTransactionId: 'missing-bank-row',
+      }));
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.deleteTransaction('pay-card'))
+        .rejects.toThrow(/reconcili|contraparte/i);
+
+      expect(mockState.writeLog).toHaveLength(0);
+      expect(mockState.store.has(txKey('pay-card'))).toBe(true);
+    });
+
+    it('rechaza un enlace recíproco con roles financieros incorrectos', async () => {
+      seedAccount(savings);
+      seedAccount(credit);
+      seedTx('wrong-card-role', makeTx({
+        type: 'expense', amount: 100, accountId: 'cc', category: 'Pago Crédito',
+        linkedTransactionId: 'wrong-bank-role',
+      }));
+      seedTx('wrong-bank-role', makeTx({
+        type: 'expense', amount: 100, accountId: 'sav', category: 'Pago Crédito',
+        linkedTransactionId: 'wrong-card-role',
+      }));
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.deleteTransaction('wrong-card-role'))
+        .rejects.toThrow(/reconcili|tarjeta|mitad/i);
+
+      expect(mockState.writeLog).toHaveLength(0);
+      expect(mockState.store.has(txKey('wrong-bank-role'))).toBe(true);
+    });
+
+    it('rechaza un enlace recíproco que no pertenece a una tarjeta', async () => {
+      seedAccount(savings);
+      mockState.store.set(acctKey('cash'), {
+        id: 'cash', name: 'Efectivo', type: 'cash', isDefault: false, initialBalance: 1_000,
+      });
+      seedTx('wrong-account-income', makeTx({
+        type: 'income', amount: 100, accountId: 'sav', category: 'Pago Crédito',
+        linkedTransactionId: 'wrong-account-expense',
+      }));
+      seedTx('wrong-account-expense', makeTx({
+        type: 'expense', amount: 100, accountId: 'cash', category: 'Pago Crédito',
+        linkedTransactionId: 'wrong-account-income',
+      }));
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.deleteTransaction('wrong-account-income'))
+        .rejects.toThrow(/reconcili|tarjeta|mitad/i);
+
+      expect(mockState.writeLog).toHaveLength(0);
+      expect(mockState.store.has(txKey('wrong-account-expense'))).toBe(true);
+    });
+
     it('borra una compra de TC y REVIERTE usedCredit en increment(-amount)', async () => {
       seedAccount(credit);
       seedTx('tx-del', { type: 'expense', amount: 150_000, accountId: 'cc', category: 'Compras Personales', paid: true });
@@ -517,6 +639,7 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
     });
 
     it('al borrar un pago de deuda reabre desde el saldo persistido en la misma transacción', async () => {
+      seedAccount(savings);
       seedTx('debt-payment', {
         type: 'income', amount: 200_000, accountId: 'sav', category: 'Cobro Préstamo',
         debtId: 'debt-1', paid: true,
@@ -530,7 +653,7 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
 
       await crud.current.deleteTransaction('debt-payment');
 
-      expect(mockState.transactionCalls).toBe(1);
+      expect(mockState.batchCommits).toBe(1);
       const debtUpdates = updatesOn(debtKey('debt-1'));
       expect(debtUpdates).toHaveLength(1);
       expect(debtUpdates[0].data).toMatchObject({
@@ -581,6 +704,57 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
   });
 
   describe('updateTransaction', () => {
+    it('rechaza aumentar un gasto por encima del saldo persistido sin actualizar', async () => {
+      seedAccount({ ...savings, initialBalance: 1_000 });
+      seedTx('expense-up', makeTx({
+        type: 'expense', amount: 500, accountId: 'sav',
+      }));
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.updateTransaction('expense-up', { amount: 1_000.01 }))
+        .rejects.toMatchObject({ code: 'INSUFFICIENT_FUNDS' });
+
+      expect(mockState.writeLog).toHaveLength(0);
+      expect(cacheMutations).toHaveLength(0);
+    });
+
+    it('rechaza editar un par con enlace no recíproco y conserva ambas filas', async () => {
+      seedAccount(savings);
+      seedAccount(credit);
+      seedTx('pay-bank', makeTx({
+        type: 'expense', amount: 100, accountId: 'sav', category: 'Pago Crédito',
+        linkedTransactionId: 'pay-card',
+      }));
+      seedTx('pay-card', makeTx({
+        type: 'income', amount: 100, accountId: 'cc', category: 'Pago Crédito',
+        linkedTransactionId: 'someone-else',
+      }));
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.updateTransaction('pay-bank', { amount: 150 }))
+        .rejects.toThrow(/reconcili|enlace|par/i);
+
+      expect(mockState.writeLog).toHaveLength(0);
+      expect(cacheMutations).toHaveLength(0);
+    });
+
+    it('rechaza reasignar un gasto a una cuenta origen sin fondos', async () => {
+      seedAccount({ ...savings, initialBalance: 1_000 });
+      mockState.store.set(acctKey('cash'), {
+        id: 'cash', name: 'Efectivo', type: 'cash', isDefault: false, initialBalance: 0,
+      });
+      seedTx('expense-reassign', makeTx({
+        type: 'expense', amount: 500, accountId: 'sav',
+      }));
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.updateTransaction('expense-reassign', { accountId: 'cash' }))
+        .rejects.toMatchObject({ code: 'INSUFFICIENT_FUNDS' });
+
+      expect(mockState.writeLog).toHaveLength(0);
+      expect(cacheMutations).toHaveLength(0);
+    });
+
     it('cambiar el monto de un gasto de TC aplica el DIFF de delta como increment', async () => {
       seedAccount(credit);
       seedTx('tx-upd', { type: 'expense', amount: 100_000, accountId: 'cc', category: 'Compras Personales', paid: true, date: new Date('2026-06-01') });
@@ -626,11 +800,19 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
       });
 
       expect(updatesOn(txKey('pay-bank'))[0].data).toEqual(expect.objectContaining({
-        amount: 150_000, date: newDate,
+        amount: 150_000,
+        date: newDate,
+        operationId: 'ledger-mutation:test-operation',
+        mutationKind: 'edit',
+        mutationSource: 'manual',
       }));
       expect(updatesOn(txKey('pay-bank'))[0].data).not.toHaveProperty('category');
       expect(updatesOn(txKey('pay-card'))[0].data).toEqual(expect.objectContaining({
-        amount: 150_000, date: newDate,
+        amount: 150_000,
+        date: newDate,
+        operationId: 'ledger-mutation:test-operation',
+        mutationKind: 'edit',
+        mutationSource: 'manual',
       }));
       expect(updatesOn(acctKey('cc'))[0].data!.usedCredit).toEqual({ __increment: -50_000 });
     });

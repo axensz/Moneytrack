@@ -29,9 +29,9 @@
 - [x] 4.1 Add a ledger mutation kind to the existing `AccountOperationKind` and strict Firestore allow-list; do not copy or fork the lease implementation.
 - [x] 4.2 Add server query helpers that, after acquiring the lease, load affected accounts and all transactions referencing them by source or destination, deduplicate rows, and reject invalid records.
 - [x] 4.3 Implement the authenticated ledger facade: preflight, acquire, server-current plan, atomic final commit with exact release tombstone, safe release on failure, and post-commit cache publication.
-- [ ] 4.4 Route ordinary savings/cash creates and transfers through the facade; add two-client tests where only the affordable subset commits.
-- [ ] 4.5 Route edits and deletes through before/after validation, including deleting income/incoming transfer and editing a debit upward; prove all failed cases leave documents/cache unchanged.
-- [ ] 4.6 Route mixed card-payment pairs through the facade so source funds, both rows, reciprocal IDs, and `usedCredit` update are one operation.
+- [x] 4.4 Route ordinary savings/cash creates and transfers through the facade; add two-client tests where only the affordable subset commits.
+- [x] 4.5 Route edits and deletes through before/after validation, including deleting income/incoming transfer and editing a debit upward; prove all failed cases leave documents/cache unchanged.
+- [x] 4.6 Route mixed card-payment pairs through the facade so source funds, both rows, reciprocal IDs, and `usedCredit` update are one operation.
 - [ ] 4.7 Extend rules-emulator tests for owner/non-owner, ledger kind acquire/release/reacquire, malformed/stale release, invalid transfer references, and zero partial writes.
 - [ ] 4.8 Measure account-scoped server reads and commit latency with representative 499/500/501 and multi-account histories; document the threshold for a future rollup without adding one now.
 
@@ -40,13 +40,14 @@
 - [ ] 5.1 Add writer and rules tests for absent, `null`, negative, non-finite, over-debt, and valid `usedCredit`; require zero writes until authority is valid.
 - [ ] 5.2 Expose per-card `creditAuthorityReady`/reconciliation state and block every card-affecting entry point without a finite non-negative persisted value.
 - [ ] 5.3 Serialize `useCreditMigration` under the shared lease, use server reads, verify the model version before commit, and persist value/version/release together.
-- [ ] 5.4 Derive account type and affected credit deltas from server documents in create/update/delete, removing correctness dependence on `accountsRef` while retaining it only as a UI optimization.
-- [ ] 5.5 Reject edit/delete on a corrupt linked pointer and surface a reconciliation issue; test that an unrelated pointed transaction is never touched.
+- [x] 5.4 Derive account type and affected credit deltas from server documents in create/update/delete, removing correctness dependence on `accountsRef` while retaining it only as a UI optimization.
+- [x] 5.5 Reject edit/delete on a corrupt linked pointer and surface a reconciliation issue; test that an unrelated pointed transaction is never touched.
 - [ ] 5.6 Preserve current green regressions for financed interest, payment overage, transfer-to-card, delete reversal, pair edit, cache post-commit, and guest pair parity.
 
 ## Task 6: Route every product entry point and make compounds atomic
 
 - [ ] 6.1 Route the manual form and inline edit through the canonical facade while preserving double-submit guards, user input on failure, TRM metadata, interest snapshots, and current success copy.
+  - Evidence 2026-08-24: the shared authenticated transaction writer used by manual create and inline edit is facade-backed; full regressions preserve the listed behavior. The item remains open until the final entry-point/UI closure pass.
 - [ ] 6.2 Give confirmed AI actions a stable operation ID, complete balance context, and the canonical facade; commit a missing category with the action or keep category creation strictly post-commit and non-authoritative.
 - [ ] 6.3 Refactor account edit plus balance adjustment into one exact-target operation using server-current before balance, rounded delta, audit metadata, and the existing lease.
 - [ ] 6.4 Extend `mergeCreditCardsDomain` to accept the desired post-merge debt so merge and adjustment commit together, or split them into two explicitly reported successful intentions.

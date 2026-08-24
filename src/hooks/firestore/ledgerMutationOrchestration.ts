@@ -158,6 +158,17 @@ export async function loadServerLedgerTransaction(
   return decodeTransaction(snapshot as unknown as ServerDocumentSnapshot);
 }
 
+export async function loadServerLedgerTransactions(
+  userId: string
+): Promise<Transaction[]> {
+  const snapshot = await getDocsFromServer(
+    collection(db, `users/${userId}/transactions`)
+  );
+  return snapshot.docs.map(document =>
+    decodeTransaction(document as unknown as ServerDocumentSnapshot)
+  );
+}
+
 export const collectLedgerMutationAccountIds = (
   intent: LedgerMutationIntent
 ): string[] => [...new Set(

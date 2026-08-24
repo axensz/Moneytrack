@@ -118,6 +118,7 @@ import {
   collectLedgerMutationAccountIds,
   executeAuthenticatedLedgerMutation,
   loadServerLedgerTransaction,
+  loadServerLedgerTransactions,
   loadServerLedgerContext,
   normalizeLedgerIntentAccountReferences,
   planCreditAuthorityChanges,
@@ -270,6 +271,21 @@ describe('loadServerLedgerTransaction', () => {
 
     await expect(loadServerLedgerTransaction(UID, 'invalid'))
       .rejects.toThrow(/inválid|válid/i);
+  });
+
+  it('loads the complete collection with the same strict decoder', async () => {
+    M.transactions.set('tx-1', transaction({ amount: 125.5 }));
+    M.transactions.set('tx-2', transaction({ type: 'income', amount: 80 }));
+
+    await expect(loadServerLedgerTransactions(UID)).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'tx-1', amount: 125.5 }),
+        expect.objectContaining({ id: 'tx-2', type: 'income', amount: 80 }),
+      ])
+    );
+
+    M.transactions.set('invalid', transaction({ date: new Date('invalid') }));
+    await expect(loadServerLedgerTransactions(UID)).rejects.toThrow(/fecha|válid/i);
   });
 });
 

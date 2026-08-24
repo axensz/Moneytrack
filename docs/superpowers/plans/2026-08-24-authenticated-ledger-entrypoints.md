@@ -82,11 +82,21 @@
 
 ## Task 5: Verify and record the authenticated entrypoints
 
-- [ ] Run all focused migration, authority, account, merge, AI, facade, cache, debt-dependent, and UI-form suites.
-- [ ] Run full tests, typecheck, lint, production build, and `git diff --check` independently.
-- [ ] Run strict OpenSpec validation.
-- [ ] Rebuild the graph and inspect changed flows/tests.
-- [ ] Mark only genuinely satisfied parts of OpenSpec 5.1-5.3 and 5.6, 6.1-6.4, 6.6-6.7; leave recurring/undo/guest/reconciliation/rules/performance/browser gates open.
-- [ ] Commit as `docs: record authenticated ledger entrypoint evidence`.
+- [x] Run all focused migration, authority, account, merge, AI, facade, cache, debt-dependent, and UI-form suites.
+- [x] Run full tests, typecheck, lint, production build, and `git diff --check` independently.
+- [x] Run strict OpenSpec validation.
+- [x] Rebuild the graph and inspect changed flows/tests.
+- [x] Mark only genuinely satisfied parts of OpenSpec 5.1-5.3 and 5.6, 6.1-6.4, 6.6-6.7; leave recurring/undo/guest/reconciliation/rules/performance/browser gates open.
+- [x] Commit as `docs: record authenticated ledger entrypoint evidence`.
+
+### Checkpoint evidence (2026-08-24)
+
+- Focused authenticated entrypoints: 24 files, 256 tests passed.
+- Full Vitest: 139 files passed and 1 skipped; 1,195 tests passed and 5 skipped.
+- `typecheck`, `lint`, production build, `git diff --check`, and strict OpenSpec validation passed independently.
+- The build-only service-worker version change was restored; `public/sw.js` returned to hash `5fdf5c29e2193c1d692d2dd6a54477ce10abf115`.
+- The graph at `42b9b10` contains 6,459 nodes and 72,029 edges across 708 files. Change detection reported medium aggregate risk; the priority ledger nodes have focused coverage. Automatic flow detection returned zero mapped flows, so it is recorded as unavailable evidence rather than a passing flow assertion.
+- OpenSpec 5.3, 5.6, and 6.1-6.4 are complete. 5.1-5.2 and 6.6-6.7 remain open with explicit gaps; recurring, undo, guest envelope, reconciliation, expanded rules, performance, and browser gates remain untouched.
+- Protected notification/presupuesto WIP and untracked `.codex/`/`AGENTS.md` remained unstaged and unmodified by this checkpoint.
 
 Do not push at this checkpoint. Continue with recurring authority only after these compounds are stable.

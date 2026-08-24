@@ -39,21 +39,24 @@
 
 - [ ] 5.1 Add writer and rules tests for absent, `null`, negative, non-finite, over-debt, and valid `usedCredit`; require zero writes until authority is valid.
 - [ ] 5.2 Expose per-card `creditAuthorityReady`/reconciliation state and block every card-affecting entry point without a finite non-negative persisted value.
-- [ ] 5.3 Serialize `useCreditMigration` under the shared lease, use server reads, verify the model version before commit, and persist value/version/release together.
+- [x] 5.3 Serialize `useCreditMigration` under the shared lease, use server reads, verify the model version before commit, and persist value/version/release together.
 - [x] 5.4 Derive account type and affected credit deltas from server documents in create/update/delete, removing correctness dependence on `accountsRef` while retaining it only as a UI optimization.
 - [x] 5.5 Reject edit/delete on a corrupt linked pointer and surface a reconciliation issue; test that an unrelated pointed transaction is never touched.
-- [ ] 5.6 Preserve current green regressions for financed interest, payment overage, transfer-to-card, delete reversal, pair edit, cache post-commit, and guest pair parity.
+- [x] 5.6 Preserve current green regressions for financed interest, payment overage, transfer-to-card, delete reversal, pair edit, cache post-commit, and guest pair parity.
+
+  Evidence 2026-08-24: migration now reloads complete strict server rows only after the shared lease, rechecks the server model, and commits `usedCredit`, reciprocal links, model versions, and release in one batch. Focused and full suites preserve every regression listed in 5.6. Tasks 5.1 and 5.2 remain open because the expanded rules matrix and explicit per-card reconciliation UI/state are not implemented.
 
 ## Task 6: Route every product entry point and make compounds atomic
 
-- [ ] 6.1 Route the manual form and inline edit through the canonical facade while preserving double-submit guards, user input on failure, TRM metadata, interest snapshots, and current success copy.
-  - Evidence 2026-08-24: the shared authenticated transaction writer used by manual create and inline edit is facade-backed; full regressions preserve the listed behavior. The item remains open until the final entry-point/UI closure pass.
-- [ ] 6.2 Give confirmed AI actions a stable operation ID, complete balance context, and the canonical facade; commit a missing category with the action or keep category creation strictly post-commit and non-authoritative.
-- [ ] 6.3 Refactor account edit plus balance adjustment into one exact-target operation using server-current before balance, rounded delta, audit metadata, and the existing lease.
-- [ ] 6.4 Extend `mergeCreditCardsDomain` to accept the desired post-merge debt so merge and adjustment commit together, or split them into two explicitly reported successful intentions.
+- [x] 6.1 Route the manual form and inline edit through the canonical facade while preserving double-submit guards, user input on failure, TRM metadata, interest snapshots, and current success copy.
+- [x] 6.2 Give confirmed AI actions a stable operation ID, complete balance context, and the canonical facade; commit a missing category with the action or keep category creation strictly post-commit and non-authoritative.
+- [x] 6.3 Refactor account edit plus balance adjustment into one exact-target operation using server-current before balance, rounded delta, audit metadata, and the existing lease.
+- [x] 6.4 Extend `mergeCreditCardsDomain` to accept the desired post-merge debt so merge and adjustment commit together, or split them into two explicitly reported successful intentions.
 - [x] 6.5 Add debt-domain adapter tests proving lent origination/borrowed repayment cannot bypass source funds while preserving the atomic lifecycle owned by `repair-debt-lifecycle-and-account-links`.
 - [ ] 6.6 Ensure cache mutation, form closure, success toast, monitoring, and notification observation run only after commit for every routed entry point.
 - [ ] 6.7 Add failure injection after each step of manual, AI, adjustment, merge, recurring, and debt-integrated actions; assert no misleading success and no partial financial state.
+
+  Evidence 2026-08-24: manual create/edit, confirmed AI create/edit, exact account targets, desired-debt card merge, and debt adapters now use server-current authority and commit before cache/UI success. Failure injection covers those paths, including ambiguous AI commit acknowledgement and post-commit category failure. Tasks 6.6 and 6.7 remain open until recurring materialization and its monitoring/notification observers are routed and failure-injected.
 
 ## Task 7: Make recurring materialization authoritative and idempotent
 

@@ -53,18 +53,20 @@
 - [x] 6.3 Refactor account edit plus balance adjustment into one exact-target operation using server-current before balance, rounded delta, audit metadata, and the existing lease.
 - [x] 6.4 Extend `mergeCreditCardsDomain` to accept the desired post-merge debt so merge and adjustment commit together, or split them into two explicitly reported successful intentions.
 - [x] 6.5 Add debt-domain adapter tests proving lent origination/borrowed repayment cannot bypass source funds while preserving the atomic lifecycle owned by `repair-debt-lifecycle-and-account-links`.
-- [ ] 6.6 Ensure cache mutation, form closure, success toast, monitoring, and notification observation run only after commit for every routed entry point.
-- [ ] 6.7 Add failure injection after each step of manual, AI, adjustment, merge, recurring, and debt-integrated actions; assert no misleading success and no partial financial state.
+- [x] 6.6 Ensure cache mutation, form closure, success toast, monitoring, and notification observation run only after commit for every routed entry point.
+- [x] 6.7 Add failure injection after each step of manual, AI, adjustment, merge, recurring, and debt-integrated actions; assert no misleading success and no partial financial state.
 
-  Evidence 2026-08-24: manual create/edit, confirmed AI create/edit, exact account targets, desired-debt card merge, and debt adapters now use server-current authority and commit before cache/UI success. Failure injection covers those paths, including ambiguous AI commit acknowledgement and post-commit category failure. Tasks 6.6 and 6.7 remain open until recurring materialization and its monitoring/notification observers are routed and failure-injected.
+  Evidence 2026-08-24: manual create/edit, confirmed AI create/edit, exact account targets, desired-debt card merge, debt adapters, and recurring materialization now use server-current authority and commit before cache/UI success. Failure injection covers rejected and ambiguously acknowledged recurring batches in addition to the prior manual, AI, adjustment, merge, and debt paths. Recurring cache publication, modal success/closure, complete-history monitoring, and notification observation all occur only after confirmed authority.
 
 ## Task 7: Make recurring materialization authoritative and idempotent
 
-- [ ] 7.1 Change recurring status/history consumers to use complete confirmed transactions when the head can be truncated, and expose a settling state instead of an incorrect unpaid state.
-- [ ] 7.2 Make `useRecurringUtils`, `MarkPaidModal`, and `PaymentMonitor` share the rule that only `paid=true` satisfies a cycle; test pending link candidates and fallback historical rows.
-- [ ] 7.3 Reserve a deterministic idempotency identity for `(recurringPaymentId, recurringCycle)` and enforce one post across double click, two tabs, retry, and a payment outside the head.
-- [ ] 7.4 Commit the recurring transaction, cycle identity, amount change, and last-paid metadata atomically for authenticated mode.
-- [ ] 7.5 Test unlink/delete/relink behavior, cycle boundaries, annual/monthly periods, old rows without `recurringCycle`, and notification observers without duplicating money.
+- [x] 7.1 Change recurring status/history consumers to use complete confirmed transactions when the head can be truncated, and expose a settling state instead of an incorrect unpaid state.
+- [x] 7.2 Make `useRecurringUtils`, `MarkPaidModal`, and `PaymentMonitor` share the rule that only `paid=true` satisfies a cycle; test pending link candidates and fallback historical rows.
+- [x] 7.3 Reserve a deterministic idempotency identity for `(recurringPaymentId, recurringCycle)` and enforce one post across double click, two tabs, retry, and a payment outside the head.
+- [x] 7.4 Commit the recurring transaction, cycle identity, amount change, and last-paid metadata atomically for authenticated mode.
+- [x] 7.5 Test unlink/delete/relink behavior, cycle boundaries, annual/monthly periods, old rows without `recurringCycle`, and notification observers without duplicating money.
+
+  Evidence 2026-08-24: recurring status, paid history, link candidates, and `PaymentMonitor` share one paid-cycle predicate over `balanceTransactions`; the view and notification bridge remain settling until that complete source is confirmed. Authenticated register/link operations reuse the existing per-user ledger lease, reload the recurring aggregate and every linked server row, reserve `ledger-mutation:recurring:<payment>:<cycle>`, and commit transaction/link, template amount, last-paid metadata, credit delta, and release together. Exact retry, ambiguous acknowledgement, legacy outside-head duplicate, pending target, invalid cycle, rejected batch, synchronous double click, unlink/relink, delete/unlink status, monthly/yearly windows, and observer coverage passed in the focused 16-file run: 184 tests.
 
 ## Task 8: Make delete and undo aggregate-aware
 

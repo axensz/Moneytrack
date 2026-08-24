@@ -15,7 +15,8 @@ import { db } from '../../lib/firebaseDb';
 import { LOAN_PAYMENT_CATEGORY, TRANSFER_CATEGORY } from '../../config/constants';
 import type { Transaction, Account } from '../../types/finance';
 import { isOffline, stripUndefined } from '../../utils/firestoreHelpers';
-import { getCreditDelta, creditDeltasByAccount } from '../../utils/creditDeltas';
+import { creditDeltasByAccount } from '../../utils/creditDeltas';
+import { validateCreditPaymentPair } from '../../utils/creditPaymentPairs';
 import { logger } from '../../utils/logger';
 import { normalizeLedgerAmount } from '../../utils/ledgerMutation';
 import { validateTransactionUpdate } from '../../utils/transactionValidation';
@@ -127,51 +128,85 @@ export function useTransactionsCRUD(
       validateTransactionSchema(creditTx);
       validateTransactionSchema(sourceTx);
       const createdAt = new Date();
-      let createdTransactions: Transaction[] = [];
+      const creditTxRef = doc(collection(db, `users/${userId}/transactions`));
+      const sourceTxRef = doc(collection(db, `users/${userId}/transactions`));
+      const createdTransactions = await executeAuthenticatedLedgerMutation(
+        userId,
+        async ({ operationId, loadContext }) => {
+          const creditDraft = {
+            ...stripUndefined(creditTx),
+            id: creditTxRef.id,
+            amount: normalizeLedgerAmount(creditTx.amount),
+            linkedTransactionId: sourceTxRef.id,
+            createdAt,
+            operationId,
+            mutationKind: 'credit-payment' as const,
+            mutationSource: creditTx.mutationSource ?? ('manual' as const),
+          } as Transaction;
+          const sourceDraft = {
+            ...stripUndefined(sourceTx),
+            id: sourceTxRef.id,
+            amount: normalizeLedgerAmount(sourceTx.amount),
+            linkedTransactionId: creditTxRef.id,
+            createdAt,
+            operationId,
+            mutationKind: 'credit-payment' as const,
+            mutationSource: sourceTx.mutationSource ?? creditDraft.mutationSource,
+          } as Transaction;
+          const context = await loadContext([creditDraft.accountId, sourceDraft.accountId]);
+          const credit = {
+            ...creditDraft,
+            accountId: context.canonicalAccountId(creditDraft.accountId),
+          };
+          const source = {
+            ...sourceDraft,
+            accountId: context.canonicalAccountId(sourceDraft.accountId),
+          };
+          const creditAccount = context.accounts.find(
+            account => account.id === credit.accountId && account.type === 'credit'
+          );
+          if (!creditAccount) throw new Error('La cuenta de crédito no existe');
+          const sourceAccount = context.accounts.find(account => account.id === source.accountId);
+          if (!sourceAccount) throw new Error('La cuenta origen no existe');
+          if (sourceAccount.type === 'credit') {
+            throw new Error('La cuenta origen del pago debe ser de ahorro o efectivo');
+          }
 
-      await runTransaction(db, async (firestoreTransaction) => {
-        // Verificar que ambas cuentas existan
-        const creditAccountRef = doc(db, `users/${userId}/accounts`, creditTx.accountId);
-        const sourceAccountRef = doc(db, `users/${userId}/accounts`, sourceTx.accountId);
+          const pair = validateCreditPaymentPair(credit, source, creditAccount);
+          if (!pair.valid) {
+            throw new Error(`El par de pago de tarjeta es inválido: ${pair.reason}`);
+          }
 
-        const creditSnap = await firestoreTransaction.get(creditAccountRef);
-        const sourceSnap = await firestoreTransaction.get(sourceAccountRef);
+          const intent = {
+            kind: 'credit-payment' as const,
+            before: [],
+            after: [credit, source],
+            metadata: {
+              operationId,
+              mutationSource: credit.mutationSource ?? 'manual' as const,
+            },
+          };
+          const creditChanges = planCreditAuthorityChanges(intent, context);
 
-        if (!creditSnap.exists()) throw new Error('La cuenta de crédito no existe');
-        if (!sourceSnap.exists()) throw new Error('La cuenta origen no existe');
-        const persistedDebt = (creditSnap.data() as Account).usedCredit;
-        if (persistedDebt != null && creditTx.amount > Math.max(0, persistedDebt) + 0.01) {
-          throw new Error('No puedes pagar más de lo que debes en la tarjeta');
+          return {
+            intent,
+            context,
+            writeCount: 2 + creditChanges.length,
+            stage: (batch) => {
+              const persistedCredit = stripUndefined({ ...credit, id: undefined });
+              const persistedSource = stripUndefined({ ...source, id: undefined });
+              batch.set(creditTxRef, persistedCredit);
+              batch.set(sourceTxRef, persistedSource);
+              creditChanges.forEach(({ accountId, delta }) => {
+                batch.update(doc(db, `users/${userId}/accounts`, accountId), {
+                  usedCredit: increment(delta),
+                });
+              });
+            },
+            result: [credit, source],
+          };
         }
-
-        // Crear ambas transacciones atómicamente
-        const creditTxRef = doc(collection(db, `users/${userId}/transactions`));
-        const sourceTxRef = doc(collection(db, `users/${userId}/transactions`));
-
-        const cleanCredit = stripUndefined(creditTx);
-        const cleanSource = stripUndefined(sourceTx);
-
-        firestoreTransaction.set(creditTxRef, {
-          ...cleanCredit,
-          linkedTransactionId: sourceTxRef.id,
-          createdAt,
-        });
-        firestoreTransaction.set(sourceTxRef, {
-          ...cleanSource,
-          linkedTransactionId: creditTxRef.id,
-          createdAt,
-        });
-        createdTransactions = [
-          { id: creditTxRef.id, ...cleanCredit, linkedTransactionId: sourceTxRef.id, createdAt },
-          { id: sourceTxRef.id, ...cleanSource, linkedTransactionId: creditTxRef.id, createdAt },
-        ] as Transaction[];
-
-        // Actualizar usedCredit en la TC (el creditTx es un ingreso que reduce deuda)
-        const creditDelta = getCreditDelta(creditTx, creditTx.accountId);
-        if (creditDelta !== 0) {
-          firestoreTransaction.update(creditAccountRef, { usedCredit: increment(creditDelta) });
-        }
-      });
+      );
       publishTransactionCacheMutation({
         userId,
         type: 'update',

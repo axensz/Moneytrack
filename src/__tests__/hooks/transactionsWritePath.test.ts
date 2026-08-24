@@ -327,6 +327,49 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
   });
 
   describe('addCreditPaymentAtomic', () => {
+    it('rechaza el pago cuando la cuenta origen no tiene fondos y no escribe ninguna mitad', async () => {
+      seedAccount({ ...savings, initialBalance: 1_000 });
+      seedAccount(credit);
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.addCreditPaymentAtomic(
+        makeTx({ type: 'income', amount: 1_000.01, accountId: 'cc', category: 'Pago Crédito' }),
+        makeTx({ type: 'expense', amount: 1_000.01, accountId: 'sav', category: 'Pago Crédito' })
+      )).rejects.toMatchObject({ code: 'INSUFFICIENT_FUNDS' });
+
+      expect(mockState.writeLog).toHaveLength(0);
+      expect(cacheMutations).toHaveLength(0);
+    });
+
+    it('rechaza una tarjeta sin usedCredit persistido antes de escribir', async () => {
+      seedAccount(savings);
+      seedAccount({ ...credit, usedCredit: undefined });
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.addCreditPaymentAtomic(
+        makeTx({ type: 'income', amount: 100_000, accountId: 'cc', category: 'Pago Crédito' }),
+        makeTx({ type: 'expense', amount: 100_000, accountId: 'sav', category: 'Pago Crédito' })
+      )).rejects.toMatchObject({ code: 'INVALID_ACCOUNT_AUTHORITY' });
+
+      expect(mockState.writeLog).toHaveLength(0);
+      expect(cacheMutations).toHaveLength(0);
+    });
+
+    it('no publica ni conserva una mitad si el batch final falla', async () => {
+      seedAccount(savings);
+      seedAccount(credit);
+      mockState.failBatchCommit = true;
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.addCreditPaymentAtomic(
+        makeTx({ type: 'income', amount: 100_000, accountId: 'cc', category: 'Pago Crédito' }),
+        makeTx({ type: 'expense', amount: 100_000, accountId: 'sav', category: 'Pago Crédito' })
+      )).rejects.toThrow('batch rejected');
+
+      expect(mockState.writeLog).toHaveLength(0);
+      expect(cacheMutations).toHaveLength(0);
+    });
+
     it('crea las DOS transacciones y reduce usedCredit en increment(-amount) de la TC', async () => {
       seedAccount(savings);
       seedAccount(credit);
@@ -342,6 +385,18 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
       expect(sets()).toHaveLength(2);
       expect(sets()[0].data!.linkedTransactionId).toBe('__new2');
       expect(sets()[1].data!.linkedTransactionId).toBe('__new1');
+      expect(sets().map(entry => entry.data)).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          operationId: 'ledger-mutation:test-operation',
+          mutationKind: 'credit-payment',
+          mutationSource: 'manual',
+        }),
+        expect.objectContaining({
+          operationId: 'ledger-mutation:test-operation',
+          mutationKind: 'credit-payment',
+          mutationSource: 'manual',
+        }),
+      ]));
       // La deuda de la TC baja 400_000 (income → -amount).
       const ccUpdates = updatesOn(acctKey('cc'));
       expect(ccUpdates).toHaveLength(1);

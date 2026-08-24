@@ -60,6 +60,22 @@ export interface LedgerMutationPreparation<TResult> {
   result: TResult;
 }
 
+export interface AuthenticatedLedgerMutationOptions {
+  operationId?: string;
+}
+
+const LEDGER_OPERATION_ID_PATTERN = /^ledger-mutation:[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+
+export const validateLedgerMutationOperationId = (operationId: string): string => {
+  if (
+    operationId.length > 200 ||
+    !LEDGER_OPERATION_ID_PATTERN.test(operationId)
+  ) {
+    throw new Error('El identificador de la operación del libro no es válido.');
+  }
+  return operationId;
+};
+
 export interface CreditAuthorityChange {
   accountId: string;
   delta: number;
@@ -358,11 +374,20 @@ export async function executeAuthenticatedLedgerMutation<TResult>(
   userId: string,
   prepare: (
     tools: LedgerMutationPreparationTools
-  ) => Promise<LedgerMutationPreparation<TResult>>
+  ) => Promise<LedgerMutationPreparation<TResult>>,
+  options: AuthenticatedLedgerMutationOptions = {}
 ): Promise<TResult> {
   const kind = 'ledger-mutation' as const;
-  const operationId = createAccountOperationId(kind);
-  await acquireAccountOperationLock(userId, operationId, kind);
+  const operationId = options.operationId
+    ? validateLedgerMutationOperationId(options.operationId)
+    : createAccountOperationId(kind);
+  // El lease representa un intento, mientras operationId representa la intención
+  // financiera. Un reintento confirmado conserva su operationId, pero necesita
+  // un lease nuevo porque Firestore deja un tombstone por cada intento finalizado.
+  const leaseOperationId = options.operationId
+    ? createAccountOperationId(kind)
+    : operationId;
+  await acquireAccountOperationLock(userId, leaseOperationId, kind);
 
   try {
     const preparation = await prepare({
@@ -378,20 +403,20 @@ export async function executeAuthenticatedLedgerMutation<TResult>(
       'confirmar esta mutación del libro',
       preparation.writeCount + 1
     );
-    await renewAccountOperationLock(userId, operationId, kind);
+    await renewAccountOperationLock(userId, leaseOperationId, kind);
 
     const batch = writeBatch(db);
     preparation.stage(batch);
     batch.set(
       doc(db, 'users', userId),
-      createAccountOperationRelease(operationId, kind),
+      createAccountOperationRelease(leaseOperationId, kind),
       { mergeFields: ['accountOperationLock'] }
     );
     await batch.commit();
     return preparation.result;
   } catch (error) {
     try {
-      await releaseAccountOperationLock(userId, operationId, kind);
+      await releaseAccountOperationLock(userId, leaseOperationId, kind);
     } catch {
       // Conservar el error financiero/commit original. El lease expira en servidor.
     }

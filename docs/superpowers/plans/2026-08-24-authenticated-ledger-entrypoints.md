@@ -72,13 +72,13 @@
 - Modify: `src/__tests__/components/AIChatBot.test.tsx`
 - Modify: `src/__tests__/hooks/transactionsWritePath.test.ts`
 
-- [ ] Add RED cases for incomplete balance context, stable operation IDs, double-confirm, transaction failure before category creation, post-commit category failure, and retry/idempotency.
-- [ ] Allow a validated caller-supplied `ledger-mutation:*` operation ID and preserve it through create/edit audit metadata.
-- [ ] Build AI IDs deterministically from the confirmed message/action; set `mutationSource='ai'` and use complete balance transactions.
-- [ ] Commit the financial action first; create a missing category only afterward as a non-authoritative convenience write.
-- [ ] Keep success/error messaging truthful and prevent duplicate confirmation while a request is pending.
-- [ ] Run AI, add/edit, form, planner, full typecheck/lint/diff regressions.
-- [ ] Commit as `feat: authorize confirmed AI ledger actions`.
+- [x] Add RED cases for incomplete balance context, stable operation IDs, double-confirm, transaction failure before category creation, post-commit category failure, and retry/idempotency.
+- [x] Allow a validated caller-supplied `ledger-mutation:*` operation ID and preserve it through create/edit audit metadata.
+- [x] Build AI IDs deterministically from the confirmed message/action; set `mutationSource='ai'` and use complete balance transactions.
+- [x] Commit the financial action first; create a missing category only afterward as a non-authoritative convenience write.
+- [x] Keep success/error messaging truthful and prevent duplicate confirmation while a request is pending.
+- [x] Run AI, add/edit, form, planner, full typecheck/lint/diff regressions.
+- [x] Commit as `feat: authorize confirmed AI ledger actions`.
 
 ## Task 5: Verify and record the authenticated entrypoints
 

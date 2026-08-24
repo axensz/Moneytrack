@@ -11,8 +11,28 @@ import { useTransactionDomain, useAccountDomain, useCategoryDomain } from '../..
 let _msgIdCounter = 0;
 const nextMsgId = () => `msg-${++_msgIdCounter}-${Date.now()}`;
 
-// Local message type with unique ID for React keys
-type UIChatMessage = ChatMessage & { id: string };
+// Local message type with unique ID for React keys. proposedAt fija la fecha
+// implícita de una acción para que un reintento conserve exactamente el payload.
+type UIChatMessage = ChatMessage & {
+  id: string;
+  proposedAt?: number;
+  financialCommitted?: boolean;
+};
+
+const createAiLedgerOperationId = (
+  messageId: string,
+  action: ChatAction,
+  scope: string = action.type,
+): string => {
+  const input = `${messageId}\u001f${scope}\u001f${JSON.stringify(action)}`;
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < input.length; index += 1) {
+    hash = Math.imul(hash ^ input.charCodeAt(index), 0x01000193);
+  }
+  const safeMessageId = messageId.replace(/[^A-Za-z0-9._:-]/g, '-').slice(0, 64);
+  const safeScope = scope.replace(/[^A-Za-z0-9._:-]/g, '-').slice(0, 48);
+  return `ledger-mutation:ai:${safeMessageId}:${safeScope}:${(hash >>> 0).toString(36)}`;
+};
 
 // Máximo de mensajes del historial enviados a la API para evitar exceder tokens
 const MAX_HISTORY_MESSAGES = 20;
@@ -295,7 +315,8 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
   returnFocusRef,
 }) => {
   const {
-    transactions,
+    balanceTransactions,
+    balancesReady,
     addTransaction: onAddTransaction,
     updateTransaction: onUpdateTransaction,
   } = useTransactionDomain();
@@ -309,6 +330,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const executingActionRef = useRef<string | null>(null);
 
   const configured = isGeminiConfigured();
 
@@ -328,14 +350,18 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
 
   // Memoizar el contexto financiero para evitar recalcular en cada render
   const financialData = useMemo(() => ({
-    transactions,
+    transactions: balanceTransactions,
     accounts,
     categories,
-  }), [transactions, accounts, categories]);
+  }), [balanceTransactions, accounts, categories]);
 
   const sendMessage = useCallback(async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || isLoading) return;
+    if (!balancesReady) {
+      setError('Espera un momento: aún estamos cargando el historial financiero completo.');
+      return;
+    }
 
     const userMessage: UIChatMessage = { id: nextMsgId(), role: 'user', content: trimmed };
     setMessages(prev => [...prev, userMessage]);
@@ -358,7 +384,14 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
       // Preferir function calling; mantener el parser de bloques como fallback.
       const { text, action: textAction } = parseActionFromResponse(rawText);
       const action = toolAction ?? textAction;
-      setMessages(prev => [...prev, { id: nextMsgId(), role: 'model', content: text, action, tokenUsage }]);
+      setMessages(prev => [...prev, {
+        id: nextMsgId(),
+        role: 'model',
+        content: text,
+        action,
+        tokenUsage,
+        proposedAt: Date.now(),
+      }]);
     } catch (err) {
       logger.error('[AIChatBot] Error sending message', err);
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -376,7 +409,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, messages, financialData]);
+  }, [balancesReady, isLoading, messages, financialData]);
 
   const handleSend = useCallback(() => {
     sendMessage(input);
@@ -419,11 +452,52 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
   // Ejecutar una acción confirmada por el usuario
   const handleConfirmAction = useCallback(async (msgIndex: number) => {
     const msg = messages[msgIndex];
-    if (!msg?.action || msg.actionExecuted) return;
+    if (
+      !msg?.action
+      || msg.actionExecuted
+      || executingActionRef.current !== null
+    ) return;
 
+    executingActionRef.current = msg.id;
     setExecutingAction(msgIndex);
     try {
       const action = msg.action;
+      const operationIdFor = (scope?: string) =>
+        createAiLedgerOperationId(msg.id, action, scope);
+      const markActionExecuted = (content: string) => {
+        setMessages(prev => {
+          const updated = prev.map(message => message.id === msg.id
+            ? { ...message, actionExecuted: true, financialCommitted: true }
+            : message
+          );
+          return [...updated, { id: nextMsgId(), role: 'model', content }];
+        });
+      };
+      const createCategoryAfterCommit = async (
+        categoryType: 'income' | 'expense',
+        name: string,
+      ): Promise<boolean> => {
+        try {
+          await onAddCategory(categoryType, name);
+          return true;
+        } catch (categoryError) {
+          const categoryErrorMessage = categoryError instanceof Error
+            ? categoryError.message
+            : String(categoryError);
+          setMessages(prev => [
+            ...prev.map(message => message.id === msg.id
+              ? { ...message, financialCommitted: true }
+              : message
+            ),
+            {
+              id: nextMsgId(),
+              role: 'model',
+              content: `⚠️ El movimiento financiero sí quedó registrado, pero no pude guardar la categoría **"${name}"**: ${categoryErrorMessage}. Reintenta confirmar para completar la categoría; el movimiento no se duplicará.`,
+            },
+          ]);
+          return false;
+        }
+      };
 
       switch (action.type) {
         case 'add_transaction': {
@@ -444,95 +518,100 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
           }
           // Sanitizar description para prevenir inyección
           const safeDescription = (d.description || '').toString().slice(0, 500).trim();
+          const proposedDate = d.date
+            ? new Date(d.date)
+            : new Date(msg.proposedAt ?? Date.now());
+          if (!Number.isFinite(proposedDate.getTime())) {
+            throw new Error('Fecha de transacción inválida');
+          }
 
-          // Auto-crear categoría si no existe
           const txCatType = d.txType === 'income' ? 'income' : 'expense';
           const txExistingCats = txCatType === 'income' ? categories.income : categories.expense;
-          if (!txExistingCats.includes(d.category)) {
-            await onAddCategory(txCatType, d.category);
-          }
           await onAddTransaction({
             type: d.txType,
             amount: d.amount,
             category: d.category,
             description: safeDescription,
-            date: d.date ? new Date(d.date) : new Date(),
+            date: proposedDate,
             paid: d.paid ?? true,
             accountId: d.accountId,
+            operationId: operationIdFor(),
+            mutationSource: 'ai',
           });
-          // Mark as executed and add confirmation
-          setMessages(prev => {
-            const updated = [...prev];
-            updated[msgIndex] = { ...updated[msgIndex], actionExecuted: true };
-            updated.push({ id: nextMsgId(), role: 'model', content: `✅ ¡Listo! Se agregó el ${d.txType === 'income' ? 'ingreso' : 'gasto'} de **${formatCurrency(d.amount)}** en **${d.category}** (${d.accountName}).` });
-            return updated;
-          });
+          if (
+            !txExistingCats.includes(d.category)
+            && !await createCategoryAfterCommit(txCatType, d.category)
+          ) return;
+          markActionExecuted(`✅ ¡Listo! Se agregó el ${d.txType === 'income' ? 'ingreso' : 'gasto'} de **${formatCurrency(d.amount)}** en **${d.category}** (${d.accountName}).`);
           break;
         }
         case 'update_category': {
           const d = action.data;
           // AUDIT-FIX: Validar que la transacción exista antes de actualizar
-          const txForCat = transactions.find(t => t.id === d.transactionId);
+          const txForCat = balanceTransactions.find(t => t.id === d.transactionId);
           if (!txForCat) {
             throw new Error(`Transacción no encontrada (ID: ${d.transactionId})`);
           }
           if (!d.newCategory || typeof d.newCategory !== 'string' || d.newCategory.length > 100) {
             throw new Error('Categoría nueva inválida');
           }
-          // Auto-crear categoría si no existe
           const catType = txForCat.type === 'income' ? 'income' : 'expense';
           const existingCats = catType === 'income' ? categories.income : categories.expense;
-          if (!existingCats.includes(d.newCategory)) {
-            await onAddCategory(catType, d.newCategory);
-          }
-          await onUpdateTransaction(d.transactionId, { category: d.newCategory });
-          setMessages(prev => {
-            const updated = [...prev];
-            updated[msgIndex] = { ...updated[msgIndex], actionExecuted: true };
-            updated.push({ id: nextMsgId(), role: 'model', content: `✅ ¡Listo! "${d.description}" se movió de **${d.oldCategory}** a **${d.newCategory}**.` });
-            return updated;
+          await onUpdateTransaction(d.transactionId, {
+            category: d.newCategory,
+            operationId: operationIdFor(`edit:${d.transactionId}`),
+            mutationSource: 'ai',
           });
+          if (
+            !existingCats.includes(d.newCategory)
+            && !await createCategoryAfterCommit(catType, d.newCategory)
+          ) return;
+          markActionExecuted(`✅ ¡Listo! "${d.description}" se movió de **${d.oldCategory}** a **${d.newCategory}**.`);
           break;
         }
         case 'bulk_update_category': {
           const updates = action.data.updates;
-          // Filtrar solo las que existen en el estado actual
-          const validUpdates = updates.filter((u: { transactionId: string }) =>
-            transactions.some(t => t.id === u.transactionId)
-          );
-          // Recoger categorías nuevas que no existen y crearlas primero
-          const newCatsToCreate = new Set<string>();
+          const validUpdates = [...new Map(
+            updates
+              .filter((update: { transactionId: string }) =>
+                balanceTransactions.some(transaction => transaction.id === update.transactionId)
+              )
+              .map(update => [update.transactionId, update] as const)
+          ).values()];
+          const newCategories = new Map<string, {
+            categoryType: 'income' | 'expense';
+            name: string;
+          }>();
           for (const u of validUpdates) {
-            const tx = transactions.find(t => t.id === u.transactionId)!;
+            const tx = balanceTransactions.find(t => t.id === u.transactionId)!;
             const cType = tx.type === 'income' ? 'income' : 'expense';
             const existing = cType === 'income' ? categories.income : categories.expense;
-            if (!existing.includes(u.newCategory) && !newCatsToCreate.has(`${cType}:${u.newCategory}`)) {
-              newCatsToCreate.add(`${cType}:${u.newCategory}`);
-              await onAddCategory(cType, u.newCategory);
+            if (!existing.includes(u.newCategory)) {
+              newCategories.set(`${cType}:${u.newCategory}`, {
+                categoryType: cType,
+                name: u.newCategory,
+              });
             }
           }
           for (const u of validUpdates) {
-            await onUpdateTransaction(u.transactionId, { category: u.newCategory });
+            await onUpdateTransaction(u.transactionId, {
+              category: u.newCategory,
+              operationId: operationIdFor(`edit:${u.transactionId}`),
+              mutationSource: 'ai',
+            });
+          }
+          for (const category of newCategories.values()) {
+            if (!await createCategoryAfterCommit(category.categoryType, category.name)) return;
           }
           const skipped = updates.length - validUpdates.length;
           const skipNote = skipped > 0 ? ` (${skipped} no encontradas)` : '';
-          setMessages(prev => {
-            const updated = [...prev];
-            updated[msgIndex] = { ...updated[msgIndex], actionExecuted: true };
-            updated.push({ id: nextMsgId(), role: 'model', content: `✅ ¡Listo! Se recategorizaron **${validUpdates.length} transacciones** correctamente${skipNote}.` });
-            return updated;
-          });
+          markActionExecuted(`✅ ¡Listo! Se recategorizaron **${validUpdates.length} transacciones** correctamente${skipNote}.`);
           break;
         }
         case 'add_category': {
           const d = action.data;
           await onAddCategory(d.categoryType, d.name);
-          setMessages(prev => {
-            const updated = [...prev];
-            updated[msgIndex] = { ...updated[msgIndex], actionExecuted: true };
-            updated.push({ id: nextMsgId(), role: 'model', content: `✅ ¡Listo! Se creó la categoría **"${d.name}"** en ${d.categoryType === 'expense' ? 'gastos' : 'ingresos'}.` });
-            return updated;
-          });
+          markActionExecuted(`✅ ¡Listo! Se creó la categoría **"${d.name}"** en ${d.categoryType === 'expense' ? 'gastos' : 'ingresos'}.`);
           break;
         }
       }
@@ -540,6 +619,9 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
       const errorMsg = err instanceof Error ? err.message : String(err);
       setMessages(prev => [...prev, { id: nextMsgId(), role: 'model', content: `❌ Error al ejecutar la acción: ${errorMsg}` }]);
     } finally {
+      if (executingActionRef.current === msg.id) {
+        executingActionRef.current = null;
+      }
       setExecutingAction(null);
     }
   }, [
@@ -550,14 +632,21 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
     onAddCategory,
     onAddTransaction,
     onUpdateTransaction,
-    transactions,
+    balanceTransactions,
   ]);
 
   const handleRejectAction = useCallback((msgIndex: number) => {
     setMessages(prev => {
       const updated = [...prev];
-      updated[msgIndex] = { ...updated[msgIndex], action: undefined };
-      updated.push({ id: nextMsgId(), role: 'model', content: 'Entendido, no se realizó ningún cambio. 👍' });
+      const target = updated[msgIndex];
+      updated[msgIndex] = { ...target, action: undefined };
+      updated.push({
+        id: nextMsgId(),
+        role: 'model',
+        content: target?.financialCommitted
+          ? 'Entendido. No se reintentó crear la categoría; el movimiento financiero permanece registrado.'
+          : 'Entendido, no se realizó ningún cambio. 👍',
+      });
       return updated;
     });
   }, []);

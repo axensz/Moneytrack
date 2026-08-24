@@ -29,6 +29,7 @@ import {
   executeAuthenticatedLedgerMutation,
   loadServerLedgerTransaction,
   planCreditAuthorityChanges,
+  validateLedgerMutationOperationId,
 } from './ledgerMutationOrchestration';
 import { publishTransactionCacheMutation } from './transactionPaginationCache';
 
@@ -111,6 +112,55 @@ function validateTransactionSchema(
     throw new Error('Transferencia requiere cuenta destino');
   }
 }
+
+const IDEMPOTENCY_IGNORED_FIELDS = new Set([
+  'id',
+  'createdAt',
+  'operationId',
+  'mutationKind',
+  'mutationSource',
+]);
+
+const sameTransactionValue = (left: unknown, right: unknown): boolean => {
+  if (left instanceof Date || right instanceof Date) {
+    return left instanceof Date && right instanceof Date
+      && left.getTime() === right.getTime();
+  }
+  if (left && right && typeof left === 'object' && typeof right === 'object') {
+    return JSON.stringify(left) === JSON.stringify(right);
+  }
+  return Object.is(left, right);
+};
+
+const transactionMatchesRequest = (
+  existing: Transaction,
+  requested: Partial<Transaction>
+): boolean => Object.entries(requested).every(([field, value]) => (
+  IDEMPOTENCY_IGNORED_FIELDS.has(field)
+  || value === undefined
+  || sameTransactionValue(existing[field as keyof Transaction], value)
+));
+
+const loadCommittedOperation = async (
+  userId: string,
+  transactionId: string,
+  operationId: string,
+  mutationKind: 'create' | 'transfer' | 'edit',
+  requested: Partial<Transaction>
+): Promise<Transaction | null> => {
+  const existing = await loadServerLedgerTransaction(userId, transactionId);
+  if (!existing) return null;
+  if (
+    existing.operationId !== operationId
+    || existing.mutationKind !== mutationKind
+    || !transactionMatchesRequest(existing, requested)
+  ) {
+    throw new Error(
+      'El identificador de operación ya pertenece a una mutación financiera diferente.'
+    );
+  }
+  return existing;
+};
 
 interface UseTransactionsCRUDReturn {
   addTransaction: (
@@ -252,90 +302,137 @@ export function useTransactionsCRUD(
       validateTransactionSchema(transaction);
 
       const createdAt = new Date();
-      const transactionRef = doc(collection(db, `users/${userId}/transactions`));
-      const createdTransaction = await executeAuthenticatedLedgerMutation(
-        userId,
-        async ({ operationId, loadContext }) => {
-          const amount = normalizeLedgerAmount(transaction.amount);
-          const persistedInput = stripUndefined(transaction.type === 'transfer'
-            ? {
-                ...transaction,
-                category: TRANSFER_CATEGORY,
-                description: transaction.description || 'Transferencia entre cuentas',
-                date: transaction.date || createdAt,
-                paid: true,
-              }
-            : transaction);
-          const draft = {
-            ...persistedInput,
-            amount,
-            id: transactionRef.id,
-            createdAt,
-            operationId,
-            mutationKind: transaction.type === 'transfer' ? 'transfer' as const : 'create' as const,
-            mutationSource: transaction.mutationSource ?? ('manual' as const),
-          } as Transaction;
-          const context = await loadContext([
-            draft.accountId,
-            ...(draft.toAccountId ? [draft.toAccountId] : []),
-          ]);
-          const normalizedTransaction = {
-            ...draft,
-            accountId: context.canonicalAccountId(draft.accountId),
-            toAccountId: draft.toAccountId
-              ? context.canonicalAccountId(draft.toAccountId)
-              : undefined,
-          };
-
-          if (normalizedTransaction.type === 'transfer') {
-            if (!normalizedTransaction.toAccountId) {
-              throw new Error('Se requieren cuenta origen y destino para transferencias');
-            }
-            if (normalizedTransaction.accountId === normalizedTransaction.toAccountId) {
-              throw new Error('No puedes transferir a la misma cuenta');
-            }
-            const sourceAccount = context.accounts.find(
-              account => account.id === normalizedTransaction.accountId
-            );
-            if (sourceAccount?.type === 'credit') {
-              throw new Error('No se puede transferir desde una tarjeta de crédito');
-            }
+      const amount = normalizeLedgerAmount(transaction.amount);
+      const persistedInput = stripUndefined(transaction.type === 'transfer'
+        ? {
+            ...transaction,
+            category: TRANSFER_CATEGORY,
+            description: transaction.description || 'Transferencia entre cuentas',
+            date: transaction.date || createdAt,
+            paid: true,
           }
+        : transaction);
+      const mutationKind = transaction.type === 'transfer' ? 'transfer' as const : 'create' as const;
+      const callerOperationId = transaction.operationId
+        ? validateLedgerMutationOperationId(transaction.operationId)
+        : undefined;
+      const transactionRef = callerOperationId
+        ? doc(db, `users/${userId}/transactions`, callerOperationId)
+        : doc(collection(db, `users/${userId}/transactions`));
+      const requestedTransaction = { ...persistedInput, amount } as Partial<Transaction>;
+      const publishCreatedTransaction = (createdTransaction: Transaction) => {
+        publishTransactionCacheMutation({
+          userId,
+          type: 'update',
+          transactions: [createdTransaction],
+        });
+      };
 
-          const intent = {
-            kind: normalizedTransaction.type === 'transfer' ? 'transfer' as const : 'create' as const,
-            before: [],
-            after: [normalizedTransaction],
-            metadata: {
-              operationId,
-              mutationSource: normalizedTransaction.mutationSource ?? 'manual' as const,
-            },
-          };
-          const creditChanges = planCreditAuthorityChanges(intent, context);
-
-          return {
-            intent,
-            context,
-            writeCount: 1 + creditChanges.length,
-            stage: (batch) => {
-              const persistedTransaction = { ...normalizedTransaction };
-              delete persistedTransaction.id;
-              batch.set(transactionRef, persistedTransaction);
-              creditChanges.forEach(({ accountId, delta }) => {
-                batch.update(doc(db, `users/${userId}/accounts`, accountId), {
-                  usedCredit: increment(delta),
-                });
-              });
-            },
-            result: normalizedTransaction,
-          };
+      if (callerOperationId) {
+        const committed = await loadCommittedOperation(
+          userId,
+          transactionRef.id,
+          callerOperationId,
+          mutationKind,
+          requestedTransaction
+        );
+        if (committed) {
+          publishCreatedTransaction(committed);
+          return;
         }
-      );
-      publishTransactionCacheMutation({
-        userId,
-        type: 'update',
-        transactions: [createdTransaction],
-      });
+      }
+
+      try {
+        const createdTransaction = await executeAuthenticatedLedgerMutation(
+          userId,
+          async ({ operationId, loadContext }) => {
+            const draft = {
+              ...persistedInput,
+              amount,
+              id: transactionRef.id,
+              createdAt,
+              operationId,
+              mutationKind,
+              mutationSource: transaction.mutationSource ?? ('manual' as const),
+            } as Transaction;
+            const context = await loadContext([
+              draft.accountId,
+              ...(draft.toAccountId ? [draft.toAccountId] : []),
+            ]);
+            const normalizedTransaction = {
+              ...draft,
+              accountId: context.canonicalAccountId(draft.accountId),
+              toAccountId: draft.toAccountId
+                ? context.canonicalAccountId(draft.toAccountId)
+                : undefined,
+            };
+
+            if (normalizedTransaction.type === 'transfer') {
+              if (!normalizedTransaction.toAccountId) {
+                throw new Error('Se requieren cuenta origen y destino para transferencias');
+              }
+              if (normalizedTransaction.accountId === normalizedTransaction.toAccountId) {
+                throw new Error('No puedes transferir a la misma cuenta');
+              }
+              const sourceAccount = context.accounts.find(
+                account => account.id === normalizedTransaction.accountId
+              );
+              if (sourceAccount?.type === 'credit') {
+                throw new Error('No se puede transferir desde una tarjeta de crédito');
+              }
+            }
+
+            const intent = {
+              kind: normalizedTransaction.type === 'transfer' ? 'transfer' as const : 'create' as const,
+              before: [],
+              after: [normalizedTransaction],
+              metadata: {
+                operationId,
+                mutationSource: normalizedTransaction.mutationSource ?? 'manual' as const,
+              },
+            };
+            const creditChanges = planCreditAuthorityChanges(intent, context);
+
+            return {
+              intent,
+              context,
+              writeCount: 1 + creditChanges.length,
+              stage: (batch) => {
+                const persistedTransaction = { ...normalizedTransaction };
+                delete persistedTransaction.id;
+                batch.set(transactionRef, persistedTransaction);
+                creditChanges.forEach(({ accountId, delta }) => {
+                  batch.update(doc(db, `users/${userId}/accounts`, accountId), {
+                    usedCredit: increment(delta),
+                  });
+                });
+              },
+              result: normalizedTransaction,
+            };
+          },
+          { operationId: callerOperationId }
+        );
+        publishCreatedTransaction(createdTransaction);
+      } catch (error) {
+        if (callerOperationId) {
+          try {
+            const committed = await loadCommittedOperation(
+              userId,
+              transactionRef.id,
+              callerOperationId,
+              mutationKind,
+              requestedTransaction
+            );
+            if (committed) {
+              publishCreatedTransaction(committed);
+              return;
+            }
+          } catch {
+            // Conservar el error del commit. Un reintento volverá a validar el ID.
+          }
+        }
+        throw error;
+      }
     },
     [userId]
   );
@@ -459,8 +556,43 @@ export function useTransactionsCRUD(
 
       // Filter undefined values
       const cleanUpdates = stripUndefined(updates);
+      const callerOperationId = cleanUpdates.operationId
+        ? validateLedgerMutationOperationId(cleanUpdates.operationId)
+        : undefined;
+      const requestedMutationSource = cleanUpdates.mutationSource;
+      const publishUpdatedTransactions = (updatedTransactions: Transaction[]) => {
+        if (updatedTransactions.length === 0) return;
+        publishTransactionCacheMutation({
+          userId,
+          type: 'update',
+          transactions: updatedTransactions,
+        });
+      };
+      const loadAppliedEdit = async (): Promise<Transaction | null> => {
+        if (!callerOperationId) return null;
+        const existing = await loadServerLedgerTransaction(userId, id);
+        if (!existing || existing.operationId !== callerOperationId) return null;
+        const requested = existing.linkedTransactionId
+          ? safePaymentUpdates(cleanUpdates as Partial<Transaction>)
+          : { ...cleanUpdates } as Partial<Transaction>;
+        if (
+          existing.mutationKind !== 'edit'
+          || !transactionMatchesRequest(existing, requested)
+        ) {
+          throw new Error(
+            'El identificador de operación ya pertenece a una edición financiera diferente.'
+          );
+        }
+        return existing;
+      };
 
       try {
+        const alreadyApplied = await loadAppliedEdit();
+        if (alreadyApplied) {
+          publishUpdatedTransactions([alreadyApplied]);
+          return;
+        }
+
         const updatedTransactions = await executeAuthenticatedLedgerMutation(
           userId,
           async ({ operationId, loadContext }) => {
@@ -486,7 +618,9 @@ export function useTransactionsCRUD(
             }
 
             const counterpartUpdates = linkedPaymentUpdates(requestedUpdates);
-            const mutationSource = oldData.mutationSource ?? 'manual';
+            const mutationSource = requestedMutationSource
+              ?? oldData.mutationSource
+              ?? 'manual';
             const auditUpdates = {
               operationId,
               mutationKind: 'edit' as const,
@@ -596,17 +730,23 @@ export function useTransactionsCRUD(
                 ...(normalizedLinked ? [normalizedLinked] : []),
               ],
             };
-          }
+          },
+          { operationId: callerOperationId }
         );
 
-        if (updatedTransactions.length > 0) {
-          publishTransactionCacheMutation({
-            userId,
-            type: 'update',
-            transactions: updatedTransactions,
-          });
-        }
+        publishUpdatedTransactions(updatedTransactions);
       } catch (error) {
+        if (callerOperationId) {
+          try {
+            const committed = await loadAppliedEdit();
+            if (committed) {
+              publishUpdatedTransactions([committed]);
+              return;
+            }
+          } catch {
+            // Conservar el error original; el siguiente intento vuelve a validar.
+          }
+        }
         logger.error('Firestore error updating transaction:', error);
         if (error instanceof LedgerMutationValidationError) throw error;
         throw new Error('Error al actualizar la transacción. Por favor intenta de nuevo.');

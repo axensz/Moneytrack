@@ -15,13 +15,15 @@ const M = vi.hoisted(() => ({
   releaseError: false,
   leaseHeld: false,
   nextOperation: 0,
+  acquisitions: [] as Array<{ userId: string; operationId: string; kind: string }>,
 }));
 
 vi.mock('../../lib/firebaseDb', () => ({ db: { __db: true } }));
 
 vi.mock('../../hooks/firestore/accountOrchestration', () => ({
-  acquireAccountOperationLock: async () => {
+  acquireAccountOperationLock: async (userId: string, operationId: string, kind: string) => {
     M.events.push('acquire');
+    M.acquisitions.push({ userId, operationId, kind });
     if (M.leaseHeld) {
       throw new Error('Ya hay otra operación en curso');
     }
@@ -150,6 +152,7 @@ beforeEach(() => {
   M.releaseError = false;
   M.leaseHeld = false;
   M.nextOperation = 0;
+  M.acquisitions.length = 0;
   M.accounts.set('savings', {
     name: 'Ahorros',
     type: 'savings',
@@ -370,6 +373,42 @@ const prepareCreate = (amount = 100) => async ({
 };
 
 describe('executeAuthenticatedLedgerMutation', () => {
+  it('passes a validated caller operation ID to the ledger while leasing a fresh attempt', async () => {
+    const operationId = 'ledger-mutation:ai:message-1:create';
+    const prepare = prepareCreate();
+
+    await expect(executeAuthenticatedLedgerMutation(
+      UID,
+      async tools => {
+        expect(tools.operationId).toBe(operationId);
+        return prepare(tools);
+      },
+      { operationId },
+    )).resolves.toBe('committed');
+
+    expect(M.acquisitions).toEqual([{
+      userId: UID,
+      operationId: 'ledger-mutation:operation-1',
+      kind: 'ledger-mutation',
+    }]);
+    expect(M.nextOperation).toBe(1);
+  });
+
+  it.each([
+    'manual:wrong-prefix',
+    'ledger-mutation:contains/slash',
+    `ledger-mutation:${'x'.repeat(201)}`,
+  ])('rejects an invalid caller operation ID before acquiring the lease: %s', async operationId => {
+    await expect(executeAuthenticatedLedgerMutation(
+      UID,
+      prepareCreate(),
+      { operationId },
+    )).rejects.toThrow(/identificador/i);
+
+    expect(M.acquisitions).toHaveLength(0);
+    expect(M.events).toHaveLength(0);
+  });
+
   it('acquires, plans, renews, stages, releases, and commits exactly once', async () => {
     await expect(
       executeAuthenticatedLedgerMutation(UID, prepareCreate())

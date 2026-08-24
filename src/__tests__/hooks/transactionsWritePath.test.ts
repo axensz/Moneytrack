@@ -28,6 +28,7 @@ const mockState = vi.hoisted(() => ({
   transactionCalls: 0,
   batchCommits: 0,
   failBatchCommit: false,
+  failAfterBatchCommit: false,
 }));
 
 vi.mock('../../lib/firebaseDb', () => ({ db: { __db: true } }));
@@ -133,6 +134,7 @@ vi.mock('firebase/firestore', () => ({
           mockState.store.set(ref.__key, current);
         });
         mockState.batchCommits += 1;
+        if (mockState.failAfterBatchCommit) throw new Error('commit acknowledgement lost');
       },
     };
   },
@@ -218,6 +220,7 @@ beforeEach(() => {
   mockState.transactionCalls = 0;
   mockState.batchCommits = 0;
   mockState.failBatchCommit = false;
+  mockState.failAfterBatchCommit = false;
   cacheMutations.length = 0;
   unsubscribeCacheMutations = subscribeTransactionCacheMutations(mutation => {
     cacheMutations.push(mutation);
@@ -232,6 +235,61 @@ afterEach(() => {
 
 describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
   describe('addTransaction', () => {
+    it('commits a caller-supplied AI operation once and treats an exact retry as idempotent', async () => {
+      seedAccount(savings);
+      const crud = renderCRUD([]);
+      const operationId = 'ledger-mutation:ai:message-1:create';
+      const draft = makeTx({ operationId, mutationSource: 'ai' });
+
+      await crud.current.addTransaction(draft);
+      await crud.current.addTransaction(draft);
+
+      expect(mockState.batchCommits).toBe(1);
+      expect(sets()).toHaveLength(1);
+      expect(sets()[0]).toMatchObject({
+        key: txKey(operationId),
+        data: {
+          operationId,
+          mutationKind: 'create',
+          mutationSource: 'ai',
+        },
+      });
+    });
+
+    it('recovers an already-persisted AI operation when the commit acknowledgement is lost', async () => {
+      seedAccount(savings);
+      mockState.failAfterBatchCommit = true;
+      const crud = renderCRUD([]);
+      const operationId = 'ledger-mutation:ai:message-ack:create';
+
+      await expect(crud.current.addTransaction(makeTx({
+        operationId,
+        mutationSource: 'ai',
+      }))).resolves.toBeUndefined();
+
+      expect(mockState.batchCommits).toBe(1);
+      expect(mockState.store.get(txKey(operationId))).toMatchObject({
+        operationId,
+        mutationSource: 'ai',
+      });
+      expect(cacheMutations).toHaveLength(1);
+    });
+
+    it('rejects reuse of an AI operation ID with a different financial payload', async () => {
+      seedAccount(savings);
+      const crud = renderCRUD([]);
+      const operationId = 'ledger-mutation:ai:message-collision:create';
+
+      await crud.current.addTransaction(makeTx({ amount: 100, operationId, mutationSource: 'ai' }));
+      await expect(crud.current.addTransaction(makeTx({
+        amount: 200,
+        operationId,
+        mutationSource: 'ai',
+      }))).rejects.toThrow(/mutación financiera diferente/i);
+
+      expect(mockState.batchCommits).toBe(1);
+    });
+
     it('rechaza un gasto de ahorro que excede el saldo persistido sin escribir ni publicar caché', async () => {
       seedAccount({ ...savings, initialBalance: 1_000 });
       const crud = renderCRUD([]);
@@ -439,6 +497,28 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
         makeTx({ type: 'expense', amount: 150_000, accountId: 'sav', category: 'Pago Crédito' })
       )).rejects.toThrow(/pagar más/i);
       expect(sets()).toHaveLength(0);
+    });
+  });
+
+  describe('caller-supplied edit authority', () => {
+    it('preserves stable AI audit metadata and treats an already-applied retry as success', async () => {
+      seedAccount(savings);
+      seedTx('tx-ai-edit', { category: 'Otros' });
+      const crud = renderCRUD([]);
+      const operationId = 'ledger-mutation:ai:message-2:edit';
+      const updates = { category: 'Mascotas', operationId, mutationSource: 'ai' as const };
+
+      await crud.current.updateTransaction('tx-ai-edit', updates);
+      await crud.current.updateTransaction('tx-ai-edit', updates);
+
+      expect(mockState.batchCommits).toBe(1);
+      expect(updatesOn(txKey('tx-ai-edit'))).toHaveLength(1);
+      expect(updatesOn(txKey('tx-ai-edit'))[0].data).toMatchObject({
+        category: 'Mascotas',
+        operationId,
+        mutationKind: 'edit',
+        mutationSource: 'ai',
+      });
     });
   });
 

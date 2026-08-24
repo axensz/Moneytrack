@@ -3,11 +3,17 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AIChatBot } from '../../components/chat/AIChatBot';
 import { parseActionFromResponse, sendChatMessage } from '../../lib/gemini';
+import type { Account, Categories, Transaction } from '../../types/finance';
 
 const financeDomainMocks = vi.hoisted(() => ({
   addTransaction: vi.fn(),
   updateTransaction: vi.fn(),
   addCategory: vi.fn(),
+  transactions: [] as Transaction[],
+  balanceTransactions: [] as Transaction[],
+  balancesReady: true,
+  accounts: [] as Account[],
+  categories: { income: [], expense: [] } as Categories,
 }));
 
 vi.mock('../../lib/gemini', () => ({
@@ -18,13 +24,15 @@ vi.mock('../../lib/gemini', () => ({
 
 vi.mock('../../hooks/useFinanceSelectors', () => ({
   useTransactionDomain: () => ({
-    transactions: [],
+    transactions: financeDomainMocks.transactions,
+    balanceTransactions: financeDomainMocks.balanceTransactions,
+    balancesReady: financeDomainMocks.balancesReady,
     addTransaction: financeDomainMocks.addTransaction,
     updateTransaction: financeDomainMocks.updateTransaction,
   }),
-  useAccountDomain: () => ({ accounts: [] }),
+  useAccountDomain: () => ({ accounts: financeDomainMocks.accounts }),
   useCategoryDomain: () => ({
-    categories: { income: [], expense: [] },
+    categories: financeDomainMocks.categories,
     addCategory: financeDomainMocks.addCategory,
   }),
 }));
@@ -58,6 +66,48 @@ function mockParsedCategoryAction() {
   });
 }
 
+function mockParsedTransactionAction() {
+  sendChatMessageMock.mockResolvedValue({ text: 'Respuesta con acción' });
+  parseActionFromResponseMock.mockReturnValue({
+    text: 'Registrar almuerzo',
+    action: {
+      type: 'add_transaction',
+      data: {
+        txType: 'expense',
+        amount: 35_000,
+        category: 'Alimentación',
+        description: 'Almuerzo',
+        accountId: 'savings',
+        accountName: 'Ahorros',
+        paid: true,
+      },
+    },
+  });
+}
+
+const savingsAccount: Account = {
+  id: 'savings',
+  name: 'Ahorros',
+  type: 'savings',
+  isDefault: true,
+  initialBalance: 100_000,
+};
+
+const ledgerTransaction = (
+  id: string,
+  amount: number,
+  date: string,
+): Transaction => ({
+  id,
+  type: 'income',
+  amount,
+  category: 'Ingresos',
+  description: id,
+  date: new Date(date),
+  paid: true,
+  accountId: 'savings',
+});
+
 function ControlledChat() {
   const [open, setOpen] = React.useState(true);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
@@ -81,6 +131,11 @@ describe('AIChatBot shell control', () => {
     financeDomainMocks.addTransaction.mockReset();
     financeDomainMocks.updateTransaction.mockReset();
     financeDomainMocks.addCategory.mockReset();
+    financeDomainMocks.transactions = [];
+    financeDomainMocks.balanceTransactions = [];
+    financeDomainMocks.balancesReady = true;
+    financeDomainMocks.accounts = [];
+    financeDomainMocks.categories = { income: [], expense: [] };
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
       configurable: true,
       value: vi.fn(),
@@ -230,6 +285,119 @@ describe('AIChatBot shell control', () => {
     });
     expect(financeDomainMocks.addCategory).toHaveBeenCalledTimes(1);
     expect(await screen.findByText('Acción ejecutada ✓')).toBeInTheDocument();
+  });
+
+  it('uses the complete balance history and refuses an unresolved financial context', async () => {
+    const paginated = ledgerTransaction('recent', 10_000, '2026-08-24');
+    const historical = ledgerTransaction('historical', 90_000, '2025-01-01');
+    financeDomainMocks.transactions = [paginated];
+    financeDomainMocks.balanceTransactions = [paginated, historical];
+    sendChatMessageMock.mockResolvedValue({ text: 'Contexto completo' });
+    parseActionFromResponseMock.mockReturnValue({ text: 'Contexto completo' });
+    const { unmount } = render(<ControlledChat />);
+
+    sendAssistantMessage('¿Cuál es mi saldo?');
+    await screen.findByText('Contexto completo');
+    expect(sendChatMessageMock).toHaveBeenCalledWith(
+      '¿Cuál es mi saldo?',
+      expect.any(Array),
+      expect.objectContaining({ transactions: [paginated, historical] }),
+    );
+
+    unmount();
+    sendChatMessageMock.mockClear();
+    financeDomainMocks.balancesReady = false;
+    render(<ControlledChat />);
+    sendAssistantMessage('¿Cuál es mi saldo?');
+
+    expect(await screen.findByText(/historial financiero completo/i)).toBeInTheDocument();
+    expect(sendChatMessageMock).not.toHaveBeenCalled();
+  });
+
+  it('passes one stable AI operation ID and ignores a double confirmation while pending', async () => {
+    financeDomainMocks.accounts = [savingsAccount];
+    financeDomainMocks.categories = { income: [], expense: ['Alimentación'] };
+    mockParsedTransactionAction();
+    let resolveWrite!: () => void;
+    const pendingWrite = new Promise<void>((resolve) => { resolveWrite = resolve; });
+    financeDomainMocks.addTransaction.mockReturnValue(pendingWrite);
+    render(<ControlledChat />);
+
+    sendAssistantMessage('Gasté 35 mil en almuerzo');
+    const confirm = await screen.findByRole('button', { name: 'Confirmar' });
+    act(() => {
+      confirm.click();
+      confirm.click();
+    });
+
+    expect(financeDomainMocks.addTransaction).toHaveBeenCalledTimes(1);
+    expect(financeDomainMocks.addTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationId: expect.stringMatching(/^ledger-mutation:ai:/),
+        mutationSource: 'ai',
+      }),
+    );
+
+    await act(async () => {
+      resolveWrite();
+      await pendingWrite;
+    });
+    expect(await screen.findByText('Acción ejecutada ✓')).toBeInTheDocument();
+  });
+
+  it('does not create a missing category when the financial commit fails', async () => {
+    financeDomainMocks.accounts = [savingsAccount];
+    mockParsedTransactionAction();
+    financeDomainMocks.addTransaction.mockRejectedValue(new Error('commit rechazado'));
+    render(<ControlledChat />);
+
+    sendAssistantMessage('Gasté 35 mil en almuerzo');
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar' }));
+
+    expect(await screen.findByText(/commit rechazado/i)).toBeInTheDocument();
+    expect(financeDomainMocks.addCategory).not.toHaveBeenCalled();
+  });
+
+  it('reports a committed transaction truthfully and retries it with the same operation ID after category failure', async () => {
+    financeDomainMocks.accounts = [savingsAccount];
+    mockParsedTransactionAction();
+    financeDomainMocks.addTransaction.mockResolvedValue(undefined);
+    financeDomainMocks.addCategory
+      .mockRejectedValueOnce(new Error('categoría rechazada'))
+      .mockResolvedValueOnce(undefined);
+    render(<ControlledChat />);
+
+    sendAssistantMessage('Gasté 35 mil en almuerzo');
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar' }));
+
+    expect(await screen.findByText(/movimiento financiero sí quedó registrado/i))
+      .toBeInTheDocument();
+    expect(financeDomainMocks.addTransaction).toHaveBeenCalledTimes(1);
+    expect(financeDomainMocks.addCategory).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+    expect(await screen.findByText('Acción ejecutada ✓')).toBeInTheDocument();
+    expect(financeDomainMocks.addTransaction).toHaveBeenCalledTimes(2);
+    expect(financeDomainMocks.addCategory).toHaveBeenCalledTimes(2);
+    expect(financeDomainMocks.addTransaction.mock.calls[0][0].operationId)
+      .toBe(financeDomainMocks.addTransaction.mock.calls[1][0].operationId);
+  });
+
+  it('does not claim that nothing changed when category retry is cancelled after commit', async () => {
+    financeDomainMocks.accounts = [savingsAccount];
+    mockParsedTransactionAction();
+    financeDomainMocks.addTransaction.mockResolvedValue(undefined);
+    financeDomainMocks.addCategory.mockRejectedValue(new Error('categoría rechazada'));
+    render(<ControlledChat />);
+
+    sendAssistantMessage('Gasté 35 mil en almuerzo');
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar' }));
+    await screen.findByText(/movimiento financiero sí quedó registrado/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    expect(await screen.findByText(/movimiento financiero permanece registrado/i))
+      .toBeInTheDocument();
+    expect(screen.queryByText(/no se realizó ningún cambio/i)).toBeNull();
   });
 
   it('rejects a parsed write without mutating financial domains', async () => {

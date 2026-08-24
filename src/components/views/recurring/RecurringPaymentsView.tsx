@@ -93,25 +93,28 @@ export const RecurringPaymentsView: React.FC = () => {
   // dejan el ciclo sin transacción → el periódico vuelve a por cobrar/vencido.
   const [deletePaymentTx, setDeletePaymentTx] = useState<Transaction | null>(null);
   const [busyDelete, setBusyDelete] = useState(false);
+  const recurringHeader = (
+    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div>
+        <h2 id="view-heading-recurring" tabIndex={-1} className="text-xl font-bold text-gray-900 dark:text-gray-100">
+          {sectionTitle('recurring')}
+        </h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          Gestiona tus suscripciones y pagos recurrentes
+        </p>
+      </div>
+      <button onClick={() => setShowForm(true)} className="btn-primary">
+        <NewIcon size={18} />
+        {UI_TEXT.actions.new} pago
+      </button>
+    </div>
+  );
 
   if (!balancesReady) {
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
         <div className="card">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <h2 id="view-heading-recurring" tabIndex={-1} className="text-xl font-bold text-gray-900 dark:text-gray-100">
-                {sectionTitle('recurring')}
-              </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Gestiona tus suscripciones y pagos recurrentes
-              </p>
-            </div>
-            <button onClick={() => setShowForm(true)} className="btn-primary">
-              <NewIcon size={18} />
-              {UI_TEXT.actions.new} pago
-            </button>
-          </div>
+          {recurringHeader}
         </div>
         <div role="status" aria-live="polite" className="card text-sm text-muted-foreground">
           Calculando el historial completo antes de determinar pagos, pendientes y vencimientos…
@@ -144,7 +147,9 @@ export const RecurringPaymentsView: React.FC = () => {
 
   // Eliminar el gasto: revierte saldo/crédito (atómico).
   const handleDeletePayment = () =>
-    runDelete(() => deleteTransaction(deletePaymentTx!.id!), 'Gasto eliminado');
+    runDelete(async () => {
+      await deleteTransaction(deletePaymentTx!.id!);
+    }, 'Gasto eliminado');
 
   // Desvincular: conserva el gasto, solo limpia el vínculo al periódico. null (no
   // undefined) porque updateTransaction descarta undefined; los lectores tratan
@@ -191,19 +196,8 @@ export const RecurringPaymentsView: React.FC = () => {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
       {/* Header con estadísticas */}
       <div className="card">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-          <div>
-            <h2 id="view-heading-recurring" tabIndex={-1} className="text-xl font-bold text-gray-900 dark:text-gray-100">
-              {sectionTitle('recurring')}
-            </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              Gestiona tus suscripciones y pagos recurrentes
-            </p>
-          </div>
-          <button onClick={() => setShowForm(true)} className="btn-primary">
-            <NewIcon size={18} />
-            {UI_TEXT.actions.new} pago
-          </button>
+        <div className="mb-6">
+          {recurringHeader}
         </div>
 
         <RecurringStatsCards

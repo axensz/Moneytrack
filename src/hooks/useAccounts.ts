@@ -3,12 +3,17 @@ import { useFirestoreData } from '../contexts/FirestoreContext';
 import { useLocalStorage } from './useLocalStorage';
 import { BalanceCalculator } from '../utils/balanceCalculator';
 import { safeFirestoreOperation, checkNetworkConnection } from '../utils/firestoreHelpers';
-import { generateId } from '../utils/formatters';
+import { generateId, roundMoney } from '../utils/formatters';
 import { transactionUsesAccount } from '../utils/accountTransactions';
 import { getCreditCardUsedCredit } from '../utils/accountStrategies';
 import { CURRENT_CREDIT_DEBT_MODEL_VERSION } from '../utils/creditDeltas';
 import { CURRENT_PAYMENT_PAIR_MODEL_VERSION } from '../utils/creditPaymentPairs';
 import { deleteAccountCascade, mergeCreditCardsOrchestrated, setDefaultAccountAtomic } from './firestore/accountOrchestration';
+import {
+  buildBalanceTargetAdjustment,
+  sanitizeBalanceTargetAccountUpdates,
+  updateAccountWithBalanceTarget,
+} from './firestore/accountBalanceTarget';
 import type { Account, Transaction, RecurringPayment, Debt } from '../types/finance';
 
 export type MergeCreditCardsDestination = Pick<Account, 'name'> & Partial<Omit<Account, 'id' | 'name' | 'type' | 'createdAt'>> & {
@@ -18,6 +23,10 @@ export type MergeCreditCardsDestination = Pick<Account, 'name'> & Partial<Omit<A
 export interface MergeCreditCardsParams {
   sourceAccountIds: string[];
   destination: MergeCreditCardsDestination;
+}
+
+export interface AccountUpdateOptions {
+  targetBalance?: number;
 }
 
 export function useAccounts(
@@ -116,21 +125,63 @@ export function useAccounts(
     }
   };
 
-  const updateAccount = async (id: string, updates: Partial<Account>) => {
+  const updateAccount = async (
+    id: string,
+    updates: Partial<Account>,
+    options: AccountUpdateOptions = {}
+  ) => {
+    const targetBalance = options.targetBalance;
+
     if (userId) {
       if (!checkNetworkConnection()) {
         throw new Error('Sin conexión a internet');
       }
 
-      await safeFirestoreOperation(
-        () => firestoreUpdateAccount(id, updates),
-        'updateAccount',
-        { maxRetries: 2 }
-      );
+      if (targetBalance === undefined) {
+        await safeFirestoreOperation(
+          () => firestoreUpdateAccount(id, updates),
+          'updateAccount',
+          { maxRetries: 2 }
+        );
+      } else {
+        await safeFirestoreOperation(
+          () => updateAccountWithBalanceTarget(userId, id, updates, targetBalance),
+          'updateAccountWithBalanceTarget',
+          { maxRetries: 2 }
+        );
+      }
     } else {
+      let safeUpdates = updates;
+      let adjustment: Transaction | null = null;
+
+      if (targetBalance !== undefined) {
+        const account = accountsById.get(id);
+        if (!account) throw new Error('La cuenta ya no existe');
+
+        const currentValue = account.type === 'credit'
+          ? balanceSnapshot.creditUsedByAccountId.get(id) ?? 0
+          : balanceSnapshot.balancesByAccountId.get(id) ?? 0;
+        adjustment = buildBalanceTargetAdjustment({
+          account,
+          currentValue,
+          targetBalance,
+          operationId: `guest-balance-adjustment:${generateId()}`,
+          transactionId: generateId(),
+        });
+        safeUpdates = {
+          ...sanitizeBalanceTargetAccountUpdates(updates),
+          ...(account.type === 'credit'
+            ? { usedCredit: adjustment?.targetBalance ?? roundMoney(targetBalance) }
+            : {}),
+        };
+      }
+
       setLocalAccounts(prev =>
-        prev.map(acc => acc.id === id ? { ...acc, ...updates } : acc)
+        prev.map(acc => acc.id === id ? { ...acc, ...safeUpdates } : acc)
       );
+      if (adjustment) {
+        setLocalTransactions(prev => [...prev, adjustment]);
+      }
     }
   };
 

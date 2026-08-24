@@ -125,10 +125,6 @@ export const AccountsView: React.FC = () => {
   const accountForm = useAccountForm({
     addAccount,
     updateAccount,
-    addTransaction,
-    getAccountBalance,
-    getCreditUsed,
-    formatCurrency,
     balancesReady,
   });
 

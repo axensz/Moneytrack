@@ -24,7 +24,7 @@ import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../config/constants';
 import { useTransactions } from '../hooks/useTransactions';
 import { useBalanceTransactions } from '../hooks/useBalanceTransactions';
 import { useAccounts } from '../hooks/useAccounts';
-import type { MergeCreditCardsParams } from '../hooks/useAccounts';
+import type { AccountUpdateOptions, MergeCreditCardsParams } from '../hooks/useAccounts';
 import { useRecurringPayments } from '../hooks/useRecurringPayments';
 import { useCategories } from '../hooks/useCategories';
 import { useBeneficiaries } from '../hooks/useBeneficiaries';
@@ -101,7 +101,11 @@ export interface FinanceContextValue {
 
   // ── Account CRUD ──
   addAccount: (account: Omit<Account, 'id'>) => Promise<void>;
-  updateAccount: (id: string, updates: Partial<Account>) => Promise<void>;
+  updateAccount: (
+    id: string,
+    updates: Partial<Account>,
+    options?: AccountUpdateOptions
+  ) => Promise<void>;
   deleteAccount: (id: string, options?: { preserveTransactions?: boolean; allowDefaultDelete?: boolean }) => Promise<void>;
   mergeCreditCards: (params: MergeCreditCardsParams) => Promise<void>;
   setDefaultAccount: (id: string) => Promise<void>;

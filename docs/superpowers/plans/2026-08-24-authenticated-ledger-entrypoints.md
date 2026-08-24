@@ -19,13 +19,13 @@
 - Modify: `src/__tests__/hooks/creditPaymentMigration.test.ts`
 - Modify: `src/__tests__/hooks/useCreditMigration.test.ts`
 
-- [ ] Add RED cases for stale render state versus current server model version, invalid/missing `usedCredit`, malformed server rows, link-pair revalidation, lost lease/final batch failure, and retry without partial version/link writes.
-- [ ] Add one strict complete-server transaction loader for one-time migration use.
-- [ ] Recheck the persisted credit account and model versions only after the shared ledger lease is acquired.
-- [ ] Recompute `usedCredit`, reciprocal historical links, both model versions, and release in one bounded batch per card.
-- [ ] Remove correctness dependence on `accounts` beyond candidate IDs; retry failed candidates safely.
-- [ ] Run migration, facade, linked-pair, credit-delta, typecheck, lint, and diff gates.
-- [ ] Commit as `feat: serialize credit authority migration`.
+- [x] Add RED cases for stale render state versus current server model version, invalid/missing `usedCredit`, malformed server rows, link-pair revalidation, lost lease/final batch failure, and retry without partial version/link writes.
+- [x] Add one strict complete-server transaction loader for one-time migration use.
+- [x] Recheck the persisted credit account and model versions only after the shared ledger lease is acquired.
+- [x] Recompute `usedCredit`, reciprocal historical links, both model versions, and release in one bounded batch per card.
+- [x] Remove correctness dependence on `accounts` beyond candidate IDs; retry failed candidates safely.
+- [x] Run migration, facade, linked-pair, credit-delta, typecheck, lint, and diff gates.
+- [x] Commit as `feat: serialize credit authority migration`.
 
 ## Task 2: Make account edit plus balance target one operation
 
@@ -38,12 +38,12 @@
 - Modify: `src/__tests__/utils/accountBalanceAdjust.test.ts`
 - Add or modify: focused authenticated account-adjustment tests
 
-- [ ] Add RED cases for concurrent server balance drift, exact affordability, invalid target, missing account, batch failure, and zero account/transaction/cache partial state.
-- [ ] Accept an optional exact balance/debt target on account update and compute its rounded delta from server-current authority after lease acquisition.
-- [ ] Stage account fields, optional adjustment transaction, credit-authority change, audit metadata (`balance-adjustment`, `account`, expected/target values), cache publication, and release as one operation.
-- [ ] Preserve name-only edits, credit fields, double-submit protection, actionable validation, guest behavior, form closure, and success copy.
-- [ ] Run account form/orchestration, planner, cache, typecheck, lint, and diff gates.
-- [ ] Commit as `feat: commit account balance targets atomically`.
+- [x] Add RED cases for concurrent server balance drift, exact affordability, invalid target, missing account, batch failure, and zero account/transaction/cache partial state.
+- [x] Accept an optional exact balance/debt target on account update and compute its rounded delta from server-current authority after lease acquisition.
+- [x] Stage account fields, optional adjustment transaction, credit-authority change, audit metadata (`balance-adjustment`, `account`, expected/target values), cache publication, and release as one operation.
+- [x] Preserve name-only edits, credit fields, double-submit protection, actionable validation, guest behavior, form closure, and success copy.
+- [x] Run account form/orchestration, planner, cache, typecheck, lint, and diff gates.
+- [x] Commit as `feat: commit account balance targets atomically`.
 
 ## Task 3: Commit card merge plus desired debt atomically
 

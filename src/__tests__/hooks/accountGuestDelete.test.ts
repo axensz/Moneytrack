@@ -100,3 +100,58 @@ describe('useAccounts.deleteAccount — modo invitado (#accounts-1)', () => {
     expect(transactionStore.result.current[0].map(transaction => transaction.id)).toEqual(['bank-income']);
   });
 });
+
+describe('useAccounts.updateAccount — saldo objetivo en modo invitado', () => {
+  it('aplica el objetivo exacto con un ajuste auditable y protege el saldo inicial', async () => {
+    const account: Account = {
+      id: 'savings',
+      name: 'Ahorros',
+      type: 'savings',
+      isDefault: true,
+      initialBalance: 100,
+    };
+    const transactions: Transaction[] = [{
+      id: 'income-1',
+      type: 'income',
+      amount: 50,
+      category: 'Otros',
+      description: 'Seed',
+      date: new Date('2026-08-24T12:00:00-05:00'),
+      paid: true,
+      accountId: 'savings',
+    }];
+    localStorage.setItem('accounts', JSON.stringify([account]));
+    localStorage.setItem('transactions', JSON.stringify(transactions));
+
+    const { result } = renderHook(() => useAccounts(null, transactions, vi.fn()));
+    await waitFor(() => expect(result.current.accounts).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.updateAccount(
+        'savings',
+        { name: 'Ahorro principal', initialBalance: 999_999 },
+        { targetBalance: 120 }
+      );
+    });
+
+    const persistedAccounts = JSON.parse(localStorage.getItem('accounts')!) as Account[];
+    const persistedTransactions = JSON.parse(
+      localStorage.getItem('transactions')!
+    ) as Transaction[];
+
+    expect(persistedAccounts[0]).toMatchObject({
+      name: 'Ahorro principal',
+      initialBalance: 100,
+    });
+    expect(persistedTransactions).toHaveLength(2);
+    expect(persistedTransactions[1]).toMatchObject({
+      type: 'expense',
+      amount: 30,
+      accountId: 'savings',
+      mutationKind: 'balance-adjustment',
+      mutationSource: 'account',
+      expectedBefore: 150,
+      targetBalance: 120,
+    });
+  });
+});

@@ -13,6 +13,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useAccountForm } from '../../components/views/accounts/hooks/useAccountForm';
+import { buildBalanceTargetAdjustment } from '../../hooks/firestore/accountBalanceTarget';
 import { BalanceCalculator } from '../../utils/balanceCalculator';
 import { unformatNumber } from '../../utils/formatters';
 import type { Account, Transaction } from '../../types/finance';
@@ -37,25 +38,34 @@ function tx(overrides: Partial<Transaction> & Pick<Transaction, 'type' | 'amount
 
 /**
  * Monta useAccountForm contra un "store" en memoria: getAccountBalance calcula
- * desde el historial completo y addTransaction agrega al mismo historial
- * (simulando el ciclo guardar → recalcular).
+ * desde el historial completo y el adaptador de update agrega el ajuste
+ * planificado al mismo historial (simulando el commit atómico → recalcular).
  */
 function setup(initialTxs: Transaction[]) {
   const store = { txs: [...initialTxs] };
   const balance = () => BalanceCalculator.calculateAccountBalance(savings, store.txs);
+  const updateAccount = vi.fn(async (
+    _id: string,
+    _updates: Partial<Account>,
+    options?: { targetBalance?: number }
+  ) => {
+    if (options?.targetBalance === undefined) return;
+    const adjustment = buildBalanceTargetAdjustment({
+      account: savings,
+      currentValue: balance(),
+      targetBalance: options.targetBalance,
+      operationId: `test-operation-${store.txs.length}`,
+      transactionId: `adj${store.txs.length}`,
+    });
+    if (adjustment) store.txs.push(adjustment);
+  });
   const hook = renderHook(() =>
     useAccountForm({
       addAccount: vi.fn(async () => {}),
-      updateAccount: vi.fn(async () => {}),
-      addTransaction: vi.fn(async (t: Omit<Transaction, 'id'>) => {
-        store.txs.push({ ...t, id: `adj${store.txs.length}` } as Transaction);
-      }),
-      getAccountBalance: balance,
-      getCreditUsed: () => 0,
-      formatCurrency: (n) => `$${n.toLocaleString('es-CO')}`,
+      updateAccount,
     })
   );
-  return { hook, store, balance };
+  return { hook, store, balance, updateAccount };
 }
 
 /** Edita la cuenta, teclea `input` en el campo de ajuste y guarda. */

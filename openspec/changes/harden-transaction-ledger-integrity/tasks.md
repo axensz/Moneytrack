@@ -80,12 +80,14 @@
 
 ## Task 9: Make guest persistence durable and conflict-aware
 
-- [ ] 9.1 Add tests where `localStorage.setItem`, serialization, quota, and read-back verification fail; require promise rejection, unchanged visible state, unchanged durable state, and no success toast.
-- [ ] 9.2 Introduce a versioned guest-ledger envelope for transaction-critical collections and publish React/same-tab state only after one successful persisted snapshot.
-- [ ] 9.3 Add a revision compare/retry path for two guest tabs and test concurrent income, expense, card payment, debt payment, and account adjustment without lost updates.
-- [ ] 9.4 Route guest card/debt/account compound operations through one envelope mutation so no consumer observes a partial aggregate.
-- [ ] 9.5 Migrate legacy keys idempotently with stable IDs, schema/reference validation, write/read-back verification, and removal only after success; test retry after an interrupted migration.
-- [ ] 9.6 Preserve the previous verified envelope for one version and document recovery/export behavior when the next snapshot exceeds quota.
+- [x] 9.1 Add tests where `localStorage.setItem`, serialization, quota, and read-back verification fail; require promise rejection, unchanged visible state, unchanged durable state, and no success toast.
+- [x] 9.2 Introduce a versioned guest-ledger envelope for transaction-critical collections and publish React/same-tab state only after one successful persisted snapshot.
+- [x] 9.3 Add a revision compare/retry path for two guest tabs and test concurrent income, expense, card payment, debt payment, and account adjustment without lost updates.
+- [x] 9.4 Route guest card/debt/account compound operations through one envelope mutation so no consumer observes a partial aggregate.
+- [x] 9.5 Migrate legacy keys idempotently with stable IDs, schema/reference validation, write/read-back verification, and removal only after success; test retry after an interrupted migration.
+- [x] 9.6 Preserve the previous verified envelope for one version and document recovery/export behavior when the next snapshot exceeds quota.
+
+  Evidence 2026-08-24: guest critical collections now commit through one schema-versioned envelope with exact read-back, a previous verified recovery snapshot, stable legacy migration IDs, reference validation, publish-after-persist semantics, and copy-ready export guidance. Browser Web Locks are used when available; the fallback is a cross-tab Lamport bakery lock plus revision compare/retry. Card mutations preserve persisted `usedCredit` authority and apply only the committed ledger delta, while repeatable Undo/delete operations use distinct intention IDs and debt/card merges revalidate the winning draft. Failure, quota, conflict, five-intention concurrency, migration retry, compound rollback, remount, and recovery regressions pass. The full suite passed 1,296 tests (5 skipped) across 148 files (1 skipped), typecheck and lint passed, and the independent re-review reported no Critical or Important findings (`Ready to merge: Yes`).
 
 ## Task 10: Add read-only reconciliation and explicit repair plans
 

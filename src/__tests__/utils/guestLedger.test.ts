@@ -5,6 +5,7 @@ import {
   GUEST_LEDGER_STORAGE_KEY,
   createGuestLedgerEnvelope,
   ensureGuestLedgerEnvelope,
+  exportGuestLedgerRecovery,
   mutateGuestLedger,
   readGuestLedgerEnvelope,
   subscribeGuestLedger,
@@ -172,6 +173,27 @@ describe('guest ledger durable envelope', () => {
     unsubscribe();
   });
 
+  it('keeps the verified current and recovery snapshot when the next envelope exceeds quota', async () => {
+    const storage = new MemoryStorage();
+    const original = seed(storage);
+    const rawBefore = storage.getItem(GUEST_LEDGER_STORAGE_KEY)!;
+    storage.setItem
+      .mockImplementationOnce((key, value) => storage.values.set(key, value))
+      .mockImplementationOnce(() => {
+        throw new DOMException('quota', 'QuotaExceededError');
+      });
+
+    await expect(mutateGuestLedger(draft => {
+      draft.transactions.push(transaction('too-large', 'income', 1));
+    }, { storage, operationId: 'too-large', lock: noLock })).rejects.toThrow();
+
+    expect(storage.values.get(GUEST_LEDGER_STORAGE_KEY)).toBe(rawBefore);
+    expect(JSON.parse(storage.values.get(GUEST_LEDGER_RECOVERY_KEY)!)).toEqual(original);
+    const exported = JSON.parse(exportGuestLedgerRecovery({ storage }));
+    expect(exported.current).toBe(rawBefore);
+    expect(exported.previous).toBe(rawBefore);
+  });
+
   it('retries a stale revision and reapplies both concurrent intentions without lost updates', async () => {
     const storage = new MemoryStorage();
     seed(storage);
@@ -203,6 +225,142 @@ describe('guest ledger durable envelope', () => {
       'income-1',
     ]);
     expect(starts).toBe(3);
+  });
+
+  it('does not roll back a competing envelope that wins after setItem but before read-back', async () => {
+    const storage = new MemoryStorage();
+    const original = seed(storage);
+    const rival = createGuestLedgerEnvelope({
+      ...original.data,
+      transactions: [transaction('remote-winner', 'income', 9)],
+    }, {
+      revision: 2,
+      commitId: 'remote-winner',
+      committedAt: '2026-08-24T12:30:00.000Z',
+      recentOperationIds: ['remote-winner'],
+    });
+    let injectWinner = true;
+    storage.setItem.mockImplementation((key, value) => {
+      storage.values.set(key, value);
+      if (key === GUEST_LEDGER_STORAGE_KEY && injectWinner) {
+        injectWinner = false;
+        storage.values.set(key, JSON.stringify(rival));
+      }
+    });
+
+    await mutateGuestLedger(draft => {
+      draft.transactions.push(transaction('local-retry', 'expense', 3));
+    }, { storage, operationId: 'local-retry', lock: noLock, maxRetries: 3 });
+
+    const persisted = readGuestLedgerEnvelope({ storage });
+    expect(persisted.revision).toBe(3);
+    expect(persisted.data.transactions.map(item => item.id).sort()).toEqual([
+      'local-retry',
+      'remote-winner',
+    ]);
+  });
+
+  it('preserves concurrent income, expense, card payment, debt payment, and account adjustment', async () => {
+    const storage = new MemoryStorage();
+    const savings = account();
+    const card: Account = {
+      id: 'card-1',
+      name: 'Visa',
+      type: 'credit',
+      initialBalance: 0,
+      isDefault: false,
+      creditLimit: 1_000,
+      usedCredit: 100,
+    };
+    const debt: Debt = {
+      id: 'debt-1',
+      personName: 'Persona',
+      type: 'borrowed',
+      originalAmount: 100,
+      remainingAmount: 100,
+      isSettled: false,
+      accountId: savings.id,
+    };
+    seed(storage, {
+      accounts: [savings, card],
+      transactions: [transaction('card-purchase', 'expense', 100) as Transaction],
+      debts: [debt],
+      recurringPayments: [],
+    });
+    const purchase = JSON.parse(storage.values.get(GUEST_LEDGER_STORAGE_KEY)!).data.transactions[0];
+    purchase.accountId = card.id;
+    const seeded = JSON.parse(storage.values.get(GUEST_LEDGER_STORAGE_KEY)!);
+    seeded.data.transactions[0] = purchase;
+    storage.values.set(GUEST_LEDGER_STORAGE_KEY, JSON.stringify(seeded));
+
+    let release!: () => void;
+    const allStarted = new Promise<void>(resolve => { release = resolve; });
+    let starts = 0;
+    const concurrent = (
+      operationId: string,
+      mutate: (draft: GuestLedgerData) => void,
+    ) => mutateGuestLedger(async draft => {
+      starts += 1;
+      if (starts <= 5) {
+        if (starts === 5) release();
+        await allStarted;
+      }
+      mutate(draft);
+    }, { storage, operationId, lock: noLock, maxRetries: 8 });
+
+    const cardCredit = {
+      ...transaction('card-payment-credit', 'income', 40),
+      accountId: card.id!,
+      linkedTransactionId: 'card-payment-source',
+    };
+    const cardSource = {
+      ...transaction('card-payment-source', 'expense', 40),
+      linkedTransactionId: 'card-payment-credit',
+    };
+
+    await Promise.all([
+      concurrent('concurrent-income', draft => {
+        draft.transactions.push(transaction('income-concurrent', 'income', 20));
+      }),
+      concurrent('concurrent-expense', draft => {
+        draft.transactions.push(transaction('expense-concurrent', 'expense', 5));
+      }),
+      concurrent('concurrent-card-payment', draft => {
+        draft.transactions.push(cardCredit, cardSource);
+      }),
+      concurrent('concurrent-debt-payment', draft => {
+        draft.transactions.push({
+          ...transaction('debt-payment', 'expense', 30),
+          debtId: debt.id,
+        });
+        draft.debts = draft.debts.map(item => item.id === debt.id
+          ? { ...item, remainingAmount: 70 }
+          : item);
+      }),
+      concurrent('concurrent-account-adjustment', draft => {
+        draft.transactions.push({
+          ...transaction('account-adjustment', 'expense', 10),
+          mutationKind: 'balance-adjustment',
+          mutationSource: 'account',
+          expectedBefore: 1_000,
+          targetBalance: 990,
+        });
+      }),
+    ]);
+
+    const persisted = readGuestLedgerEnvelope({ storage });
+    expect(persisted.revision).toBe(6);
+    expect(persisted.data.transactions.map(item => item.id)).toEqual(expect.arrayContaining([
+      'income-concurrent',
+      'expense-concurrent',
+      'card-payment-credit',
+      'card-payment-source',
+      'debt-payment',
+      'account-adjustment',
+    ]));
+    expect(persisted.data.debts[0].remainingAmount).toBe(70);
+    expect(persisted.data.accounts.find(item => item.id === card.id)?.usedCredit).toBe(60);
+    expect(starts).toBeGreaterThan(5);
   });
 
   it('migrates legacy critical keys with stable IDs and completes interrupted cleanup idempotently', async () => {

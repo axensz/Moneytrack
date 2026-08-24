@@ -14,7 +14,7 @@
  * afectar saldos (comportamiento histórico).
  */
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   collection,
   onSnapshot,
@@ -30,7 +30,7 @@ import {
   deleteField,
 } from 'firebase/firestore';
 import { db } from '../lib/firebaseDb';
-import { useLocalStorage } from './useLocalStorage';
+import { useGuestLedger } from './useGuestLedger';
 import { logger } from '../utils/logger';
 import { safeFirestoreOperation, checkNetworkConnection, stripUndefined } from '../utils/firestoreHelpers';
 import { generateId, roundMoney } from '../utils/formatters';
@@ -75,19 +75,17 @@ export function useDebts(
   txOps: DebtTransactionOps = {}
 ) {
   const {
-    addTransaction,
     restoreTransaction,
-    deleteTransaction,
-    updateTransaction,
     accounts: operationAccounts = [],
   } = txOps;
-  const restoredDebtPaymentIds = useRef(new Set<string>());
   // Firestore state
   const [firestoreDebts, setFirestoreDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // LocalStorage for guest mode
-  const [localDebts, setLocalDebts] = useLocalStorage<Debt[]>('debts', []);
+  const {
+    debts: localDebts,
+    mutate: mutateGuestLedger,
+  } = useGuestLedger();
   const hasExternalDebts = externalDebts !== undefined;
 
   // Firestore subscription — skip if data provided externally (centralized)
@@ -133,9 +131,11 @@ export function useDebts(
   const debts = externalDebts ?? (userId ? firestoreDebts : localDebts);
 
   const assertGuestLedgerMutation = useCallback((
-    transaction: Omit<Transaction, 'id' | 'createdAt'>
+    transaction: Omit<Transaction, 'id' | 'createdAt'>,
+    accounts: Account[] = operationAccounts,
+    ledgerTransactions: Transaction[] = transactions,
   ) => {
-    const account = operationAccounts.find(candidate =>
+    const account = accounts.find(candidate =>
       getAccountReferenceIds(candidate).includes(transaction.accountId)
     );
     if (!account?.id) {
@@ -159,7 +159,7 @@ export function useDebts(
       },
       [{
         account: { id: account.id, type: account.type },
-        currentBalance: BalanceCalculator.calculateAccountBalance(account, transactions),
+        currentBalance: BalanceCalculator.calculateAccountBalance(account, ledgerTransactions),
       }]
     );
 
@@ -268,10 +268,18 @@ export function useDebts(
       const createdAt = new Date();
       const originalAmount = normalizeLedgerAmount(debt.originalAmount);
       const remainingAmount = normalizeLedgerAmount(debt.remainingAmount);
-      if (debt.accountId) {
-        if (!addTransaction) {
-          throw new Error('No se puede registrar el movimiento de la deuda');
-        }
+      const newDebt: Debt = {
+        ...debt,
+        originalAmount,
+        remainingAmount,
+        id: debtId,
+        createdAt,
+      };
+      const transactionId = debt.accountId ? generateId() : null;
+      const operationId = `guest-add-debt:${debtId}`;
+      await mutateGuestLedger(draft => {
+        draft.debts.unshift(newDebt);
+        if (!debt.accountId || !transactionId) return;
         const isLent = debt.type === 'lent';
         const transaction = assertGuestLedgerMutation({
           type: isLent ? 'expense' : 'income',
@@ -284,19 +292,18 @@ export function useDebts(
           paid: true,
           accountId: debt.accountId,
           debtId,
+          operationId,
+          mutationKind: 'create',
+          mutationSource: 'debt',
+        }, draft.accounts, draft.transactions);
+        draft.transactions.unshift({
+          ...transaction,
+          id: transactionId,
+          createdAt,
         });
-        await addTransaction(transaction);
-      }
-      const newDebt: Debt = {
-        ...debt,
-        originalAmount,
-        remainingAmount,
-        id: debtId,
-        createdAt,
-      };
-      setLocalDebts(prev => [newDebt, ...prev]);
+      }, { operationId });
     }
-  }, [userId, setLocalDebts, addTransaction, assertGuestLedgerMutation]);
+  }, [userId, mutateGuestLedger, assertGuestLedgerMutation]);
 
   const updateDebt = useCallback(async (id: string, updates: Partial<Debt>) => {
     if (userId) {
@@ -321,9 +328,16 @@ export function useDebts(
         { maxRetries: 2 }
       );
     } else {
-      setLocalDebts(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
+      await mutateGuestLedger(draft => {
+        if (!draft.debts.some(debt => debt.id === id)) {
+          throw new Error('Préstamo no encontrado');
+        }
+        draft.debts = draft.debts.map(debt => (
+          debt.id === id ? { ...debt, ...updates } : debt
+        ));
+      }, { operationId: `guest-update-debt:${id}:${generateId()}` });
     }
-  }, [userId, setLocalDebts]);
+  }, [userId, mutateGuestLedger]);
 
   const deleteDebt = useCallback(async (id: string) => {
     if (userId) {
@@ -420,16 +434,12 @@ export function useDebts(
         }
       }, 'deleteDebt', { maxRetries: 2 });
     } else {
-      // Modo invitado (en memoria): borrar transacciones vinculadas + la deuda.
-      if (deleteTransaction) {
-        const linkedTxIds = transactions.filter(t => t.debtId === id && t.id).map(t => t.id!);
-        for (const txId of linkedTxIds) {
-          await deleteTransaction(txId);
-        }
-      }
-      setLocalDebts(prev => prev.filter(d => d.id !== id));
+      await mutateGuestLedger(draft => {
+        draft.transactions = draft.transactions.filter(transaction => transaction.debtId !== id);
+        draft.debts = draft.debts.filter(debt => debt.id !== id);
+      }, { operationId: `guest-delete-debt:${id}` });
     }
-  }, [userId, setLocalDebts, deleteTransaction, transactions]);
+  }, [userId, mutateGuestLedger]);
 
   const reassignDebtAccount = useCallback(async (debtId: string, nextAccountId?: string) => {
     if (userId) {
@@ -538,32 +548,41 @@ export function useDebts(
       return;
     }
 
-    const debt = debts.find(candidate => candidate.id === debtId);
-    if (!debt) throw new Error('Préstamo no encontrado');
-    const linkedTransactions = transactions.filter(transaction => transaction.debtId === debtId);
-    const plan = buildDebtAccountReassignmentPlan(
-      debt,
-      linkedTransactions,
-      operationAccounts,
-      nextAccountId
-    );
-
-    if (plan.principal?.after) {
-      if (!updateTransaction) throw new Error('No se puede actualizar la operación original');
-      await updateTransaction(plan.principal.before.id!, { accountId: plan.principal.after.accountId });
-    } else if (plan.principal) {
-      if (!deleteTransaction) throw new Error('No se puede retirar la operación original');
-      await deleteTransaction(plan.principal.before.id!);
-    }
-    await updateDebt(debtId, { accountId: nextAccountId });
+    await mutateGuestLedger(draft => {
+      const debt = draft.debts.find(candidate => candidate.id === debtId);
+      if (!debt) throw new Error('Préstamo no encontrado');
+      const linkedTransactions = draft.transactions.filter(
+        transaction => transaction.debtId === debtId
+      );
+      const plan = buildDebtAccountReassignmentPlan(
+        debt,
+        linkedTransactions,
+        draft.accounts,
+        nextAccountId
+      );
+      draft.debts = draft.debts.map(candidate => (
+        candidate.id === debtId
+          ? { ...candidate, accountId: nextAccountId }
+          : candidate
+      ));
+      const principal = plan.principal;
+      if (principal?.after) {
+        draft.transactions = draft.transactions.map(transaction => (
+          transaction.id === principal.before.id
+            ? principal.after!
+            : transaction
+        ));
+      } else if (principal) {
+        draft.transactions = draft.transactions.filter(
+          transaction => transaction.id !== principal.before.id
+        );
+      }
+    }, {
+      operationId: `guest-reassign-debt:${debtId}:${nextAccountId ?? 'none'}:${generateId()}`,
+    });
   }, [
     userId,
-    debts,
-    transactions,
-    operationAccounts,
-    updateTransaction,
-    deleteTransaction,
-    updateDebt,
+    mutateGuestLedger,
   ]);
 
   // Register a payment against a debt
@@ -690,42 +709,53 @@ export function useDebts(
       return;
     }
 
-    const debt = debts.find(d => d.id === debtId);
-    if (!debt) return;
-    if (debt.isSettled || debt.remainingAmount <= 0) return;
-
     const requestedAmount = normalizeLedgerAmount(amount);
-    const remainingAmount = normalizeLedgerAmount(debt.remainingAmount);
-    const effectiveAmount = Math.min(requestedAmount, remainingAmount);
-    const newRemaining = Math.max(0, remainingAmount - effectiveAmount);
-    const isSettled = newRemaining === 0;
-
-    if (debt.accountId && effectiveAmount > 0) {
-      if (!addTransaction) {
-        throw new Error('No se puede registrar el movimiento del pago');
+    const transactionId = generateId();
+    const operationId = `guest-debt-payment:${debtId}:${transactionId}`;
+    const paidAt = new Date();
+    await mutateGuestLedger(draft => {
+      const debt = draft.debts.find(candidate => candidate.id === debtId);
+      if (!debt || debt.isSettled || debt.remainingAmount <= 0) return;
+      const remainingAmount = normalizeLedgerAmount(debt.remainingAmount);
+      const effectiveAmount = Math.min(requestedAmount, remainingAmount);
+      const newRemaining = Math.max(0, remainingAmount - effectiveAmount);
+      const isSettled = newRemaining === 0;
+      if (debt.accountId && effectiveAmount > 0) {
+        const isLent = debt.type === 'lent';
+        const transaction = assertGuestLedgerMutation({
+          type: isLent ? 'income' : 'expense',
+          amount: effectiveAmount,
+          category: LOAN_PAYMENT_CATEGORY,
+          description: isLent
+            ? `Cobro de ${debt.personName}`
+            : `Pago a ${debt.personName}`,
+          date: paidAt,
+          paid: true,
+          accountId: debt.accountId,
+          debtId,
+          operationId,
+          mutationKind: 'create',
+          mutationSource: 'debt',
+        }, draft.accounts, draft.transactions);
+        draft.transactions.unshift({
+          ...transaction,
+          id: transactionId,
+          createdAt: paidAt,
+        });
       }
-      const isLent = debt.type === 'lent';
-      const transaction = assertGuestLedgerMutation({
-        type: isLent ? 'income' : 'expense',
-        amount: effectiveAmount,
-        category: LOAN_PAYMENT_CATEGORY,
-        description: isLent
-          ? `Cobro de ${debt.personName}`
-          : `Pago a ${debt.personName}`,
-        date: new Date(),
-        paid: true,
-        accountId: debt.accountId,
-        debtId,
-      });
-      await addTransaction(transaction);
-    }
 
-    await updateDebt(debtId, {
-      remainingAmount: newRemaining,
-      isSettled,
-      ...(isSettled ? { settledAt: new Date() } : {}),
-    });
-  }, [userId, debts, updateDebt, addTransaction, assertGuestLedgerMutation]);
+      draft.debts = draft.debts.map(candidate => (
+        candidate.id === debtId
+          ? {
+              ...candidate,
+              remainingAmount: newRemaining,
+              isSettled,
+              settledAt: isSettled ? paidAt : candidate.settledAt,
+            }
+          : candidate
+      ));
+    }, { operationId });
+  }, [userId, mutateGuestLedger, assertGuestLedgerMutation]);
 
   const restoreDebtPayment = useCallback(async (transaction: Transaction) => {
     if (
@@ -735,69 +765,77 @@ export function useDebts(
     ) {
       throw new Error('La transacción no es un pago de deuda restaurable.');
     }
-    if (!restoreTransaction) {
-      throw new Error('No se puede restaurar el movimiento del pago.');
-    }
-
     if (userId) {
+      if (!restoreTransaction) {
+        throw new Error('No se puede restaurar el movimiento del pago.');
+      }
       await restoreTransaction(transaction);
       return;
     }
-    if (restoredDebtPaymentIds.current.has(transaction.id)) return;
-    const existing = transactions.find(candidate => candidate.id === transaction.id);
-    if (existing) {
-      if (
-        existing.mutationKind === 'restore'
-        && existing.mutationSource === 'undo'
-        && transactionMatchesRestoreSnapshot(existing, transaction)
-      ) {
-        restoredDebtPaymentIds.current.add(transaction.id);
-        return;
+    await mutateGuestLedger(draft => {
+      const existing = draft.transactions.find(candidate => candidate.id === transaction.id);
+      if (existing) {
+        if (
+          existing.mutationKind === 'restore'
+          && existing.mutationSource === 'undo'
+          && transactionMatchesRestoreSnapshot(existing, transaction)
+        ) return;
+        throw new Error('La identidad original ya pertenece a otra transacción.');
       }
-      throw new Error('La identidad original ya pertenece a otra transacción.');
-    }
 
-    const debt = debts.find(candidate => candidate.id === transaction.debtId);
-    const amount = normalizeLedgerAmount(transaction.amount);
-    const remainingAmount = debt ? normalizeLedgerAmount(debt.remainingAmount) : 0;
-    const expectedType = debt?.type === 'lent'
-      ? 'income'
-      : debt?.type === 'borrowed'
-        ? 'expense'
-        : null;
-    if (
-      !debt
-      || expectedType !== transaction.type
-      || debt.accountId !== transaction.accountId
-      || remainingAmount < amount
-    ) {
-      throw new Error('No se puede restaurar el pago con el saldo pendiente actual.');
-    }
+      const debt = draft.debts.find(candidate => candidate.id === transaction.debtId);
+      const amount = normalizeLedgerAmount(transaction.amount);
+      const remainingAmount = debt ? normalizeLedgerAmount(debt.remainingAmount) : 0;
+      const expectedType = debt?.type === 'lent'
+        ? 'income'
+        : debt?.type === 'borrowed'
+          ? 'expense'
+          : null;
+      if (
+        !debt
+        || expectedType !== transaction.type
+        || debt.accountId !== transaction.accountId
+        || remainingAmount < amount
+      ) {
+        throw new Error('No se puede restaurar el pago con el saldo pendiente actual.');
+      }
 
-    const ledgerTransaction = { ...transaction };
-    delete ledgerTransaction.id;
-    delete ledgerTransaction.createdAt;
-    delete ledgerTransaction.operationId;
-    delete ledgerTransaction.mutationKind;
-    delete ledgerTransaction.mutationSource;
-    assertGuestLedgerMutation(ledgerTransaction);
+      const ledgerTransaction = { ...transaction };
+      delete ledgerTransaction.id;
+      delete ledgerTransaction.createdAt;
+      delete ledgerTransaction.operationId;
+      delete ledgerTransaction.mutationKind;
+      delete ledgerTransaction.mutationSource;
+      assertGuestLedgerMutation(
+        ledgerTransaction,
+        draft.accounts,
+        draft.transactions,
+      );
 
-    await restoreTransaction(transaction);
-    const nextRemaining = roundMoney(remainingAmount - amount);
-    const isSettled = nextRemaining === 0;
-    await updateDebt(debt.id!, {
-      remainingAmount: nextRemaining,
-      isSettled,
-      settledAt: isSettled ? transaction.date : undefined,
-    });
-    restoredDebtPaymentIds.current.add(transaction.id);
+      const restored: Transaction = {
+        ...transaction,
+        mutationKind: 'restore',
+        mutationSource: 'undo',
+      };
+      draft.transactions.unshift(restored);
+      const nextRemaining = roundMoney(remainingAmount - amount);
+      const isSettled = nextRemaining === 0;
+      draft.debts = draft.debts.map(candidate => (
+        candidate.id === debt.id
+          ? {
+              ...candidate,
+              remainingAmount: nextRemaining,
+              isSettled,
+              settledAt: isSettled ? transaction.date : undefined,
+            }
+          : candidate
+      ));
+    }, { operationId: `guest-undo:${transaction.id}:restore-debt-payment` });
   }, [
     userId,
     restoreTransaction,
-    debts,
-    transactions,
+    mutateGuestLedger,
     assertGuestLedgerMutation,
-    updateDebt,
   ]);
 
   // Modify debt balance (add or subtract from original amount)

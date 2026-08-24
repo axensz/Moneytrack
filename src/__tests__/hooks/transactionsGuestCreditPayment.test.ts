@@ -25,10 +25,18 @@ vi.mock('../../contexts/FirestoreContext', () => ({
 }));
 
 import { useTransactions } from '../../hooks/useTransactions';
+import {
+  GUEST_LEDGER_STORAGE_KEY,
+  readGuestLedgerEnvelope,
+} from '../../utils/guestLedger';
 
 const base = { category: 'Pago', description: '', date: new Date('2026-06-15'), paid: true } as const;
 const creditTx = { ...base, type: 'income' as const, amount: 50_000, accountId: 'tc' };
 const sourceTx = { ...base, type: 'expense' as const, amount: 50_000, accountId: 'sav' };
+const paymentAccounts: Account[] = [
+  { id: 'tc', name: 'Visa', type: 'credit', isDefault: false, initialBalance: 0, usedCredit: 50_000 },
+  { id: 'sav', name: 'Ahorros', type: 'savings', isDefault: true, initialBalance: 100_000 },
+];
 
 beforeEach(() => {
   localStorage.clear();
@@ -37,13 +45,14 @@ beforeEach(() => {
 
 describe('useTransactions.addCreditPaymentAtomic — modo invitado (#tx-1)', () => {
   it('crea AMBAS transacciones del par (ingreso a TC + gasto en origen) en localStorage', async () => {
+    localStorage.setItem('accounts', JSON.stringify(paymentAccounts));
     const { result } = renderHook(() => useTransactions(null));
 
     await act(async () => {
       await result.current.addCreditPaymentAtomic(creditTx, sourceTx);
     });
 
-    const txs = JSON.parse(localStorage.getItem('transactions')!) as Transaction[];
+    const txs = readGuestLedgerEnvelope().data.transactions;
     expect(txs).toHaveLength(2);
     expect(txs.some(t => t.accountId === 'tc' && t.type === 'income' && t.amount === 50_000)).toBe(true);
     expect(txs.some(t => t.accountId === 'sav' && t.type === 'expense' && t.amount === 50_000)).toBe(true);
@@ -54,6 +63,7 @@ describe('useTransactions.addCreditPaymentAtomic — modo invitado (#tx-1)', () 
   });
 
   it('editar o borrar una mitad mantiene el par consistente', async () => {
+    localStorage.setItem('accounts', JSON.stringify(paymentAccounts));
     const { result } = renderHook(() => useTransactions(null));
     await act(async () => { await result.current.addCreditPaymentAtomic(creditTx, sourceTx); });
     const card = result.current.transactions.find(transaction => transaction.accountId === 'tc')!;
@@ -68,6 +78,23 @@ describe('useTransactions.addCreditPaymentAtomic — modo invitado (#tx-1)', () 
 
     await act(async () => { await result.current.deleteTransaction(card.id!); });
     expect(result.current.transactions).toHaveLength(0);
+  });
+
+  it('no publishes either half when the durable card-payment commit fails', async () => {
+    localStorage.setItem('accounts', JSON.stringify(paymentAccounts));
+    const { result } = renderHook(() => useTransactions(null));
+    await waitFor(() => expect(localStorage.getItem(GUEST_LEDGER_STORAGE_KEY)).not.toBeNull());
+    const rawBefore = localStorage.getItem(GUEST_LEDGER_STORAGE_KEY);
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => {
+      throw new DOMException('quota', 'QuotaExceededError');
+    });
+
+    await expect(act(async () => {
+      await result.current.addCreditPaymentAtomic(creditTx, sourceTx);
+    })).rejects.toThrow();
+
+    expect(result.current.transactions).toEqual([]);
+    expect(localStorage.getItem(GUEST_LEDGER_STORAGE_KEY)).toBe(rawBefore);
   });
 
   it('reconcilia usedCredit local incluyendo intereses financiados', async () => {
@@ -85,7 +112,7 @@ describe('useTransactions.addCreditPaymentAtomic — modo invitado (#tx-1)', () 
     });
 
     await waitFor(() => {
-      const accounts = JSON.parse(localStorage.getItem('accounts')!) as Account[];
+      const accounts = readGuestLedgerEnvelope().data.accounts;
       expect(accounts[0].usedCredit).toBe(123_265.49);
     });
   });
@@ -94,6 +121,8 @@ describe('useTransactions.addCreditPaymentAtomic — modo invitado (#tx-1)', () 
     const date = new Date('2026-06-15T14:30:00.000Z');
     localStorage.setItem('accounts', JSON.stringify([{
       id: 'tc', name: 'Visa', type: 'credit', isDefault: false, initialBalance: 0, usedCredit: 50_000,
+    }, {
+      id: 'sav', name: 'Ahorros', type: 'savings', isDefault: true, initialBalance: 100_000,
     }] as Account[]));
     localStorage.setItem('transactions', JSON.stringify([
       { id: 'credit-old', type: 'income', amount: 50_000, category: 'Pago Crédito', description: 'Junio', date, paid: true, accountId: 'tc' },
@@ -103,10 +132,11 @@ describe('useTransactions.addCreditPaymentAtomic — modo invitado (#tx-1)', () 
     renderHook(() => useTransactions(null));
 
     await waitFor(() => {
-      const transactions = JSON.parse(localStorage.getItem('transactions')!) as Transaction[];
+      const ledger = readGuestLedgerEnvelope().data;
+      const transactions = ledger.transactions;
       expect(transactions.find(item => item.id === 'credit-old')?.linkedTransactionId).toBe('bank-old');
       expect(transactions.find(item => item.id === 'bank-old')?.linkedTransactionId).toBe('credit-old');
-      const accounts = JSON.parse(localStorage.getItem('accounts')!) as Account[];
+      const accounts = ledger.accounts;
       expect(accounts[0].paymentPairModelVersion).toBe(1);
     });
   });

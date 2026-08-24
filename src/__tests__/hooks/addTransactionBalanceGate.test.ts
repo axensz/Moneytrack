@@ -132,6 +132,36 @@ describe('useAddTransaction - beneficiario', () => {
   });
 });
 
+describe('useAddTransaction — durable guest failure feedback', () => {
+  it('does not publish success when the guest persistence promise rejects', async () => {
+    const params = makeParams({
+      addTransaction: vi.fn(async () => {
+        throw new DOMException('quota', 'QuotaExceededError');
+      }),
+    });
+    const { result } = renderHook(() => useAddTransaction(params));
+
+    await act(async () => {
+      await result.current.handleAddTransaction({
+        type: 'income',
+        amount: '50000',
+        category: 'Sueldo',
+        description: 'pago',
+        date: '2026-06-15',
+        paid: true,
+        accountId: 'sav',
+        toAccountId: '',
+        hasInterest: false,
+        installments: 1,
+      });
+    });
+
+    expect(M.toastSuccess).toEqual([]);
+    expect(M.toastErrors).toHaveLength(1);
+    expect(params.setShowForm).not.toHaveBeenCalledWith(false);
+  });
+});
+
 describe('useAddTransaction — gate de balancesReady (#3)', () => {
   it('con saldos asentados (ready=true) valida y RECHAZA un gasto que sobregira', async () => {
     const params = makeParams();

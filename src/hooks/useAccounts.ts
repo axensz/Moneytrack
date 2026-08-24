@@ -1,6 +1,6 @@
 import { useMemo, useCallback } from 'react';
 import { useFirestoreData } from '../contexts/FirestoreContext';
-import { useLocalStorage } from './useLocalStorage';
+import { useGuestLedger } from './useGuestLedger';
 import { BalanceCalculator } from '../utils/balanceCalculator';
 import { safeFirestoreOperation, checkNetworkConnection } from '../utils/firestoreHelpers';
 import { generateId, roundMoney } from '../utils/formatters';
@@ -17,7 +17,7 @@ import {
   sanitizeBalanceTargetAccountUpdates,
   updateAccountWithBalanceTarget,
 } from './firestore/accountBalanceTarget';
-import type { Account, Transaction, RecurringPayment, Debt } from '../types/finance';
+import type { Account, Transaction } from '../types/finance';
 
 export type MergeCreditCardsDestination = Pick<Account, 'name'> & Partial<Omit<Account, 'id' | 'name' | 'type' | 'createdAt'>> & {
   id?: string;
@@ -48,10 +48,10 @@ export function useAccounts(
     updateAccount: firestoreUpdateAccount
   } = useFirestoreData();
 
-  const [localAccounts, setLocalAccounts] = useLocalStorage<Account[]>('accounts', []);
-  const [, setLocalTransactions] = useLocalStorage<Transaction[]>('transactions', []);
-  const [, setLocalRecurringPayments] = useLocalStorage<RecurringPayment[]>('recurringPayments', []);
-  const [, setLocalDebts] = useLocalStorage<Debt[]>('debts', []);
+  const {
+    accounts: localAccounts,
+    mutate: mutateGuestLedger,
+  } = useGuestLedger();
 
   // Usar Firebase si hay usuario, localStorage si no
   const accounts = userId ? firestoreAccounts : localAccounts;
@@ -125,7 +125,9 @@ export function useAccounts(
         id: generateId(),
         createdAt: new Date()
       };
-      setLocalAccounts(prev => [...prev, newAccount]);
+      await mutateGuestLedger(draft => {
+        draft.accounts.push(newAccount);
+      }, { operationId: `guest-add-account:${newAccount.id}` });
     }
   };
 
@@ -155,43 +157,50 @@ export function useAccounts(
         );
       }
     } else {
-      let safeUpdates = updates;
-      let adjustment: Transaction | null = null;
-
-      if (targetBalance !== undefined) {
-        const account = accountsById.get(id);
+      const operationId = targetBalance === undefined
+        ? `guest-update-account:${id}:${generateId()}`
+        : `guest-balance-adjustment:${generateId()}`;
+      const transactionId = targetBalance === undefined ? undefined : generateId();
+      await mutateGuestLedger(draft => {
+        const account = draft.accounts.find(candidate => candidate.id === id);
         if (!account) throw new Error('La cuenta ya no existe');
+        let safeUpdates = updates;
+        let adjustment: Transaction | null = null;
 
-        const currentValue = account.type === 'credit'
-          ? balanceSnapshot.creditUsedByAccountId.get(id) ?? 0
-          : balanceSnapshot.balancesByAccountId.get(id) ?? 0;
-        adjustment = buildBalanceTargetAdjustment({
-          account,
-          currentValue,
-          targetBalance,
-          operationId: `guest-balance-adjustment:${generateId()}`,
-          transactionId: generateId(),
-        });
-        safeUpdates = {
-          ...sanitizeBalanceTargetAccountUpdates(updates),
-          ...(account.type === 'credit'
-            ? { usedCredit: adjustment?.targetBalance ?? roundMoney(targetBalance) }
-            : {}),
-        };
-      }
+        if (targetBalance !== undefined) {
+          const snapshot = BalanceCalculator.calculateBalanceSnapshot(
+            draft.accounts,
+            draft.transactions,
+          );
+          const currentValue = account.type === 'credit'
+            ? snapshot.creditUsedByAccountId.get(id) ?? 0
+            : snapshot.balancesByAccountId.get(id) ?? 0;
+          adjustment = buildBalanceTargetAdjustment({
+            account,
+            currentValue,
+            targetBalance,
+            operationId,
+            transactionId: transactionId!,
+          });
+          safeUpdates = {
+            ...sanitizeBalanceTargetAccountUpdates(updates),
+            ...(account.type === 'credit'
+              ? { usedCredit: adjustment?.targetBalance ?? roundMoney(targetBalance) }
+              : {}),
+          };
+        }
 
-      setLocalAccounts(prev =>
-        prev.map(acc => acc.id === id ? { ...acc, ...safeUpdates } : acc)
-      );
-      if (adjustment) {
-        setLocalTransactions(prev => [...prev, adjustment]);
-      }
+        draft.accounts = draft.accounts.map(candidate => (
+          candidate.id === id ? { ...candidate, ...safeUpdates } : candidate
+        ));
+        if (adjustment) draft.transactions.push(adjustment);
+      }, { operationId });
     }
   };
 
   const deleteAccount = async (id: string, options: { preserveTransactions?: boolean; allowDefaultDelete?: boolean } = {}) => {
     const account = accounts.find(a => a.id === id);
-    if (account?.isDefault && !options.allowDefaultDelete) {
+    if (userId && account?.isDefault && !options.allowDefaultDelete) {
       throw new Error('No puedes eliminar la cuenta por defecto');
     }
 
@@ -207,27 +216,30 @@ export function useAccounts(
       // debe limpiar el bankAccountId colgante de las TC asociadas y conservar
       // la invariante de "exactamente una cuenta por defecto". Antes solo
       // quitaba la cuenta y corrompía saldos/stats con referencias colgantes.
-      if (!options.preserveTransactions) {
-        setLocalTransactions(prev => {
-          const direct = prev.filter(t => t.accountId === id || t.toAccountId === id);
+      await mutateGuestLedger(draft => {
+        const currentAccount = draft.accounts.find(candidate => candidate.id === id);
+        if (!currentAccount) return;
+        if (currentAccount.isDefault && !options.allowDefaultDelete) {
+          throw new Error('No puedes eliminar la cuenta por defecto');
+        }
+        if (!options.preserveTransactions) {
+          const direct = draft.transactions.filter(t => t.accountId === id || t.toAccountId === id);
           const deleteIds = new Set(direct.flatMap(t => [t.id, t.linkedTransactionId]).filter(
             (value): value is string => Boolean(value)
           ));
-          return prev.filter(t => !t.id || !deleteIds.has(t.id));
-        });
-      }
-      setLocalDebts(prev => prev.filter(d => d.accountId !== id));
-      setLocalRecurringPayments(prev => prev.filter(p => p.accountId !== id));
-      setLocalAccounts(prev => {
-        let remaining = prev
+          draft.transactions = draft.transactions.filter(t => !t.id || !deleteIds.has(t.id));
+        }
+        draft.debts = draft.debts.filter(debt => debt.accountId !== id);
+        draft.recurringPayments = draft.recurringPayments.filter(payment => payment.accountId !== id);
+        let remaining = draft.accounts
           .filter(acc => acc.id !== id)
           .map(acc => (acc.bankAccountId === id ? { ...acc, bankAccountId: undefined } : acc));
         // Si se borró la cuenta por defecto, promover otra para no quedar sin default.
-        if (account?.isDefault && remaining.length > 0 && !remaining.some(a => a.isDefault)) {
+        if (currentAccount.isDefault && remaining.length > 0 && !remaining.some(a => a.isDefault)) {
           remaining = remaining.map((acc, i) => (i === 0 ? { ...acc, isDefault: true } : acc));
         }
-        return remaining;
-      });
+        draft.accounts = remaining;
+      }, { operationId: `guest-delete-account:${id}:${generateId()}` });
     }
   };
 
@@ -369,47 +381,45 @@ export function useAccounts(
             operationId: `guest-merge-credit-cards:${generateId()}`,
             transactionId: generateId(),
           });
-      setLocalAccounts(prev => {
-        const existingLocalDestination = prev.find(account => account.id === destination.id);
+      await mutateGuestLedger(draft => {
+        const existingLocalDestination = draft.accounts.find(account => account.id === destination.id);
         const localDestinationAccount: Account = {
           ...(existingLocalDestination ?? destinationAccount),
           ...destinationAccount,
           createdAt: existingLocalDestination?.createdAt ?? destinationAccount.createdAt,
         };
 
-        const withoutSourcesAndDestination = prev.filter(account =>
+        const withoutSourcesAndDestination = draft.accounts.filter(account =>
           account.id !== destinationId && (!account.id || !sourceIdSet.has(account.id))
         );
 
-        return [
+        draft.accounts = [
           ...withoutSourcesAndDestination.map(account => ({
             ...account,
             isDefault: shouldMakeDestinationDefault ? false : account.isDefault,
           })),
           localDestinationAccount,
         ];
-      });
-
-      setLocalTransactions(prev => {
-        const rewritten = prev.map(transactionItem => ({
+        const rewritten = draft.transactions.map(transactionItem => ({
           ...transactionItem,
           accountId: migrateAccountReference(transactionItem.accountId) ?? transactionItem.accountId,
           toAccountId: migrateAccountReference(transactionItem.toAccountId),
         }));
-        return desiredDebtAdjustment
+        draft.transactions = desiredDebtAdjustment
           ? [...rewritten, desiredDebtAdjustment]
           : rewritten;
-      });
-
-      setLocalRecurringPayments(prev => prev.map(payment => ({
+        draft.recurringPayments = draft.recurringPayments.map(payment => ({
         ...payment,
         accountId: migrateAccountReference(payment.accountId) ?? payment.accountId,
-      })));
-
-      setLocalDebts(prev => prev.map(debt => ({
+        }));
+        draft.debts = draft.debts.map(debt => ({
         ...debt,
         accountId: migrateAccountReference(debt.accountId) ?? debt.accountId,
-      })));
+        }));
+      }, {
+        operationId: desiredDebtAdjustment?.operationId
+          ?? `guest-merge-credit-cards:${destinationId}:${generateId()}`,
+      });
     }
   };
 
@@ -417,9 +427,15 @@ export function useAccounts(
     if (userId) {
       await setDefaultAccountAtomic(userId, id);
     } else {
-      setLocalAccounts(prev =>
-        prev.map(acc => ({ ...acc, isDefault: acc.id === id }))
-      );
+      await mutateGuestLedger(draft => {
+        if (!draft.accounts.some(account => account.id === id)) {
+          throw new Error('La cuenta ya no existe');
+        }
+        draft.accounts = draft.accounts.map(account => ({
+          ...account,
+          isDefault: account.id === id,
+        }));
+      }, { operationId: `guest-default-account:${id}:${generateId()}` });
     }
   };
 

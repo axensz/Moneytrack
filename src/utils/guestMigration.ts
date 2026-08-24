@@ -38,6 +38,7 @@ import {
   RULE_SAFE_COMPLEX_WRITE_LIMIT,
   RULE_SAFE_REFERENCE_LIMIT,
 } from '../config/firestoreLimits';
+import { readGuestLedgerEnvelope } from './guestLedger';
 
 /** Config del plan financiero guardada en local (key 'financialPlanConfig'). */
 interface StoredPlanConfig {
@@ -143,11 +144,12 @@ function readObjectKey<T>(key: string): T | null {
 /** Lee todos los datos del modo invitado desde localStorage. */
 export function readGuestData(): GuestData {
   if (typeof localStorage === 'undefined') return emptyGuestData();
+  const guestLedger = readGuestLedgerEnvelope();
   return {
-    accounts: readArrayKey<Account>('accounts'),
-    transactions: readArrayKey<Transaction>('transactions'),
-    recurringPayments: readArrayKey<RecurringPayment>('recurringPayments'),
-    debts: readArrayKey<Debt>('debts'),
+    accounts: guestLedger.data.accounts,
+    transactions: guestLedger.data.transactions,
+    recurringPayments: guestLedger.data.recurringPayments,
+    debts: guestLedger.data.debts,
     budgets: readArrayKey<Budget>('budgets'),
     savingsGoals: readArrayKey<SavingsGoal>('savingsGoals'),
     categories: readObjectKey<Categories>('financeCategories'),

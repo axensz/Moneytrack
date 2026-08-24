@@ -1,4 +1,6 @@
 import { generateId } from './formatters';
+import { getAccountReferenceIds } from './accountTransactions';
+import { reconcileUsedCredit } from './creditDeltas';
 import type {
   Account,
   Debt,
@@ -63,13 +65,6 @@ type GuestLedgerSubscriber = (envelope: GuestLedgerEnvelope) => void;
 
 const subscribers = new Set<GuestLedgerSubscriber>();
 let localMutationQueue: Promise<void> = Promise.resolve();
-
-const emptyGuestLedgerData = (): GuestLedgerData => ({
-  accounts: [],
-  transactions: [],
-  debts: [],
-  recurringPayments: [],
-});
 
 const getDefaultStorage = (): GuestLedgerStorage => {
   if (typeof localStorage === 'undefined') {
@@ -300,6 +295,19 @@ export function validateGuestLedgerData(data: GuestLedgerData): void {
   });
 }
 
+export function reconcileGuestCreditAuthority(data: GuestLedgerData): void {
+  data.accounts = data.accounts.map(account => {
+    if (account.type !== 'credit' || !account.id) return account;
+    return {
+      ...account,
+      usedCredit: reconcileUsedCredit(
+        getAccountReferenceIds(account),
+        data.transactions,
+      ),
+    };
+  });
+}
+
 export function createGuestLedgerEnvelope(
   data: GuestLedgerData,
   options: {
@@ -381,18 +389,39 @@ const rollbackEnvelope = (
   else storage.setItem(GUEST_LEDGER_STORAGE_KEY, previousRaw);
 };
 
+class GuestLedgerRevisionConflictError extends Error {
+  constructor() {
+    super('El guest ledger cambió durante la verificación.');
+    this.name = 'GuestLedgerRevisionConflictError';
+  }
+}
+
 const persistCandidate = (
   storage: GuestLedgerStorage,
   candidate: GuestLedgerEnvelope,
   previousRaw: string | null,
-): void => {
+): GuestLedgerEnvelope => {
   const serialized = JSON.stringify(candidate);
   if (previousRaw !== null) {
     storage.setItem(GUEST_LEDGER_RECOVERY_KEY, previousRaw);
   }
   storage.setItem(GUEST_LEDGER_STORAGE_KEY, serialized);
   const observed = storage.getItem(GUEST_LEDGER_STORAGE_KEY);
-  if (observed === serialized) return;
+  if (observed === serialized) return parseGuestLedgerEnvelope(observed);
+
+  if (observed) {
+    try {
+      const conflicting = parseGuestLedgerEnvelope(observed);
+      if (
+        conflicting.commitId !== candidate.commitId
+        && conflicting.revision >= candidate.revision
+      ) {
+        throw new GuestLedgerRevisionConflictError();
+      }
+    } catch (error) {
+      if (error instanceof GuestLedgerRevisionConflictError) throw error;
+    }
+  }
 
   try {
     rollbackEnvelope(storage, previousRaw);
@@ -444,15 +473,16 @@ export async function ensureGuestLedgerEnvelope(
     }
 
     const data = readLegacyGuestLedgerData(storage);
+    reconcileGuestCreditAuthority(data);
     const candidate = createGuestLedgerEnvelope(data, {
       revision: 1,
       commitId: options.createCommitId?.() ?? generateId(),
       committedAt: (options.now?.() ?? new Date()).toISOString(),
     });
-    persistCandidate(storage, candidate, null);
+    const verified = persistCandidate(storage, candidate, null);
     cleanupLegacyKeys(storage);
-    publishGuestLedger(candidate);
-    return candidate;
+    publishGuestLedger(verified);
+    return verified;
   });
 }
 
@@ -479,7 +509,10 @@ export async function mutateGuestLedger(
 
       const draft = cloneData(base.data);
       await mutator(draft, { attempt, baseRevision: base.revision });
+      reconcileGuestCreditAuthority(draft);
       validateGuestLedgerData(draft);
+      const serializedData = JSON.stringify(draft);
+      if (serializedData === JSON.stringify(base.data)) return base;
       const recentOperationIds = operationId
         ? [...base.recentOperationIds.filter(id => id !== operationId), operationId].slice(-100)
         : base.recentOperationIds.slice(-100);
@@ -497,16 +530,17 @@ export async function mutateGuestLedger(
       if (latestRaw !== baseRaw) continue;
 
       try {
-        persistCandidate(storage, candidate, baseRaw);
+        const verified = persistCandidate(storage, candidate, baseRaw);
+        cleanupLegacyKeys(storage);
+        publishGuestLedger(verified);
+        return verified;
       } catch (error) {
+        if (error instanceof GuestLedgerRevisionConflictError) continue;
         const observedRaw = storage.getItem(GUEST_LEDGER_STORAGE_KEY);
         if (isValidConflictingEnvelope(observedRaw, base.revision)) continue;
         throw error;
       }
 
-      cleanupLegacyKeys(storage);
-      publishGuestLedger(candidate);
-      return candidate;
     }
     throw new Error('El guest ledger cambió en otra pestaña. Reintenta la operación.');
   });

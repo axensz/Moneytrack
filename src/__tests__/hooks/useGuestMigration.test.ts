@@ -56,6 +56,17 @@ describe('useGuestMigration (S1)', () => {
     expect(result.current.counts).toEqual(COUNTS);
   });
 
+  it('surfaces an invalid local ledger as a retryable migration error', () => {
+    (readGuestData as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      throw new Error('invalid guest ledger');
+    });
+
+    const { result } = renderHook(() => useGuestMigration('user-1'));
+
+    expect(result.current.showPrompt).toBe(true);
+    expect(result.current.hasError).toBe(true);
+  });
+
   it('detects guest data only once per user', () => {
     (hasGuestData as ReturnType<typeof vi.fn>).mockReturnValue(true);
     const { rerender } = renderHook(({ uid }) => useGuestMigration(uid), {

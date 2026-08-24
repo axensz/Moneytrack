@@ -45,10 +45,15 @@ export function useGuestMigration(userId: string | null): UseGuestMigrationResul
     if (checkedForRef.current === userId) return;
     checkedForRef.current = userId;
 
-    const data = readGuestData();
-    if (hasGuestData(data)) {
-      setCounts(countGuestData(data));
-      setStatus('prompt');
+    try {
+      const data = readGuestData();
+      if (hasGuestData(data)) {
+        setCounts(countGuestData(data));
+        setStatus('prompt');
+      }
+    } catch (error) {
+      logger.error('No se pudo validar el guest ledger para migrarlo', error);
+      setStatus('error');
     }
   }, [userId]);
 

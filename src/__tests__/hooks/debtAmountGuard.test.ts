@@ -19,6 +19,25 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useDebts } from '../../hooks/useDebts';
 import type { Account, Debt, Transaction } from '../../types/finance';
+import {
+  GUEST_LEDGER_STORAGE_KEY,
+  createGuestLedgerEnvelope,
+  readGuestLedgerEnvelope,
+} from '../../utils/guestLedger';
+
+const seedLedger = (
+  debts: Debt[],
+  accounts: Account[] = [],
+  transactions: Transaction[] = [],
+) => {
+  const envelope = createGuestLedgerEnvelope({
+    accounts,
+    transactions,
+    debts,
+    recurringPayments: [],
+  }, { revision: 1, commitId: 'test-seed', committedAt: '2026-08-24T12:00:00.000Z' });
+  localStorage.setItem(GUEST_LEDGER_STORAGE_KEY, JSON.stringify(envelope));
+};
 
 const SEED_DEBT: Debt = {
   id: 'debt-1',
@@ -38,7 +57,7 @@ const SEED_DEBT: Debt = {
  * setLocalDebts, así que el saldo resultante es observable en result.current.debts.
  */
 function renderGuestDebts() {
-  localStorage.setItem('debts', JSON.stringify([SEED_DEBT]));
+  seedLedger([SEED_DEBT]);
   // addTransaction espía: NO debe invocarse para montos inválidos.
   const addTransaction = vi.fn<
     (tx: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>
@@ -194,7 +213,7 @@ const renderGuestLedgerDebts = (
   seed: Debt[] = [],
   transactions: Transaction[] = []
 ) => {
-  localStorage.setItem('debts', JSON.stringify(seed));
+  seedLedger(seed, [SAVINGS], transactions);
   const addTransaction = vi.fn<
     (tx: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>
   >(async () => undefined);
@@ -225,7 +244,7 @@ describe('debt ledger source-funds guard in guest mode', () => {
   });
 
   it('allows exact lent origination and reaches zero', async () => {
-    const { result, addTransaction } = renderGuestLedgerDebts();
+    const { result } = renderGuestLedgerDebts();
 
     await act(async () => {
       await result.current.addDebt({
@@ -238,7 +257,7 @@ describe('debt ledger source-funds guard in guest mode', () => {
       });
     });
 
-    expect(addTransaction).toHaveBeenCalledWith(expect.objectContaining({
+    expect(readGuestLedgerEnvelope().data.transactions[0]).toEqual(expect.objectContaining({
       type: 'expense',
       amount: 1_000,
       accountId: 'savings',
@@ -291,7 +310,7 @@ describe('debt ledger source-funds guard in guest mode', () => {
       });
     });
 
-    expect(improving.addTransaction).toHaveBeenCalledWith(expect.objectContaining({
+    expect(readGuestLedgerEnvelope().data.transactions[0]).toEqual(expect.objectContaining({
       type: 'income',
       amount: 50,
     }));

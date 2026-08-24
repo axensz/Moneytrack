@@ -25,7 +25,8 @@ vi.mock('../../contexts/FirestoreContext', () => ({
 }));
 
 import { useAccounts } from '../../hooks/useAccounts';
-import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { useGuestLedger } from '../../hooks/useGuestLedger';
+import { readGuestLedgerEnvelope } from '../../utils/guestLedger';
 
 const seed = () => {
   localStorage.setItem('accounts', JSON.stringify([
@@ -39,10 +40,11 @@ const seed = () => {
     { id: 't3', type: 'expense', amount: 30, category: 'x', description: '', date: new Date(), paid: true, accountId: 'b' },
   ] as Transaction[]));
   localStorage.setItem('debts', JSON.stringify([
-    { id: 'd1', accountId: 'a' }, { id: 'd2', accountId: 'b' },
+    { id: 'd1', personName: 'Uno', type: 'borrowed', originalAmount: 10, remainingAmount: 10, isSettled: false, accountId: 'a' },
+    { id: 'd2', personName: 'Dos', type: 'borrowed', originalAmount: 20, remainingAmount: 20, isSettled: false, accountId: 'b' },
   ] as Debt[]));
   localStorage.setItem('recurringPayments', JSON.stringify([
-    { id: 'r1', accountId: 'a' },
+    { id: 'r1', name: 'Servicio', amount: 5, category: 'Servicios', dueDay: 1, frequency: 'monthly', isActive: true, accountId: 'a' },
   ] as RecurringPayment[]));
 };
 
@@ -58,10 +60,8 @@ describe('useAccounts.deleteAccount — modo invitado (#accounts-1)', () => {
     // ejercitar también la reasignación de default (red de seguridad del cascade).
     await act(async () => { await result.current.deleteAccount('a', { allowDefaultDelete: true }); });
 
-    const accounts = JSON.parse(localStorage.getItem('accounts')!) as Account[];
-    const txs = JSON.parse(localStorage.getItem('transactions')!) as Transaction[];
-    const debts = JSON.parse(localStorage.getItem('debts')!) as Debt[];
-    const recurring = JSON.parse(localStorage.getItem('recurringPayments')!) as RecurringPayment[];
+    const ledger = readGuestLedgerEnvelope().data;
+    const { accounts, transactions: txs, debts, recurringPayments: recurring } = ledger;
 
     // Cuenta borrada; no quedan referencias colgantes.
     expect(accounts.find(a => a.id === 'a')).toBeUndefined();
@@ -84,20 +84,24 @@ describe('useAccounts.deleteAccount — modo invitado (#accounts-1)', () => {
     ] as Account[]));
 
     const accountsHook = renderHook(() => useAccounts(null, [], vi.fn()));
-    const transactionStore = renderHook(() => useLocalStorage<Transaction[]>('transactions', []));
+    const transactionStore = renderHook(() => useGuestLedger());
     await waitFor(() => expect(accountsHook.result.current.accounts).toHaveLength(2));
 
-    act(() => transactionStore.result.current[1]([
-      { id: 'card-payment', linkedTransactionId: 'bank-payment', type: 'income', amount: 100, category: 'Pago Crédito', description: '', date: new Date(), paid: true, accountId: 'card' },
-      { id: 'bank-payment', linkedTransactionId: 'card-payment', type: 'expense', amount: 100, category: 'Pago Crédito', description: '', date: new Date(), paid: true, accountId: 'bank' },
-      { id: 'bank-income', type: 'income', amount: 500, category: 'x', description: '', date: new Date(), paid: true, accountId: 'bank' },
-    ]));
+    await act(async () => {
+      await transactionStore.result.current.mutate(draft => {
+        draft.transactions = [
+          { id: 'card-payment', linkedTransactionId: 'bank-payment', type: 'income', amount: 100, category: 'Pago Crédito', description: '', date: new Date(), paid: true, accountId: 'card' },
+          { id: 'bank-payment', linkedTransactionId: 'card-payment', type: 'expense', amount: 100, category: 'Pago Crédito', description: '', date: new Date(), paid: true, accountId: 'bank' },
+          { id: 'bank-income', type: 'income', amount: 500, category: 'x', description: '', date: new Date(), paid: true, accountId: 'bank' },
+        ];
+      }, { operationId: 'seed-concurrent-transactions' });
+    });
 
     await act(async () => { await accountsHook.result.current.deleteAccount('card'); });
 
-    const persisted = JSON.parse(localStorage.getItem('transactions')!) as Transaction[];
+    const persisted = readGuestLedgerEnvelope().data.transactions;
     expect(persisted.map(transaction => transaction.id)).toEqual(['bank-income']);
-    expect(transactionStore.result.current[0].map(transaction => transaction.id)).toEqual(['bank-income']);
+    expect(transactionStore.result.current.transactions.map(transaction => transaction.id)).toEqual(['bank-income']);
   });
 });
 
@@ -134,10 +138,9 @@ describe('useAccounts.updateAccount — saldo objetivo en modo invitado', () => 
       );
     });
 
-    const persistedAccounts = JSON.parse(localStorage.getItem('accounts')!) as Account[];
-    const persistedTransactions = JSON.parse(
-      localStorage.getItem('transactions')!
-    ) as Transaction[];
+    const persistedLedger = readGuestLedgerEnvelope().data;
+    const persistedAccounts = persistedLedger.accounts;
+    const persistedTransactions = persistedLedger.transactions;
 
     expect(persistedAccounts[0]).toMatchObject({
       name: 'Ahorro principal',
@@ -153,6 +156,27 @@ describe('useAccounts.updateAccount — saldo objetivo en modo invitado', () => 
       expectedBefore: 150,
       targetBalance: 120,
     });
+  });
+
+  it('keeps both account and transaction collections unchanged when persistence fails', async () => {
+    const account: Account = {
+      id: 'savings', name: 'Ahorros', type: 'savings', isDefault: true, initialBalance: 100,
+    };
+    localStorage.setItem('accounts', JSON.stringify([account]));
+    const { result } = renderHook(() => useAccounts(null, [], vi.fn()));
+    await waitFor(() => expect(result.current.accounts).toHaveLength(1));
+    const rawBefore = localStorage.getItem('moneytrack_guest_ledger_v1');
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => {
+      throw new DOMException('quota', 'QuotaExceededError');
+    });
+
+    await expect(act(async () => {
+      await result.current.updateAccount('savings', { name: 'No persistido' }, { targetBalance: 80 });
+    })).rejects.toThrow();
+
+    expect(readGuestLedgerEnvelope().data.accounts[0].name).toBe('Ahorros');
+    expect(readGuestLedgerEnvelope().data.transactions).toEqual([]);
+    expect(localStorage.getItem('moneytrack_guest_ledger_v1')).toBe(rawBefore);
   });
 });
 
@@ -193,10 +217,9 @@ describe('useAccounts.mergeCreditCards — deuda objetivo en modo invitado', () 
       });
     });
 
-    const persistedAccounts = JSON.parse(localStorage.getItem('accounts')!) as Account[];
-    const persistedTransactions = JSON.parse(
-      localStorage.getItem('transactions')!
-    ) as Transaction[];
+    const persistedLedger = readGuestLedgerEnvelope().data;
+    const persistedAccounts = persistedLedger.accounts;
+    const persistedTransactions = persistedLedger.transactions;
     expect(persistedAccounts.some(account => account.id === 'source')).toBe(false);
     expect(persistedAccounts.find(account => account.id === 'destination')).toMatchObject({
       usedCredit: 400,

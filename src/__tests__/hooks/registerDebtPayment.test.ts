@@ -13,12 +13,14 @@ import { renderHook, act } from '@testing-library/react';
 import { useDebts } from '../../hooks/useDebts';
 import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../../config/constants';
 import type { Account, Debt, Transaction } from '../../types/finance';
+import {
+  GUEST_LEDGER_STORAGE_KEY,
+  createGuestLedgerEnvelope,
+  readGuestLedgerEnvelope,
+} from '../../utils/guestLedger';
 
 type AddTransactionFn = (tx: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
 type RestoreTransactionFn = (tx: Transaction) => Promise<void>;
-
-const seedDebts = (debts: Partial<Debt>[]) =>
-  localStorage.setItem('debts', JSON.stringify(debts));
 
 const makeDebt = (o: Partial<Debt> = {}): Partial<Debt> => ({
   id: 'd1',
@@ -40,17 +42,42 @@ const DEFAULT_ACCOUNTS: Account[] = [{
   initialBalance: 1_000_000,
 }];
 
-const renderDebts = (addTransaction?: ReturnType<typeof vi.fn>) =>
-  renderHook(() =>
+const seedDebts = (
+  debts: Partial<Debt>[],
+  accounts: Account[] = DEFAULT_ACCOUNTS,
+  transactions: Transaction[] = [],
+) => {
+  const envelope = createGuestLedgerEnvelope({
+    accounts,
+    transactions,
+    debts: debts as Debt[],
+    recurringPayments: [],
+  }, { revision: 1, commitId: 'test-seed', committedAt: '2026-08-24T12:00:00.000Z' });
+  localStorage.setItem(GUEST_LEDGER_STORAGE_KEY, JSON.stringify(envelope));
+};
+
+const persistedTransactions = () => readGuestLedgerEnvelope().data.transactions;
+
+const renderDebts = (addTransaction?: ReturnType<typeof vi.fn>) => {
+  if (!localStorage.getItem(GUEST_LEDGER_STORAGE_KEY)) seedDebts([]);
+  return renderHook(() =>
     useDebts(null, [], undefined, addTransaction ? {
       addTransaction: addTransaction as unknown as AddTransactionFn,
       accounts: DEFAULT_ACCOUNTS,
     } : {})
   ).result;
+};
 
 beforeEach(() => {
+  vi.restoreAllMocks();
   localStorage.clear();
 });
+
+const failNextGuestPersist = () => vi
+  .spyOn(Storage.prototype, 'setItem')
+  .mockImplementationOnce(() => {
+    throw new Error('storage rejected');
+  });
 
 describe('registerDebtPayment (código real de useDebts) — A1', () => {
   it('pago parcial de un préstamo (lent): reduce el saldo y postea un INGRESO por el monto', async () => {
@@ -64,8 +91,8 @@ describe('registerDebtPayment (código real de useDebts) — A1', () => {
 
     expect(result.current.debts[0].remainingAmount).toBe(700);
     expect(result.current.debts[0].isSettled).toBe(false);
-    expect(addTransaction).toHaveBeenCalledTimes(1);
-    expect(addTransaction.mock.calls[0][0]).toMatchObject({
+    expect(persistedTransactions()).toHaveLength(1);
+    expect(persistedTransactions()[0]).toMatchObject({
       type: 'income', // cobrar un préstamo prestado = ingreso
       amount: 300,
       category: LOAN_PAYMENT_CATEGORY,
@@ -86,7 +113,7 @@ describe('registerDebtPayment (código real de useDebts) — A1', () => {
     expect(result.current.debts[0].remainingAmount).toBe(0);
     expect(result.current.debts[0].isSettled).toBe(true);
     // Solo se mueve lo que la deuda respalda (500), no los 800 crudos.
-    expect(addTransaction.mock.calls[0][0].amount).toBe(500);
+    expect(persistedTransactions()[0].amount).toBe(500);
   });
 
   it('pagar el saldo exacto salda la deuda', async () => {
@@ -112,7 +139,7 @@ describe('registerDebtPayment (código real de useDebts) — A1', () => {
     });
 
     expect(result.current.debts[0].remainingAmount).toBe(600);
-    expect(addTransaction.mock.calls[0][0]).toMatchObject({ type: 'expense', amount: 400 });
+    expect(persistedTransactions()[0]).toMatchObject({ type: 'expense', amount: 400 });
   });
 
   it('sin cuenta asociada: reduce el saldo pero NO mueve dinero', async () => {
@@ -156,8 +183,9 @@ describe('registerDebtPayment (código real de useDebts) — A1', () => {
 
   it('conserva la deuda intacta si falla la transacción local del pago', async () => {
     seedDebts([makeDebt({ remainingAmount: 1000 })]);
-    const addTransaction = vi.fn().mockRejectedValue(new Error('storage rejected'));
+    const addTransaction = vi.fn();
     const result = renderDebts(addTransaction);
+    failNextGuestPersist();
 
     await expect(act(async () => {
       await result.current.registerDebtPayment('d1', 300);
@@ -167,11 +195,13 @@ describe('registerDebtPayment (código real de useDebts) — A1', () => {
       remainingAmount: 1000,
       isSettled: false,
     });
+    expect(readGuestLedgerEnvelope().data.transactions).toEqual([]);
   });
 
   it('no conserva una deuda local parcial si falla su movimiento original', async () => {
-    const addTransaction = vi.fn().mockRejectedValue(new Error('storage rejected'));
+    const addTransaction = vi.fn();
     const result = renderDebts(addTransaction);
+    failNextGuestPersist();
 
     await expect(act(async () => {
       await result.current.addDebt({
@@ -185,11 +215,10 @@ describe('registerDebtPayment (código real de useDebts) — A1', () => {
     })).rejects.toThrow('storage rejected');
 
     expect(result.current.debts).toEqual([]);
-    expect(JSON.parse(localStorage.getItem('debts') ?? '[]')).toEqual([]);
+    expect(readGuestLedgerEnvelope().data.debts).toEqual([]);
   });
 
   it('reasigna localmente solo el principal y conserva pagos históricos', async () => {
-    seedDebts([makeDebt({ accountId: 'acc-1' })]);
     const accounts: Account[] = [
       { id: 'acc-1', name: 'Ahorros', type: 'savings', isDefault: true, initialBalance: 0 },
       { id: 'acc-2', name: 'Efectivo', type: 'cash', isDefault: false, initialBalance: 0 },
@@ -202,6 +231,7 @@ describe('registerDebtPayment (código real de useDebts) — A1', () => {
       id: 'payment', type: 'income', amount: 300, category: LOAN_PAYMENT_CATEGORY,
       description: 'Cobro de Juan', date: new Date(), paid: true, accountId: 'acc-1', debtId: 'd1',
     };
+    seedDebts([makeDebt({ accountId: 'acc-1' })], accounts, [principal, historicalPayment]);
     const updateTransaction = vi.fn().mockResolvedValue(undefined);
     const result = renderHook(() => useDebts(null, [principal, historicalPayment], undefined, {
       accounts,
@@ -213,12 +243,13 @@ describe('registerDebtPayment (código real de useDebts) — A1', () => {
     });
 
     expect(result.current.debts[0].accountId).toBe('acc-2');
-    expect(updateTransaction).toHaveBeenCalledTimes(1);
-    expect(updateTransaction).toHaveBeenCalledWith('principal', { accountId: 'acc-2' });
+    expect(readGuestLedgerEnvelope().data.transactions.find(item => item.id === 'principal'))
+      .toMatchObject({ accountId: 'acc-2' });
+    expect(readGuestLedgerEnvelope().data.transactions.find(item => item.id === 'payment'))
+      .toMatchObject({ accountId: 'acc-1' });
   });
 
   it('conserva la cuenta local anterior si falla la mutación del principal', async () => {
-    seedDebts([makeDebt({ accountId: 'acc-1' })]);
     const accounts: Account[] = [
       { id: 'acc-1', name: 'Ahorros', type: 'savings', isDefault: true, initialBalance: 0 },
       { id: 'acc-2', name: 'Efectivo', type: 'cash', isDefault: false, initialBalance: 0 },
@@ -227,26 +258,28 @@ describe('registerDebtPayment (código real de useDebts) — A1', () => {
       id: 'principal', type: 'expense', amount: 1000, category: LOAN_CATEGORY,
       description: 'Préstamo a Juan', date: new Date(), paid: true, accountId: 'acc-1', debtId: 'd1',
     };
-    const updateTransaction = vi.fn().mockRejectedValue(new Error('storage rejected'));
+    seedDebts([makeDebt({ accountId: 'acc-1' })], accounts, [principal]);
+    const updateTransaction = vi.fn();
     const result = renderHook(() => useDebts(null, [principal], undefined, {
       accounts,
       updateTransaction,
     })).result;
+    failNextGuestPersist();
 
     await expect(act(async () => {
       await result.current.reassignDebtAccount('d1', 'acc-2');
     })).rejects.toThrow('storage rejected');
 
     expect(result.current.debts[0].accountId).toBe('acc-1');
-    expect(JSON.parse(localStorage.getItem('debts') ?? '[]')[0].accountId).toBe('acc-1');
+    expect(readGuestLedgerEnvelope().data.debts[0].accountId).toBe('acc-1');
   });
 
   it('permite cambiar solo pagos futuros en una deuda local heredada sin principal', async () => {
-    seedDebts([makeDebt({ accountId: 'acc-1' })]);
     const accounts: Account[] = [
       { id: 'acc-1', name: 'Ahorros', type: 'savings', isDefault: true, initialBalance: 0 },
       { id: 'acc-2', name: 'Efectivo', type: 'cash', isDefault: false, initialBalance: 0 },
     ];
+    seedDebts([makeDebt({ accountId: 'acc-1' })], accounts);
     const updateTransaction = vi.fn();
     const result = renderHook(() => useDebts(null, [], undefined, {
       accounts,
@@ -262,7 +295,6 @@ describe('registerDebtPayment (código real de useDebts) — A1', () => {
   });
 
   it('retira la operación local al elegir Sin cuenta y conserva la deuda si el borrado falla', async () => {
-    seedDebts([makeDebt({ accountId: 'acc-1' })]);
     const accounts: Account[] = [
       { id: 'acc-1', name: 'Ahorros', type: 'savings', isDefault: true, initialBalance: 0 },
     ];
@@ -270,23 +302,24 @@ describe('registerDebtPayment (código real de useDebts) — A1', () => {
       id: 'principal', type: 'expense', amount: 1000, category: LOAN_CATEGORY,
       description: 'Préstamo a Juan', date: new Date(), paid: true, accountId: 'acc-1', debtId: 'd1',
     };
-    const deleteTransaction = vi.fn().mockRejectedValueOnce(new Error('storage rejected'));
+    seedDebts([makeDebt({ accountId: 'acc-1' })], accounts, [principal]);
+    const deleteTransaction = vi.fn();
     const result = renderHook(() => useDebts(null, [principal], undefined, {
       accounts,
       deleteTransaction,
     })).result;
+    failNextGuestPersist();
 
     await expect(act(async () => {
       await result.current.reassignDebtAccount('d1', undefined);
     })).rejects.toThrow('storage rejected');
     expect(result.current.debts[0].accountId).toBe('acc-1');
 
-    deleteTransaction.mockResolvedValueOnce(undefined);
     await act(async () => {
       await result.current.reassignDebtAccount('d1', undefined);
     });
     expect(result.current.debts[0].accountId).toBeUndefined();
-    expect(deleteTransaction).toHaveBeenLastCalledWith('principal');
+    expect(readGuestLedgerEnvelope().data.transactions).toEqual([]);
   });
 });
 
@@ -320,8 +353,7 @@ describe('restoreDebtPayment — modo invitado', () => {
       await result.current.restoreDebtPayment(deletedPayment);
     });
 
-    expect(restoreTransaction).toHaveBeenCalledOnce();
-    expect(restoreTransaction).toHaveBeenCalledWith(deletedPayment);
+    expect(persistedTransactions().filter(item => item.id === deletedPayment.id)).toHaveLength(1);
     expect(result.current.debts[0]).toMatchObject({
       remainingAmount: 700,
       isSettled: false,
@@ -332,6 +364,7 @@ describe('restoreDebtPayment — modo invitado', () => {
     seedDebts([makeDebt({ remainingAmount: 1000, isSettled: false })]);
     const failedRestore = vi.fn().mockRejectedValue(new Error('storage rejected'));
     const failed = renderRestore(failedRestore);
+    failNextGuestPersist();
 
     await expect(act(async () => {
       await failed.current.restoreDebtPayment(deletedPayment);
@@ -348,12 +381,16 @@ describe('restoreDebtPayment — modo invitado', () => {
   });
 
   it('trata como éxito un retry tras remount cuando la fila restaurada ya existe', async () => {
-    seedDebts([makeDebt({ remainingAmount: 700, isSettled: false })]);
     const alreadyRestored: Transaction = {
       ...deletedPayment,
       mutationKind: 'restore',
       mutationSource: 'undo',
     };
+    seedDebts(
+      [makeDebt({ remainingAmount: 700, isSettled: false })],
+      DEFAULT_ACCOUNTS,
+      [alreadyRestored],
+    );
     const restoreTransaction = vi.fn().mockResolvedValue(undefined);
     const result = renderHook(() => useDebts(null, [alreadyRestored], undefined, {
       restoreTransaction: restoreTransaction as unknown as RestoreTransactionFn,

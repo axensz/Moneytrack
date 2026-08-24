@@ -10,6 +10,10 @@ import {
   type WriteOp,
 } from '../../utils/guestMigration';
 import type { Account, Transaction } from '../../types/finance';
+import {
+  GUEST_LEDGER_STORAGE_KEY,
+  createGuestLedgerEnvelope,
+} from '../../utils/guestLedger';
 
 const UID = 'user-123';
 
@@ -50,12 +54,25 @@ describe('readGuestData (S1)', () => {
     expect(hasGuestData(data)).toBe(true);
   });
 
-  it('tolerates corrupt JSON without throwing', () => {
+  it('rejects corrupt legacy critical data instead of silently migrating it', () => {
     localStorage.setItem('accounts', '{not valid json');
     localStorage.setItem('transactions', JSON.stringify({ not: 'an array' }));
-    const data = readGuestData();
-    expect(data.accounts).toEqual([]);
-    expect(data.transactions).toEqual([]);
+    expect(() => readGuestData()).toThrow(/legacy accounts/i);
+  });
+
+  it('uses the verified envelope as authority when interrupted cleanup left legacy keys', () => {
+    const envelope = createGuestLedgerEnvelope({
+      accounts: [{ id: 'envelope-account', name: 'Envelope', type: 'cash', isDefault: true, initialBalance: 0 }],
+      transactions: [],
+      debts: [],
+      recurringPayments: [],
+    }, { revision: 2, commitId: 'verified', committedAt: '2026-08-24T12:00:00.000Z' });
+    localStorage.setItem(GUEST_LEDGER_STORAGE_KEY, JSON.stringify(envelope));
+    localStorage.setItem('accounts', JSON.stringify([
+      { id: 'legacy-account', name: 'Legacy', type: 'cash', isDefault: true, initialBalance: 0 },
+    ]));
+
+    expect(readGuestData().accounts.map(account => account.id)).toEqual(['envelope-account']);
   });
 
   it('does not count categories/planConfig alone as migratable data', () => {

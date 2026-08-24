@@ -5,7 +5,14 @@
  * Al cerrar sesión se limpian para que, en un dispositivo compartido, el siguiente
  * usuario no vea datos del anterior (S2).
  */
+import {
+  GUEST_LEDGER_RECOVERY_KEY,
+  GUEST_LEDGER_STORAGE_KEY,
+} from './guestLedger';
+
 export const GUEST_DATA_KEYS = [
+  GUEST_LEDGER_STORAGE_KEY,
+  GUEST_LEDGER_RECOVERY_KEY,
   'accounts',
   'transactions',
   'recurringPayments',

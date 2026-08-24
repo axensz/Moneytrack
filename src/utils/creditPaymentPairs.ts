@@ -1,6 +1,7 @@
 import { CREDIT_PAYMENT_CATEGORY } from '../config/constants';
 import type { Account, Transaction } from '../types/finance';
 import { ensureDate } from './dateUtils';
+import { roundMoney } from './formatters';
 import { getAccountReferenceIds } from './accountTransactions';
 
 export const CURRENT_PAYMENT_PAIR_MODEL_VERSION = 1;
@@ -14,6 +15,76 @@ const normalizeText = (value: string): string => value.trim().replace(/\s+/g, ' 
 
 const isCreditPaymentCategory = (category: string): boolean =>
   category === CREDIT_PAYMENT_CATEGORY || category === 'Pago TC';
+
+export type CreditPaymentPairIssue =
+  | 'MISSING_COUNTERPART'
+  | 'NON_RECIPROCAL_LINK'
+  | 'WRONG_ROLE'
+  | 'WRONG_ACCOUNT'
+  | 'CATEGORY_MISMATCH'
+  | 'BENEFICIARY_MISMATCH'
+  | 'AMOUNT_MISMATCH'
+  | 'DATE_MISMATCH'
+  | 'PAID_MISMATCH';
+
+export type CreditPaymentPairValidation =
+  | {
+      valid: true;
+      creditTransaction: Transaction;
+      sourceTransaction: Transaction;
+    }
+  | { valid: false; reason: CreditPaymentPairIssue };
+
+export function validateCreditPaymentPair(
+  creditTransaction: Transaction,
+  sourceTransaction: Transaction | undefined,
+  account: Account
+): CreditPaymentPairValidation {
+  if (!sourceTransaction) return { valid: false, reason: 'MISSING_COUNTERPART' };
+  if (
+    !creditTransaction.id ||
+    !sourceTransaction.id ||
+    creditTransaction.linkedTransactionId !== sourceTransaction.id ||
+    sourceTransaction.linkedTransactionId !== creditTransaction.id
+  ) {
+    return { valid: false, reason: 'NON_RECIPROCAL_LINK' };
+  }
+  if (creditTransaction.type !== 'income' || sourceTransaction.type !== 'expense') {
+    return { valid: false, reason: 'WRONG_ROLE' };
+  }
+
+  const creditAccountIds = getAccountReferenceIds(account);
+  if (
+    account.type !== 'credit' ||
+    !creditAccountIds.includes(creditTransaction.accountId) ||
+    creditAccountIds.includes(sourceTransaction.accountId)
+  ) {
+    return { valid: false, reason: 'WRONG_ACCOUNT' };
+  }
+  if (
+    !isCreditPaymentCategory(creditTransaction.category) ||
+    !isCreditPaymentCategory(sourceTransaction.category)
+  ) {
+    return { valid: false, reason: 'CATEGORY_MISMATCH' };
+  }
+  if (
+    normalizeText(creditTransaction.beneficiary ?? '') !==
+    normalizeText(sourceTransaction.beneficiary ?? '')
+  ) {
+    return { valid: false, reason: 'BENEFICIARY_MISMATCH' };
+  }
+  if (roundMoney(creditTransaction.amount) !== roundMoney(sourceTransaction.amount)) {
+    return { valid: false, reason: 'AMOUNT_MISMATCH' };
+  }
+  if (ensureDate(creditTransaction.date).getTime() !== ensureDate(sourceTransaction.date).getTime()) {
+    return { valid: false, reason: 'DATE_MISMATCH' };
+  }
+  if (creditTransaction.paid !== sourceTransaction.paid) {
+    return { valid: false, reason: 'PAID_MISMATCH' };
+  }
+
+  return { valid: true, creditTransaction, sourceTransaction };
+}
 
 /**
  * Reconoce exclusivamente el formato que Moneytrack genera al pagar una TC.

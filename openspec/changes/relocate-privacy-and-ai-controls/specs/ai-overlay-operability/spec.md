@@ -22,7 +22,7 @@ The shell MUST provide one named viewport-fixed assistant launcher outside the h
 ### Requirement: Assistant has predictable close and focus behavior
 The assistant MUST expose a named non-modal dialog contract, move focus into the opened panel, close with its visible control or Escape, and restore focus to the floating launcher.
 
-#### Scenario: Assistant opens from the launcher
+#### Scenario: Assistant opens from the shell
 - **WHEN** a user activates the configured assistant launcher
 - **THEN** a dialog named `Asistente MoneyTrack` MUST open and focus MUST move to the composer or the first enabled panel control
 

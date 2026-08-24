@@ -155,3 +155,63 @@ describe('useAccounts.updateAccount — saldo objetivo en modo invitado', () => 
     });
   });
 });
+
+describe('useAccounts.mergeCreditCards — deuda objetivo en modo invitado', () => {
+  it('fusiona referencias y agrega un único ajuste hacia la deuda exacta', async () => {
+    const guestAccounts: Account[] = [
+      { id: 'bank', name: 'Banco', type: 'savings', isDefault: true, initialBalance: 0 },
+      {
+        id: 'source', name: 'Visa 1', type: 'credit', isDefault: false,
+        initialBalance: 0, creditLimit: 1_000, usedCredit: 300, bankAccountId: 'bank',
+      },
+      {
+        id: 'destination', name: 'Visa 2', type: 'credit', isDefault: false,
+        initialBalance: 0, creditLimit: 2_000, usedCredit: 200, bankAccountId: 'bank',
+      },
+    ];
+    const guestTransactions: Transaction[] = [
+      {
+        id: 'source-expense', type: 'expense', amount: 300, category: 'Compras',
+        description: '', date: new Date(), paid: true, accountId: 'source',
+      },
+      {
+        id: 'destination-expense', type: 'expense', amount: 200, category: 'Compras',
+        description: '', date: new Date(), paid: true, accountId: 'destination',
+      },
+    ];
+    localStorage.setItem('accounts', JSON.stringify(guestAccounts));
+    localStorage.setItem('transactions', JSON.stringify(guestTransactions));
+
+    const { result } = renderHook(() => useAccounts(null, guestTransactions, vi.fn()));
+    await waitFor(() => expect(result.current.accounts).toHaveLength(3));
+
+    await act(async () => {
+      await result.current.mergeCreditCards({
+        sourceAccountIds: ['source'],
+        destination: { id: 'destination', name: 'Visa 2' },
+        desiredDebt: 400,
+      });
+    });
+
+    const persistedAccounts = JSON.parse(localStorage.getItem('accounts')!) as Account[];
+    const persistedTransactions = JSON.parse(
+      localStorage.getItem('transactions')!
+    ) as Transaction[];
+    expect(persistedAccounts.some(account => account.id === 'source')).toBe(false);
+    expect(persistedAccounts.find(account => account.id === 'destination')).toMatchObject({
+      usedCredit: 400,
+      mergedAccountIds: ['source'],
+    });
+    expect(persistedTransactions).toHaveLength(3);
+    expect(persistedTransactions.find(transaction => transaction.id === 'source-expense'))
+      .toMatchObject({ accountId: 'destination' });
+    expect(persistedTransactions[2]).toMatchObject({
+      type: 'income',
+      amount: 100,
+      accountId: 'destination',
+      mutationKind: 'balance-adjustment',
+      expectedBefore: 500,
+      targetBalance: 400,
+    });
+  });
+});

@@ -4,13 +4,16 @@ import { useLocalStorage } from './useLocalStorage';
 import { BalanceCalculator } from '../utils/balanceCalculator';
 import { safeFirestoreOperation, checkNetworkConnection } from '../utils/firestoreHelpers';
 import { generateId, roundMoney } from '../utils/formatters';
-import { transactionUsesAccount } from '../utils/accountTransactions';
+import { getAccountReferenceIds, transactionUsesAccount } from '../utils/accountTransactions';
 import { getCreditCardUsedCredit } from '../utils/accountStrategies';
+import {
+  buildBalanceTargetAdjustment,
+  normalizeBalanceTarget,
+} from '../utils/balanceTargetAdjustment';
 import { CURRENT_CREDIT_DEBT_MODEL_VERSION } from '../utils/creditDeltas';
 import { CURRENT_PAYMENT_PAIR_MODEL_VERSION } from '../utils/creditPaymentPairs';
 import { deleteAccountCascade, mergeCreditCardsOrchestrated, setDefaultAccountAtomic } from './firestore/accountOrchestration';
 import {
-  buildBalanceTargetAdjustment,
   sanitizeBalanceTargetAccountUpdates,
   updateAccountWithBalanceTarget,
 } from './firestore/accountBalanceTarget';
@@ -23,6 +26,7 @@ export type MergeCreditCardsDestination = Pick<Account, 'name'> & Partial<Omit<A
 export interface MergeCreditCardsParams {
   sourceAccountIds: string[];
   destination: MergeCreditCardsDestination;
+  desiredDebt?: number;
 }
 
 export interface AccountUpdateOptions {
@@ -227,7 +231,14 @@ export function useAccounts(
     }
   };
 
-  const mergeCreditCards = async ({ sourceAccountIds, destination }: MergeCreditCardsParams) => {
+  const mergeCreditCards = async ({
+    sourceAccountIds,
+    destination,
+    desiredDebt,
+  }: MergeCreditCardsParams) => {
+    const normalizedDesiredDebt = desiredDebt === undefined
+      ? undefined
+      : normalizeBalanceTarget(desiredDebt);
     const uniqueSourceIds = Array.from(new Set(sourceAccountIds.filter(Boolean)));
 
     if (uniqueSourceIds.length === 0) {
@@ -329,7 +340,10 @@ export function useAccounts(
       initialBalance: 0,
       isDefault: shouldMakeDestinationDefault,
       createdAt: existingDestination?.createdAt ?? new Date(),
-      usedCredit: mergedUsedCredit,
+      mergedAccountIds: Array.from(new Set(
+        cardsToConsolidate.flatMap(getAccountReferenceIds)
+      )).filter(referenceId => referenceId !== destinationId),
+      usedCredit: normalizedDesiredDebt ?? mergedUsedCredit,
       creditDebtModelVersion: CURRENT_CREDIT_DEBT_MODEL_VERSION,
     };
 
@@ -343,8 +357,18 @@ export function useAccounts(
         destinationAccount,
         existingDestination,
         uniqueSourceIds,
+        desiredDebt: normalizedDesiredDebt,
       });
     } else {
+      const desiredDebtAdjustment = normalizedDesiredDebt === undefined
+        ? null
+        : buildBalanceTargetAdjustment({
+            account: destinationAccount,
+            currentValue: mergedUsedCredit,
+            targetBalance: normalizedDesiredDebt,
+            operationId: `guest-merge-credit-cards:${generateId()}`,
+            transactionId: generateId(),
+          });
       setLocalAccounts(prev => {
         const existingLocalDestination = prev.find(account => account.id === destination.id);
         const localDestinationAccount: Account = {
@@ -366,11 +390,16 @@ export function useAccounts(
         ];
       });
 
-      setLocalTransactions(prev => prev.map(transactionItem => ({
-        ...transactionItem,
-        accountId: migrateAccountReference(transactionItem.accountId) ?? transactionItem.accountId,
-        toAccountId: migrateAccountReference(transactionItem.toAccountId),
-      })));
+      setLocalTransactions(prev => {
+        const rewritten = prev.map(transactionItem => ({
+          ...transactionItem,
+          accountId: migrateAccountReference(transactionItem.accountId) ?? transactionItem.accountId,
+          toAccountId: migrateAccountReference(transactionItem.toAccountId),
+        }));
+        return desiredDebtAdjustment
+          ? [...rewritten, desiredDebtAdjustment]
+          : rewritten;
+      });
 
       setLocalRecurringPayments(prev => prev.map(payment => ({
         ...payment,

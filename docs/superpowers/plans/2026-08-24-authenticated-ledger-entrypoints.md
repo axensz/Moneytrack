@@ -55,12 +55,12 @@
 - Modify: `src/__tests__/hooks/accountMergeAndDefault.test.ts`
 - Modify: relevant merge-view tests
 
-- [ ] Add RED cases proving a desired-debt adjustment is in the merge batch, uses server-reconciled debt, publishes cache only after commit, and never creates a second-phase transaction on failure.
-- [ ] Extend `MergeCreditCardsParams`/orchestration with an optional normalized desired post-merge debt.
-- [ ] Reconcile rewritten server rows, create one audited adjustment row when required, and persist the exact target `usedCredit` in the same merge batch/release.
-- [ ] Remove the post-merge `addTransaction` call from `AccountsView`; preserve inline warning and success behavior.
-- [ ] Run merge/default/cascade/cache/form/typecheck/lint/diff regressions.
-- [ ] Commit as `feat: merge cards at an exact debt target`.
+- [x] Add RED cases proving a desired-debt adjustment is in the merge batch, uses server-reconciled debt, publishes cache only after commit, and never creates a second-phase transaction on failure.
+- [x] Extend `MergeCreditCardsParams`/orchestration with an optional normalized desired post-merge debt.
+- [x] Reconcile rewritten server rows, create one audited adjustment row when required, and persist the exact target `usedCredit` in the same merge batch/release.
+- [x] Remove the post-merge `addTransaction` call from `AccountsView`; preserve inline warning and success behavior.
+- [x] Run merge/default/cascade/cache/form/typecheck/lint/diff regressions.
+- [x] Commit as `feat: merge cards at an exact debt target`.
 
 ## Task 4: Give confirmed AI ledger actions stable authority
 

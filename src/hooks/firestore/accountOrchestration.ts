@@ -29,6 +29,7 @@ import {
 import { db } from '../../lib/firebaseDb';
 import { safeFirestoreOperation, checkNetworkConnection, stripUndefined } from '../../utils/firestoreHelpers';
 import { getAccountReferenceIds } from '../../utils/accountTransactions';
+import { buildBalanceTargetAdjustment } from '../../utils/balanceTargetAdjustment';
 import { creditDeltasByAccount, reconcileUsedCredit } from '../../utils/creditDeltas';
 import type { Account, Transaction } from '../../types/finance';
 import {
@@ -425,6 +426,7 @@ interface MergeCreditCardsPlan {
   destinationAccount: Account;
   existingDestination: Account | undefined;
   uniqueSourceIds: string[];
+  desiredDebt?: number;
 }
 
 const accountMergeRevision = (account: Account): string => JSON.stringify({
@@ -455,7 +457,7 @@ export async function mergeCreditCardsOrchestrated(
 ): Promise<void> {
   const {
     destinationId, destinationAccount, existingDestination,
-    uniqueSourceIds,
+    uniqueSourceIds, desiredDebt,
   } = plan;
 
   if (!checkNetworkConnection()) {
@@ -623,6 +625,37 @@ export async function mergeCreditCardsOrchestrated(
         rewrittenTransactions.push(rewrittenTransaction);
       });
 
+      const reconciledUsedCredit = reconcileUsedCredit(
+        destinationReferenceIds,
+        rewrittenTransactions
+      );
+      const adjustmentRef = desiredDebt === undefined ? null : doc(txCollection);
+      const desiredDebtAdjustment = desiredDebt === undefined || !adjustmentRef
+        ? null
+        : buildBalanceTargetAdjustment({
+            account: {
+              ...effectiveDestinationAccount,
+              id: destinationId,
+              usedCredit: reconciledUsedCredit,
+            },
+            currentValue: reconciledUsedCredit,
+            targetBalance: desiredDebt,
+            operationId,
+            transactionId: adjustmentRef.id,
+          });
+      const finalUsedCredit = desiredDebtAdjustment?.targetBalance
+        ?? reconciledUsedCredit;
+
+      if (desiredDebtAdjustment) {
+        const verifiedTarget = reconcileUsedCredit(
+          destinationReferenceIds,
+          [...rewrittenTransactions, desiredDebtAdjustment]
+        );
+        if (verifiedTarget !== finalUsedCredit) {
+          throw new Error('El ajuste de la fusión no coincide con la deuda objetivo');
+        }
+      }
+
       // El valor exacto queda en el mismo commit que el reapunte y los borrados;
       // no existe una segunda fase capaz de fallar y dejar la deuda desalineada.
       // Conservamos también las referencias históricas: una escritura offline
@@ -634,7 +667,7 @@ export async function mergeCreditCardsOrchestrated(
         mergedAccountIds: Array.from(
           new Set([...destinationReferenceIds, ...sourceReferenceIds])
         ).filter(referenceId => referenceId !== destinationId),
-        usedCredit: reconcileUsedCredit(destinationReferenceIds, rewrittenTransactions),
+        usedCredit: finalUsedCredit,
       } as Record<string, unknown>);
       operations.unshift({
         type: currentExistingDestination ? 'update' : 'set',
@@ -649,6 +682,17 @@ export async function mergeCreditCardsOrchestrated(
           data: updates,
         });
       });
+
+      if (adjustmentRef && desiredDebtAdjustment) {
+        const persistedAdjustment = { ...desiredDebtAdjustment };
+        delete persistedAdjustment.id;
+        operations.push({
+          type: 'set',
+          ref: adjustmentRef,
+          data: persistedAdjustment,
+        });
+        updatedTransactionsForCache.push(desiredDebtAdjustment);
+      }
 
       recurringIds.forEach(paymentId => {
         operations.push({

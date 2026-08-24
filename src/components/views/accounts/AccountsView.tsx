@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Wallet, CreditCard, Banknote, Receipt, Sparkles } from 'lucide-react';
-import { BALANCE_ADJUSTMENT_CATEGORY, UI_LABELS } from '../../../config/constants';
+import { UI_LABELS } from '../../../config/constants';
 import { ACTION_ICONS, sectionTitle, UI_TEXT } from '../../../config/ui';
 import { showToast } from '../../../utils/toastHelpers';
+import { parseCurrency } from '../../../utils/formatters';
 import { useAccountDomain, useTransactionDomain, useRecurringDomain, useDebtsDomain, useFormatCurrency } from '../../../hooks/useFinanceSelectors';
 import type { Account } from '../../../types/finance';
 import type { MergeCreditCardsParams } from '../../../hooks/useAccounts';
@@ -50,7 +51,7 @@ export const AccountsView: React.FC = () => {
     balancesReady,
     accountsLoading,
   } = useAccountDomain();
-  const { addTransaction, balanceTransactions } = useTransactionDomain();
+  const { balanceTransactions } = useTransactionDomain();
   const { recurringPayments } = useRecurringDomain();
   const { debts } = useDebtsDomain();
   const formatCurrency = useFormatCurrency();
@@ -177,8 +178,8 @@ export const AccountsView: React.FC = () => {
   // (autoritativo), NO de getCreditUsed() — que recalcula desde `transactions`, un
   // array PAGINADO en memoria. Con paginación, getCreditUsed() puede ver solo una
   // fracción de las transacciones y devolver una deuda combinada artificialmente
-  // baja; si el usuario aceptara ese valor como "deuda deseada", el ajuste posterior
-  // (BALANCE_ADJUSTMENT_CATEGORY) borraría deuda real de la tarjeta.
+  // baja. Una deuda deseada explícita se aplica dentro del merge contra el
+  // historial reconciliado bajo lease, nunca contra este valor de render.
   //
   // `usedCredit` es el mismo campo que useAccounts consolida en el merge
   // (mergedUsedCredit) y que reconcilia en deleteAccount, así que el baseline
@@ -192,8 +193,6 @@ export const AccountsView: React.FC = () => {
   const mergeCombinedUsedDebt = usedDebtForMerge(mergeSourceCard) + usedDebtForMerge(mergeTargetCard);
   // Clamp a 0: si la deuda combinada supera el cupo, "disponible" es 0, no negativo (#accounts).
   const mergeCombinedAvailableCredit = Math.max(0, mergeCombinedCreditLimit - mergeCombinedUsedDebt);
-
-  const parseCurrencyInput = (value: string): number => parseFloat(value.replace(',', '.'));
 
   const openMergeCreditCardsModal = (sourceCard: Account) => {
     const defaultTargetCard = creditCards.find((card) =>
@@ -232,18 +231,18 @@ export const AccountsView: React.FC = () => {
   const mergeCreditCards = async () => {
     if (!mergeSourceCard?.id || !mergeTargetCard?.id) return;
 
-    const newCreditLimit = parseCurrencyInput(mergeCreditLimitInput);
+    const newCreditLimit = parseCurrency(mergeCreditLimitInput);
     if (isNaN(newCreditLimit) || newCreditLimit <= 0) {
       showToast.error('El nuevo cupo debe ser mayor que cero');
       return;
     }
 
     const desiredDebt = mergeDesiredDebtInput.trim() === ''
-      ? mergeCombinedUsedDebt
-      : parseCurrencyInput(mergeDesiredDebtInput);
+      ? undefined
+      : parseCurrency(mergeDesiredDebtInput);
 
-    if (isNaN(desiredDebt) || desiredDebt < 0) {
-      showToast.error('Ingresa una deuda real deseada válida (debe ser un número positivo)');
+    if (desiredDebt !== undefined && (!Number.isFinite(desiredDebt) || desiredDebt < 0)) {
+      showToast.error('Ingresa una deuda real deseada válida (debe ser mayor o igual a cero)');
       return;
     }
 
@@ -251,8 +250,6 @@ export const AccountsView: React.FC = () => {
     // confirm nativo. El modal ya muestra un banner de advertencia inline y el
     // botón pasa a "Unificar de todas formas" (MergeCreditCardsModal), así el
     // usuario confirma de forma explícita y consistente con el resto de la UI.
-    const debtDifference = desiredDebt - mergeCombinedUsedDebt;
-
     try {
       setIsMergingCreditCards(true);
 
@@ -265,22 +262,10 @@ export const AccountsView: React.FC = () => {
           creditLimit: newCreditLimit,
           isDefault: mergeSourceCard.isDefault || mergeTargetCard.isDefault,
         },
+        desiredDebt,
       };
 
       await mergeCreditCardsDomain(params);
-
-      // Si la deuda deseada difiere de la combinada, crear ajuste
-      if (Math.abs(debtDifference) >= 0.01) {
-        await addTransaction({
-          type: debtDifference > 0 ? 'expense' : 'income',
-          amount: Math.abs(debtDifference),
-          category: BALANCE_ADJUSTMENT_CATEGORY,
-          description: `Ajuste por unificación TC: ${debtDifference > 0 ? '+' : '-'}${formatCurrency(Math.abs(debtDifference))}`,
-          date: new Date(),
-          paid: true,
-          accountId: mergeTargetCard.id,
-        });
-      }
 
       showToast.success(`Tarjetas unificadas en ${mergeTargetCard.name}`);
       setMergeSourceCard(null);

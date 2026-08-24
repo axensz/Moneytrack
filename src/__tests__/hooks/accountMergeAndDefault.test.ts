@@ -22,7 +22,7 @@ const M = vi.hoisted(() => ({
   commitError: null as Error | null,
 }));
 
-const mkRef = (path: string, id: string) => ({ __path: path, __id: id, __key: `${path}/${id}` });
+const mkRef = (path: string, id: string) => ({ id, __path: path, __id: id, __key: `${path}/${id}` });
 
 vi.mock('../../lib/firebaseDb', () => ({ db: { __db: true } }));
 vi.mock('../../contexts/FirestoreContext', () => ({ useFirestoreData: () => M.firestoreData }));
@@ -360,6 +360,95 @@ describe('useAccounts.mergeCreditCards — caracterización', () => {
     // Reconciliado desde transacciones reapuntadas: 200k + 200k + 100k = 500k.
     const reconciled = findOp('update', 'dest');
     expect(reconciled?.data?.usedCredit).toBe(500_000);
+  });
+
+  it('calcula el ajuste deseado contra la deuda reconciliada del servidor y lo confirma en el batch del merge', async () => {
+    seed([bank, cc1, cc2, dest]);
+    // El render sugiere 600k por los usedCredit persistidos, pero el historial
+    // servidor bajo lease demuestra 300k. El ajuste correcto hacia 250k es 50k,
+    // no los 350k que produciría calcular el delta antes de adquirir el lock.
+    M.txStore.set('source-expense', {
+      id: 'source-expense',
+      type: 'expense',
+      amount: 200_000,
+      category: 'Compras',
+      description: 'Compra origen',
+      date: new Date(),
+      paid: true,
+      accountId: 'cc1',
+    });
+    M.txStore.set('destination-expense', {
+      id: 'destination-expense',
+      type: 'expense',
+      amount: 100_000,
+      category: 'Compras',
+      description: 'Compra destino',
+      date: new Date(),
+      paid: true,
+      accountId: 'dest',
+    });
+
+    const acc = renderHook(() => useAccounts(UID, [], vi.fn())).result;
+    await acc.current.mergeCreditCards({
+      sourceAccountIds: ['cc1', 'cc2'],
+      destination: { id: 'dest', name: 'Visa Unificada' },
+      desiredDebt: 250_000,
+    });
+
+    expect(findOp('update', 'dest')?.data?.usedCredit).toBe(250_000);
+    const adjustmentWrite = M.log.find(operation =>
+      operation.op === 'set' && operation.path?.endsWith('/transactions')
+    );
+    expect(adjustmentWrite?.data).toMatchObject({
+      type: 'income',
+      amount: 50_000,
+      accountId: 'dest',
+      operationId: expect.stringMatching(/^merge-credit-cards:/),
+      mutationKind: 'balance-adjustment',
+      mutationSource: 'account',
+      expectedBefore: 300_000,
+      targetBalance: 250_000,
+    });
+    expect(cacheMutations).toContainEqual(expect.objectContaining({
+      userId: UID,
+      type: 'update',
+      transactions: expect.arrayContaining([
+        expect.objectContaining({
+          id: adjustmentWrite?.id,
+          amount: 50_000,
+          targetBalance: 250_000,
+        }),
+      ]),
+    }));
+  });
+
+  it('no deja ajuste ni deuda objetivo parcial si falla el batch final del merge', async () => {
+    seed([bank, cc1, cc2, dest]);
+    M.txStore.set('source-expense', {
+      id: 'source-expense',
+      type: 'expense',
+      amount: 200_000,
+      category: 'Compras',
+      description: 'Compra origen',
+      date: new Date(),
+      paid: true,
+      accountId: 'cc1',
+    });
+    M.commitError = new Error('batch rejected');
+
+    const acc = renderHook(() => useAccounts(UID, [], vi.fn())).result;
+    await expect(acc.current.mergeCreditCards({
+      sourceAccountIds: ['cc1', 'cc2'],
+      destination: { id: 'dest', name: 'Visa Unificada' },
+      desiredDebt: 50_000,
+    })).rejects.toThrow('batch rejected');
+
+    expect(M.log).toHaveLength(0);
+    expect(M.acctStore.get('dest')?.usedCredit).toBe(100_000);
+    expect(M.acctStore.has('cc1')).toBe(true);
+    expect(M.acctStore.has('cc2')).toBe(true);
+    expect([...M.txStore.keys()]).toEqual(['source-expense']);
+    expect(cacheMutations).toHaveLength(0);
   });
 
   it('con saldos asentados, confirma el usedCredit exacto del historial persistido', async () => {

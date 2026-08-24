@@ -1,8 +1,11 @@
 import {
   collection,
+  doc,
   getDocsFromServer,
   query,
   where,
+  writeBatch,
+  type WriteBatch,
 } from 'firebase/firestore';
 import { db } from '../../lib/firebaseDb';
 import type {
@@ -13,13 +16,23 @@ import type {
 } from '../../types/finance';
 import { getAccountReferenceIds } from '../../utils/accountTransactions';
 import { BalanceCalculator } from '../../utils/balanceCalculator';
+import { creditDeltasByAccount } from '../../utils/creditDeltas';
 import { ensureDate } from '../../utils/dateUtils';
 import { roundMoney } from '../../utils/formatters';
 import {
   LedgerMutationValidationError,
   normalizeLedgerAmount,
+  planLedgerMutation,
   type LedgerAssetAuthority,
 } from '../../utils/ledgerMutation';
+import {
+  acquireAccountOperationLock,
+  assertAtomicBatchCapacity,
+  createAccountOperationId,
+  createAccountOperationRelease,
+  releaseAccountOperationLock,
+  renewAccountOperationLock,
+} from './accountOrchestration';
 
 interface ServerDocumentSnapshot {
   id: string;
@@ -31,6 +44,26 @@ export interface LedgerServerContext {
   transactions: readonly Transaction[];
   authorities: readonly LedgerAssetAuthority[];
   canonicalAccountId(referenceId: string): string;
+}
+
+export interface LedgerMutationPreparationTools {
+  operationId: string;
+  loadContext(accountIds: readonly string[]): Promise<LedgerServerContext>;
+}
+
+export interface LedgerMutationPreparation<TResult> {
+  intent: LedgerMutationIntent;
+  context: LedgerServerContext;
+  writeCount: number;
+  stage(batch: WriteBatch): void;
+  result: TResult;
+}
+
+export interface CreditAuthorityChange {
+  accountId: string;
+  delta: number;
+  beforeUsedCredit: number;
+  afterUsedCredit: number;
 }
 
 const invalidRecord = (message: string): never => {
@@ -226,4 +259,110 @@ export async function loadServerLedgerContext(
     authorities,
     canonicalAccountId,
   };
+}
+
+const creditDeltasFor = (
+  effects: readonly LedgerTransactionEffect[],
+  accounts: readonly Account[]
+): Map<string, number> => {
+  const deltas = new Map<string, number>();
+  effects.forEach(effect => {
+    creditDeltasByAccount(effect as Transaction, accounts as Account[])
+      .forEach((delta, accountId) => {
+        deltas.set(accountId, roundMoney((deltas.get(accountId) ?? 0) + delta));
+      });
+  });
+  return deltas;
+};
+
+export const planCreditAuthorityChanges = (
+  intent: LedgerMutationIntent,
+  context: LedgerServerContext
+): CreditAuthorityChange[] => {
+  const normalizedIntent = normalizeLedgerIntentAccountReferences(
+    intent,
+    context.canonicalAccountId
+  );
+  const beforeDeltas = creditDeltasFor(normalizedIntent.before, context.accounts);
+  const afterDeltas = creditDeltasFor(normalizedIntent.after, context.accounts);
+  const accountIds = [...new Set([...beforeDeltas.keys(), ...afterDeltas.keys()])].sort();
+
+  return accountIds.flatMap(accountId => {
+    const delta = roundMoney(
+      (afterDeltas.get(accountId) ?? 0) - (beforeDeltas.get(accountId) ?? 0)
+    );
+    if (delta === 0) return [];
+
+    const account = context.accounts.find(candidate => candidate.id === accountId);
+    const usedCredit = account?.usedCredit;
+    if (
+      account?.type !== 'credit' ||
+      typeof usedCredit !== 'number' ||
+      !Number.isFinite(usedCredit) ||
+      usedCredit < 0
+    ) {
+      throw new LedgerMutationValidationError(
+        'INVALID_ACCOUNT_AUTHORITY',
+        `No se pudo validar la deuda persistida de la tarjeta ${accountId}`,
+        accountId
+      );
+    }
+
+    const beforeUsedCredit = roundMoney(usedCredit);
+    const afterUsedCredit = roundMoney(beforeUsedCredit + delta);
+    if (afterUsedCredit < 0) {
+      throw new LedgerMutationValidationError(
+        'INSUFFICIENT_FUNDS',
+        'No puedes pagar más de lo que debes en la tarjeta',
+        accountId
+      );
+    }
+
+    return [{ accountId, delta, beforeUsedCredit, afterUsedCredit }];
+  });
+};
+
+export async function executeAuthenticatedLedgerMutation<TResult>(
+  userId: string,
+  prepare: (
+    tools: LedgerMutationPreparationTools
+  ) => Promise<LedgerMutationPreparation<TResult>>
+): Promise<TResult> {
+  const kind = 'ledger-mutation' as const;
+  const operationId = createAccountOperationId(kind);
+  await acquireAccountOperationLock(userId, operationId, kind);
+
+  try {
+    const preparation = await prepare({
+      operationId,
+      loadContext: accountIds => loadServerLedgerContext(userId, accountIds),
+    });
+    const normalizedIntent = normalizeLedgerIntentAccountReferences(
+      preparation.intent,
+      preparation.context.canonicalAccountId
+    );
+    planLedgerMutation(normalizedIntent, preparation.context.authorities);
+    assertAtomicBatchCapacity(
+      'confirmar esta mutación del libro',
+      preparation.writeCount + 1
+    );
+    await renewAccountOperationLock(userId, operationId, kind);
+
+    const batch = writeBatch(db);
+    preparation.stage(batch);
+    batch.set(
+      doc(db, 'users', userId),
+      createAccountOperationRelease(operationId, kind),
+      { mergeFields: ['accountOperationLock'] }
+    );
+    await batch.commit();
+    return preparation.result;
+  } catch (error) {
+    try {
+      await releaseAccountOperationLock(userId, operationId, kind);
+    } catch {
+      // Conservar el error financiero/commit original. El lease expira en servidor.
+    }
+    throw error;
+  }
 }

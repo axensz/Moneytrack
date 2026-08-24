@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { LedgerMutationIntent } from '../../types/finance';
+import type { Account, LedgerMutationIntent, Transaction } from '../../types/finance';
 
 type StoredDocument = Record<string, unknown>;
 type Filter = { field: string; value: unknown };
@@ -8,12 +8,43 @@ const M = vi.hoisted(() => ({
   accounts: new Map<string, StoredDocument>(),
   transactions: new Map<string, StoredDocument>(),
   queries: [] as Filter[],
+  events: [] as string[],
+  batchCommits: 0,
+  failCommit: false,
+  failRenew: false,
+  releaseError: false,
 }));
 
 vi.mock('../../lib/firebaseDb', () => ({ db: { __db: true } }));
 
+vi.mock('../../hooks/firestore/accountOrchestration', () => ({
+  acquireAccountOperationLock: async () => {
+    M.events.push('acquire');
+  },
+  renewAccountOperationLock: async () => {
+    M.events.push('renew');
+    if (M.failRenew) throw new Error('lost lease');
+  },
+  releaseAccountOperationLock: async () => {
+    M.events.push('safe-release');
+    if (M.releaseError) throw new Error('release failed');
+  },
+  createAccountOperationId: () => 'ledger-mutation:operation-1',
+  createAccountOperationRelease: () => ({
+    accountOperationLock: {
+      id: 'ledger-mutation:operation-1',
+      kind: 'ledger-mutation',
+      releasedAt: { __serverTimestamp: true },
+    },
+  }),
+  assertAtomicBatchCapacity: (_operation: string, count: number) => {
+    if (count > 40) throw new Error('límite atómico');
+  },
+}));
+
 vi.mock('firebase/firestore', () => ({
   collection: (_db: unknown, path: string) => ({ __kind: 'collection', path }),
+  doc: (_db: unknown, path: string, id: string) => ({ path, id }),
   where: (field: string, _operator: string, value: unknown) => ({ field, value }),
   query: (source: { path: string }, ...filters: Filter[]) => ({
     __kind: 'query',
@@ -33,11 +64,40 @@ vi.mock('firebase/firestore', () => ({
       .map(([id, data]) => ({ id, data: () => data }));
     return { docs };
   },
+  writeBatch: () => {
+    const writes: Array<{ operation: string; reference: { path: string; id: string } }> = [];
+    return {
+      set: (reference: { path: string; id: string }) => {
+        const operation = reference.path === 'users' ? 'release:set' : 'stage:set';
+        M.events.push(operation);
+        writes.push({ operation, reference });
+      },
+      update: (reference: { path: string; id: string }) => {
+        M.events.push('stage:update');
+        writes.push({ operation: 'stage:update', reference });
+      },
+      delete: (reference: { path: string; id: string }) => {
+        M.events.push('stage:delete');
+        writes.push({ operation: 'stage:delete', reference });
+      },
+      commit: async () => {
+        M.events.push('commit');
+        if (M.failCommit) throw new Error('commit rejected');
+        M.batchCommits += 1;
+        return writes;
+      },
+    };
+  },
+  increment: (amount: number) => ({ __increment: amount }),
+  serverTimestamp: () => ({ __serverTimestamp: true }),
 }));
 
 import {
+  executeAuthenticatedLedgerMutation,
   loadServerLedgerContext,
   normalizeLedgerIntentAccountReferences,
+  planCreditAuthorityChanges,
+  type LedgerServerContext,
 } from '../../hooks/firestore/ledgerMutationOrchestration';
 
 const UID = 'owner';
@@ -58,6 +118,11 @@ beforeEach(() => {
   M.accounts.clear();
   M.transactions.clear();
   M.queries.length = 0;
+  M.events.length = 0;
+  M.batchCommits = 0;
+  M.failCommit = false;
+  M.failRenew = false;
+  M.releaseError = false;
   M.accounts.set('savings', {
     name: 'Ahorros',
     type: 'savings',
@@ -174,5 +239,184 @@ describe('normalizeLedgerIntentAccountReferences', () => {
 
     expect(normalized.before[0].accountId).toBe('card');
     expect(normalized.after[0].accountId).toBe('card');
+  });
+});
+
+const savingsAccount: Account = {
+  id: 'savings',
+  name: 'Ahorros',
+  type: 'savings',
+  isDefault: true,
+  initialBalance: 1_000,
+};
+
+const effect = (overrides: Partial<Transaction> = {}): Transaction => ({
+  id: 'tx-1',
+  type: 'expense',
+  amount: 100,
+  category: 'Prueba',
+  description: 'Movimiento',
+  date: on(),
+  paid: true,
+  accountId: 'savings',
+  ...overrides,
+});
+
+const contextFor = (
+  account: Account = savingsAccount,
+  currentBalance = 1_000
+): LedgerServerContext => ({
+  accounts: [account],
+  transactions: [],
+  authorities: [{ account: { id: account.id, type: account.type }, currentBalance }],
+  canonicalAccountId: referenceId => referenceId,
+});
+
+const prepareCreate = (amount = 100) => async ({
+  operationId,
+}: {
+  operationId: string;
+}) => {
+  M.events.push('prepare');
+  return {
+    intent: {
+      kind: 'create' as const,
+      before: [],
+      after: [effect({ amount })],
+      metadata: { operationId, mutationSource: 'debt' as const },
+    },
+    context: contextFor(),
+    writeCount: 1,
+    stage: (batch: { set(reference: { path: string; id: string }, data: unknown): void }) => {
+      batch.set({ path: 'users/owner/transactions', id: 'tx-1' }, { amount });
+    },
+    result: 'committed',
+  };
+};
+
+describe('executeAuthenticatedLedgerMutation', () => {
+  it('acquires, plans, renews, stages, releases, and commits exactly once', async () => {
+    await expect(
+      executeAuthenticatedLedgerMutation(UID, prepareCreate())
+    ).resolves.toBe('committed');
+
+    expect(M.events).toEqual([
+      'acquire',
+      'prepare',
+      'renew',
+      'stage:set',
+      'release:set',
+      'commit',
+    ]);
+    expect(M.batchCommits).toBe(1);
+  });
+
+  it('releases safely without staging when the pure plan rejects', async () => {
+    await expect(executeAuthenticatedLedgerMutation(UID, prepareCreate(1_000.01)))
+      .rejects.toMatchObject({ code: 'INSUFFICIENT_FUNDS' });
+
+    expect(M.events).toEqual(['acquire', 'prepare', 'safe-release']);
+    expect(M.batchCommits).toBe(0);
+  });
+
+  it('does not stage when renewal proves the lease was lost', async () => {
+    M.failRenew = true;
+
+    await expect(executeAuthenticatedLedgerMutation(UID, prepareCreate()))
+      .rejects.toThrow('lost lease');
+
+    expect(M.events).toEqual(['acquire', 'prepare', 'renew', 'safe-release']);
+    expect(M.batchCommits).toBe(0);
+  });
+
+  it('keeps batch rejection as the primary error and attempts safe release', async () => {
+    M.failCommit = true;
+    M.releaseError = true;
+
+    await expect(executeAuthenticatedLedgerMutation(UID, prepareCreate()))
+      .rejects.toThrow('commit rejected');
+
+    expect(M.events).toEqual([
+      'acquire',
+      'prepare',
+      'renew',
+      'stage:set',
+      'release:set',
+      'commit',
+      'safe-release',
+    ]);
+    expect(M.batchCommits).toBe(0);
+  });
+
+  it('releases after preparation failure without creating a batch', async () => {
+    await expect(executeAuthenticatedLedgerMutation(UID, async () => {
+      M.events.push('prepare');
+      throw new Error('prepare rejected');
+    })).rejects.toThrow('prepare rejected');
+
+    expect(M.events).toEqual(['acquire', 'prepare', 'safe-release']);
+  });
+
+  it('counts the release tombstone against the atomic write limit', async () => {
+    const prepare = prepareCreate();
+
+    await expect(executeAuthenticatedLedgerMutation(UID, async tools => ({
+      ...(await prepare(tools)),
+      writeCount: 40,
+    }))).rejects.toThrow('límite atómico');
+
+    expect(M.events).toEqual(['acquire', 'prepare', 'safe-release']);
+    expect(M.batchCommits).toBe(0);
+  });
+});
+
+describe('planCreditAuthorityChanges', () => {
+  const card = (usedCredit: number | null | undefined): Account => ({
+    id: 'card',
+    name: 'Visa',
+    type: 'credit',
+    isDefault: false,
+    initialBalance: 0,
+    creditLimit: 5_000,
+    usedCredit: usedCredit as number | undefined,
+  });
+  const creditIntent = (transactionEffect: Transaction): LedgerMutationIntent => ({
+    kind: 'create',
+    before: [],
+    after: [transactionEffect],
+  });
+
+  it.each([
+    ['absent', undefined],
+    ['null', null],
+    ['negative', -1],
+    ['non-finite', Number.POSITIVE_INFINITY],
+  ])('rejects %s persisted credit authority', (_name, usedCredit) => {
+    const account = card(usedCredit);
+    expect(() => planCreditAuthorityChanges(
+      creditIntent(effect({ type: 'expense', accountId: 'card', amount: 50 })),
+      contextFor(account, 0)
+    )).toThrowError(expect.objectContaining({ code: 'INVALID_ACCOUNT_AUTHORITY' }));
+  });
+
+  it('rejects a payment that exceeds persisted card debt', () => {
+    const account = card(100);
+    expect(() => planCreditAuthorityChanges(
+      creditIntent(effect({ type: 'income', accountId: 'card', amount: 150 })),
+      contextFor(account, 0)
+    )).toThrowError(expect.objectContaining({ code: 'INSUFFICIENT_FUNDS' }));
+  });
+
+  it('returns the rounded persisted credit delta for a valid mutation', () => {
+    const account = card(100);
+    expect(planCreditAuthorityChanges(
+      creditIntent(effect({ type: 'expense', accountId: 'card', amount: 50 })),
+      contextFor(account, 0)
+    )).toEqual([{
+      accountId: 'card',
+      delta: 50,
+      beforeUsedCredit: 100,
+      afterUsedCredit: 150,
+    }]);
   });
 });

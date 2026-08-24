@@ -74,6 +74,15 @@ vi.mock('firebase/firestore', () => ({
       .map(([id, data]) => ({ id, data: () => data }));
     return { docs };
   },
+  getDocFromServer: async (reference: { path: string; id: string }) => {
+    const store = reference.path.endsWith('/accounts') ? M.accounts : M.transactions;
+    const data = store.get(reference.id);
+    return {
+      id: reference.id,
+      exists: () => Boolean(data),
+      data: () => data ?? {},
+    };
+  },
   writeBatch: () => {
     const writes: Array<{ operation: string; reference: { path: string; id: string } }> = [];
     return {
@@ -106,7 +115,9 @@ vi.mock('firebase/firestore', () => ({
 }));
 
 import {
+  collectLedgerMutationAccountIds,
   executeAuthenticatedLedgerMutation,
+  loadServerLedgerTransaction,
   loadServerLedgerContext,
   normalizeLedgerIntentAccountReferences,
   planCreditAuthorityChanges,
@@ -236,6 +247,39 @@ describe('loadServerLedgerContext', () => {
 
     await expect(loadServerLedgerContext(UID, ['savings']))
       .rejects.toThrow(/saldo|autoridad/i);
+  });
+});
+
+describe('loadServerLedgerTransaction', () => {
+  it('loads and strictly decodes a transaction by document ID', async () => {
+    M.transactions.set('tx-1', transaction({ amount: 125.5 }));
+
+    await expect(loadServerLedgerTransaction(UID, 'tx-1')).resolves.toMatchObject({
+      id: 'tx-1',
+      amount: 125.5,
+      accountId: 'savings',
+    });
+  });
+
+  it('returns null only when the transaction document is absent', async () => {
+    await expect(loadServerLedgerTransaction(UID, 'missing')).resolves.toBeNull();
+  });
+
+  it('rejects a malformed transaction document', async () => {
+    M.transactions.set('invalid', transaction({ amount: Number.NaN }));
+
+    await expect(loadServerLedgerTransaction(UID, 'invalid'))
+      .rejects.toThrow(/inválid|válid/i);
+  });
+});
+
+describe('collectLedgerMutationAccountIds', () => {
+  it('returns sorted unique source and transfer destination IDs from both sides', () => {
+    expect(collectLedgerMutationAccountIds({
+      kind: 'edit',
+      before: [effect({ accountId: 'savings' })],
+      after: [effect({ type: 'transfer', accountId: 'cash', toAccountId: 'card' })],
+    })).toEqual(['card', 'cash', 'savings']);
   });
 });
 

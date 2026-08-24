@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  getDocFromServer,
   getDocsFromServer,
   query,
   where,
@@ -145,6 +146,26 @@ const decodeTransaction = (snapshot: ServerDocumentSnapshot): Transaction => {
     createdAt,
   } as Transaction;
 };
+
+export async function loadServerLedgerTransaction(
+  userId: string,
+  transactionId: string
+): Promise<Transaction | null> {
+  const snapshot = await getDocFromServer(
+    doc(db, `users/${userId}/transactions`, transactionId)
+  );
+  if (!snapshot.exists()) return null;
+  return decodeTransaction(snapshot as unknown as ServerDocumentSnapshot);
+}
+
+export const collectLedgerMutationAccountIds = (
+  intent: LedgerMutationIntent
+): string[] => [...new Set(
+  [...intent.before, ...intent.after].flatMap(effect => [
+    effect.accountId,
+    effect.toAccountId,
+  ].filter((accountId): accountId is string => Boolean(accountId)))
+)].sort();
 
 const normalizeEffectReferences = (
   effect: LedgerTransactionEffect,

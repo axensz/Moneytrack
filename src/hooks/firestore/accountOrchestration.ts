@@ -44,7 +44,8 @@ export type AccountOperationKind =
   | 'merge-credit-cards'
   | 'set-default-account'
   | 'delete-debt'
-  | 'reassign-debt-account';
+  | 'reassign-debt-account'
+  | 'ledger-mutation';
 
 interface AccountOperationLock {
   id: string;

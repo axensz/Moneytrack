@@ -122,4 +122,13 @@ describeWithFirestoreEmulator('accountOperationLock rules contract', () => {
       release('reassign-debt-account:first', 'reassign-debt-account')
     );
   });
+
+  it('accepts the ledger-mutation operation kind', async () => {
+    await assertSucceeds(
+      acquire('ledger-mutation:first', 'ledger-mutation')
+    );
+    await assertSucceeds(
+      release('ledger-mutation:first', 'ledger-mutation')
+    );
+  });
 });

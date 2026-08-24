@@ -53,7 +53,8 @@ service cloud.firestore {
           'merge-credit-cards',
           'set-default-account',
           'delete-debt',
-          'reassign-debt-account'
+          'reassign-debt-account',
+          'ledger-mutation'
         ]
         && lock.acquiredAt is timestamp
         && lock.acquiredAt == request.time;

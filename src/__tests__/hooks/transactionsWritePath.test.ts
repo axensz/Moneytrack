@@ -26,9 +26,22 @@ const mockState = vi.hoisted(() => ({
   writeLog: [] as Array<{ op: string; key: string; data?: Record<string, unknown> }>,
   gen: 0,
   transactionCalls: 0,
+  batchCommits: 0,
+  failBatchCommit: false,
 }));
 
 vi.mock('../../lib/firebaseDb', () => ({ db: { __db: true } }));
+
+vi.mock('../../hooks/firestore/accountOrchestration', () => ({
+  acquireAccountOperationLock: vi.fn(async () => undefined),
+  assertAtomicBatchCapacity: vi.fn(),
+  createAccountOperationId: vi.fn(() => 'ledger-mutation:test-operation'),
+  createAccountOperationRelease: vi.fn((id: string, kind: string) => ({
+    accountOperationLock: { id, kind, releasedAt: { __serverTimestamp: true } },
+  })),
+  releaseAccountOperationLock: vi.fn(async () => undefined),
+  renewAccountOperationLock: vi.fn(async () => undefined),
+}));
 
 vi.mock('firebase/firestore', () => ({
   collection: (_db: unknown, path: string) => ({ __collection: path }),
@@ -49,6 +62,80 @@ vi.mock('firebase/firestore', () => ({
   },
   increment: (n: number) => ({ __increment: n }),
   deleteField: () => ({ __deleteField: true }),
+  serverTimestamp: () => ({ __serverTimestamp: true }),
+  where: (field: string, _operator: string, value: unknown) => ({ field, value }),
+  query: (
+    source: { __collection: string },
+    ...filters: Array<{ field: string; value: unknown }>
+  ) => ({ ...source, __filters: filters }),
+  getDocsFromServer: async (reference: {
+    __collection: string;
+    __filters?: Array<{ field: string; value: unknown }>;
+  }) => {
+    const prefix = `${reference.__collection}/`;
+    const filters = reference.__filters ?? [];
+    const docs = [...mockState.store.entries()]
+      .filter(([key, data]) => key.startsWith(prefix) &&
+        filters.every(filter => data[filter.field] === filter.value))
+      .map(([key, data]) => ({
+        id: key.slice(prefix.length),
+        data: () => data,
+      }));
+    return { docs };
+  },
+  getDocFromServer: async (ref: { id: string; __key: string }) => {
+    const data = mockState.store.get(ref.__key);
+    return {
+      id: ref.id,
+      exists: () => Boolean(data),
+      data: () => data ?? {},
+    };
+  },
+  writeBatch: () => {
+    const staged: Array<{
+      op: 'set' | 'update' | 'delete';
+      ref: { __key: string; __path: string };
+      data?: Record<string, unknown>;
+    }> = [];
+    return {
+      set: (
+        ref: { __key: string; __path: string },
+        data: Record<string, unknown>
+      ) => staged.push({ op: 'set', ref, data }),
+      update: (
+        ref: { __key: string; __path: string },
+        data: Record<string, unknown>
+      ) => staged.push({ op: 'update', ref, data }),
+      delete: (ref: { __key: string; __path: string }) => staged.push({ op: 'delete', ref }),
+      commit: async () => {
+        if (mockState.failBatchCommit) throw new Error('batch rejected');
+        staged.forEach(({ op, ref, data }) => {
+          if (ref.__path !== 'users') {
+            mockState.writeLog.push({ op, key: ref.__key, data });
+          }
+          if (op === 'delete') {
+            mockState.store.delete(ref.__key);
+            return;
+          }
+          if (op === 'set') {
+            mockState.store.set(ref.__key, data ?? {});
+            return;
+          }
+          const current = { ...(mockState.store.get(ref.__key) ?? {}) };
+          Object.entries(data ?? {}).forEach(([key, value]) => {
+            if (value && typeof value === 'object' && '__increment' in value) {
+              current[key] = Number(current[key] ?? 0) +
+                Number((value as { __increment: number }).__increment);
+            } else {
+              current[key] = value;
+            }
+          });
+          mockState.store.set(ref.__key, current);
+        });
+        mockState.batchCommits += 1;
+      },
+    };
+  },
   runTransaction: async (
     _db: unknown,
     fn: (t: unknown) => Promise<unknown>
@@ -120,6 +207,8 @@ beforeEach(() => {
   mockState.writeLog.length = 0;
   mockState.gen = 0;
   mockState.transactionCalls = 0;
+  mockState.batchCommits = 0;
+  mockState.failBatchCommit = false;
   cacheMutations.length = 0;
   unsubscribeCacheMutations = subscribeTransactionCacheMutations(mutation => {
     cacheMutations.push(mutation);
@@ -134,6 +223,51 @@ afterEach(() => {
 
 describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
   describe('addTransaction', () => {
+    it('rechaza un gasto de ahorro que excede el saldo persistido sin escribir ni publicar caché', async () => {
+      seedAccount({ ...savings, initialBalance: 1_000 });
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.addTransaction(makeTx({
+        type: 'expense', amount: 1_000.01, accountId: 'sav',
+      }))).rejects.toMatchObject({ code: 'INSUFFICIENT_FUNDS' });
+
+      expect(mockState.writeLog).toHaveLength(0);
+      expect(cacheMutations).toHaveLength(0);
+    });
+
+    it('permite gastar exactamente el saldo persistido y deja la cuenta en cero', async () => {
+      seedAccount({ ...savings, initialBalance: 1_000 });
+      const crud = renderCRUD([]);
+
+      await crud.current.addTransaction(makeTx({
+        type: 'expense', amount: 1_000, accountId: 'sav',
+      }));
+
+      expect(sets()).toHaveLength(1);
+      expect(sets()[0].data).toMatchObject({
+        amount: 1_000,
+        accountId: 'sav',
+        operationId: 'ledger-mutation:test-operation',
+        mutationKind: 'create',
+        mutationSource: 'manual',
+      });
+      expect(mockState.batchCommits).toBe(1);
+    });
+
+    it('no publica caché ni escrituras si el batch final es rechazado', async () => {
+      seedAccount(savings);
+      mockState.failBatchCommit = true;
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.addTransaction(makeTx({
+        type: 'expense', amount: 100, accountId: 'sav',
+      }))).rejects.toThrow('batch rejected');
+
+      expect(mockState.writeLog).toHaveLength(0);
+      expect(cacheMutations).toHaveLength(0);
+      expect(mockState.batchCommits).toBe(0);
+    });
+
     it('gasto en TC: crea la tx y sube usedCredit en increment(+amount) atómicamente', async () => {
       seedAccount(savings);
       seedAccount(credit);
@@ -159,19 +293,20 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
       expect(updatesOn(acctKey('cc'))[0].data!.usedCredit).toEqual({ __increment: 123_265.49 });
     });
 
-    it('gasto en cuenta de ahorro (sin TC): escritura simple con addDoc, sin tocar usedCredit', async () => {
+    it('gasto en cuenta de ahorro: usa el batch del ledger sin tocar usedCredit', async () => {
       seedAccount(savings);
       const crud = renderCRUD([savings]);
 
       await crud.current.addTransaction(makeTx({ type: 'expense', amount: 200_000, accountId: 'sav' }));
 
-      expect(addDocs()).toHaveLength(1);
-      expect(addDocs()[0].key).toBe(`users/${UID}/transactions`);
+      expect(addDocs()).toHaveLength(0);
+      expect(sets()).toHaveLength(1);
+      expect(sets()[0].key).toMatch(new RegExp(`^users/${UID}/transactions/`));
       expect(cacheMutations).toContainEqual(expect.objectContaining({
         userId: UID,
         type: 'update',
         transactions: [expect.objectContaining({
-          id: 'addDoc-1',
+          id: expect.any(String),
           amount: 200_000,
           accountId: 'sav',
         })],
@@ -195,7 +330,7 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
     it('crea las DOS transacciones y reduce usedCredit en increment(-amount) de la TC', async () => {
       seedAccount(savings);
       seedAccount(credit);
-      const crud = renderCRUD([savings, credit]);
+      const crud = renderCRUD([]);
 
       // Pago de TC: ingreso a la tarjeta (reduce deuda) + gasto espejo del banco.
       const creditTx = makeTx({ type: 'income', amount: 400_000, accountId: 'cc', category: 'Pago Crédito' });
@@ -244,6 +379,25 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
   });
 
   describe('transferencias atómicas', () => {
+    it('rechaza una transferencia que excede el saldo persistido sin escribir', async () => {
+      seedAccount({ ...savings, initialBalance: 1_000 });
+      mockState.store.set(acctKey('cash'), {
+        id: 'cash', name: 'Efectivo', type: 'cash', isDefault: false, initialBalance: 0,
+      });
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.addTransaction(makeTx({
+        type: 'transfer',
+        amount: 1_000.01,
+        accountId: 'sav',
+        toAccountId: 'cash',
+        category: 'Transferencia',
+      }))).rejects.toMatchObject({ code: 'INSUFFICIENT_FUNDS' });
+
+      expect(mockState.writeLog).toHaveLength(0);
+      expect(cacheMutations).toHaveLength(0);
+    });
+
     it('transferencia ahorro → TC: crea la tx transfer y reduce usedCredit de la TC destino', async () => {
       seedAccount(savings);
       seedAccount(credit);
@@ -273,7 +427,7 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
     it('transferencia DESDE una TC se bloquea ANTES de escribir nada', async () => {
       seedAccount(savings);
       seedAccount(credit);
-      const crud = renderCRUD([savings, credit]);
+      const crud = renderCRUD([]);
 
       await expect(
         crud.current.addTransaction(

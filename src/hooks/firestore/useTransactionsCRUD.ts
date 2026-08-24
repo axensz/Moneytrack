@@ -7,7 +7,6 @@ import { useCallback, useEffect, useRef } from 'react';
 import {
   collection,
   doc,
-  addDoc,
   runTransaction,
   increment,
   deleteField,
@@ -18,7 +17,12 @@ import type { Transaction, Account } from '../../types/finance';
 import { isOffline, stripUndefined } from '../../utils/firestoreHelpers';
 import { getCreditDelta, creditDeltasByAccount } from '../../utils/creditDeltas';
 import { logger } from '../../utils/logger';
+import { normalizeLedgerAmount } from '../../utils/ledgerMutation';
 import { validateTransactionUpdate } from '../../utils/transactionValidation';
+import {
+  executeAuthenticatedLedgerMutation,
+  planCreditAuthorityChanges,
+} from './ledgerMutationOrchestration';
 import { publishTransactionCacheMutation } from './transactionPaginationCache';
 
 // Las escrituras de transacciones requieren conexión: las que ajustan usedCredit
@@ -109,106 +113,6 @@ export function useTransactionsCRUD(
   }, [accounts]);
 
   /**
-   * Transferencia atómica con Firebase Transaction
-   */
-  const addTransferAtomic = useCallback(
-    async (
-      uid: string,
-      transaction: Omit<Transaction, 'id' | 'createdAt'>
-    ): Promise<Transaction> => {
-      const { accountId, toAccountId, amount, description, date } = transaction;
-      const createdAt = new Date();
-      const transactionDate = date || createdAt;
-      let createdTransaction: Transaction | null = null;
-
-      if (!accountId || !toAccountId) {
-        throw new Error(
-          'Se requieren cuenta origen y destino para transferencias'
-        );
-      }
-
-      if (accountId === toAccountId) {
-        throw new Error('No puedes transferir a la misma cuenta');
-      }
-
-      await runTransaction(db, async (firestoreTransaction) => {
-        // Referencias a documentos
-        const fromAccountRef = doc(db, `users/${uid}/accounts`, accountId);
-        const toAccountRef = doc(db, `users/${uid}/accounts`, toAccountId);
-
-        // Leer ambas cuentas
-        const fromAccountSnap = await firestoreTransaction.get(fromAccountRef);
-        const toAccountSnap = await firestoreTransaction.get(toAccountRef);
-
-        // Validar existencia
-        if (!fromAccountSnap.exists()) {
-          throw new Error('La cuenta origen no existe');
-        }
-        if (!toAccountSnap.exists()) {
-          throw new Error('La cuenta destino no existe');
-        }
-
-        // Bloquear transferencias DESDE una TC ANTES de escribir nada: una TC no es
-        // un activo del que se pueda extraer dinero; permitirlo crearía cupo/saldo
-        // de la nada. Validamos aquí (no solo en el formulario) porque toda creación
-        // programática de transferencias —import y undo/restore— pasa por
-        // addTransaction → addTransferAtomic, sin el guard de la UI; este es el
-        // único punto que las cubre a todas. Lanzar dentro de runTransaction aborta
-        // toda la operación, así que ninguna escritura se confirma.
-        const fromAccountData = fromAccountSnap.data() as Account;
-        if (fromAccountData.type === 'credit') {
-          throw new Error('No se puede transferir desde una tarjeta de crédito');
-        }
-        const toAccountData = toAccountSnap.data() as Account;
-        if (
-          toAccountData.type === 'credit' &&
-          toAccountData.usedCredit != null &&
-          amount > Math.max(0, toAccountData.usedCredit) + 0.01
-        ) {
-          throw new Error('No puedes pagar más de lo que debes en la tarjeta');
-        }
-
-        // Crear documento de transacción
-        const transactionRef = doc(
-          collection(db, `users/${uid}/transactions`)
-        );
-        firestoreTransaction.set(transactionRef, {
-          type: 'transfer',
-          amount,
-          accountId,
-          toAccountId,
-          category: TRANSFER_CATEGORY,
-          description: description || 'Transferencia entre cuentas',
-          date: transactionDate,
-          paid: true,
-          createdAt,
-        });
-        createdTransaction = {
-          id: transactionRef.id,
-          type: 'transfer',
-          amount,
-          accountId,
-          toAccountId,
-          category: TRANSFER_CATEGORY,
-          description: description || 'Transferencia entre cuentas',
-          date: transactionDate,
-          paid: true,
-          createdAt,
-        } as Transaction;
-
-        // Actualizar usedCredit en cuentas TC afectadas (destino: la transferencia
-        // hacia una TC es un pago que reduce la deuda).
-        if (toAccountData.type === 'credit') {
-          firestoreTransaction.update(toAccountRef, { usedCredit: increment(-amount) });
-        }
-      });
-      if (!createdTransaction) throw new Error('No se pudo crear la transferencia');
-      return createdTransaction;
-    },
-    []
-  );
-
-  /**
    * AUDIT-FIX: Pago de crédito atómico — crea ambas transacciones en una sola operación
    * (ingreso al crédito + gasto de la cuenta origen)
    */
@@ -288,77 +192,93 @@ export function useTransactionsCRUD(
       // Validación de esquema como última línea de defensa
       validateTransactionSchema(transaction);
 
-      // Transferencias usan atomicidad
-      if (transaction.type === 'transfer' && transaction.toAccountId) {
-        const createdTransaction = await addTransferAtomic(userId, transaction);
-        publishTransactionCacheMutation({
-          userId,
-          type: 'update',
-          transactions: [createdTransaction],
-        });
-        return;
-      }
-
-      // Gasto/Ingreso
-      const cleanTransaction = stripUndefined(transaction);
-
-      const deltas = creditDeltasByAccount(transaction, accountsRef.current);
-
-      // Si no afecta ninguna TC, basta una escritura simple
-      if (deltas.size === 0) {
-        const createdAt = new Date();
-        const transactionRef = await addDoc(collection(db, `users/${userId}/transactions`), {
-          ...cleanTransaction,
-          createdAt,
-        });
-        publishTransactionCacheMutation({
-          userId,
-          type: 'update',
-          transactions: [{ id: transactionRef.id, ...cleanTransaction, createdAt } as Transaction],
-        });
-        return;
-      }
-
-      // Afecta una TC: crear la transacción y ajustar usedCredit ATÓMICAMENTE,
-      // para que nunca queden desincronizados si una de las dos escrituras falla.
       const createdAt = new Date();
-      let createdTransaction: Transaction | null = null;
-      await runTransaction(db, async (firestoreTransaction) => {
-        // Lecturas primero (requisito de Firestore): validar que las TC existan
-        const accountRefs = Array.from(deltas.keys()).map(accountId =>
-          doc(db, `users/${userId}/accounts`, accountId)
-        );
-        const snaps = await Promise.all(
-          accountRefs.map(ref => firestoreTransaction.get(ref))
-        );
-        snaps.forEach(snap => {
-          if (!snap.exists()) throw new Error('La cuenta de la transacción no existe');
-        });
-        Array.from(deltas.entries()).forEach(([accountId, delta], index) => {
-          const currentDebt = (snaps[index].data() as Account).usedCredit;
-          if (currentDebt != null && currentDebt + delta < -0.01) {
-            throw new Error(`El movimiento dejaría deuda negativa en la tarjeta ${accountId}`);
+      const transactionRef = doc(collection(db, `users/${userId}/transactions`));
+      const createdTransaction = await executeAuthenticatedLedgerMutation(
+        userId,
+        async ({ operationId, loadContext }) => {
+          const amount = normalizeLedgerAmount(transaction.amount);
+          const persistedInput = stripUndefined(transaction.type === 'transfer'
+            ? {
+                ...transaction,
+                category: TRANSFER_CATEGORY,
+                description: transaction.description || 'Transferencia entre cuentas',
+                date: transaction.date || createdAt,
+                paid: true,
+              }
+            : transaction);
+          const draft = {
+            ...persistedInput,
+            amount,
+            id: transactionRef.id,
+            createdAt,
+            operationId,
+            mutationKind: transaction.type === 'transfer' ? 'transfer' as const : 'create' as const,
+            mutationSource: transaction.mutationSource ?? ('manual' as const),
+          } as Transaction;
+          const context = await loadContext([
+            draft.accountId,
+            ...(draft.toAccountId ? [draft.toAccountId] : []),
+          ]);
+          const normalizedTransaction = {
+            ...draft,
+            accountId: context.canonicalAccountId(draft.accountId),
+            toAccountId: draft.toAccountId
+              ? context.canonicalAccountId(draft.toAccountId)
+              : undefined,
+          };
+
+          if (normalizedTransaction.type === 'transfer') {
+            if (!normalizedTransaction.toAccountId) {
+              throw new Error('Se requieren cuenta origen y destino para transferencias');
+            }
+            if (normalizedTransaction.accountId === normalizedTransaction.toAccountId) {
+              throw new Error('No puedes transferir a la misma cuenta');
+            }
+            const sourceAccount = context.accounts.find(
+              account => account.id === normalizedTransaction.accountId
+            );
+            if (sourceAccount?.type === 'credit') {
+              throw new Error('No se puede transferir desde una tarjeta de crédito');
+            }
           }
-        });
 
-        const txRef = doc(collection(db, `users/${userId}/transactions`));
-        firestoreTransaction.set(txRef, { ...cleanTransaction, createdAt });
-        createdTransaction = { id: txRef.id, ...cleanTransaction, createdAt } as Transaction;
+          const intent = {
+            kind: normalizedTransaction.type === 'transfer' ? 'transfer' as const : 'create' as const,
+            before: [],
+            after: [normalizedTransaction],
+            metadata: {
+              operationId,
+              mutationSource: normalizedTransaction.mutationSource ?? 'manual' as const,
+            },
+          };
+          const creditChanges = planCreditAuthorityChanges(intent, context);
 
-        for (const [accountId, delta] of deltas) {
-          firestoreTransaction.update(doc(db, `users/${userId}/accounts`, accountId), {
-            usedCredit: increment(delta),
-          });
+          return {
+            intent,
+            context,
+            writeCount: 1 + creditChanges.length,
+            stage: (batch) => {
+              const persistedTransaction = { ...normalizedTransaction };
+              delete persistedTransaction.id;
+              batch.set(transactionRef, persistedTransaction);
+              creditChanges.forEach(({ accountId, delta }) => {
+                batch.update(doc(db, `users/${userId}/accounts`, accountId), {
+                  usedCredit: increment(delta),
+                });
+              });
+            },
+            result: normalizedTransaction,
+          };
         }
-      });
-      if (!createdTransaction) throw new Error('No se pudo crear la transacción');
+      );
       publishTransactionCacheMutation({
         userId,
         type: 'update',
         transactions: [createdTransaction],
       });
     },
-    [userId, addTransferAtomic]
+    [userId]
   );
 
   const deleteTransaction = useCallback(

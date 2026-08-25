@@ -81,14 +81,14 @@ El compañero MUST mantener título y texto de la notificación solo en memoria 
 - **THEN** usa un UUID aleatorio de instalación y nunca IMEI, número telefónico, Android ID o serial
 
 ### Requirement: Cada evento tiene identidad determinista
-El compañero MUST derivar un `candidateId` hexadecimal de 64 caracteres a partir de instalación, paquete, clave del sistema y `postTime`, y MUST reutilizarlo en actualizaciones o reintentos del mismo evento.
+El compañero MUST derivar un `candidateId` hexadecimal de 64 caracteres a partir de instalación, paquete, clave del sistema y una generación activa anclada al primer `postTime`; MUST reutilizar esa generación en actualizaciones o reintentos mientras la notificación continúe activa y MUST olvidarla cuando Android retire el evento o expire el límite defensivo de 24 horas.
 
 #### Scenario: La notificación se actualiza
-- **WHEN** Android vuelve a publicar la misma clave y tiempo de una compra
+- **WHEN** Android vuelve a publicar la misma clave de una compra activa aunque cambie su `postTime`
 - **THEN** el compañero intenta el mismo documento y no crea una segunda fila candidata
 
 #### Scenario: Dos compras diferentes
-- **WHEN** cambia la clave o el tiempo observado
+- **WHEN** cambia la clave, Android retiró la entrega anterior o su generación superó 24 horas
 - **THEN** el hash produce identidades distintas
 
 ### Requirement: La captura sobrevive a pérdida temporal de red
@@ -100,7 +100,7 @@ El compañero MUST usar la persistencia local de Firestore para encolar únicame
 
 #### Scenario: Escritura rechazada al reconectar
 - **WHEN** reglas o autenticación rechazan una escritura encolada
-- **THEN** la pantalla muestra un estado de error genérico y el compañero no declara la captura como disponible en Moneytrack
+- **THEN** la pantalla lista oculta `Captura activa` y muestra un error genérico persistente sin datos financieros; resultados irrelevantes no lo borran y únicamente una escritura posterior `STORED` restablece el estado activo
 
 ### Requirement: La pantalla Android expone estado operativo verificable
 El compañero MUST comunicar sesión, acceso a notificaciones, captura activa y fuentes seleccionadas en la etapa o resumen correspondiente, y MUST ofrecer las acciones aplicables para iniciar/cerrar sesión, abrir ajustes y abrir la PWA; MUST NOT exponer códigos técnicos ni un bloque de último resultado en la interfaz normal.
@@ -127,7 +127,7 @@ El compañero MUST comunicar sesión, acceso a notificaciones, captura activa y 
 
 #### Scenario: Resumen listo sin texto repetido
 - **WHEN** la configuración está completa y existe al menos una fuente seleccionada
-- **THEN** un tratamiento compacto con icono y texto comunica `Configuración completa`, y el bloque success `Captura activa` muestra directamente las etiquetas de esas fuentes y la acción principal `Administrar aplicaciones`, sin repetir una explicación ni el rótulo `Aplicaciones elegidas`
+- **THEN** un tratamiento compacto con icono y texto comunica `Configuración completa`, y el bloque neutral `Captura activa` conserva la señal de éxito en icono/texto, muestra directamente las etiquetas de esas fuentes y la acción principal `Administrar aplicaciones`, sin repetir una explicación ni el rótulo `Aplicaciones elegidas`
 
 #### Scenario: Abrir la aplicación web
 - **WHEN** la configuración está completa
@@ -138,8 +138,12 @@ El compañero MUST comunicar sesión, acceso a notificaciones, captura activa y 
 - **THEN** la fuente no aparece en el selector ni en el resumen, mientras una variante diagnóstica puede presentarla únicamente como `Fuente de prueba`
 
 #### Scenario: Fuente observada sin etiqueta segura
-- **WHEN** la etiqueta está vacía o equivale a un identificador de paquete
-- **THEN** la interfaz muestra `Aplicación detectada` y nunca el paquete técnico ni una clasificación financiera inventada
+- **WHEN** la etiqueta está vacía, equivale a un paquete, contiene controles de dirección o coincide después de normalizarse con una fuente conocida como `Google Wallet`
+- **THEN** la interfaz muestra `Aplicación detectada · No verificada` y nunca el paquete técnico, una identidad conocida falsa ni una clasificación financiera inventada
+
+#### Scenario: Fuente observada con etiqueta legible
+- **WHEN** una aplicación no conocida aporta una etiqueta segura y distinta de las fuentes verificadas
+- **THEN** la interfaz conserva la etiqueta sanitizada y añade `No verificada` en el selector, el diálogo y el resumen
 
 #### Scenario: Configuración incompleta
 - **WHEN** falta cualquiera de las precondiciones
@@ -189,7 +193,7 @@ El compañero MUST derivar launcher y SplashScreen del logo canónico de MoneyTr
 
 #### Scenario: Estado completo y captura activa
 - **WHEN** la configuración está lista
-- **THEN** los estados completado y activo combinan icono, texto y el par success sólido-sobre-muted, mientras la privacidad se explica una sola vez con copy neutral
+- **THEN** `Configuración completa` combina icono, texto y el par success sólido-sobre-muted, mientras `Captura activa` usa la misma superficie neutral de las demás etapas y comunica el éxito solo mediante icono y texto; la privacidad se explica una sola vez con copy neutral
 
 #### Scenario: Inicio de sesión en curso o fallido
 - **WHEN** Credential Manager está abierto o devuelve un error recuperable

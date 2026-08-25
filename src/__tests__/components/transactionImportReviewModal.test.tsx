@@ -205,6 +205,33 @@ describe('TransactionImportReviewModal', () => {
     expect(callbacks.onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps the normalized captured amount visible and submits its numeric value', async () => {
+    renderModal();
+    fireEvent.change(screen.getByLabelText('Cuenta'), {
+      target: { value: 'card' },
+    });
+    fireEvent.change(screen.getByLabelText('Categoría'), {
+      target: { value: 'Transporte' },
+    });
+    fireEvent.change(screen.getByLabelText('Monto'), {
+      target: { value: '12.345,22sasasa' },
+    });
+    expect(screen.getByLabelText('Monto')).toHaveValue('12.345,22');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar gasto' }));
+    await waitFor(() => expect(C.confirm).toHaveBeenCalledTimes(1));
+    const [, , expense] = C.confirm.mock.calls[0] as unknown as [
+      string,
+      string,
+      ReviewedTransactionImportExpense,
+    ];
+    expect(expense).toEqual(expect.objectContaining({
+      amount: 12_345.22,
+      accountId: 'card',
+      paymentInstrumentId: 'instrument-1',
+    }));
+  });
+
   it('offers remembering only when last4 exists and no active instrument matches', () => {
     const { rerender } = renderModal({ instruments: [] });
     expect(screen.getByLabelText('Recordar este medio de pago')).toBeInTheDocument();

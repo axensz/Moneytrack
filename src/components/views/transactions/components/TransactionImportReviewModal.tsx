@@ -14,6 +14,7 @@ import {
   formatNumberForInput,
   parseCurrency,
   parseDateWithTime,
+  unformatNumber,
 } from '../../../../utils/formatters';
 import {
   calculateInterest,
@@ -69,7 +70,7 @@ export function TransactionImportReviewModal({
       match.status === 'matched' ? match.instrumentId : undefined,
     );
     setCategory('');
-    setAmount(formatNumberForInput(candidate.amountMinor / 100));
+    setAmount(unformatNumber(formatNumberForInput(candidate.amountMinor / 100)));
     setMerchant(candidate.merchant);
     setDate(formatDateForInput(candidate.occurredAt));
     setInstallments(1);
@@ -173,16 +174,6 @@ export function TransactionImportReviewModal({
       closeOnEscape={!submitting}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="rounded-xl border-l-4 border-primary bg-primary/5 px-4 py-3">
-          <p className="text-sm font-semibold text-foreground">
-            Revisión humana obligatoria
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Confirma o corrige estos datos. La notificación por sí sola nunca
-            modifica el libro mayor.
-          </p>
-        </div>
-
         <div>
           <label htmlFor="import-account" className="block text-sm font-semibold text-foreground mb-1.5">
             Cuenta
@@ -240,9 +231,9 @@ export function TransactionImportReviewModal({
             <input
               id="import-amount"
               className="input-base w-full font-mono"
-              value={amount}
+              value={formatNumberForInput(amount)}
               inputMode="decimal"
-              onChange={event => setAmount(event.target.value)}
+              onChange={event => setAmount(unformatNumber(event.target.value))}
             />
           </div>
           <div>

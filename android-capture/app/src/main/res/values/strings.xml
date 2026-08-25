@@ -6,6 +6,7 @@
     <string name="screen_intro">Tus compras de las aplicaciones elegidas llegan a MoneyTrack.</string>
     <string name="privacy_note">El texto completo de la notificación nunca se guarda ni se registra.</string>
     <string name="step_progress">Paso %1$d de 3</string>
+    <string name="configuration_complete">Configuración completa</string>
     <string name="session_heading">Conecta tu cuenta</string>
     <string name="session_explanation">Tu cuenta vincula los movimientos pendientes con el libro mayor que revisas en Moneytrack.</string>
     <string name="sign_in_action">Iniciar sesión con Google</string>
@@ -27,7 +28,9 @@
     <string name="manage_sources_action">Administrar</string>
     <string name="manage_sources_title">Aplicaciones elegidas</string>
     <string name="manage_sources_explanation">Marca las aplicaciones que quieras capturar. Desmarca una para quitarla. Una nueva aparecerá después de emitir una notificación futura.</string>
-    <string name="open_pwa_action">Abrir Moneytrack web</string>
+    <string name="web_card_title">MoneyTrack web</string>
+    <string name="web_card_explanation">Administra tus cuentas y revisa tus movimientos desde la web.</string>
+    <string name="open_pwa_action">Abrir MoneyTrack</string>
     <string name="save_action">Guardar</string>
     <string name="save_changes_action">Guardar cambios</string>
     <string name="cancel_action">Cancelar</string>

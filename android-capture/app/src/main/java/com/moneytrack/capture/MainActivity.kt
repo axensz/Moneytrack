@@ -41,6 +41,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var notificationStep: View
     private lateinit var captureStep: View
     private lateinit var readyStep: View
+    private lateinit var readyWebCard: View
     private lateinit var stepProgress: TextView
     private lateinit var progressOne: View
     private lateinit var progressTwo: View
@@ -87,6 +88,7 @@ class MainActivity : AppCompatActivity() {
         notificationStep = findViewById(R.id.notification_step)
         captureStep = findViewById(R.id.capture_step)
         readyStep = findViewById(R.id.ready_step)
+        readyWebCard = findViewById(R.id.ready_web_card)
         stepProgress = findViewById(R.id.step_progress)
         progressOne = findViewById(R.id.progress_one)
         progressTwo = findViewById(R.id.progress_two)
@@ -165,6 +167,7 @@ class MainActivity : AppCompatActivity() {
         notificationStep.visibility = if (step == CaptureSetupStep.NOTIFICATION_ACCESS) View.VISIBLE else View.GONE
         captureStep.visibility = if (step == CaptureSetupStep.CAPTURE) View.VISIBLE else View.GONE
         readyStep.visibility = if (step == CaptureSetupStep.READY) View.VISIBLE else View.GONE
+        readyWebCard.visibility = if (step == CaptureSetupStep.READY) View.VISIBLE else View.GONE
 
         val completedSteps = when (step) {
             CaptureSetupStep.SESSION -> 0
@@ -175,9 +178,11 @@ class MainActivity : AppCompatActivity() {
         val currentStep = when (step) {
             CaptureSetupStep.SESSION -> 1
             CaptureSetupStep.NOTIFICATION_ACCESS -> 2
-            CaptureSetupStep.CAPTURE, CaptureSetupStep.READY -> 3
+            CaptureSetupStep.CAPTURE -> 3
+            CaptureSetupStep.READY -> null
         }
-        stepProgress.text = getString(R.string.step_progress, currentStep)
+        stepProgress.text = currentStep?.let { getString(R.string.step_progress, it) }
+            ?: getString(R.string.configuration_complete)
         listOf(progressOne, progressTwo, progressThree).forEachIndexed { index, progress ->
             progress.setBackgroundResource(
                 if (index < completedSteps) R.drawable.progress_complete else R.drawable.progress_pending,

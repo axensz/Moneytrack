@@ -269,6 +269,32 @@
                 android:layout_marginTop="@dimen/space_small"
                 android:minHeight="@dimen/control_min_height"
                 android:text="@string/manage_sources_action" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/ready_web_card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_large"
+            android:background="@drawable/status_panel"
+            android:orientation="vertical"
+            android:padding="@dimen/panel_padding"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/web_card_title"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_small"
+                android:text="@string/web_card_explanation"
+                android:textColor="@color/text_secondary" />
 
             <Button
                 android:id="@+id/open_pwa_button"

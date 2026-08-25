@@ -393,6 +393,74 @@ describe('guest ledger durable envelope', () => {
     expect(paid.data.accounts[0].usedCredit).toBe(30);
   });
 
+  it.each([
+    ['absent', undefined],
+    ['null', null],
+    ['negative', -1],
+  ])('rejects a guest card mutation with %s authority without persisting', async (_caseName, usedCredit) => {
+    const storage = new MemoryStorage();
+    const card = {
+      id: 'card',
+      name: 'Visa',
+      type: 'credit',
+      initialBalance: 0,
+      isDefault: true,
+      usedCredit: 0,
+    } as Account;
+    const envelope = createGuestLedgerEnvelope({
+      accounts: [card],
+      transactions: [],
+      debts: [],
+      recurringPayments: [],
+    }, {
+      revision: 1,
+      commitId: 'invalid-authority-seed',
+      committedAt: '2026-08-24T12:00:00.000Z',
+    });
+    if (usedCredit === undefined) delete envelope.data.accounts[0].usedCredit;
+    else (envelope.data.accounts[0] as unknown as Record<string, unknown>).usedCredit = usedCredit;
+    storage.values.set(GUEST_LEDGER_STORAGE_KEY, JSON.stringify(envelope));
+    const rawBefore = storage.values.get(GUEST_LEDGER_STORAGE_KEY);
+
+    await expect(mutateGuestLedger(draft => {
+      draft.transactions.push({
+        ...transaction('card-purchase', 'expense', 10),
+        accountId: 'card',
+      });
+    }, { storage, operationId: `invalid-${_caseName}`, lock: noLock }))
+      .rejects.toThrow(/requiere reconciliación|valor monetario válido/i);
+
+    expect(storage.values.get(GUEST_LEDGER_STORAGE_KEY)).toBe(rawBefore);
+  });
+
+  it('rejects a guest payment above persisted debt without clamping or persisting', async () => {
+    const storage = new MemoryStorage();
+    seed(storage, {
+      accounts: [{
+        id: 'card',
+        name: 'Visa',
+        type: 'credit',
+        initialBalance: 0,
+        isDefault: true,
+        usedCredit: 10,
+      }],
+      transactions: [],
+      debts: [],
+      recurringPayments: [],
+    });
+    const rawBefore = storage.values.get(GUEST_LEDGER_STORAGE_KEY);
+
+    await expect(mutateGuestLedger(draft => {
+      draft.transactions.push({
+        ...transaction('card-overpayment', 'income', 20),
+        accountId: 'card',
+      });
+    }, { storage, operationId: 'card-overpayment', lock: noLock }))
+      .rejects.toThrow(/más de lo que debes/i);
+
+    expect(storage.values.get(GUEST_LEDGER_STORAGE_KEY)).toBe(rawBefore);
+  });
+
   it('serializes independent fallback clients before either can overwrite the same revision', async () => {
     const storage = new MemoryStorage();
     seed(storage);

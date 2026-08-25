@@ -1,5 +1,6 @@
 import { generateId, roundMoney } from './formatters';
 import { getAccountReferenceIds } from './accountTransactions';
+import { getCreditAuthorityState } from './creditAuthority';
 import { getCreditDelta } from './creditDeltas';
 import type {
   Account,
@@ -341,21 +342,24 @@ export function applyGuestCreditAuthorityDelta(
     const ledgerDelta = roundMoney(afterEffect - beforeEffect);
     if (ledgerDelta === 0) return account;
 
-    const authorities = beforeCards.length > 0
-      ? beforeCards.map(candidate => candidate.usedCredit)
-      : [account.usedCredit ?? 0];
-    if (authorities.some(value => typeof value !== 'number' || !Number.isFinite(value) || value < 0)) {
+    const authorityAccounts = beforeCards.length > 0 ? beforeCards : [account];
+    const authorities = authorityAccounts.map(getCreditAuthorityState);
+    if (authorities.some(authority => !authority.ready || authority.usedCredit === null)) {
       throw new Error(
         `La tarjeta ${account.name} requiere reconciliación antes de cambiar su deuda.`
       );
     }
     const persistedAuthority = authorities.reduce<number>(
-      (sum, value) => sum + (value as number),
+      (sum, authority) => sum + authority.usedCredit!,
       0,
     );
+    const nextAuthority = roundMoney(persistedAuthority + ledgerDelta);
+    if (nextAuthority < 0) {
+      throw new Error('No puedes pagar más de lo que debes en la tarjeta.');
+    }
     return {
       ...account,
-      usedCredit: Math.max(0, roundMoney(persistedAuthority + ledgerDelta)),
+      usedCredit: nextAuthority,
     };
   });
 }

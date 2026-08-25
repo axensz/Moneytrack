@@ -1,8 +1,9 @@
 'use client';
 
 import React, { memo } from 'react';
-import { Edit2, Trash2, GripVertical, ChevronUp, ChevronDown, Wallet, CreditCard, Banknote, Combine } from 'lucide-react';
+import { Edit2, Trash2, GripVertical, ChevronUp, ChevronDown, Wallet, CreditCard, Banknote, Combine, AlertTriangle } from 'lucide-react';
 import type { Account } from '../../../../types/finance';
+import { getCreditAuthorityState } from '../../../../utils/creditAuthority';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 import { BalanceSettling } from '@/components/shared/BalanceSettling';
 import { UI_LABELS } from '@/config/constants';
@@ -86,6 +87,8 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
 }) => {
   const { hideBalances } = useUIPreferences();
   const isCredit = account.type === 'credit';
+  const creditAuthority = getCreditAuthorityState(account);
+  const authorityMessageId = `credit-authority-${account.id ?? 'unknown'}`;
   const accountTypeInfo = ACCOUNT_TYPES.find((t) => t.value === account.type);
 
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
@@ -200,7 +203,9 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
           {/* Balance */}
           <div className="text-left sm:text-right">
             <div
-              className={`text-xl sm:text-2xl font-bold ${balance < 0 ? 'text-destructive' : 'text-success'
+              className={`text-xl sm:text-2xl font-bold ${isCredit && !creditAuthority.ready
+                ? 'text-warning'
+                : balance < 0 ? 'text-destructive' : 'text-success'
                 }`}
             >
               {isCredit && (
@@ -208,7 +213,9 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
                   Disponible
                 </div>
               )}
-              {!isCredit && balanceSettling ? (
+              {isCredit && !creditAuthority.ready ? (
+                <span className="text-base sm:text-lg">Por conciliar</span>
+              ) : !isCredit && balanceSettling ? (
                 <BalanceSettling className="text-base font-medium text-muted-foreground" />
               ) : (
                 displayAmount(balance)
@@ -228,6 +235,8 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
             interestRate={account.interestRate}
             formatCurrency={formatCurrency}
             isAssociated={isAssociated}
+            authorityReady={creditAuthority.ready}
+            authorityMessageId={authorityMessageId}
           />
         )}
 
@@ -244,7 +253,9 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
           {isCredit && onMerge && (
             <button
               onClick={onMerge}
-              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/15 border border-primary/40 hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              disabled={!creditAuthority.ready}
+              aria-describedby={!creditAuthority.ready ? authorityMessageId : undefined}
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/15 border border-primary/40 hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Combine size={14} />
               Unificar
@@ -262,7 +273,9 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
               <button
                 onClick={onDelete}
                 aria-label={`Eliminar ${account.name}`}
-                className="flex items-center justify-center p-2 min-h-[44px] min-w-[44px] text-muted-foreground hover:text-destructive hover:bg-destructive-muted rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                disabled={isCredit && !creditAuthority.ready}
+                aria-describedby={isCredit && !creditAuthority.ready ? authorityMessageId : undefined}
+                className="flex items-center justify-center p-2 min-h-[44px] min-w-[44px] text-muted-foreground hover:text-destructive hover:bg-destructive-muted rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Trash2 size={16} />
               </button>
@@ -286,6 +299,8 @@ interface CreditCardInfoProps {
   interestRate?: number;
   formatCurrency: (amount: number) => string;
   isAssociated: boolean;
+  authorityReady: boolean;
+  authorityMessageId: string;
 }
 
 const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
@@ -297,12 +312,32 @@ const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
   interestRate,
   formatCurrency,
   isAssociated,
+  authorityReady,
+  authorityMessageId,
 }) => {
   const { hideBalances } = useUIPreferences();
   const usagePercentage = creditLimit > 0 ? Math.min((creditUsed / creditLimit) * 100, 100) : 0;
   const isHighUsage = creditLimit > 0 && creditUsed > creditLimit * 0.8;
 
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
+
+  if (!authorityReady) {
+    return (
+      <div
+        id={authorityMessageId}
+        role="status"
+        className="mt-4 flex items-start gap-2 rounded-lg bg-warning-muted p-3 text-sm text-warning"
+      >
+        <AlertTriangle size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
+        <div>
+          <p className="font-semibold">Requiere conciliación</p>
+          <p className="mt-0.5 text-xs">
+            La deuda persistida no es válida. MoneyTrack bloqueó unificación y eliminación hasta conciliarla.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-4">

@@ -17,6 +17,7 @@ import type {
 } from '../../types/finance';
 import { getAccountReferenceIds } from '../../utils/accountTransactions';
 import { BalanceCalculator } from '../../utils/balanceCalculator';
+import { getCreditAuthorityState } from '../../utils/creditAuthority';
 import { creditDeltasByAccount } from '../../utils/creditDeltas';
 import { roundMoney } from '../../utils/formatters';
 import {
@@ -317,13 +318,8 @@ export const planCreditAuthorityChanges = (
     if (delta === 0) return [];
 
     const account = context.accounts.find(candidate => candidate.id === accountId);
-    const usedCredit = account?.usedCredit;
-    if (
-      account?.type !== 'credit' ||
-      typeof usedCredit !== 'number' ||
-      !Number.isFinite(usedCredit) ||
-      usedCredit < 0
-    ) {
+    const authority = getCreditAuthorityState(account);
+    if (account?.type !== 'credit' || !authority.ready || authority.usedCredit === null) {
       throw new LedgerMutationValidationError(
         'INVALID_ACCOUNT_AUTHORITY',
         `No se pudo validar la deuda persistida de la tarjeta ${accountId}`,
@@ -331,7 +327,7 @@ export const planCreditAuthorityChanges = (
       );
     }
 
-    const beforeUsedCredit = roundMoney(usedCredit);
+    const beforeUsedCredit = roundMoney(authority.usedCredit);
     const afterUsedCredit = roundMoney(beforeUsedCredit + delta);
     if (afterUsedCredit < 0) {
       throw new LedgerMutationValidationError(

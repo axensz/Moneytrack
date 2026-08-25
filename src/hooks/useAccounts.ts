@@ -6,6 +6,7 @@ import { safeFirestoreOperation, checkNetworkConnection } from '../utils/firesto
 import { generateId, roundMoney } from '../utils/formatters';
 import { getAccountReferenceIds, transactionUsesAccount } from '../utils/accountTransactions';
 import { getCreditCardUsedCredit } from '../utils/accountStrategies';
+import { getCreditAuthorityState } from '../utils/creditAuthority';
 import {
   buildBalanceTargetAdjustment,
   normalizeBalanceTarget,
@@ -408,11 +409,7 @@ export function useAccounts(
         ) {
           throw new Error('Las tarjetas cambiaron y ya no pertenecen al mismo banco');
         }
-        if (localCardsToConsolidate.some(account => (
-          typeof account.usedCredit !== 'number'
-          || !Number.isFinite(account.usedCredit)
-          || account.usedCredit < 0
-        ))) {
+        if (localCardsToConsolidate.some(account => !getCreditAuthorityState(account).ready)) {
           throw new Error('Las tarjetas requieren reconciliación antes de unificarse');
         }
         const localMergedUsedCredit = localCardsToConsolidate.reduce(

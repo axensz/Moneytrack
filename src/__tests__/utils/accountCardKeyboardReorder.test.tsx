@@ -99,3 +99,37 @@ describe('AccountCard alternativa de teclado (WCAG 2.1.1)', () => {
     expect(screen.queryByRole('button', { name: /hacia abajo/i })).not.toBeInTheDocument();
   });
 });
+
+describe('AccountCard autoridad de tarjeta', () => {
+  const card: Account = {
+    ...account,
+    id: 'card',
+    name: 'Visa',
+    type: 'credit',
+    creditLimit: 5_000,
+  };
+
+  it('expone conciliación y bloquea acciones financieras cuando usedCredit falta', () => {
+    renderCard({ account: card, balance: 5_000, creditUsed: 0, onMerge: vi.fn() });
+
+    expect(screen.getByRole('status')).toHaveTextContent(/requiere conciliación/i);
+    expect(screen.getByText(/por conciliar/i)).toBeInTheDocument();
+    expect(screen.queryByText(/cupo utilizado/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /unificar/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /eliminar visa/i })).toBeDisabled();
+  });
+
+  it('muestra la autoridad normal y habilita acciones cuando usedCredit es válido', () => {
+    renderCard({
+      account: { ...card, usedCredit: 500 },
+      balance: 4_500,
+      creditUsed: 500,
+      onMerge: vi.fn(),
+    });
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByText(/cupo utilizado/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /unificar/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /eliminar visa/i })).toBeEnabled();
+  });
+});

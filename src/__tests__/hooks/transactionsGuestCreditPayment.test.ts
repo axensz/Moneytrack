@@ -70,10 +70,10 @@ describe('useTransactions.addCreditPaymentAtomic — modo invitado (#tx-1)', () 
     const bank = result.current.transactions.find(transaction => transaction.accountId === 'sav')!;
 
     await act(async () => {
-      await result.current.updateTransaction(bank.id!, { amount: 75_000, category: 'Comida' });
+      await result.current.updateTransaction(bank.id!, { amount: 40_000, category: 'Comida' });
     });
-    expect(result.current.transactions.find(transaction => transaction.id === bank.id)?.amount).toBe(75_000);
-    expect(result.current.transactions.find(transaction => transaction.id === card.id)?.amount).toBe(75_000);
+    expect(result.current.transactions.find(transaction => transaction.id === bank.id)?.amount).toBe(40_000);
+    expect(result.current.transactions.find(transaction => transaction.id === card.id)?.amount).toBe(40_000);
     expect(result.current.transactions.find(transaction => transaction.id === bank.id)?.category).toBe('Pago');
 
     await act(async () => { await result.current.deleteTransaction(card.id!); });

@@ -148,6 +148,58 @@ describe('TransactionImportReviewModal', () => {
     expect(screen.getByText(/elige la cuenta que realmente pagó/i)).toBeInTheDocument();
   });
 
+  it('preserves review edits while instrument suggestions refresh', () => {
+    const { rerender } = renderModal();
+    fireEvent.change(screen.getByLabelText('Categoría'), {
+      target: { value: 'Transporte' },
+    });
+    fireEvent.change(screen.getByLabelText('Monto'), {
+      target: { value: '98.765,43' },
+    });
+    fireEvent.change(screen.getByLabelText('Comercio'), {
+      target: { value: 'Comercio corregido' },
+    });
+
+    rerender(
+      <TransactionImportReviewModal
+        isOpen
+        userId="owner"
+        candidate={candidate}
+        accounts={accounts}
+        expenseCategories={['Alimentación', 'Transporte']}
+        instruments={[instrument(), instrument('instrument-2', 'savings')]}
+        isOnline
+        onClose={vi.fn()}
+        onConfirmed={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText('Cuenta')).toHaveValue('');
+    expect(screen.getByLabelText('Categoría')).toHaveValue('Transporte');
+    expect(screen.getByLabelText('Monto')).toHaveValue('98.765,43');
+    expect(screen.getByLabelText('Comercio')).toHaveValue('Comercio corregido');
+
+    fireEvent.change(screen.getByLabelText('Cuenta'), {
+      target: { value: 'savings' },
+    });
+    rerender(
+      <TransactionImportReviewModal
+        isOpen
+        userId="owner"
+        candidate={candidate}
+        accounts={accounts}
+        expenseCategories={['Alimentación', 'Transporte']}
+        instruments={[instrument()]}
+        isOnline
+        onClose={vi.fn()}
+        onConfirmed={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText('Cuenta')).toHaveValue('savings');
+    expect(screen.getByLabelText('Comercio')).toHaveValue('Comercio corregido');
+  });
+
   it('requires an account and an expense category', () => {
     renderModal({ instruments: [] });
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar gasto' }));

@@ -62,13 +62,20 @@ export function TransactionImportReviewModal({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
+  const openCandidateIdRef = useRef<string | null>(null);
+  const accountDirtyRef = useRef(false);
 
   useEffect(() => {
-    if (!isOpen) return;
-    setAccountId(match.status === 'matched' ? match.accountId : '');
-    setPaymentInstrumentId(
-      match.status === 'matched' ? match.instrumentId : undefined,
-    );
+    if (!isOpen) {
+      openCandidateIdRef.current = null;
+      return;
+    }
+    if (openCandidateIdRef.current === candidate.id) return;
+
+    openCandidateIdRef.current = candidate.id;
+    accountDirtyRef.current = false;
+    setAccountId('');
+    setPaymentInstrumentId(undefined);
     setCategory('');
     setAmount(unformatNumber(formatNumberForInput(candidate.amountMinor / 100)));
     setMerchant(candidate.merchant);
@@ -79,7 +86,20 @@ export function TransactionImportReviewModal({
     setError(null);
     setSubmitting(false);
     submittingRef.current = false;
-  }, [candidate, isOpen, match]);
+  }, [candidate, isOpen]);
+
+  useEffect(() => {
+    if (
+      !isOpen
+      || openCandidateIdRef.current !== candidate.id
+      || accountDirtyRef.current
+    ) return;
+
+    setAccountId(match.status === 'matched' ? match.accountId : '');
+    setPaymentInstrumentId(
+      match.status === 'matched' ? match.instrumentId : undefined,
+    );
+  }, [candidate.id, isOpen, match]);
 
   const selectedAccount = accounts.find(account => account.id === accountId);
   const parsedAmount = parseCurrency(amount);
@@ -98,6 +118,7 @@ export function TransactionImportReviewModal({
   );
 
   const handleAccountChange = (nextAccountId: string) => {
+    accountDirtyRef.current = true;
     setAccountId(nextAccountId);
     const keepsSuggestedInstrument = match.status === 'matched'
       && match.accountId === nextAccountId;

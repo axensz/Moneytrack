@@ -25,13 +25,15 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.moneytrack.capture.auth.AuthenticationResult
 import com.moneytrack.capture.auth.GoogleSignInController
+import com.moneytrack.capture.core.AvailableCaptureSource
+import com.moneytrack.capture.core.AvailableCaptureSourceCatalog
 import com.moneytrack.capture.core.CaptureSetupFlow
 import com.moneytrack.capture.core.CaptureSetupStep
+import com.moneytrack.capture.core.CaptureSourceOrigin
 import com.moneytrack.capture.core.SourceLabelResolver
 import com.moneytrack.capture.notification.NotificationAccess
 import com.moneytrack.capture.preferences.AppThemeMode
 import com.moneytrack.capture.preferences.CapturePreferences
-import com.moneytrack.capture.preferences.DiscoveredNotificationSource
 
 class MainActivity : AppCompatActivity() {
     private lateinit var preferences: CapturePreferences
@@ -192,17 +194,13 @@ class MainActivity : AppCompatActivity() {
     private fun renderSources(allowedPackages: Set<String>) {
         sourceList.removeAllViews()
         readySourceList.removeAllViews()
-        val sources = preferences.discoveredSources()
-        if (sources.isEmpty()) {
-            sourceList.addView(sourceTextView(getString(R.string.source_list_empty)))
-            return
-        }
+        val sources = availableSources(allowedPackages)
 
         sources.forEach { source ->
             sourceList.addView(
                 CheckBox(this).apply {
-                    text = displayLabel(source)
-                    isChecked = source.packageName in allowedPackages
+                    text = displayLabel(source, showRecommendation = true)
+                    isChecked = source.isSelected
                     minHeight = resources.getDimensionPixelSize(R.dimen.control_min_height)
                     layoutParams = LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
@@ -219,14 +217,14 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
-        sources.filter { it.packageName in allowedPackages }.forEach { source ->
+        sources.filter { it.isSelected }.forEach { source ->
             readySourceList.addView(sourceTextView(displayLabel(source)))
         }
     }
 
     private fun showSourceManagementDialog() {
-        val sources = preferences.discoveredSources()
-        val selected = sources.map { it.packageName in preferences.allowedPackages() }.toBooleanArray()
+        val sources = availableSources(preferences.allowedPackages())
+        val selected = sources.map { it.isSelected }.toBooleanArray()
         val listHeight = sourceDialogListHeight(
             sources.size,
             resources.getDimensionPixelSize(R.dimen.source_dialog_max_list_height),
@@ -257,7 +255,7 @@ class MainActivity : AppCompatActivity() {
                             sources.forEachIndexed { index, source ->
                                 addView(
                                     CheckBox(this@MainActivity).apply {
-                                        text = displayLabel(source)
+                                        text = displayLabel(source, showRecommendation = true)
                                         isChecked = selected[index]
                                         minHeight = resources.getDimensionPixelSize(R.dimen.control_min_height)
                                         layoutParams = LinearLayout.LayoutParams(
@@ -318,13 +316,25 @@ class MainActivity : AppCompatActivity() {
         setTextAppearance(android.R.style.TextAppearance_Material_Body1)
     }
 
-    private fun displayLabel(source: DiscoveredNotificationSource): String =
-        SourceLabelResolver.resolve(
+    private fun availableSources(allowedPackages: Set<String>): List<AvailableCaptureSource> =
+        AvailableCaptureSourceCatalog.options(preferences.discoveredSources(), allowedPackages)
+
+    private fun displayLabel(
+        source: AvailableCaptureSource,
+        showRecommendation: Boolean = false,
+    ): String {
+        val label = SourceLabelResolver.resolve(
             packageName = source.packageName,
             label = source.label,
             testSourceLabel = getString(R.string.source_test),
             fallbackLabel = getString(R.string.source_unnamed),
         )
+        return if (showRecommendation && source.origin == CaptureSourceOrigin.KNOWN) {
+            getString(R.string.recommended_source_label, label)
+        } else {
+            label
+        }
+    }
 
     private fun applyThemeMode(mode: AppThemeMode) {
         val nightMode = when (mode) {

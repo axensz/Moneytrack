@@ -38,7 +38,7 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/theme_button_description"
                 android:padding="12dp"
-                android:src="@drawable/ic_theme" />
+                android:src="@drawable/ic_appearance" />
         </LinearLayout>
 
         <TextView

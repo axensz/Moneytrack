@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Moneytrack Capture</string>
-    <string name="notification_listener_label">Captura de compras de Moneytrack</string>
+    <string name="app_name">MoneyTrack</string>
+    <string name="notification_listener_label">Captura de compras de MoneyTrack</string>
     <string name="screen_title">MoneyTrack móvil</string>
     <string name="screen_intro">Tus compras de las aplicaciones elegidas llegan a MoneyTrack.</string>
     <string name="privacy_note">El texto completo de la notificación nunca se guarda ni se registra.</string>
@@ -30,8 +30,8 @@
     <string name="save_action">Guardar</string>
     <string name="save_changes_action">Guardar cambios</string>
     <string name="cancel_action">Cancelar</string>
-    <string name="theme_button_description">Cambiar tema</string>
-    <string name="theme_dialog_title">Tema</string>
+    <string name="theme_button_description">Cambiar apariencia</string>
+    <string name="theme_dialog_title">Apariencia</string>
     <string name="theme_system">Sistema</string>
     <string name="theme_light">Claro</string>
     <string name="theme_dark">Oscuro</string>

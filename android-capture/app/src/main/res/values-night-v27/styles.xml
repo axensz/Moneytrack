@@ -2,6 +2,7 @@
 <resources>
     <style name="Theme.MoneytrackCapture" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:fontFamily">sans</item>
+        <item name="colorAccent">@color/brand_violet</item>
         <item name="android:colorAccent">@color/brand_violet</item>
         <item name="android:navigationBarColor">@color/surface_background</item>
         <item name="android:statusBarColor">@color/surface_background</item>

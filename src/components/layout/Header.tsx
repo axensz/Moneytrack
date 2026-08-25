@@ -8,6 +8,7 @@ import {
   LogIn,
   LogOut,
   Settings,
+  ShieldCheck,
   Tag,
   User as UserIcon,
 } from 'lucide-react';
@@ -26,6 +27,7 @@ interface HeaderProps {
   onOpenHelp: () => void;
   onOpenCategories: () => void;
   onOpenNotificationPreferences: () => void;
+  onOpenLedgerReconciliation: () => void;
   onGoToTransactions: () => void;
   onLogout: () => Promise<void>;
 }
@@ -43,6 +45,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenHelp,
   onOpenCategories,
   onOpenNotificationPreferences,
+  onOpenLedgerReconciliation,
   onGoToTransactions,
   onLogout,
 }) => {
@@ -218,6 +221,14 @@ export const Header: React.FC<HeaderProps> = ({
                       <span>Notificaciones</span>
                     </button>
                   )}
+                  <button
+                    onClick={() => openSettingsModal(onOpenLedgerReconciliation)}
+                    className={menuItemClass}
+                    role="menuitem"
+                  >
+                    <ShieldCheck size={18} aria-hidden="true" />
+                    <span>Integridad del libro</span>
+                  </button>
                   <div className="my-1 border-t border-border" aria-hidden="true" />
                   <button
                     onClick={() => openSettingsModal(onOpenHelp)}

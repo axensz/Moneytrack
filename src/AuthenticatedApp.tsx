@@ -20,6 +20,7 @@ import { GeminiKeyProvider, useGeminiKey } from './contexts/GeminiKeyContext';
 import { clearGuestFinanceData } from './utils/localData';
 import { hasGuestData, readGuestData } from './utils/guestMigration';
 import { NotificationPreferencesModal } from './components/modals/NotificationPreferencesModal';
+import { LedgerReconciliationModal } from './components/modals/LedgerReconciliationModal';
 import { FirestoreProvider } from './contexts/FirestoreContext';
 import { FinanceProvider } from './contexts/FinanceContext';
 import { TransactionsView } from './components/views/transactions';
@@ -131,6 +132,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const [showCategoriesModal, setShowCategoriesModal] = useState(false);
   const [showAISettingsModal, setShowAISettingsModal] = useState(false);
   const [showNotificationPreferences, setShowNotificationPreferences] = useState(false);
+  const [showLedgerReconciliation, setShowLedgerReconciliation] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
@@ -213,7 +215,13 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     { key: 'h', description: 'Abrir ayuda', action: () => setShowHelpModal(true) },
     {
       key: 'Escape', description: 'Cerrar modal',
-      action: () => { handleCloseForm(); setShowHelpModal(false); setShowCategoriesModal(false); setIsAuthModalOpen(false); },
+      action: () => {
+        handleCloseForm();
+        setShowHelpModal(false);
+        setShowCategoriesModal(false);
+        setShowLedgerReconciliation(false);
+        setIsAuthModalOpen(false);
+      },
       preventDefault: false
     }
   ], [
@@ -222,6 +230,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
     setIsAuthModalOpen,
     setShowCategoriesModal,
     setShowHelpModal,
+    setShowLedgerReconciliation,
     setView,
   ]);
 
@@ -286,9 +295,11 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   const handleOpenHelpModal = useCallback(() => setShowHelpModal(true), []);
   const handleOpenCategories = useCallback(() => setShowCategoriesModal(true), []);
   const handleOpenNotificationPreferences = useCallback(() => setShowNotificationPreferences(true), []);
+  const handleOpenLedgerReconciliation = useCallback(() => setShowLedgerReconciliation(true), []);
   const handleCloseCategories = useCallback(() => setShowCategoriesModal(false), []);
   const handleCloseHelpModal = useCallback(() => setShowHelpModal(false), []);
   const handleCloseNotificationPreferences = useCallback(() => setShowNotificationPreferences(false), []);
+  const handleCloseLedgerReconciliation = useCallback(() => setShowLedgerReconciliation(false), []);
   const handleRestoreTransaction = useCallback(
     (transaction: import('./types/finance').Transaction) => restoreTransaction(transaction),
     [restoreTransaction]
@@ -401,6 +412,14 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         />
       )}
 
+      {showLedgerReconciliation && (
+        <LedgerReconciliationModal
+          isOpen={showLedgerReconciliation}
+          onClose={handleCloseLedgerReconciliation}
+          userId={user?.uid ?? null}
+        />
+      )}
+
       {showAISettingsModal && (
         <GeminiKeyModal
           isOpen={showAISettingsModal}
@@ -429,6 +448,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         onOpenHelp={handleOpenHelpModal}
         onOpenCategories={handleOpenCategories}
         onOpenNotificationPreferences={handleOpenNotificationPreferences}
+        onOpenLedgerReconciliation={handleOpenLedgerReconciliation}
         onGoToTransactions={() => setView('transactions')}
         onLogout={handleLogout}
       />

@@ -31,6 +31,11 @@ interface ServerReconciliationSnapshot {
   report: LedgerReconciliationReport;
 }
 
+export interface LedgerReconciliationBundle {
+  report: LedgerReconciliationReport;
+  transactions: Transaction[];
+}
+
 const optionalDate = (value: unknown): Date | undefined => {
   if (value instanceof Date) {
     return Number.isFinite(value.getTime()) ? new Date(value) : undefined;
@@ -124,6 +129,16 @@ export async function loadServerLedgerReconciliation(
   userId: string,
 ): Promise<LedgerReconciliationReport> {
   return (await loadServerSnapshot(userId)).report;
+}
+
+export async function loadServerLedgerReconciliationBundle(
+  userId: string,
+): Promise<LedgerReconciliationBundle> {
+  const snapshot = await loadServerSnapshot(userId);
+  return {
+    report: snapshot.report,
+    transactions: [...snapshot.input.transactions],
+  };
 }
 
 const applyTransactionUpdate = (

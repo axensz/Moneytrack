@@ -8,7 +8,7 @@
     <string name="step_progress">Paso %1$d de 3</string>
     <string name="configuration_complete">Configuración completa</string>
     <string name="session_heading">Conecta tu cuenta</string>
-    <string name="session_explanation">Tu cuenta vincula los movimientos pendientes con el libro mayor que revisas en Moneytrack.</string>
+    <string name="session_explanation">Tu cuenta vincula los movimientos pendientes con el libro mayor que revisas en MoneyTrack.</string>
     <string name="sign_in_action">Iniciar sesión con Google</string>
     <string name="sign_out_action">Cerrar sesión</string>
     <string name="notification_heading">Permite las notificaciones</string>
@@ -38,6 +38,6 @@
     <string name="pwa_url" translatable="false">https://axensz.github.io/Moneytrack/</string>
     <string name="auth_signed_in">Sesión iniciada.</string>
     <string name="auth_signed_out">Sesión cerrada.</string>
-    <string name="auth_configuration_missing">Falta configurar la cuenta de Google para este proyecto.</string>
-    <string name="auth_failed">No fue posible completar la autenticación.</string>
+    <string name="auth_in_progress">Iniciando sesión…</string>
+    <string name="auth_failed_actionable">No pudimos iniciar sesión. Revisa tu conexión e inténtalo de nuevo.</string>
 </resources>

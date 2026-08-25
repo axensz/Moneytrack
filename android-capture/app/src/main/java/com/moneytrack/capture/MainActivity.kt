@@ -26,6 +26,7 @@ import androidx.core.view.updatePadding
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.moneytrack.capture.auth.AuthenticationResult
+import com.moneytrack.capture.auth.AuthenticationUiState
 import com.moneytrack.capture.auth.GoogleSignInController
 import com.moneytrack.capture.core.AvailableCaptureSource
 import com.moneytrack.capture.core.AvailableCaptureSourceCatalog
@@ -57,8 +58,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var captureSwitch: SwitchCompat
     private lateinit var signInButton: Button
     private lateinit var signOutButton: Button
+    private lateinit var authFeedback: TextView
     private lateinit var themeButton: ImageButton
     private var firebaseAuth: FirebaseAuth? = null
+    private var authenticationUiState = AuthenticationUiState()
     private var rendering = false
     private val authStateListener = FirebaseAuth.AuthStateListener { render() }
 
@@ -107,6 +110,7 @@ class MainActivity : AppCompatActivity() {
         captureSwitch = findViewById(R.id.capture_switch)
         signInButton = findViewById(R.id.sign_in_button)
         signOutButton = findViewById(R.id.sign_out_button)
+        authFeedback = findViewById(R.id.auth_feedback)
         themeButton = findViewById(R.id.theme_button)
     }
 
@@ -145,8 +149,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindActions() {
-        signInButton.setOnClickListener { signInController.signIn(::showAuthenticationResult) }
-        signOutButton.setOnClickListener { signInController.signOut(::showAuthenticationResult) }
+        signInButton.setOnClickListener { beginGoogleSignIn() }
+        signOutButton.setOnClickListener { signInController.signOut(::showSignOutResult) }
         findViewById<Button>(R.id.notification_settings_button).setOnClickListener {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }
@@ -180,10 +184,34 @@ class MainActivity : AppCompatActivity() {
 
         renderStep(step)
         captureSwitch.isChecked = preferences.captureEnabled
-        signInButton.visibility = if (signedIn) View.GONE else View.VISIBLE
-        signOutButton.visibility = if (signedIn) View.VISIBLE else View.GONE
+        renderAuthentication(signedIn)
         renderSources(allowedPackages)
         rendering = false
+    }
+
+    private fun beginGoogleSignIn() {
+        val started = authenticationUiState.begin() ?: return
+        authenticationUiState = started
+        renderAuthentication(signedIn = false)
+        signInController.signIn(::showSignInResult)
+    }
+
+    private fun renderAuthentication(signedIn: Boolean) {
+        signInButton.visibility = if (signedIn) View.GONE else View.VISIBLE
+        signInButton.isEnabled = !authenticationUiState.inProgress
+        signInButton.setText(
+            if (authenticationUiState.inProgress) {
+                R.string.auth_in_progress
+            } else {
+                R.string.sign_in_action
+            },
+        )
+        signOutButton.visibility = if (signedIn) View.VISIBLE else View.GONE
+        authFeedback.visibility = if (!signedIn && authenticationUiState.failure != null) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
     }
 
     private fun renderStep(step: CaptureSetupStep) {
@@ -404,12 +432,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showAuthenticationResult(result: AuthenticationResult) {
-        val message = when (result) {
-            AuthenticationResult.SIGNED_IN -> R.string.auth_signed_in
-            AuthenticationResult.SIGNED_OUT -> R.string.auth_signed_out
-            AuthenticationResult.CONFIGURATION_MISSING -> R.string.auth_configuration_missing
-            AuthenticationResult.FAILED -> R.string.auth_failed
+    private fun showSignInResult(result: AuthenticationResult) {
+        authenticationUiState = authenticationUiState.complete(result)
+        if (result == AuthenticationResult.SIGNED_IN) {
+            Toast.makeText(this, R.string.auth_signed_in, Toast.LENGTH_SHORT).show()
+        }
+        render()
+    }
+
+    private fun showSignOutResult(result: AuthenticationResult) {
+        val message = if (result == AuthenticationResult.SIGNED_OUT) {
+            R.string.auth_signed_out
+        } else {
+            R.string.auth_failed_actionable
         }
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
         render()

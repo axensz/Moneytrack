@@ -130,6 +130,17 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/space_medium"
                 android:text="@string/sign_in_action" />
+
+            <TextView
+                android:id="@+id/auth_feedback"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_small"
+                android:accessibilityLiveRegion="polite"
+                android:text="@string/auth_failed_actionable"
+                android:textColor="@color/status_destructive"
+                android:textSize="14sp"
+                android:visibility="gone" />
         </LinearLayout>
 
         <LinearLayout

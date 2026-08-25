@@ -34,6 +34,13 @@ class GuidedUiLayoutContractTest {
         assertTrue(layout.contains("android:textColor=\"@color/text_secondary\""))
     }
 
+    @Test
+    fun `authentication reserves an accessible inline feedback region`() {
+        val layout = resource("layout/activity_main.xml")
+        assertTrue(layout.contains("@+id/auth_feedback"))
+        assertTrue(layout.contains("android:accessibilityLiveRegion=\"polite\""))
+    }
+
     private fun resource(relative: String): String {
         val candidates = listOf(
             File("android-capture/app/src/main/res/$relative"),

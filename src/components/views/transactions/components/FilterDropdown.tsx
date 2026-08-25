@@ -1,9 +1,13 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 
 type Option = { value: string; label: string };
+
+const PANEL_MAX_HEIGHT = 350;
+const PANEL_MIN_COMFORTABLE_HEIGHT = 160;
+const PANEL_EDGE_GAP = 8;
 
 interface FilterDropdownProps {
   label: string;
@@ -39,6 +43,10 @@ export const FilterDropdown: React.FC<FilterDropdownProps> = ({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [panelLayout, setPanelLayout] = useState({
+    placement: 'below' as 'below' | 'above',
+    maxHeight: PANEL_MAX_HEIGHT,
+  });
 
   const renderedOptions = useMemo(
     () => optionGroups
@@ -71,9 +79,69 @@ export const FilterDropdown: React.FC<FilterDropdownProps> = ({
 
     const selectedIndex = Math.max(0, menuOptions.findIndex(option => option.value === value));
     setActiveIndex(selectedIndex);
-    const frame = window.requestAnimationFrame(() => optionRefs.current[selectedIndex]?.focus());
+    const frame = window.requestAnimationFrame(() => {
+      const option = optionRefs.current[selectedIndex];
+      option?.focus({ preventScroll: true });
+
+      const panel = option?.closest<HTMLElement>('[role="listbox"]');
+      if (!option || !panel) return;
+
+      const optionRect = option.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      if (optionRect.top < panelRect.top) {
+        panel.scrollTop -= panelRect.top - optionRect.top;
+      } else if (optionRect.bottom > panelRect.bottom) {
+        panel.scrollTop += optionRect.bottom - panelRect.bottom;
+      }
+    });
     return () => window.cancelAnimationFrame(frame);
   }, [isOpen, menuOptions, value]);
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+
+    const updatePanelLayout = () => {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+
+      const viewportTop = window.visualViewport?.offsetTop ?? 0;
+      const viewportBottom = viewportTop + (window.visualViewport?.height ?? window.innerHeight);
+      const navigationTop = Array.from(document.querySelectorAll<HTMLElement>('nav[role="navigation"]'))
+        .map(element => element.getBoundingClientRect())
+        .filter(rect => rect.height > 0 && rect.bottom >= viewportBottom - 1)
+        .reduce((top, rect) => Math.min(top, rect.top), viewportBottom);
+      const triggerRect = trigger.getBoundingClientRect();
+      const availableBelow = Math.max(0, Math.floor(navigationTop - triggerRect.bottom - PANEL_EDGE_GAP));
+      const availableAbove = Math.max(0, Math.floor(triggerRect.top - viewportTop - PANEL_EDGE_GAP));
+      const placement = availableBelow < PANEL_MIN_COMFORTABLE_HEIGHT && availableAbove > availableBelow
+        ? 'above'
+        : 'below';
+      const maxHeight = Math.min(
+        PANEL_MAX_HEIGHT,
+        placement === 'above' ? availableAbove : availableBelow,
+      );
+
+      setPanelLayout(current => (
+        current.placement === placement && current.maxHeight === maxHeight
+          ? current
+          : { placement, maxHeight }
+      ));
+    };
+
+    updatePanelLayout();
+    const visualViewport = window.visualViewport;
+    window.addEventListener('resize', updatePanelLayout);
+    window.addEventListener('scroll', updatePanelLayout, true);
+    visualViewport?.addEventListener('resize', updatePanelLayout);
+    visualViewport?.addEventListener('scroll', updatePanelLayout);
+
+    return () => {
+      window.removeEventListener('resize', updatePanelLayout);
+      window.removeEventListener('scroll', updatePanelLayout, true);
+      visualViewport?.removeEventListener('resize', updatePanelLayout);
+      visualViewport?.removeEventListener('scroll', updatePanelLayout);
+    };
+  }, [isOpen]);
 
   const selectedLabel = options.find((option) => option.value === value)?.label || label;
   const isActive = value !== 'all';
@@ -177,7 +245,11 @@ export const FilterDropdown: React.FC<FilterDropdownProps> = ({
         <div
           role="listbox"
           aria-label={label}
-          className={`absolute top-full mt-1 z-[100] bg-card rounded-xl shadow-xl border border-[var(--border)] p-2 min-w-[200px] max-w-[calc(100vw-2rem)] max-h-[350px] overflow-y-auto animate-in fade-in zoom-in-95 ${align === 'left' ? 'left-0 origin-top-left' : 'right-0 origin-top-right'}`}
+          style={{ maxHeight: panelLayout.maxHeight }}
+          className={`absolute z-[100] bg-card rounded-xl shadow-xl border border-[var(--border)] p-2 min-w-[200px] max-w-[calc(100vw-2rem)] overflow-y-auto animate-in fade-in zoom-in-95 ${panelLayout.placement === 'above'
+            ? `bottom-full mb-1 ${align === 'left' ? 'left-0 origin-bottom-left' : 'right-0 origin-bottom-right'}`
+            : `top-full mt-1 ${align === 'left' ? 'left-0 origin-top-left' : 'right-0 origin-top-right'}`
+            }`}
         >
           <div className="space-y-0.5">
             {renderOption(menuOptions[0], 0)}

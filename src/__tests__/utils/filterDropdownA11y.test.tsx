@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { FilterDropdown } from '../../components/views/transactions/components/FilterDropdown';
@@ -8,6 +8,31 @@ const options = [
   { value: 'a', label: 'Cuenta A' },
   { value: 'b', label: 'Cuenta B' },
 ];
+
+const rect = (top: number, bottom: number): DOMRect => ({
+  x: 0,
+  y: top,
+  top,
+  bottom,
+  left: 0,
+  right: 200,
+  width: 200,
+  height: bottom - top,
+  toJSON: () => ({}),
+});
+
+function mockViewportLayout(triggerTop: number, triggerBottom: number) {
+  vi.stubGlobal('innerHeight', 844);
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    if (this.getAttribute('aria-haspopup') === 'listbox') {
+      return rect(triggerTop, triggerBottom);
+    }
+    if (this.getAttribute('aria-label') === 'Navegación principal') {
+      return rect(779, 844);
+    }
+    return rect(0, 0);
+  });
+}
 
 function renderDropdown(overrides: Partial<React.ComponentProps<typeof FilterDropdown>> = {}) {
   const onToggle = vi.fn();
@@ -29,6 +54,11 @@ function renderDropdown(overrides: Partial<React.ComponentProps<typeof FilterDro
 }
 
 describe('FilterDropdown a11y', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
   it('el trigger declara aria-haspopup=listbox y refleja aria-expanded', () => {
     const { rerender } = renderDropdown({ isOpen: false });
     const trigger = screen.getByRole('button');
@@ -142,5 +172,104 @@ describe('FilterDropdown a11y', () => {
     fireEvent.click(screen.getByRole('option', { name: 'Cuenta A' }));
     expect(onChange).toHaveBeenCalledWith('a');
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('enfoca la opción activa sin desplazar la vista al abrir', async () => {
+    const focusSpy = vi.spyOn(HTMLElement.prototype, 'focus');
+
+    renderDropdown({ isOpen: true });
+
+    await waitFor(() => expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true }));
+  });
+
+  it('mantiene visible la opción activa dentro del panel limitado', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.getAttribute('role') === 'listbox') return rect(100, 200);
+      if (this.getAttribute('title') === 'Cuenta B') return rect(260, 300);
+      return rect(0, 0);
+    });
+
+    renderDropdown({ isOpen: true, value: 'b' });
+
+    const panel = screen.getByRole('listbox', { name: 'Cuenta' });
+    await waitFor(() => expect(panel.scrollTop).toBe(100));
+    expect(screen.getByRole('option', { name: 'Cuenta B' })).toHaveFocus();
+  });
+
+  it('limita el panel al espacio disponible antes de la navegación móvil', async () => {
+    mockViewportLayout(430, 474);
+
+    render(
+      <>
+        <nav role="navigation" aria-label="Navegación principal" />
+        <FilterDropdown
+          label="Cuenta"
+          value="all"
+          options={options}
+          onChange={vi.fn()}
+          isOpen
+          onToggle={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </>
+    );
+
+    const panel = screen.getByRole('listbox', { name: 'Cuenta' });
+    await waitFor(() => expect(panel).toHaveStyle({ maxHeight: '297px' }));
+    expect(panel).toHaveClass('top-full');
+  });
+
+  it('abre hacia arriba cuando el espacio inferior es insuficiente', async () => {
+    mockViewportLayout(650, 694);
+
+    render(
+      <>
+        <nav role="navigation" aria-label="Navegación principal" />
+        <FilterDropdown
+          label="Cuenta"
+          value="all"
+          options={options}
+          onChange={vi.fn()}
+          isOpen
+          onToggle={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </>
+    );
+
+    const panel = screen.getByRole('listbox', { name: 'Cuenta' });
+    await waitFor(() => expect(panel).toHaveClass('bottom-full'));
+    expect(panel).toHaveStyle({ maxHeight: '350px' });
+  });
+
+  it('recalcula la posición cuando se desplaza el viewport visual', async () => {
+    const visualViewport = Object.assign(new EventTarget(), { offsetTop: 0, height: 844 });
+    vi.stubGlobal('visualViewport', visualViewport);
+    mockViewportLayout(650, 694);
+
+    render(
+      <>
+        <nav role="navigation" aria-label="Navegación principal" />
+        <FilterDropdown
+          label="Cuenta"
+          value="all"
+          options={options}
+          onChange={vi.fn()}
+          isOpen
+          onToggle={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </>
+    );
+
+    const panel = screen.getByRole('listbox', { name: 'Cuenta' });
+    await waitFor(() => expect(panel).toHaveClass('bottom-full'));
+
+    visualViewport.offsetTop = 600;
+    visualViewport.height = 244;
+    visualViewport.dispatchEvent(new Event('scroll'));
+
+    await waitFor(() => expect(panel).toHaveClass('top-full'));
+    expect(panel).toHaveStyle({ maxHeight: '77px' });
   });
 });

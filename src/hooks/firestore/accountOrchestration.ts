@@ -60,8 +60,15 @@ interface AccountOperationLock {
 }
 
 export const createAccountOperationId = (kind: AccountOperationKind): string => {
-  const randomId = globalThis.crypto?.randomUUID?.()
-    ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const cryptoApi = globalThis.crypto;
+  if (!cryptoApi) {
+    throw new Error('No se pudo generar una identidad criptográfica segura.');
+  }
+  const randomId = cryptoApi.randomUUID?.()
+    ?? Array.from(
+      cryptoApi.getRandomValues(new Uint8Array(16)),
+      byte => byte.toString(16).padStart(2, '0')
+    ).join('');
   return `${kind}:${randomId}`;
 };
 

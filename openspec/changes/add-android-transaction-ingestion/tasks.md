@@ -206,7 +206,7 @@ docs/android-capture-canary.md
 ## 11. Approved UX refinement and guided Android setup
 
 - [x] 11.1 Amend the domain glossary, design and delta specs for web-managed alias/last4/account identity, hidden technical candidate metadata, strict visible amount normalization, guided Android stages, system insets and light/dark modes; validate OpenSpec strictly before production edits.
-- [ ] 11.2 Add failing web component tests proving the payment-instrument form explains aliases such as `Oro`, sanitizes exactly four digits, the inbox shows a uniquely matched alias/account without package/confidence, and the review amount removes invalid characters while submitting the normalized visible value.
+- [ ] 11.2 Add failing web component tests proving the payment-instrument form explains aliases such as `Oro`, sanitizes exactly four digits, the inbox shows `Android` plus a uniquely matched account without alias/package/confidence, and the review amount removes invalid characters while submitting the normalized visible value.
 - [ ] 11.3 Implement the minimal web UI changes in `PaymentInstrumentModal.tsx`, `PaymentInstrumentsSection.tsx`, `TransactionImportInbox.tsx` and `TransactionImportReviewModal.tsx`; remove the three colored side rails/callout without changing ledger authority or persisted schemas.
 - [ ] 11.4 Add failing Android unit tests for a pure `CaptureSetupFlow` resolver covering `SESSION`, `NOTIFICATION_ACCESS`, `CAPTURE` and `READY`, including revoked access and source/capture prerequisites.
 - [ ] 11.5 Add AppCompat 1.8.0 and Core SplashScreen 1.2.0, implement a MoneyTrack wallet splash and a persisted `Sistema / Claro / Oscuro` preference, and keep the single-Activity XML architecture.

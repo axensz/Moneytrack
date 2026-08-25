@@ -117,7 +117,7 @@ El texto original solo existe durante la llamada. No se guarda en archivo, prefe
 
 ### 6. La bandeja es una frontera de confianza
 
-`TransactionImportInbox` consultará como máximo los 100 candidatos `pending` más recientes y mostrará comercio, monto COP, fecha observada y terminación si existe. Cuando la terminación resuelva un único medio activo, mostrará su alias y cuenta vinculada. `sourcePackage` y `confidence` permanecen en el contrato normalizado para diagnóstico del canario, pero no se presentan como lenguaje de producto. Ningún candidato participa en saldos, cupo, estadísticas, presupuestos o conciliación.
+`TransactionImportInbox` consultará como máximo los 100 candidatos `pending` más recientes y mostrará comercio, monto COP, fecha observada y terminación si existe. La fila identifica el canal funcional como `Android`; cuando la terminación resuelva un único medio activo, añade la cuenta vinculada (`Android · <cuenta>`), no el alias del medio. `sourcePackage` y `confidence` permanecen en el contrato normalizado para diagnóstico del canario, pero no se presentan como lenguaje de producto. Ningún candidato participa en saldos, cupo, estadísticas, presupuestos o conciliación.
 
 La revisión exige cuenta y categoría válidas. Si existe un medio activo coincidente, se preselecciona su cuenta; si no existe, la persona elige una cuenta y puede marcar “Recordar este medio de pago” cuando hay `cardLast4`. Ese instrumento se crea dentro del mismo commit de confirmación con la etiqueta inicial `Tarjeta •••• NNNN` y podrá editarse desde Cuentas. El campo monetario reutiliza la normalización visible de los demás formularios MoneyTrack: elimina caracteres ajenos al monto, conserva el formato colombiano y nunca confirma silenciosamente el texto crudo.
 

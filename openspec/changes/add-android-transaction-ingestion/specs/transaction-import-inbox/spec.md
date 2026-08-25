@@ -20,7 +20,11 @@ El sistema MUST consultar como máximo los 100 candidatos pendientes más recien
 
 #### Scenario: Mostrar una relación inequívoca
 - **WHEN** la terminación del candidato coincide con un único medio activo
-- **THEN** la fila muestra su alias y cuenta vinculada en lugar de metadatos técnicos del parser
+- **THEN** la fila muestra el canal `Android` y la cuenta vinculada en lugar del alias o metadatos técnicos del parser
+
+#### Scenario: No existe una relación inequívoca
+- **WHEN** la terminación no coincide o coincide con más de un medio activo
+- **THEN** la fila muestra solo `Android` y no inventa una cuenta recomendada
 
 #### Scenario: Documento inválido
 - **WHEN** Firestore entrega un documento con esquema desconocido, monto inválido o estado incompatible

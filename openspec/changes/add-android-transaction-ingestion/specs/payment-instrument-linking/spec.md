@@ -42,7 +42,7 @@ El sistema MUST preseleccionar una cuenta solo cuando la terminación observada 
 
 #### Scenario: Preselección inequívoca
 - **WHEN** un candidato termina en `1234` y existe un único medio activo `1234`
-- **THEN** la bandeja presenta el alias y la cuenta vinculada, y la revisión preselecciona esa cuenta permitiendo cambiarla antes de confirmar
+- **THEN** la bandeja presenta `Android` y la cuenta vinculada, y la revisión preselecciona esa cuenta permitiendo cambiarla antes de confirmar
 
 #### Scenario: Terminación ambigua
 - **WHEN** dos medios activos comparten los mismos últimos cuatro

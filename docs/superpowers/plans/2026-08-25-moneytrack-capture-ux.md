@@ -70,7 +70,7 @@ Expected: `Change 'add-android-transaction-ingestion' is valid` and no whitespac
 
 **Interfaces:**
 - Consumes: `PaymentInstrument { label, accountId, last4, active }` and `matchPaymentInstrument(last4, instruments)`.
-- Produces: visible alias + masked termination + linked account; technical candidate metadata remains hidden.
+- Produces: visible alias + masked termination in medium management, and `Android · <cuenta>` in a uniquely matched candidate; technical candidate metadata remains hidden.
 
 - [ ] **Step 1: Write the failing payment-instrument UX test**
 
@@ -104,8 +104,9 @@ Expected: FAIL because `Nombre o apodo` and the Wallet-alias explanation are abs
 Provide candidate `cardLast4: '9876'`, active instrument `label: 'Oro'`, and its credit account, then assert:
 
 ```tsx
-expect(screen.getByText('Oro')).toBeInTheDocument();
+expect(screen.getByText('Android')).toBeInTheDocument();
 expect(screen.getByText('TC principal')).toBeInTheDocument();
+expect(screen.queryByText('Oro')).not.toBeInTheDocument();
 expect(screen.queryByText('Confianza alta')).not.toBeInTheDocument();
 expect(screen.queryByText('com.android.shell')).not.toBeInTheDocument();
 ```
@@ -128,7 +129,7 @@ Expected: FAIL because confidence/package remain visible and no matched alias/ac
 - Explain that using the Wallet nickname makes the medium recognizable.
 - Keep the controlled four-digit sanitation and exact save validation.
 - Remove the colored left rail from payment-instrument management and inbox toggle.
-- For each candidate, call the existing matcher; on `matched`, resolve instrument/account and render both.
+- For each candidate, call the existing matcher; always render `Android` and, on `matched`, resolve and render only the linked account.
 - Delete the confidence and package badges from normal UI; do not remove their domain fields.
 
 - [ ] **Step 6: Verify GREEN**

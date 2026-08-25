@@ -366,3 +366,6 @@ approved design must amend the existing unarchived change before code work.
 - The existing change remains the correct OpenSpec boundary because the canary
   is unarchived and this feedback modifies its Android and import UI before
   acceptance.
+- Follow-up wording ruling: the purchase row identifies the functional origin
+  as `Android` and appends only a uniquely recommended account. The alias stays
+  in payment-medium management and matching; it is not shown as the source.

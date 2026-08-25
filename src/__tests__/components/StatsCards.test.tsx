@@ -40,6 +40,14 @@ describe('StatsCards', () => {
     expect(screen.getByTitle(/Crédito usado actual.*no en Gastos/)).toBeInTheDocument();
   });
 
+  it('keeps Pendiente visible at zero when there is no current credit debt', () => {
+    renderStats({ pendingExpenses: 0 });
+
+    const pendingCard = screen.getByText('Pendiente').closest('div.col-span-2');
+    expect(pendingCard).not.toBeNull();
+    expect(within(pendingCard as HTMLElement).getByLabelText('$0')).toBeInTheDocument();
+  });
+
   it('owns the global privacy action and masks every overview value immediately', () => {
     renderStats();
 

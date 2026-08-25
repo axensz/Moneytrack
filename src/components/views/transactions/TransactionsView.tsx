@@ -74,7 +74,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     balanceTransactions,
   } = useTransactionDomain();
   const { accounts, balancesReady, totalBalance } = useAccountDomain();
-  const overview = useLedgerOverview(balanceTransactions, accounts, totalBalance);
+  const overview = useLedgerOverview(balanceTransactions, accounts, totalBalance, filterAccount);
   const { recurringPayments } = useRecurringDomain();
   const { categories } = useCategoryDomain();
   const { beneficiaries } = useBeneficiaryDomain();

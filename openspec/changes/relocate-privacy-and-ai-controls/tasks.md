@@ -21,14 +21,14 @@
 
 - [x] 4.1 Run `npm run test:run`, `npm run typecheck`, `npm run lint`, `npm run build`, `git diff --check`, and `openspec.cmd validate relocate-privacy-and-ai-controls --strict` on the final checkout.
 - [x] 4.2 Rebuild the code-review graph and confirm the diff touches only the approved shell/privacy/assistant surfaces and their tests, with no financial, Firestore, debt, metric, or navigation-domain mutation.
-- [ ] 4.3 Verify in Chrome at 390×844, 1214×768, and 1440×900: light/dark, privacy toggle, launcher geometry, pending state, open/close/Escape focus, onboarding coexistence, zero document overflow, and no console errors.
+- [x] 4.3 Verify in Chrome at 390×844, 1214×768, and 1440×900: light/dark, privacy toggle, launcher geometry, pending state, open/close/Escape focus, onboarding coexistence, zero document overflow, and no console errors.
 - [x] 4.4 Commit and push the focused implementation to PR #76, update its title/body to reflect the actual combined scope, and keep it draft until the fresh checks are green.
 
 ## 5. Refinement after visual review
 
 - [x] 5.1 Amend the SDD and add a failing `StatsCards` contract proving the privacy action shares the `Resumen general` row and is absent from every individual metric card.
 - [x] 5.2 Move the existing 44×44 privacy action from `Saldo actual` to the overview heading row without changing its global state, persistence, icons, or masking behavior.
-- [ ] 5.3 Re-run focused and broad validation, rebuild the graph, complete task 4.3 in Chrome, update PR #76, and keep it draft until the new CI checks pass.
+- [x] 5.3 Re-run focused and broad validation, rebuild the graph, complete task 4.3 in Chrome, update PR #76, and keep it draft until the new CI checks pass.
 
 ## 6. Brand return to Transactions
 
@@ -43,3 +43,5 @@
 - [x] 7.3 Verify computed cursors in the browser, re-run broad validation, and publish the combined refinement through PR #76.
 
 Validation evidence (2026-08-24, guest profile): at 390×844, 1214×768, and 1440×900 in light and dark themes, the privacy action remained in the `Resumen general` row at 44×44 CSS pixels, masked and restored every overview value with the expected dynamic name/`aria-pressed` state, and the 48×48 assistant launcher kept safe mobile and desktop offsets. The guest launcher opened the authentication dialog, moved focus to its close action, closed with Escape, restored focus to the launcher, produced zero document overflow, and logged no console errors. Task 4.3 remains unchecked because pending authorization, the configured authenticated assistant panel, and onboarding coexistence were not safely observable without altering persisted authentication, API-key, consent, or onboarding state.
+
+Closure evidence (2026-08-24): the clean Chrome matrix was repeated at 390×844, 1214×768, and 1440×900 in light and dark themes. At 390×844 the onboarding dialog and 48×48 launcher coexisted without overlap or horizontal overflow; the privacy control measured 44×44, preserved focus, toggled `aria-pressed`/its dynamic name, masked all four overview amounts, and restored them. Guest authentication focus moved into `Cerrar` after the deferred modal mount and Escape returned it to the launcher. The configured authenticated assistant panel focused its composer on open and restored the persistent launcher on Escape; no assistant request was sent. Pending authorization was checked through a controlled visual-only state on the isolated server: the live launcher exposed `Autorización de IA pendiente` with `!`, remained 48×48 at `(330, 712)–(378, 760)`, and kept zero overflow; the temporary state was reverted immediately and a final DOM check confirmed the badge absent. The guest matrix logged zero console errors. Focused validation passed 93/93 and broad Vitest passed 1,401 tests with 14 intentional skips; typecheck, lint without warnings, and the static build passed. PR #76 is already merged and its relevant GitHub Actions checks are successful, superseding the earlier draft gate.

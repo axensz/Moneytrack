@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   setGeminiApiKey,
   getGeminiApiKey,
@@ -7,6 +7,14 @@ import {
   getGeminiClient,
 } from '../../lib/geminiClient';
 import { setAiConsent, hasAiConsent } from '../../lib/aiConsent';
+
+vi.mock('@google/genai', () => ({
+  GoogleGenAI: class {
+    constructor(options: { apiKey: string }) {
+      void options;
+    }
+  },
+}));
 
 const LONG_KEY = 'AIzaSyAOFAKEKEY1234567890abcdefABCDEF';
 

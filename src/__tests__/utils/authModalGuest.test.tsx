@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 vi.mock('../../lib/firebase', () => ({ loginWithGoogle: vi.fn() }));
@@ -18,5 +18,20 @@ describe('AuthModal — descubribilidad modo invitado (P-guest-hidden)', () => {
     render(<AuthModal isOpen onClose={onClose} />);
     fireEvent.click(screen.getByRole('button', { name: /Continuar sin cuenta/i }));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('mueve el foco al diálogo cuando se abre después de estar montado cerrado', async () => {
+    const trigger = document.createElement('button');
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    const { rerender } = render(<AuthModal isOpen={false} onClose={() => {}} />);
+    rerender(<AuthModal isOpen onClose={() => {}} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Cerrar' })).toHaveFocus();
+    });
+
+    trigger.remove();
   });
 });

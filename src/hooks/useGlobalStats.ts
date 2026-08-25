@@ -138,6 +138,7 @@ export function useLedgerOverview(
   transactions: Transaction[],
   accounts: Account[],
   totalBalance: number,
+  pendingAccountId = 'all',
 ): LedgerOverview {
   const [currentMonthKey, setCurrentMonthKey] = useState(getLocalMonthKey);
 
@@ -183,7 +184,13 @@ export function useLedgerOverview(
   }, [transactions, currentMonthKey]);
 
   const currentMonthStats = useGlobalStats(currentMonthTransactions, accounts);
-  const fullHistoryStats = useGlobalStats(transactions, accounts);
+  const pendingAccounts = useMemo(
+    () => pendingAccountId === 'all'
+      ? accounts
+      : accounts.filter((account) => account.id === pendingAccountId),
+    [accounts, pendingAccountId],
+  );
+  const fullHistoryStats = useGlobalStats(transactions, pendingAccounts);
 
   return {
     totalBalance,

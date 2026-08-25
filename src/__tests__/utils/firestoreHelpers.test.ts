@@ -6,6 +6,12 @@ import {
     isRecoverableError
 } from '../../utils/firestoreHelpers';
 import * as toastHelpers from '../../utils/toastHelpers';
+import { LedgerMutationValidationError } from '../../utils/ledgerMutation';
+
+const loggerMocks = vi.hoisted(() => ({
+    error: vi.fn(),
+    warn: vi.fn(),
+}));
 
 // Mock toast helpers
 vi.mock('../../utils/toastHelpers', () => ({
@@ -13,6 +19,10 @@ vi.mock('../../utils/toastHelpers', () => ({
         error: vi.fn(),
         success: vi.fn(),
     }
+}));
+
+vi.mock('../../utils/logger', () => ({
+    logger: loggerMocks,
 }));
 
 describe('firestoreHelpers', () => {
@@ -175,6 +185,40 @@ describe('firestoreHelpers', () => {
 
             expect(result).toBe('success');
             expect(operation).toHaveBeenCalledTimes(2);
+        });
+
+        it('reports an expected ledger rejection as a warning instead of a critical error', async () => {
+            const validationError = new LedgerMutationValidationError(
+                'INSUFFICIENT_FUNDS',
+                'Saldo insuficiente. Disponible: $0'
+            );
+            const operation = vi.fn().mockRejectedValue(validationError);
+
+            await expect(safeFirestoreOperation(operation, 'addDebt'))
+                .rejects.toBe(validationError);
+
+            expect(loggerMocks.error).not.toHaveBeenCalled();
+            expect(loggerMocks.warn).toHaveBeenCalledWith(
+                'Operación rechazada por validación: addDebt',
+                { code: 'INSUFFICIENT_FUNDS' }
+            );
+        });
+
+        it('keeps account-authority validation failures in critical reporting', async () => {
+            const validationError = new LedgerMutationValidationError(
+                'INVALID_ACCOUNT_AUTHORITY',
+                'La cuenta requiere reconciliación'
+            );
+            const operation = vi.fn().mockRejectedValue(validationError);
+
+            await expect(safeFirestoreOperation(operation, 'updateTransaction'))
+                .rejects.toBe(validationError);
+
+            expect(loggerMocks.warn).not.toHaveBeenCalled();
+            expect(loggerMocks.error).toHaveBeenCalledWith(
+                'Error en operación Firestore: updateTransaction',
+                validationError
+            );
         });
     });
 

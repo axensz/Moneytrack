@@ -6,6 +6,7 @@ import type { Account, Transaction } from '../../types/finance';
 
 const bank: Account = { id: 'bank', name: 'Banco', type: 'savings', initialBalance: 0, isDefault: true };
 const card: Account = { id: 'card', name: 'Visa', type: 'credit', initialBalance: 0, isDefault: false, creditLimit: 1_000_000 };
+const secondCard: Account = { id: 'second-card', name: 'Mastercard', type: 'credit', initialBalance: 0, isDefault: false, creditLimit: 2_000_000 };
 const tx = (id: string, overrides: Partial<Transaction>): Transaction => ({
   id, type: 'expense', amount: 100, category: 'Compras', description: id,
   date: new Date('2026-07-15T12:00:00'), paid: true, accountId: 'bank', ...overrides,
@@ -28,6 +29,32 @@ describe('useLedgerOverview', () => {
       ];
       const { result } = renderHook(() => useLedgerOverview(history, [bank, card], 777));
       expect(result.current).toEqual({ totalBalance: 777, totalIncome: 100, totalExpenses: 40, pendingExpenses: 200 });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('scopes pending credit debt to the account filter and aggregates it for all accounts', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 15, 12));
+    try {
+      const history = [
+        tx('visa-debt', { amount: 200, accountId: 'card', paid: false }),
+        tx('mastercard-debt', { amount: 350, accountId: 'second-card', paid: false }),
+      ];
+      const { result, rerender } = renderHook(
+        ({ accountId }) => useLedgerOverview(history, [bank, card, secondCard], 777, accountId),
+        { initialProps: { accountId: 'card' } },
+      );
+
+      expect(result.current.pendingExpenses).toBe(200);
+
+      rerender({ accountId: 'second-card' });
+      expect(result.current.pendingExpenses).toBe(350);
+
+      rerender({ accountId: 'bank' });
+      expect(result.current.pendingExpenses).toBe(0);
+
+      rerender({ accountId: 'all' });
+      expect(result.current.pendingExpenses).toBe(550);
     } finally { vi.useRealTimers(); }
   });
 

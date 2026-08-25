@@ -101,7 +101,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
           <div className="flex items-center justify-between mb-1.5 sm:mb-2">
             <span
               className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 inline-flex items-center gap-1 cursor-help"
-              title="Crédito usado actual en todas tus tarjetas. Las compras de tarjeta aún no pagadas se muestran aquí, no en Gastos."
+              title="Crédito usado actual. Con una cuenta filtrada muestra solo esa cuenta; sin filtro suma todas tus tarjetas. Las compras de tarjeta aún no pagadas se muestran aquí, no en Gastos."
             >
               Pendiente
               <Info size={12} className="text-gray-400 dark:text-gray-500" aria-hidden="true" />

@@ -35,4 +35,3 @@ export function getCreditAuthorityState(
 
   return { ready: true, status: 'ready', usedCredit: account.usedCredit };
 }
-

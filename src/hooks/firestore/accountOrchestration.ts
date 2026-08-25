@@ -243,6 +243,10 @@ export async function deleteAccountCascade(
         const accountCollection = collection(db, `users/${userId}/accounts`);
         const recurringCollection = collection(db, `users/${userId}/recurringPayments`);
         const debtCollection = collection(db, `users/${userId}/debts`);
+        const instrumentCollection = collection(
+          db,
+          `users/${userId}/paymentInstruments`
+        );
         const accountSnapshot = await getDocsFromServer(accountCollection);
         const currentAccounts = accountSnapshot.docs.map(snapshot => ({
           id: snapshot.id,
@@ -256,7 +260,11 @@ export async function deleteAccountCascade(
         const targetReferenceIds = currentTarget
           ? getAccountReferenceIds(currentTarget)
           : [id];
-        const [recurringSnapshots, debtSnapshots] = await Promise.all([
+        const [
+          recurringSnapshots,
+          debtSnapshots,
+          instrumentSnapshots,
+        ] = await Promise.all([
           Promise.all(targetReferenceIds.map(referenceId =>
             getDocsFromServer(
               query(recurringCollection, where('accountId', '==', referenceId))
@@ -267,12 +275,22 @@ export async function deleteAccountCascade(
               query(debtCollection, where('accountId', '==', referenceId))
             )
           )),
+          Promise.all(targetReferenceIds.map(referenceId =>
+            getDocsFromServer(
+              query(instrumentCollection, where('accountId', '==', referenceId))
+            )
+          )),
         ]);
         const recurringIds = Array.from(new Set(
           recurringSnapshots.flatMap(snapshot => snapshot.docs.map(document => document.id))
         ));
         const debtIds = Array.from(new Set(
           debtSnapshots.flatMap(snapshot => snapshot.docs.map(document => document.id))
+        ));
+        const instrumentIds = Array.from(new Set(
+          instrumentSnapshots.flatMap(snapshot =>
+            snapshot.docs.map(document => document.id)
+          )
         ));
         // #23: las TC asociadas no se borran; se limpia su bankAccountId para
         // que no queden huérfanas al eliminar la cuenta bancaria.
@@ -409,6 +427,9 @@ export async function deleteAccountCascade(
           ...Array.from(txDeletes.keys()).map(txId => doc(db, `users/${userId}/transactions`, txId)),
           ...recurringIds.map(rId => doc(db, `users/${userId}/recurringPayments`, rId)),
           ...debtIds.map(dId => doc(db, `users/${userId}/debts`, dId)),
+          ...instrumentIds.map(instrumentId =>
+            doc(db, `users/${userId}/paymentInstruments`, instrumentId)
+          ),
         ];
 
         // +1 libera el lock global en el mismo commit. Si todo no cabe, se
@@ -624,7 +645,16 @@ export async function mergeCreditCardsOrchestrated(
       ]));
       const recurringCollection = collection(db, `users/${userId}/recurringPayments`);
       const debtCollection = collection(db, `users/${userId}/debts`);
-      const [snapshots, recurringSnapshots, debtSnapshots] = await Promise.all([
+      const instrumentCollection = collection(
+        db,
+        `users/${userId}/paymentInstruments`
+      );
+      const [
+        snapshots,
+        recurringSnapshots,
+        debtSnapshots,
+        instrumentSnapshots,
+      ] = await Promise.all([
         Promise.all(allReferenceIds.flatMap(refId => [
           getDocsFromServer(query(txCollection, where('accountId', '==', refId))),
           getDocsFromServer(query(txCollection, where('toAccountId', '==', refId))),
@@ -639,12 +669,22 @@ export async function mergeCreditCardsOrchestrated(
             query(debtCollection, where('accountId', '==', referenceId))
           )
         )),
+        Promise.all(Array.from(sourceReferenceIds).map(referenceId =>
+          getDocsFromServer(
+            query(instrumentCollection, where('accountId', '==', referenceId))
+          )
+        )),
       ]);
       const recurringIds = Array.from(new Set(
         recurringSnapshots.flatMap(snapshot => snapshot.docs.map(document => document.id))
       ));
       const debtIds = Array.from(new Set(
         debtSnapshots.flatMap(snapshot => snapshot.docs.map(document => document.id))
+      ));
+      const instrumentIds = Array.from(new Set(
+        instrumentSnapshots.flatMap(snapshot =>
+          snapshot.docs.map(document => document.id)
+        )
       ));
       const relevantTransactions = new Map<string, Transaction>();
       snapshots.forEach(snapshot => {
@@ -752,6 +792,21 @@ export async function mergeCreditCardsOrchestrated(
           type: 'update',
           ref: doc(db, `users/${userId}/debts`, debtId),
           data: { accountId: destinationId },
+        });
+      });
+
+      instrumentIds.forEach(instrumentId => {
+        operations.push({
+          type: 'update',
+          ref: doc(
+            db,
+            `users/${userId}/paymentInstruments`,
+            instrumentId
+          ),
+          data: {
+            accountId: destinationId,
+            updatedAt: serverTimestamp(),
+          },
         });
       });
 

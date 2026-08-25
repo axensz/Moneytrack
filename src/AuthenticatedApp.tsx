@@ -479,6 +479,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
 
             <FinanceViewRouter
               view={view}
+              userId={user?.uid ?? null}
               transactionsPanel={(
                 <>
                   <TransactionForm
@@ -492,6 +493,8 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
                   />
 
                   <TransactionsView
+                    userId={user?.uid ?? null}
+                    isOnline={isOnline}
                     showForm={showForm}
                     setShowForm={setShowForm}
                     filterCategory={filterCategory}

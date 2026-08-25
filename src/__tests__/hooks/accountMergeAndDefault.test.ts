@@ -16,6 +16,7 @@ const M = vi.hoisted(() => ({
   acctStore: new Map<string, Record<string, unknown>>(),
   userStore: new Map<string, Record<string, unknown>>(),
   txStore: new Map<string, Record<string, unknown>>(),
+  instrumentStore: new Map<string, Record<string, unknown>>(),
   log: [] as Array<{ op: string; path?: string; id?: string; data?: Record<string, unknown> }>,
   firestoreData: {} as Record<string, unknown>,
   gen: 0,
@@ -53,7 +54,9 @@ vi.mock('firebase/firestore', () => ({
         ? (M.firestoreData.recurringPayments as Record<string, unknown>[] ?? [])
         : q.__path.endsWith('/debts')
           ? (M.firestoreData.debts as Record<string, unknown>[] ?? [])
-          : [...M.txStore.values()];
+          : q.__path.endsWith('/paymentInstruments')
+            ? [...M.instrumentStore.entries()].map(([id, data]) => ({ id, ...data }))
+            : [...M.txStore.values()];
     const matched = source.filter(item => cons.every(c => item[c.field] === c.value));
     return {
       docs: matched.map(item => ({
@@ -89,7 +92,8 @@ vi.mock('firebase/firestore', () => ({
           // Aplicar al store para reflejar el commit atómico.
           const store = o.ref.__path?.endsWith('/transactions') ? M.txStore
             : o.ref.__path?.endsWith('/accounts') ? M.acctStore
-              : o.ref.__path === 'users' ? M.userStore : null;
+              : o.ref.__path?.endsWith('/paymentInstruments') ? M.instrumentStore
+                : o.ref.__path === 'users' ? M.userStore : null;
           if (store) {
             if (o.op === 'delete') store.delete(o.ref.__id);
             else if (o.op === 'set') {
@@ -164,6 +168,7 @@ beforeEach(() => {
   M.acctStore.clear();
   M.userStore.clear();
   M.txStore.clear();
+  M.instrumentStore.clear();
   M.log.length = 0;
   M.gen = 0;
   M.commitError = null;
@@ -216,6 +221,72 @@ describe('useAccounts.mergeCreditCards — caracterización', () => {
     expect(deleted).toEqual(expect.arrayContaining(['cc1', 'cc2']));
     expect(deleted).not.toContain('dest');
     expectReleasedLock('merge-credit-cards');
+  });
+
+  it('reapunta todos los medios de las tarjetas origen y conserva los ajenos', async () => {
+    seed([bank, cc1, cc2, dest]);
+    M.instrumentStore.set('plastic-cc1', {
+      schemaVersion: 1,
+      label: 'Plástico',
+      accountId: 'cc1',
+      kind: 'physical-card',
+      last4: '1111',
+      network: 'visa',
+      active: true,
+      createdAt: new Date('2026-08-25T12:00:00.000Z'),
+      updatedAt: new Date('2026-08-25T12:00:00.000Z'),
+    });
+    M.instrumentStore.set('wallet-cc2', {
+      schemaVersion: 1,
+      label: 'Wallet',
+      accountId: 'cc2',
+      kind: 'wallet-token',
+      last4: '2222',
+      network: 'mastercard',
+      active: true,
+      createdAt: new Date('2026-08-25T12:00:00.000Z'),
+      updatedAt: new Date('2026-08-25T12:00:00.000Z'),
+    });
+    M.instrumentStore.set('unrelated', {
+      schemaVersion: 1,
+      label: 'Otra cuenta',
+      accountId: 'bank',
+      kind: 'physical-card',
+      last4: '3333',
+      network: 'unknown',
+      active: true,
+      createdAt: new Date('2026-08-25T12:00:00.000Z'),
+      updatedAt: new Date('2026-08-25T12:00:00.000Z'),
+    });
+
+    const acc = renderHook(() => useAccounts(UID, [], vi.fn())).result;
+    await acc.current.mergeCreditCards({
+      sourceAccountIds: ['cc1', 'cc2'],
+      destination: { id: 'dest', name: 'Visa Unificada' },
+    });
+
+    const instrumentUpdates = M.log.filter(operation => (
+      operation.op === 'update'
+      && operation.path?.endsWith('/paymentInstruments')
+    ));
+    expect(instrumentUpdates).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'plastic-cc1',
+        data: {
+          accountId: 'dest',
+          updatedAt: expect.any(Date),
+        },
+      }),
+      expect.objectContaining({
+        id: 'wallet-cc2',
+        data: {
+          accountId: 'dest',
+          updatedAt: expect.any(Date),
+        },
+      }),
+    ]));
+    expect(instrumentUpdates.map(operation => operation.id)).not.toContain('unrelated');
+    expect(M.instrumentStore.get('unrelated')?.accountId).toBe('bank');
   });
 
   it('rechaza si las tarjetas no son del mismo banco', async () => {
@@ -510,6 +581,40 @@ describe('useAccounts.mergeCreditCards — caracterización', () => {
     expect(M.acctStore.has('cc1')).toBe(true);
     expect(M.txStore).toHaveLength(488);
     expect(cacheMutations).toHaveLength(0);
+  });
+
+  it('cuenta los medios al validar el límite atómico de la fusión', async () => {
+    seed([bank, cc1, cc2, dest]);
+    for (let index = 0; index < 11; index += 1) {
+      M.txStore.set(`boundary-${index}`, {
+        id: `boundary-${index}`,
+        type: 'expense',
+        amount: 1_000,
+        accountId: 'cc1',
+        category: 'Borde',
+        paid: true,
+      });
+    }
+    M.instrumentStore.set('boundary-instrument', {
+      schemaVersion: 1,
+      label: 'Medio en borde',
+      accountId: 'cc1',
+      kind: 'wallet-token',
+      last4: '4444',
+      network: 'visa',
+      active: true,
+      createdAt: new Date('2026-08-25T12:00:00.000Z'),
+      updatedAt: new Date('2026-08-25T12:00:00.000Z'),
+    });
+
+    const acc = renderHook(() => useAccounts(UID, [], vi.fn())).result;
+    await expect(acc.current.mergeCreditCards({
+      sourceAccountIds: ['cc1', 'cc2'],
+      destination: { id: 'dest', name: 'Visa Unificada' },
+    })).rejects.toThrow(/límite atómico|forma segura/i);
+
+    expect(M.log).toHaveLength(0);
+    expect(M.instrumentStore.get('boundary-instrument')?.accountId).toBe('cc1');
   });
 
   it('rechaza la fusión mientras otra operación de cuentas conserva el lock', async () => {

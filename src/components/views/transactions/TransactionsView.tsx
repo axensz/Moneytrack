@@ -24,8 +24,11 @@ import { useTransactionsView } from './hooks/useTransactionsView';
 import { useCSVExport } from '../../../hooks/useCSVExport';
 import { StatsCards } from '../../shared/StatsCards';
 import { sectionTitle } from '../../../config/ui';
+import { TransactionImportInbox } from './components/TransactionImportInbox';
 
 interface TransactionsViewProps {
+  userId?: string | null;
+  isOnline?: boolean;
   showForm: boolean;
   setShowForm: (show: boolean) => void;
   filterCategory: FilterValue;
@@ -48,6 +51,8 @@ interface TransactionsViewProps {
  * Muestra lista filtrable con edición inline y eliminación con undo
  */
 export const TransactionsView: React.FC<TransactionsViewProps> = ({
+  userId = null,
+  isOnline = true,
   showForm,
   setShowForm,
   filterCategory,
@@ -170,6 +175,12 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
         pendingExpenses={overview.pendingExpenses}
         formatCurrency={formatCurrency}
         hasAccounts={accounts.length > 0}
+      />
+      <TransactionImportInbox
+        userId={userId}
+        accounts={accounts}
+        categories={categories}
+        isOnline={isOnline}
       />
       <div className="card">
       {/* Mensaje de ayuda cuando no hay cuentas */}

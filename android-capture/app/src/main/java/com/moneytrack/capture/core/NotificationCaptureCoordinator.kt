@@ -4,6 +4,7 @@ data class NotificationEventMetadata(
     val packageName: String,
     val notificationKey: String,
     val postedAtEpochMillis: Long,
+    val deliveryStartedAtEpochMillis: Long = postedAtEpochMillis,
 )
 
 enum class CaptureResultCode {
@@ -50,7 +51,7 @@ class NotificationCaptureCoordinator(
                 deviceInstallId = installationId,
                 packageName = event.packageName,
                 notificationKey = event.notificationKey,
-                postedAtEpochMillis = event.postedAtEpochMillis,
+                deliveryStartedAtEpochMillis = event.deliveryStartedAtEpochMillis,
             )
         } catch (_: RuntimeException) {
             onResult(CaptureResultCode.INSPECTION_FAILED)

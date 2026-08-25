@@ -3,6 +3,7 @@ package com.moneytrack.capture.preferences
 import android.content.SharedPreferences
 import java.lang.reflect.Proxy
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class AppThemeModeTest {
@@ -16,10 +17,7 @@ class AppThemeModeTest {
 
     @Test
     fun `theme mode persists independently from capture settings`() {
-        val preferences = CapturePreferences::class.java
-            .getDeclaredConstructor(SharedPreferences::class.java)
-            .apply { isAccessible = true }
-            .newInstance(inMemoryPreferences())
+        val preferences = capturePreferences()
 
         preferences.captureEnabled = true
         preferences.setAllowedPackages(setOf("com.example.wallet"))
@@ -30,9 +28,40 @@ class AppThemeModeTest {
         assertEquals(setOf("com.example.wallet"), preferences.allowedPackages())
     }
 
-    private fun inMemoryPreferences(): SharedPreferences {
-        val values = mutableMapOf<String, Any?>()
-        return Proxy.newProxyInstance(
+    @Test
+    fun `notification updates reuse one delivery generation until removal`() {
+        val storedValues = mutableMapOf<String, Any?>()
+        val preferences = capturePreferences(storedValues)
+        val packageName = "com.example.bank"
+        val notificationKey = "0|com.example.bank|purchase|42"
+
+        assertEquals(
+            1_000L,
+            preferences.notificationDeliveryStartedAt(packageName, notificationKey, 1_000L),
+        )
+        assertEquals(
+            1_000L,
+            preferences.notificationDeliveryStartedAt(packageName, notificationKey, 2_000L),
+        )
+
+        preferences.forgetNotificationDelivery(packageName, notificationKey)
+
+        assertEquals(
+            3_000L,
+            preferences.notificationDeliveryStartedAt(packageName, notificationKey, 3_000L),
+        )
+        assertFalse(storedValues.keys.any { it.contains(notificationKey) })
+    }
+
+    private fun capturePreferences(
+        values: MutableMap<String, Any?> = mutableMapOf(),
+    ): CapturePreferences = CapturePreferences::class.java
+        .getDeclaredConstructor(SharedPreferences::class.java)
+        .apply { isAccessible = true }
+        .newInstance(inMemoryPreferences(values))
+
+    private fun inMemoryPreferences(values: MutableMap<String, Any?>): SharedPreferences =
+        Proxy.newProxyInstance(
             javaClass.classLoader,
             arrayOf(SharedPreferences::class.java),
         ) { _, method, arguments ->
@@ -43,11 +72,11 @@ class AppThemeModeTest {
                     ?.filterIsInstance<String>()
                     ?.toSet()
                     ?: arguments[1]
+                "getLong" -> values[arguments!![0]] as? Long ?: arguments[1]
                 "edit" -> editor(values)
                 else -> error("Unexpected SharedPreferences call: ${method.name}")
             }
         } as SharedPreferences
-    }
 
     private fun editor(values: MutableMap<String, Any?>): SharedPreferences.Editor {
         lateinit var editor: SharedPreferences.Editor
@@ -56,11 +85,16 @@ class AppThemeModeTest {
             arrayOf(SharedPreferences.Editor::class.java),
         ) { _, method, arguments ->
             when (method.name) {
-                "putBoolean", "putString", "putStringSet" -> {
+                "putBoolean", "putString", "putStringSet", "putLong" -> {
                     values[arguments!![0] as String] = arguments[1]
                     editor
                 }
+                "remove" -> {
+                    values.remove(arguments!![0] as String)
+                    editor
+                }
                 "apply" -> Unit
+                "commit" -> true
                 else -> error("Unexpected SharedPreferences.Editor call: ${method.name}")
             }
         } as SharedPreferences.Editor

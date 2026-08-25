@@ -93,6 +93,28 @@ class NotificationCaptureCoordinatorTest {
         )
     }
 
+    @Test
+    fun `an update with a new post time keeps the active delivery identity`() {
+        val writes = mutableListOf<NormalizedPurchaseCandidate>()
+        val coordinator = coordinator(writes)
+
+        listOf(POSTED_AT, POSTED_AT + 5_000L).forEach { observedAt ->
+            coordinator.process(
+                state = readyState(),
+                installationId = INSTALLATION_ID,
+                event = metadata(
+                    postedAtEpochMillis = observedAt,
+                    deliveryStartedAtEpochMillis = POSTED_AT,
+                ),
+                rawProvider = { raw(postedAtEpochMillis = observedAt) },
+                onResult = {},
+            )
+        }
+
+        assertEquals(2, writes.size)
+        assertEquals(writes[0].candidateId, writes[1].candidateId)
+    }
+
     private fun coordinator(writes: MutableList<NormalizedPurchaseCandidate>) =
         NotificationCaptureCoordinator(
             writeCandidate = { candidate, onComplete ->
@@ -109,17 +131,25 @@ class NotificationCaptureCoordinatorTest {
             allowedPackages = allowedPackages,
         )
 
-    private fun metadata(packageName: String = PACKAGE_NAME) = NotificationEventMetadata(
+    private fun metadata(
+        packageName: String = PACKAGE_NAME,
+        postedAtEpochMillis: Long = POSTED_AT,
+        deliveryStartedAtEpochMillis: Long = postedAtEpochMillis,
+    ) = NotificationEventMetadata(
         packageName = packageName,
         notificationKey = "0|$packageName|purchase|42",
-        postedAtEpochMillis = POSTED_AT,
+        postedAtEpochMillis = postedAtEpochMillis,
+        deliveryStartedAtEpochMillis = deliveryStartedAtEpochMillis,
     )
 
-    private fun raw(text: String = "Compra por COP 12.345,67 en Café Central con tarjeta terminada en 4321") =
+    private fun raw(
+        text: String = "Compra por COP 12.345,67 en Café Central con tarjeta terminada en 4321",
+        postedAtEpochMillis: Long = POSTED_AT,
+    ) =
         RawNotification(
             packageName = PACKAGE_NAME,
             notificationKey = "0|$PACKAGE_NAME|purchase|42",
-            postedAtEpochMillis = POSTED_AT,
+            postedAtEpochMillis = postedAtEpochMillis,
             title = "Movimiento",
             text = text,
             bigText = null,

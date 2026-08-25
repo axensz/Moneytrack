@@ -8,18 +8,18 @@ object CandidateFingerprint {
         deviceInstallId: String,
         packageName: String,
         notificationKey: String,
-        postedAtEpochMillis: Long,
+        deliveryStartedAtEpochMillis: Long,
     ): String {
         require(deviceInstallId.isNotBlank()) { "Missing installation identity" }
         require(packageName.isNotBlank()) { "Missing source package" }
         require(notificationKey.isNotBlank()) { "Missing notification identity" }
-        require(postedAtEpochMillis > 0) { "Invalid observed time" }
+        require(deliveryStartedAtEpochMillis > 0) { "Invalid delivery generation" }
 
         val identity = listOf(
             deviceInstallId,
             packageName,
             notificationKey,
-            postedAtEpochMillis.toString(),
+            deliveryStartedAtEpochMillis.toString(),
         ).joinToString("|")
         return MessageDigest.getInstance("SHA-256")
             .digest(identity.toByteArray(StandardCharsets.UTF_8))

@@ -56,6 +56,11 @@ class MoneyNotificationListenerService : NotificationListenerService() {
                 }
             }
         }
+        val deliveryStartedAt = preferences.notificationDeliveryStartedAt(
+            packageName = sourcePackage,
+            notificationKey = event.key,
+            postedAtEpochMillis = event.postTime,
+        )
 
         coordinator.process(
             state = CaptureEligibilityState(
@@ -69,6 +74,7 @@ class MoneyNotificationListenerService : NotificationListenerService() {
                 packageName = sourcePackage,
                 notificationKey = event.key,
                 postedAtEpochMillis = event.postTime,
+                deliveryStartedAtEpochMillis = deliveryStartedAt,
             ),
             rawProvider = {
                 val extras = event.notification.extras
@@ -83,6 +89,14 @@ class MoneyNotificationListenerService : NotificationListenerService() {
                 )
             },
             onResult = { result -> record(preferences, result) },
+        )
+    }
+
+    override fun onNotificationRemoved(statusBarNotification: StatusBarNotification?) {
+        val event = statusBarNotification ?: return
+        CapturePreferences.create(this).forgetNotificationDelivery(
+            packageName = event.packageName,
+            notificationKey = event.key,
         )
     }
 

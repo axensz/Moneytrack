@@ -16,9 +16,12 @@ class CandidateFingerprintTest {
     }
 
     @Test
-    fun `notification key and observed time change identity`() {
+    fun `notification key and delivery generation change identity`() {
         assertNotEquals(fingerprint(), fingerprint(notificationKey = "other-key"))
-        assertNotEquals(fingerprint(), fingerprint(postedAtEpochMillis = 1_777_000_000_001L))
+        assertNotEquals(
+            fingerprint(),
+            fingerprint(deliveryStartedAtEpochMillis = 1_777_000_000_001L),
+        )
     }
 
     @Test
@@ -41,11 +44,11 @@ class CandidateFingerprintTest {
 
     private fun fingerprint(
         notificationKey: String = "notification-key",
-        postedAtEpochMillis: Long = 1_777_000_000_000L,
+        deliveryStartedAtEpochMillis: Long = 1_777_000_000_000L,
     ): String = CandidateFingerprint.create(
         deviceInstallId = "0b0e9e7b-46b3-4db6-b652-55aca1178ee4",
         packageName = "com.example.bank",
         notificationKey = notificationKey,
-        postedAtEpochMillis = postedAtEpochMillis,
+        deliveryStartedAtEpochMillis = deliveryStartedAtEpochMillis,
     )
 }

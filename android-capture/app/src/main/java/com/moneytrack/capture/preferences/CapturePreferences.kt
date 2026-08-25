@@ -3,6 +3,8 @@ package com.moneytrack.capture.preferences
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.util.UUID
 
 enum class AppThemeMode(val wireValue: String) {
@@ -86,6 +88,37 @@ class CapturePreferences private constructor(
             )
         }
 
+    @Synchronized
+    fun notificationDeliveryStartedAt(
+        packageName: String,
+        notificationKey: String,
+        postedAtEpochMillis: Long,
+    ): Long {
+        require(isValidPackageName(packageName)) { "Invalid source package" }
+        require(notificationKey.isNotBlank()) { "Missing notification identity" }
+        require(postedAtEpochMillis > 0) { "Invalid observed time" }
+
+        val preferenceKey = notificationDeliveryKey(packageName, notificationKey)
+        val currentStartedAt = preferences.getLong(preferenceKey, 0L)
+        if (
+            currentStartedAt > 0L &&
+            timestampsAreWithinActiveDelivery(currentStartedAt, postedAtEpochMillis)
+        ) {
+            return currentStartedAt
+        }
+        preferences.edit(commit = true) {
+            putLong(preferenceKey, postedAtEpochMillis)
+        }
+        return postedAtEpochMillis
+    }
+
+    fun forgetNotificationDelivery(packageName: String, notificationKey: String) {
+        if (!isValidPackageName(packageName) || notificationKey.isBlank()) return
+        preferences.edit(commit = true) {
+            remove(notificationDeliveryKey(packageName, notificationKey))
+        }
+    }
+
     var lastResultCode: String?
         get() = preferences.getString(KEY_LAST_RESULT, null)
         set(value) {
@@ -101,6 +134,8 @@ class CapturePreferences private constructor(
         private const val KEY_DISCOVERED_PACKAGES = "discovered_packages"
         private const val KEY_LAST_RESULT = "last_result_code"
         private const val SOURCE_LABEL_PREFIX = "source_label."
+        private const val NOTIFICATION_DELIVERY_PREFIX = "notification_delivery."
+        private const val MAX_ACTIVE_DELIVERY_AGE_MILLIS = 24 * 60 * 60 * 1_000L
         private const val MAX_PACKAGE_LENGTH = 160
         private const val MAX_LABEL_LENGTH = 80
         private val PACKAGE_NAME = Regex("[A-Za-z0-9._]+")
@@ -116,5 +151,17 @@ class CapturePreferences private constructor(
             value.isNotBlank() && value.length <= MAX_PACKAGE_LENGTH && PACKAGE_NAME.matches(value)
 
         private fun sourceLabelKey(packageName: String) = "$SOURCE_LABEL_PREFIX$packageName"
+
+        private fun notificationDeliveryKey(packageName: String, notificationKey: String): String {
+            val digest = MessageDigest.getInstance("SHA-256")
+                .digest("$packageName|$notificationKey".toByteArray(StandardCharsets.UTF_8))
+                .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+            return "$NOTIFICATION_DELIVERY_PREFIX$digest"
+        }
+
+        private fun timestampsAreWithinActiveDelivery(first: Long, second: Long): Boolean {
+            val difference = if (first >= second) first - second else second - first
+            return difference <= MAX_ACTIVE_DELIVERY_AGE_MILLIS
+        }
     }
 }

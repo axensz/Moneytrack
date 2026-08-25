@@ -78,7 +78,7 @@ export function PaymentInstrumentsSection({
   return (
     <section
       aria-labelledby="payment-instruments-heading"
-      className="mt-8 border-l-4 border-primary/60 pl-4 sm:pl-5"
+      className="mt-8"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>

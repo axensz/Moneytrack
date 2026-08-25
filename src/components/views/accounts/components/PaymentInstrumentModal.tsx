@@ -112,13 +112,13 @@ export function PaymentInstrumentModal({
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Guarda solo una etiqueta y la terminación. Moneytrack nunca solicita
-          el número completo ni el código de seguridad.
+          Usa el mismo apodo que ves en Wallet para reconocer el medio. Moneytrack
+          nunca solicita el número completo ni el código de seguridad.
         </p>
 
         <div>
           <label htmlFor="payment-instrument-label" className="block text-sm font-semibold text-foreground mb-1.5">
-            Nombre
+            Nombre o apodo
           </label>
           <input
             id="payment-instrument-label"
@@ -127,7 +127,7 @@ export function PaymentInstrumentModal({
             maxLength={80}
             autoFocus
             onChange={event => setLabel(event.target.value)}
-            placeholder="Ej. Visa del celular"
+            placeholder="Ej. Oro o Nu"
           />
         </div>
 

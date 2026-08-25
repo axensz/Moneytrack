@@ -86,8 +86,8 @@ describe('PaymentInstrumentsSection', () => {
     expect(screen.getByRole('dialog', {
       name: 'Añadir medio de pago',
     })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Nombre'), {
-      target: { value: 'Mastercard celular' },
+    fireEvent.change(screen.getByLabelText('Nombre o apodo'), {
+      target: { value: 'Oro' },
     });
     fireEvent.change(screen.getByLabelText('Cuenta vinculada'), {
       target: { value: 'savings' },
@@ -102,13 +102,18 @@ describe('PaymentInstrumentsSection', () => {
     fireEvent.change(screen.getByLabelText('Últimos 4 dígitos'), {
       target: { value: '9876' },
     });
+    fireEvent.change(screen.getByLabelText('Últimos 4 dígitos'), {
+      target: { value: '98ab765' },
+    });
+    expect(screen.getByLabelText('Últimos 4 dígitos')).toHaveValue('9876');
+    expect(screen.getByText(/mismo apodo que ves en wallet/i)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Red'), {
       target: { value: 'mastercard' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar medio' }));
 
     await waitFor(() => expect(H.createInstrument).toHaveBeenCalledWith({
-      label: 'Mastercard celular',
+      label: 'Oro',
       accountId: 'savings',
       kind: 'wallet-token',
       last4: '9876',
@@ -128,7 +133,7 @@ describe('PaymentInstrumentsSection', () => {
     ));
 
     fireEvent.click(screen.getByRole('button', { name: 'Editar Visa celular' }));
-    fireEvent.change(screen.getByLabelText('Nombre'), {
+    fireEvent.change(screen.getByLabelText('Nombre o apodo'), {
       target: { value: 'Visa del teléfono' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));

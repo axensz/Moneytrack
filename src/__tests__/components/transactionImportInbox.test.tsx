@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Account, Categories } from '../../types/finance';
 import type {
   PendingTransactionImportCandidate,
+  PaymentInstrument,
 } from '../../types/transactionImport';
 
 const H = vi.hoisted(() => ({
@@ -16,7 +17,7 @@ const H = vi.hoisted(() => ({
   error: null as Error | null,
   reachedLimit: false,
   dismissCandidate: vi.fn(async () => undefined),
-  instruments: [],
+  instruments: [] as PaymentInstrument[],
 }));
 
 vi.mock('../../hooks/firestore/useTransactionImportCandidates', () => ({
@@ -57,6 +58,14 @@ const accounts: Account[] = [{
   type: 'savings',
   isDefault: true,
   initialBalance: 1_000_000,
+}, {
+  id: 'card',
+  name: 'TC principal',
+  type: 'credit',
+  isDefault: false,
+  initialBalance: 0,
+  creditLimit: 2_000_000,
+  usedCredit: 0,
 }];
 const categories: Categories = {
   expense: ['Alimentación'],
@@ -95,7 +104,23 @@ beforeEach(() => {
 });
 
 describe('TransactionImportInbox', () => {
-  it('shows a truthful pending counter and expands from a compact ledger rail', () => {
+  it('shows a truthful pending counter and expands from a compact ledger toggle', () => {
+    H.candidates = [
+      { ...candidate('a'.repeat(64), 'Mercado Central'), cardLast4: '9876' },
+      candidate('b'.repeat(64), 'Café del barrio'),
+    ];
+    H.instruments = [{
+      id: 'instrument-1',
+      schemaVersion: 1,
+      label: 'Oro',
+      accountId: 'card',
+      kind: 'wallet-token',
+      last4: '9876',
+      network: 'visa',
+      active: true,
+      createdAt: new Date('2026-08-01T12:00:00.000Z'),
+      updatedAt: new Date('2026-08-01T12:00:00.000Z'),
+    }];
     render(
       <TransactionImportInbox
         userId="owner"
@@ -115,8 +140,11 @@ describe('TransactionImportInbox', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('Mercado Central')).toBeInTheDocument();
     expect(screen.getByText(/todavía no afecta saldos ni estadísticas/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/confianza alta/i)).toHaveLength(2);
-    expect(screen.getAllByText(/com\.example\.bank/i)).toHaveLength(2);
+    expect(screen.getAllByText('Android')).toHaveLength(2);
+    expect(screen.getByText('TC principal')).toBeInTheDocument();
+    expect(screen.queryByText('Oro')).not.toBeInTheDocument();
+    expect(screen.queryByText('Confianza alta')).not.toBeInTheDocument();
+    expect(screen.queryByText('com.example.bank')).not.toBeInTheDocument();
   });
 
   it('warns when the bounded first page reaches 100 candidates', () => {

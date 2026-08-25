@@ -5,6 +5,18 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 import java.util.UUID
 
+enum class AppThemeMode(val wireValue: String) {
+    SYSTEM("system"),
+    LIGHT("light"),
+    DARK("dark"),
+    ;
+
+    companion object {
+        fun fromWireValue(value: String?): AppThemeMode =
+            entries.firstOrNull { it.wireValue == value } ?: SYSTEM
+    }
+}
+
 data class DiscoveredNotificationSource(
     val packageName: String,
     val label: String,
@@ -17,6 +29,12 @@ class CapturePreferences private constructor(
         get() = preferences.getBoolean(KEY_CAPTURE_ENABLED, false)
         set(value) {
             preferences.edit { putBoolean(KEY_CAPTURE_ENABLED, value) }
+        }
+
+    var appThemeMode: AppThemeMode
+        get() = AppThemeMode.fromWireValue(preferences.getString(KEY_APP_THEME_MODE, null))
+        set(value) {
+            preferences.edit { putString(KEY_APP_THEME_MODE, value.wireValue) }
         }
 
     fun allowedPackages(): Set<String> = preferences
@@ -77,6 +95,7 @@ class CapturePreferences private constructor(
     companion object {
         private const val PREFERENCES_NAME = "moneytrack_capture_private"
         private const val KEY_CAPTURE_ENABLED = "capture_enabled"
+        private const val KEY_APP_THEME_MODE = "app_theme_mode"
         private const val KEY_ALLOWED_PACKAGES = "allowed_packages"
         private const val KEY_INSTALLATION_ID = "installation_id"
         private const val KEY_DISCOVERED_PACKAGES = "discovered_packages"

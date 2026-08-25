@@ -28,7 +28,6 @@ import com.moneytrack.capture.auth.GoogleSignInController
 import com.moneytrack.capture.core.CaptureSetupFlow
 import com.moneytrack.capture.core.CaptureSetupStep
 import com.moneytrack.capture.core.SourceLabelResolver
-import com.moneytrack.capture.core.SourceSelection
 import com.moneytrack.capture.notification.NotificationAccess
 import com.moneytrack.capture.preferences.AppThemeMode
 import com.moneytrack.capture.preferences.CapturePreferences
@@ -221,19 +220,58 @@ class MainActivity : AppCompatActivity() {
         }
 
         sources.filter { it.packageName in allowedPackages }.forEach { source ->
-            readySourceList.addView(readySourceView(source))
+            readySourceList.addView(sourceTextView(displayLabel(source)))
         }
     }
 
     private fun showSourceManagementDialog() {
         val sources = preferences.discoveredSources()
         val selected = sources.map { it.packageName in preferences.allowedPackages() }.toBooleanArray()
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(
+                resources.getDimensionPixelSize(R.dimen.panel_padding),
+                resources.getDimensionPixelSize(R.dimen.space_small),
+                resources.getDimensionPixelSize(R.dimen.panel_padding),
+                0,
+            )
+            addView(
+                TextView(this@MainActivity).apply {
+                    setText(R.string.manage_sources_explanation)
+                    setTextAppearance(android.R.style.TextAppearance_Material_Body1)
+                },
+            )
+            addView(
+                ScrollView(this@MainActivity).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        resources.getDimensionPixelSize(R.dimen.source_dialog_list_height),
+                    )
+                    addView(
+                        LinearLayout(this@MainActivity).apply {
+                            orientation = LinearLayout.VERTICAL
+                            sources.forEachIndexed { index, source ->
+                                addView(
+                                    CheckBox(this@MainActivity).apply {
+                                        text = displayLabel(source)
+                                        isChecked = selected[index]
+                                        minHeight = resources.getDimensionPixelSize(R.dimen.control_min_height)
+                                        layoutParams = LinearLayout.LayoutParams(
+                                            ViewGroup.LayoutParams.MATCH_PARENT,
+                                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                                        )
+                                        setOnCheckedChangeListener { _, checked -> selected[index] = checked }
+                                    },
+                                )
+                            }
+                        },
+                    )
+                },
+            )
+        }
         AlertDialog.Builder(this)
             .setTitle(R.string.manage_sources_title)
-            .setMessage(R.string.manage_sources_explanation)
-            .setMultiChoiceItems(sources.map(::displayLabel).toTypedArray(), selected) { _, which, checked ->
-                selected[which] = checked
-            }
+            .setView(content)
             .setNegativeButton(R.string.cancel_action, null)
             .setPositiveButton(R.string.save_changes_action) { _, _ ->
                 preferences.setAllowedPackages(
@@ -274,30 +312,6 @@ class MainActivity : AppCompatActivity() {
         minHeight = resources.getDimensionPixelSize(R.dimen.control_min_height)
         gravity = android.view.Gravity.CENTER_VERTICAL
         setTextAppearance(android.R.style.TextAppearance_Material_Body1)
-    }
-
-    private fun readySourceView(source: DiscoveredNotificationSource) = LinearLayout(this).apply {
-        val label = displayLabel(source)
-        gravity = android.view.Gravity.CENTER_VERTICAL
-        orientation = LinearLayout.HORIZONTAL
-        addView(
-            sourceTextView(label).apply {
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            },
-        )
-        addView(
-            Button(this@MainActivity).apply {
-                text = getString(R.string.remove_source_action)
-                contentDescription = getString(R.string.remove_source_description, label)
-                minHeight = resources.getDimensionPixelSize(R.dimen.control_min_height)
-                setOnClickListener {
-                    preferences.setAllowedPackages(
-                        SourceSelection.remove(preferences.allowedPackages(), source.packageName),
-                    )
-                    render()
-                }
-            },
-        )
     }
 
     private fun displayLabel(source: DiscoveredNotificationSource): String =

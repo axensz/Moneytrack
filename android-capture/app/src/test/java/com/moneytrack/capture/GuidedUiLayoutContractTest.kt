@@ -77,6 +77,19 @@ class GuidedUiLayoutContractTest {
         assertFalse(descendantIds.contains("@+id/theme_button"))
     }
 
+    @Test
+    fun `scrolling content is clipped outside the safe system bar padding`() {
+        val document = DocumentBuilderFactory.newInstance()
+            .newDocumentBuilder()
+            .parse(resourceFile("layout/activity_main.xml"))
+        val elements = document.getElementsByTagName("*")
+        val scrollView = (0 until elements.length)
+            .mapNotNull { elements.item(it) as? Element }
+            .single { it.getAttribute("android:id") == "@+id/content_scroll" }
+
+        assertEquals("true", scrollView.getAttribute("android:clipToPadding"))
+    }
+
     private fun resource(relative: String): String = resourceFile(relative).readText()
 
     private fun resourceFile(relative: String): File {

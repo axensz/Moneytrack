@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/surface_background"
-    android:clipToPadding="false"
+    android:clipToPadding="true"
     android:fillViewport="true"
     android:paddingStart="@dimen/screen_padding"
     android:paddingTop="@dimen/screen_padding"

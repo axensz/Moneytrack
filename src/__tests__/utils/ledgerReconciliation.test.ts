@@ -266,10 +266,18 @@ describe('buildLedgerReconciliationReport', () => {
         item.id === 'two' ? { ...item, amount: 21 } : item
       )),
     };
+    const changedBeneficiary = {
+      ...first,
+      transactions: first.transactions.map(item => (
+        item.id === 'two' ? { ...item, beneficiary: 'Otra persona' } : item
+      )),
+    };
 
     expect(buildLedgerReconciliationReport(first).fingerprint)
       .toBe(buildLedgerReconciliationReport(reordered).fingerprint);
     expect(buildLedgerReconciliationReport(first).fingerprint)
       .not.toBe(buildLedgerReconciliationReport(changed).fingerprint);
+    expect(buildLedgerReconciliationReport(first).fingerprint)
+      .not.toBe(buildLedgerReconciliationReport(changedBeneficiary).fingerprint);
   });
 });

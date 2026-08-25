@@ -219,6 +219,22 @@ describe('useDebts.deleteDebt — borrado atómico (F-debt-cascade)', () => {
     expect(M.log.filter(l => l.op === 'update')).toHaveLength(0);
   });
 
+  it('no borra la deuda ni sus movimientos si una tarjeta afectada no tiene usedCredit', async () => {
+    M.acctStore.set('cc', { ...cc, usedCredit: undefined });
+    seedTx({
+      id: 't-principal', type: 'expense', amount: 600_000, accountId: 'cc',
+      category: 'Préstamo', debtId: 'd1', paid: true,
+    });
+
+    const result = renderDebts([cc, sav]);
+    await expect(result.current.deleteDebt('d1')).rejects.toThrow(/reconciliación|autoridad/i);
+
+    expect(M.batchCommitCalls).toBe(0);
+    expect(M.log).toHaveLength(0);
+    expect(M.txStore.has('t-principal')).toBe(true);
+    expect(M.lockReleaseCalls).toBe(1);
+  });
+
   it('préstamo sin transacciones vinculadas: borra solo la deuda (atómico)', async () => {
     const result = renderDebts([cc, sav]);
     await result.current.deleteDebt('d1');
@@ -264,7 +280,7 @@ describe('useDebts.deleteDebt — borrado atómico (F-debt-cascade)', () => {
 
   it('borra pagos históricos vinculados aunque hayan ocurrido en cuentas distintas', async () => {
     const cc2: Account = { ...cc, id: 'cc-2', name: 'Mastercard', usedCredit: 200_000 };
-    M.acctStore.set('cc', { ...cc });
+    M.acctStore.set('cc', { ...cc, usedCredit: 1_000_000 });
     M.acctStore.set('cc-2', { ...cc2 });
     seedTx({ id: 't-principal', type: 'expense', amount: 1_000_000, accountId: 'cc', category: 'Préstamo', debtId: 'd1', paid: true });
     seedTx({ id: 't-pago', type: 'income', amount: 200_000, accountId: 'cc-2', category: 'Cobro Préstamo', debtId: 'd1', paid: true });

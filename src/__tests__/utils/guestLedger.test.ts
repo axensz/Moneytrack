@@ -230,6 +230,107 @@ describe('guest ledger durable envelope', () => {
     expect(starts).toBe(3);
   });
 
+  it('revalidates the winning guest revision so concurrent expenses cannot overdraw an asset', async () => {
+    const storage = new MemoryStorage();
+    seed(storage);
+    let releaseBoth!: () => void;
+    const bothStarted = new Promise<void>(resolve => { releaseBoth = resolve; });
+    let starts = 0;
+
+    const spend = (id: string) => mutateGuestLedger(
+      async draft => {
+        starts += 1;
+        if (starts <= 2) {
+          if (starts === 2) releaseBoth();
+          await bothStarted;
+        }
+        draft.transactions.push(transaction(id, 'expense', 60));
+      },
+      { storage, operationId: id, lock: noLock, maxRetries: 4 },
+    );
+
+    const outcomes = await Promise.allSettled([spend('expense-a'), spend('expense-b')]);
+    expect(outcomes.filter(outcome => outcome.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.filter(outcome => outcome.status === 'rejected')).toEqual([
+      expect.objectContaining({ reason: expect.objectContaining({ message: expect.stringMatching(/saldo insuficiente/i) }) }),
+    ]);
+
+    const persisted = readGuestLedgerEnvelope({ storage });
+    expect(persisted.revision).toBe(2);
+    expect(persisted.data.transactions).toHaveLength(1);
+    expect(persisted.data.transactions[0].amount).toBe(60);
+  });
+
+  it.each([
+    ['amount above the maximum', { amount: 1_000_000_000.01 }],
+    ['sub-cent amount', { amount: 10.001 }],
+    ['invalid date', { date: 'not-a-date' }],
+  ])('rejects a guest transaction with %s before persistence', async (_label, overrides) => {
+    const storage = new MemoryStorage();
+    seed(storage);
+    const rawBefore = storage.values.get(GUEST_LEDGER_STORAGE_KEY);
+
+    await expect(mutateGuestLedger(draft => {
+      draft.transactions.push({
+        ...transaction('invalid-transaction', 'expense', 10),
+        ...overrides,
+      } as Transaction);
+    }, { storage, operationId: `invalid-${_label}`, lock: noLock })).rejects.toThrow();
+
+    expect(storage.values.get(GUEST_LEDGER_STORAGE_KEY)).toBe(rawBefore);
+  });
+
+  it('preserves a legacy negative initial balance inside the supported monetary range', async () => {
+    const storage = new MemoryStorage();
+    storage.values.set('accounts', JSON.stringify([{
+      id: 'legacy-negative',
+      name: 'Cuenta legacy',
+      type: 'savings',
+      initialBalance: -25.5,
+      isDefault: true,
+    } satisfies Account]));
+    storage.values.set('transactions', JSON.stringify([]));
+    storage.values.set('debts', JSON.stringify([]));
+    storage.values.set('recurringPayments', JSON.stringify([]));
+
+    const migrated = await ensureGuestLedgerEnvelope({ storage, lock: noLock });
+
+    expect(migrated.data.accounts[0].initialBalance).toBe(-25.5);
+    expect(storage.values.get(GUEST_LEDGER_STORAGE_KEY)).toBeTruthy();
+  });
+
+  it('rejects a reciprocal but semantically unrelated credit-payment pointer', () => {
+    const savings = account();
+    const card: Account = {
+      id: 'card-1',
+      name: 'Visa',
+      type: 'credit',
+      initialBalance: 0,
+      isDefault: false,
+      usedCredit: 50,
+    };
+    const credit = {
+      ...transaction('credit-half', 'income', 10),
+      accountId: card.id!,
+      category: 'Pago Crédito',
+      beneficiary: 'Titular A',
+      linkedTransactionId: 'unrelated-half',
+    };
+    const unrelated = {
+      ...transaction('unrelated-half', 'expense', 10),
+      category: 'Pago Crédito',
+      beneficiary: 'Titular B',
+      linkedTransactionId: 'credit-half',
+    };
+
+    expect(() => createGuestLedgerEnvelope({
+      accounts: [savings, card],
+      transactions: [credit, unrelated],
+      debts: [],
+      recurringPayments: [],
+    })).toThrow(/pago|vínculo|reconciliación/i);
+  });
+
   it('does not roll back a competing envelope that wins after setItem but before read-back', async () => {
     const storage = new MemoryStorage();
     const original = seed(storage);
@@ -314,10 +415,12 @@ describe('guest ledger durable envelope', () => {
     const cardCredit = {
       ...transaction('card-payment-credit', 'income', 40),
       accountId: card.id!,
+      category: 'Pago Crédito',
       linkedTransactionId: 'card-payment-source',
     };
     const cardSource = {
       ...transaction('card-payment-source', 'expense', 40),
+      category: 'Pago Crédito',
       linkedTransactionId: 'card-payment-credit',
     };
 

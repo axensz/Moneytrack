@@ -68,10 +68,12 @@ import type { Account, Transaction } from '../../types/finance';
 import {
   buildAssetAdjustmentPlan,
   buildCreditHistoryAuthorityPlan,
+  buildLinkRepairPlan,
 } from '../../utils/ledgerRepairPlans';
 import {
   executeConfirmedLedgerRepair,
   loadServerLedgerReconciliation,
+  loadServerLedgerReconciliationBundle,
 } from '../../services/ledgerReconciliation';
 
 const document = (id: string, data: Record<string, unknown>): FakeDocument => ({
@@ -233,6 +235,56 @@ describe('ledgerReconciliation service', () => {
       plan.confirmationPhrase,
     )).rejects.toThrow(/obsoleto|cambió/i);
     expect(state.execute).toHaveBeenCalledTimes(1);
+    expect(state.stagedWrites).toHaveLength(0);
+    expect(state.commits).toBe(0);
+  });
+
+  it('invalida un plan de enlace si cambia el beneficiario antes del commit', async () => {
+    const date = timestamp('2026-08-24T12:00:00.000Z');
+    state.collections.set('users/user-1/accounts', [
+      document('bank-1', {
+        name: 'Banco', type: 'savings', isDefault: true, initialBalance: 1_000,
+      }),
+      document('card-1', {
+        name: 'Tarjeta', type: 'credit', isDefault: false, initialBalance: 0, usedCredit: 0,
+      }),
+    ]);
+    state.collections.set('users/user-1/transactions', [
+      document('credit-payment', {
+        type: 'income', amount: 100, category: 'Pago Crédito', description: 'Abono',
+        beneficiary: 'Titular', date, paid: true, accountId: 'card-1',
+        linkedTransactionId: 'wrong-id',
+      }),
+      document('source-payment', {
+        type: 'expense', amount: 100, category: 'Pago Crédito', description: 'Pago a Tarjeta: Abono',
+        beneficiary: 'Titular', date, paid: true, accountId: 'bank-1',
+        linkedTransactionId: 'credit-payment',
+      }),
+    ]);
+    state.collections.set('users/user-1/debts', []);
+    state.collections.set('users/user-1/recurringPayments', []);
+    const bundle = await loadServerLedgerReconciliationBundle('user-1');
+    const plan = buildLinkRepairPlan({
+      report: bundle.report,
+      transactions: bundle.transactions,
+      creditTransactionId: 'credit-payment',
+      sourceTransactionId: 'source-payment',
+    });
+    const source = state.collections.get('users/user-1/transactions')?.find(
+      item => item.id === 'source-payment'
+    );
+    state.collections.set('users/user-1/transactions', [
+      ...(state.collections.get('users/user-1/transactions') ?? [])
+        .filter(item => item.id !== 'source-payment'),
+      document('source-payment', { ...source?.data(), beneficiary: 'Otra persona' }),
+    ]);
+
+    await expect(executeConfirmedLedgerRepair(
+      'user-1',
+      plan,
+      plan.confirmationPhrase,
+    )).rejects.toThrow(/obsoleto|cambió/i);
+
     expect(state.stagedWrites).toHaveLength(0);
     expect(state.commits).toBe(0);
   });

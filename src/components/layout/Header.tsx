@@ -33,7 +33,7 @@ interface HeaderProps {
 }
 
 const menuItemClass =
-  'w-full flex items-center justify-start gap-3 px-4 py-2.5 text-left text-sm text-foreground whitespace-nowrap hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary';
+  'control-target-44 w-full flex items-center justify-start gap-3 px-4 py-2.5 text-left text-sm text-foreground whitespace-nowrap hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary';
 
 export const Header: React.FC<HeaderProps> = ({
   user,

@@ -87,6 +87,34 @@ export function validateCreditPaymentPair(
 }
 
 /**
+ * Valida un enlace empezando desde cualquiera de sus dos mitades. La cuenta de
+ * crédito se resuelve desde la autoridad completa, no desde el pointer.
+ */
+export function validateLinkedCreditPaymentPair(
+  transaction: Transaction,
+  linkedTransaction: Transaction | undefined,
+  accounts: readonly Account[]
+): CreditPaymentPairValidation {
+  if (!linkedTransaction) return { valid: false, reason: 'MISSING_COUNTERPART' };
+
+  const creditTransaction = transaction.type === 'income'
+    ? transaction
+    : linkedTransaction.type === 'income'
+      ? linkedTransaction
+      : transaction;
+  const sourceTransaction = creditTransaction === transaction
+    ? linkedTransaction
+    : transaction;
+  const creditAccount = accounts.find(account => (
+    account.type === 'credit'
+    && getAccountReferenceIds(account).includes(creditTransaction.accountId)
+  ));
+
+  if (!creditAccount) return { valid: false, reason: 'WRONG_ACCOUNT' };
+  return validateCreditPaymentPair(creditTransaction, sourceTransaction, creditAccount);
+}
+
+/**
  * Reconoce exclusivamente el formato que Moneytrack genera al pagar una TC.
  * La igualdad de monto, instante y descripción evita enlazar por aproximación
  * dos pagos históricos legítimos que casualmente tengan el mismo valor.

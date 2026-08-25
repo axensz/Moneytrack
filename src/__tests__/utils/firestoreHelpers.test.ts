@@ -65,6 +65,31 @@ describe('firestoreHelpers', () => {
             expect(operation).toHaveBeenCalledTimes(2);
         });
 
+        it('retries a Firestore unavailable error after an ambiguous acknowledgement', async () => {
+            const operation = vi.fn()
+                .mockRejectedValueOnce(new Error('FirebaseError: [code=unavailable]'))
+                .mockResolvedValueOnce('deduplicated-success');
+
+            const result = await withRetry(operation, {
+                maxRetries: 1,
+                delayMs: 0,
+                retryRecoverableErrors: true,
+            });
+
+            expect(result).toBe('deduplicated-success');
+            expect(operation).toHaveBeenCalledTimes(2);
+        });
+
+        it('does not retry unavailable by default for writers without durable identity', async () => {
+            const operation = vi.fn()
+                .mockRejectedValue(new Error('FirebaseError: [code=unavailable]'));
+
+            await expect(withRetry(operation, { maxRetries: 2, delayMs: 0 }))
+                .rejects.toThrow('unavailable');
+
+            expect(operation).toHaveBeenCalledTimes(1);
+        });
+
         it('throws error after max retries exceeded', async () => {
             const operation = vi.fn().mockRejectedValue(new Error('network error'));
 

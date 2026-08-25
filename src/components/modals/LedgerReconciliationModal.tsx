@@ -63,6 +63,24 @@ const maskedEvidence = (value: unknown, hidden: boolean): unknown => {
   return value;
 };
 
+const visibleIssueMessage = (
+  reconciliationIssue: LedgerReconciliationIssue,
+  hidden: boolean,
+): string => {
+  if (!hidden) return reconciliationIssue.message;
+  if (reconciliationIssue.code === 'credit-divergence') {
+    return 'La autoridad persistida y el historial completo no coinciden.';
+  }
+  if (reconciliationIssue.code === 'negative-explained') {
+    return 'La ecuación completa explica un saldo negativo oculto.';
+  }
+  return reconciliationIssue.message;
+};
+
+const visiblePlanTitle = (plan: LedgerRepairPlan, hidden: boolean): string => (
+  hidden && plan.kind === 'asset-adjustment' ? 'Ajuste de saldo' : plan.title
+);
+
 const accountForTransaction = (
   accounts: readonly LedgerAccountReconciliation[],
   transaction: Transaction,
@@ -269,7 +287,9 @@ export function LedgerReconciliationModal({
                           <p className="font-semibold">
                             {ISSUE_LABELS[reconciliationIssue.code]}
                           </p>
-                          <p className="mt-1 break-words text-sm">{reconciliationIssue.message}</p>
+                          <p className="mt-1 break-words text-sm">
+                            {visibleIssueMessage(reconciliationIssue, hideBalances)}
+                          </p>
                           <p className="mt-1 break-all font-mono text-xs opacity-80">
                             {reconciliationIssue.entityId}
                           </p>
@@ -429,7 +449,7 @@ export function LedgerReconciliationModal({
             {selectedPlan && (
               <section className="rounded-xl border border-primary/40 bg-card p-4" aria-labelledby="repair-plan-title">
                 <h4 id="repair-plan-title" className="font-semibold text-foreground">
-                  Vista previa: {selectedPlan.title}
+                  Vista previa: {visiblePlanTitle(selectedPlan, hideBalances)}
                 </h4>
                 <p className="mt-2 text-sm text-muted-foreground">{selectedPlan.riskSummary}</p>
                 <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">

@@ -437,6 +437,11 @@ export function useTransactionsCRUD(
 
       // Validación de esquema como última línea de defensa
       validateTransactionSchema(transaction);
+      if (transaction.type !== 'transfer' && transaction.toAccountId) {
+        throw new Error(
+          'Una cuenta destino en un ingreso o gasto requiere el writer de pago atómico.'
+        );
+      }
 
       const createdAt = new Date();
       const amount = normalizeLedgerAmount(transaction.amount);

@@ -5,7 +5,6 @@ import { BalanceCalculator } from '../utils/balanceCalculator';
 import { safeFirestoreOperation, checkNetworkConnection } from '../utils/firestoreHelpers';
 import { generateId, roundMoney } from '../utils/formatters';
 import { getAccountReferenceIds, transactionUsesAccount } from '../utils/accountTransactions';
-import { getCreditCardUsedCredit } from '../utils/accountStrategies';
 import { getCreditAuthorityState } from '../utils/creditAuthority';
 import {
   buildBalanceTargetAdjustment,
@@ -42,6 +41,9 @@ export function useAccounts(
   // paginada): cualquier cálculo derivado de `transactions` puede subcontar.
   balancesReady: boolean = true
 ) {
+  // Se conserva por compatibilidad de la API del hook; la autoridad de TC ya no
+  // puede derivarse de historial aunque este flag esté asentado.
+  void balancesReady;
   const {
     accounts: firestoreAccounts,
     loading: firestoreLoading,
@@ -317,25 +319,23 @@ export function useAccounts(
       (destination.isDefault ?? existingDestination?.isDefault ?? false) || sourceHadDefault;
     const destinationId = destination.id ?? generateId();
 
-    // Consolidar el cupo utilizado: la deuda del destino pasa a ser la suma de la
-    // deuda de TODAS las tarjetas unificadas (destino + orígenes), ya que sus
-    // transacciones se reapuntan al destino. Sin esto la deuda de las tarjetas
-    // origen se perdería al eliminarlas. Se prefiere el valor persistido; si una
-    // tarjeta aún no lo tiene, se calcula desde sus transacciones en memoria.
+    // Consolidar exclusivamente autoridad persistida. El historial es evidencia
+    // para conciliación, no permiso para inventar usedCredit durante un merge.
     const cardsToConsolidate = [existingDestination, ...sourceAccounts].filter(
       (account): account is Account => Boolean(account)
     );
-    // El fallback (sin usedCredit persistido) deriva la deuda del historial:
-    // con la ventana paginada aún sin asentar subcontaría. Bloquear hasta ready.
-    if (!balancesReady && cardsToConsolidate.some(account => account.usedCredit == null)) {
-      throw new Error('Los saldos aún se están calculando. Intenta unificar de nuevo en unos segundos.');
+    const creditAuthorities = cardsToConsolidate.map(account => ({
+      account,
+      authority: getCreditAuthorityState(account),
+    }));
+    const unresolvedAuthority = creditAuthorities.find(({ authority }) => !authority.ready);
+    if (unresolvedAuthority) {
+      throw new Error(
+        `La tarjeta ${unresolvedAuthority.account.name} requiere reconciliación antes de unificar.`
+      );
     }
-    const mergedUsedCredit = cardsToConsolidate.reduce(
-      (sum, account) =>
-        sum +
-        (account.usedCredit != null
-          ? Math.max(0, account.usedCredit)
-          : getCreditCardUsedCredit(account, transactions)),
+    const mergedUsedCredit = creditAuthorities.reduce(
+      (sum, { authority }) => sum + authority.usedCredit!,
       0
     );
 

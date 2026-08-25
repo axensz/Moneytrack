@@ -241,6 +241,25 @@ describe('useAddTransaction — pago periódico autenticable', () => {
 });
 
 describe('useAddTransaction — pagos y deuda contractual de TC', () => {
+  it('no degrada un pago a una sola mitad si la cuenta origen falta en el snapshot React', async () => {
+    const card = { ...credit, usedCredit: 200_000 };
+    const params = makeParams({ accounts: [card], defaultAccount: card });
+    const { result } = renderHook(() => useAddTransaction(params));
+
+    await act(async () => {
+      await result.current.handleAddTransaction({
+        type: 'income', amount: '100000', category: '', description: 'Pago',
+        date: '2026-06-15', paid: true, accountId: 'tc', toAccountId: 'sav',
+        hasInterest: false, installments: 0,
+      });
+    });
+
+    expect(params.addCreditPaymentAtomic).not.toHaveBeenCalled();
+    expect(params.addTransaction).not.toHaveBeenCalled();
+    expect(params.setShowForm).not.toHaveBeenCalledWith(false);
+    expect(M.toastErrors.join(' ')).toMatch(/cuenta origen|actualiza|recarga/i);
+  });
+
   it('rechaza pagar la TC desde una cuenta sin saldo suficiente', async () => {
     const bank = { ...savings, initialBalance: 50_000 };
     const card = { ...credit, usedCredit: 200_000 };

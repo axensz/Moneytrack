@@ -3,6 +3,7 @@ import type { Account, Transaction } from '../../types/finance';
 import {
   findHistoricalCreditPaymentPairs,
   validateCreditPaymentPair,
+  validateLinkedCreditPaymentPair,
 } from '../../utils/creditPaymentPairs';
 
 const card: Account = {
@@ -136,6 +137,29 @@ describe('validateCreditPaymentPair', () => {
       valid: true,
       creditTransaction: credit,
       sourceTransaction: source,
+    });
+  });
+});
+
+describe('validateLinkedCreditPaymentPair', () => {
+  it('resolves either half of a valid pair against the authoritative account set', () => {
+    const pair = currentPair();
+    const accounts: Account[] = [
+      { id: 'savings', name: 'Banco', type: 'savings', initialBalance: 0, isDefault: true },
+      pair.account,
+    ];
+
+    expect(validateLinkedCreditPaymentPair(pair.credit, pair.source, accounts).valid).toBe(true);
+    expect(validateLinkedCreditPaymentPair(pair.source, pair.credit, accounts).valid).toBe(true);
+  });
+
+  it('rejects reciprocal pointers that do not form a semantic card-payment pair', () => {
+    const pair = currentPair();
+    const unrelated = { ...pair.source, beneficiary: 'Persona ajena' };
+
+    expect(validateLinkedCreditPaymentPair(pair.credit, unrelated, [pair.account])).toEqual({
+      valid: false,
+      reason: 'BENEFICIARY_MISMATCH',
     });
   });
 });

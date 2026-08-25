@@ -139,6 +139,15 @@ describe('buildDebtAccountReassignmentPlan', () => {
     )).toThrow(/deuda negativa|no es consistente/i);
   });
 
+  it('rejects a credit reassignment without persisted usedCredit authority', () => {
+    expect(() => buildDebtAccountReassignmentPlan(
+      debt(),
+      [principal()],
+      [savings, { ...credit(), usedCredit: undefined }],
+      'credit'
+    )).toThrow(/reconciliación|autoridad/i);
+  });
+
   it('rejects missing account references instead of guessing', () => {
     expect(() => buildDebtAccountReassignmentPlan(
       debt('missing'),

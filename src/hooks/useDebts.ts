@@ -40,10 +40,16 @@ import {
   planLedgerMutation,
 } from '../utils/ledgerMutation';
 import { creditDeltasByAccount } from '../utils/creditDeltas';
+import { getCreditAuthorityState } from '../utils/creditAuthority';
 import { BalanceCalculator } from '../utils/balanceCalculator';
 import { getAccountReferenceIds } from '../utils/accountTransactions';
 import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../config/constants';
-import type { Debt, Transaction, Account } from '../types/finance';
+import type {
+  Account,
+  Debt,
+  DebtPaymentOperationReceipt,
+  Transaction,
+} from '../types/finance';
 import {
   acquireAccountOperationLock,
   assertAtomicBatchCapacity,
@@ -59,6 +65,7 @@ import {
 } from './firestore/ledgerMutationOrchestration';
 import { buildDebtAccountReassignmentPlan } from '../utils/debtAccountReassignment';
 import { transactionMatchesRestoreSnapshot } from '../utils/transactionRestorePolicy';
+import { requireDecodedTransaction } from '../utils/transactionDecoder';
 
 interface DebtTransactionOps {
   addTransaction?: (tx: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
@@ -67,6 +74,58 @@ interface DebtTransactionOps {
   updateTransaction?: (id: string, updates: Partial<Transaction>) => Promise<void>;
   accounts?: Account[];
 }
+
+const DEBT_PAYMENT_RECEIPT_LIMIT = 50;
+
+const readDebtPaymentReceipts = (value: unknown): DebtPaymentOperationReceipt[] => (
+  Array.isArray(value)
+    ? value.filter((item): item is DebtPaymentOperationReceipt => (
+        Boolean(item)
+        && typeof item === 'object'
+        && typeof (item as DebtPaymentOperationReceipt).operationId === 'string'
+        && typeof (item as DebtPaymentOperationReceipt).amount === 'number'
+        && Number.isFinite((item as DebtPaymentOperationReceipt).amount)
+        && (
+          (item as DebtPaymentOperationReceipt).transactionId === undefined
+          || typeof (item as DebtPaymentOperationReceipt).transactionId === 'string'
+        )
+      ))
+    : []
+);
+
+const appendDebtPaymentReceipt = (
+  receipts: readonly DebtPaymentOperationReceipt[],
+  receipt: DebtPaymentOperationReceipt,
+): DebtPaymentOperationReceipt[] => [
+  ...receipts.filter(item => item.operationId !== receipt.operationId),
+  receipt,
+].slice(-DEBT_PAYMENT_RECEIPT_LIMIT);
+
+const loadCommittedDebtTransaction = async (
+  userId: string,
+  debtId: string,
+  receipt: DebtPaymentOperationReceipt,
+): Promise<Transaction | null> => {
+  if (!receipt.transactionId) return null;
+  const snapshot = await getDocFromServer(
+    doc(db, `users/${userId}/transactions`, receipt.transactionId)
+  );
+  if (!snapshot.exists()) {
+    throw new Error('El recibo del pago existe pero su transacción no; requiere reconciliación.');
+  }
+  const transaction = requireDecodedTransaction({
+    id: receipt.transactionId,
+    data: () => snapshot.data() as Record<string, unknown>,
+  });
+  if (
+    transaction.operationId !== receipt.operationId
+    || transaction.debtId !== debtId
+    || roundMoney(transaction.amount) !== roundMoney(receipt.amount)
+  ) {
+    throw new Error('La identidad del pago confirmado no coincide; requiere reconciliación.');
+  }
+  return transaction;
+};
 
 export function useDebts(
   userId: string | null,
@@ -177,6 +236,7 @@ export function useDebts(
       const debtRef = doc(collection(db, `users/${userId}/debts`));
       debtId = debtRef.id;
       const createdAt = new Date();
+      const operationId = createAccountOperationId('ledger-mutation');
       const originalAmount = normalizeLedgerAmount(debt.originalAmount);
       const remainingAmount = normalizeLedgerAmount(debt.remainingAmount);
       const cleanDebt = stripUndefined({
@@ -184,34 +244,49 @@ export function useDebts(
         originalAmount,
         remainingAmount,
       });
+      const transactionData = debt.accountId
+        ? {
+            type: debt.type === 'lent' ? 'expense' as const : 'income' as const,
+            amount: originalAmount,
+            category: LOAN_CATEGORY,
+            description: debt.type === 'lent'
+              ? `Préstamo a ${debt.personName}`
+              : `Préstamo de ${debt.personName}`,
+            date: createdAt,
+            paid: true,
+            accountId: debt.accountId,
+            debtId,
+            operationId,
+            mutationKind: 'create' as const,
+            mutationSource: 'debt' as const,
+          }
+        : null;
+      const transactionRef = transactionData
+        ? doc(db, `users/${userId}/transactions`, operationId)
+        : null;
 
       const createdTransaction = await safeFirestoreOperation(
-        () => executeAuthenticatedLedgerMutation(
-          userId,
-          async ({ operationId, loadContext }) => {
-          const transactionData = debt.accountId
-            ? {
-                type: debt.type === 'lent' ? 'expense' as const : 'income' as const,
-                amount: originalAmount,
-                category: LOAN_CATEGORY,
-                description: debt.type === 'lent'
-                  ? `Préstamo a ${debt.personName}`
-                  : `Préstamo de ${debt.personName}`,
-                date: createdAt,
-                paid: true,
-                accountId: debt.accountId,
-                debtId,
-                operationId,
-                mutationKind: 'create' as const,
-                mutationSource: 'debt' as const,
-              }
-            : null;
+        async () => {
+          const committedDebt = await getDocFromServer(debtRef);
+          if (committedDebt.exists()) {
+            const committedData = committedDebt.data() as Record<string, unknown>;
+            if (committedData.creationOperationId !== operationId) {
+              throw new Error('La identidad de creación de la deuda no coincide; requiere reconciliación.');
+            }
+            if (!transactionData || !transactionRef) return null;
+            return loadCommittedDebtTransaction(userId, debtId, {
+              operationId,
+              amount: originalAmount,
+              transactionId: transactionRef.id,
+            });
+          }
+
+          return executeAuthenticatedLedgerMutation(
+            userId,
+            async ({ loadContext }) => {
           const context = await loadContext(
             transactionData ? [transactionData.accountId] : []
           );
-          const transactionRef = transactionData
-            ? doc(collection(db, `users/${userId}/transactions`))
-            : null;
           const transactionWithMetadata = transactionData && transactionRef
             ? {
                 id: transactionRef.id,
@@ -235,6 +310,7 @@ export function useDebts(
               batch.set(debtRef, {
                 ...cleanDebt,
                 createdAt,
+                creationOperationId: operationId,
               });
               if (transactionWithMetadata && transactionRef) {
                 const persistedTransaction = { ...transactionWithMetadata };
@@ -250,10 +326,12 @@ export function useDebts(
             },
             result: transactionWithMetadata,
           };
-        }
-        ),
+            },
+            { operationId },
+          );
+        },
         'addDebt',
-        { maxRetries: 2 }
+        { maxRetries: 2, retryRecoverableErrors: true }
       );
 
       if (createdTransaction) {
@@ -387,6 +465,25 @@ export function useDebts(
           });
           const accountUpdates = Array.from(revertByAccount.entries())
             .filter(([, delta]) => delta !== 0);
+
+          accountUpdates.forEach(([accountId, delta]) => {
+            const account = serverAccounts.find(candidate => candidate.id === accountId);
+            const authority = getCreditAuthorityState(account);
+            if (!account || !authority.ready || authority.usedCredit === null) {
+              throw new Error(
+                `La tarjeta ${account?.name ?? accountId} requiere reconciliación antes de eliminar esta deuda.`
+              );
+            }
+            const resultingAuthority = getCreditAuthorityState({
+              type: 'credit',
+              usedCredit: roundMoney(authority.usedCredit - delta),
+            });
+            if (!resultingAuthority.ready) {
+              throw new Error(
+                `Eliminar esta deuda dejaría una autoridad inválida en ${account.name}; requiere reconciliación.`
+              );
+            }
+          });
 
           // tx deletes + account updates + debt delete + liberación del lease.
           assertAtomicBatchCapacity(
@@ -595,10 +692,33 @@ export function useDebts(
       }
 
       const requestedAmount = normalizeLedgerAmount(amount);
+      const operationId = createAccountOperationId('ledger-mutation');
+      const createdAt = new Date();
+      const transactionRef = doc(
+        db,
+        `users/${userId}/transactions`,
+        operationId,
+      );
       const createdTransaction = await safeFirestoreOperation(
-        () => executeAuthenticatedLedgerMutation(
-          userId,
-          async ({ operationId, loadContext }) => {
+        async () => {
+          const observedDebt = await getDocFromServer(
+            doc(db, `users/${userId}/debts`, debtId)
+          );
+          if (observedDebt.exists()) {
+            const observedReceipts = readDebtPaymentReceipts(
+              (observedDebt.data() as Record<string, unknown>).recentPaymentOperations
+            );
+            const committedReceipt = observedReceipts.find(
+              receipt => receipt.operationId === operationId
+            );
+            if (committedReceipt) {
+              return loadCommittedDebtTransaction(userId, debtId, committedReceipt);
+            }
+          }
+
+          return executeAuthenticatedLedgerMutation(
+            userId,
+            async ({ loadContext }) => {
           const debtRef = doc(db, `users/${userId}/debts`, debtId);
           const debtSnapshot = await getDocFromServer(debtRef);
           if (!debtSnapshot.exists()) {
@@ -609,6 +729,32 @@ export function useDebts(
             ...(debtSnapshot.data() as Omit<Debt, 'id'>),
             id: debtId,
           } as Debt;
+          const paymentReceipts = readDebtPaymentReceipts(
+            persistedDebt.recentPaymentOperations
+          );
+          const committedReceipt = paymentReceipts.find(
+            receipt => receipt.operationId === operationId
+          );
+          if (committedReceipt) {
+            const committedTransaction = await loadCommittedDebtTransaction(
+              userId,
+              debtId,
+              committedReceipt,
+            );
+            const context = await loadContext([]);
+            return {
+              intent: {
+                kind: 'create' as const,
+                before: [],
+                after: [],
+                metadata: { operationId, mutationSource: 'debt' as const },
+              },
+              context,
+              writeCount: 0,
+              stage: () => undefined,
+              result: committedTransaction,
+            };
+          }
           if (persistedDebt.isSettled || persistedDebt.remainingAmount <= 0) {
             const context = await loadContext([]);
             return {
@@ -630,7 +776,6 @@ export function useDebts(
 
           const newRemaining = Math.max(0, persistedRemaining - effectiveAmount);
           const isSettled = newRemaining === 0;
-          const createdAt = new Date();
           const transactionData = persistedDebt.accountId
             ? {
                 type: persistedDebt.type === 'lent' ? 'income' as const : 'expense' as const,
@@ -651,10 +796,7 @@ export function useDebts(
           const context = await loadContext(
             transactionData ? [transactionData.accountId] : []
           );
-          const transactionRef = transactionData
-            ? doc(collection(db, `users/${userId}/transactions`))
-            : null;
-          const transactionWithMetadata = transactionData && transactionRef
+          const transactionWithMetadata = transactionData
             ? {
                 id: transactionRef.id,
                 ...transactionData,
@@ -668,18 +810,27 @@ export function useDebts(
             metadata: { operationId, mutationSource: 'debt' as const },
           };
           const creditChanges = planCreditAuthorityChanges(intent, context);
+          const nextPaymentReceipts = appendDebtPaymentReceipt(
+            paymentReceipts,
+            {
+              operationId,
+              amount: effectiveAmount,
+              ...(transactionWithMetadata ? { transactionId: transactionRef.id } : {}),
+            },
+          );
 
           return {
             intent,
             context,
-            writeCount: 1 + (transactionRef ? 1 : 0) + creditChanges.length,
+            writeCount: 1 + (transactionWithMetadata ? 1 : 0) + creditChanges.length,
             stage: (batch) => {
               batch.update(debtRef, {
                 remainingAmount: newRemaining,
                 isSettled,
                 ...(isSettled ? { settledAt: createdAt } : {}),
+                recentPaymentOperations: nextPaymentReceipts,
               });
-              if (transactionWithMetadata && transactionRef) {
+              if (transactionWithMetadata) {
                 const persistedTransaction = { ...transactionWithMetadata };
                 delete persistedTransaction.id;
                 batch.set(transactionRef, persistedTransaction);
@@ -693,10 +844,12 @@ export function useDebts(
             },
             result: transactionWithMetadata,
           };
-        }
-        ),
+            },
+            { operationId },
+          );
+        },
         'registerDebtPayment',
-        { maxRetries: 2 }
+        { maxRetries: 2, retryRecoverableErrors: true }
       );
 
       if (createdTransaction) {

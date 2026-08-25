@@ -2,6 +2,7 @@ import { LOAN_CATEGORY } from '../config/constants';
 import type { Account, Debt, Transaction } from '../types/finance';
 import { findAccountForTransaction } from './accountTransactions';
 import { creditDeltasByAccount } from './creditDeltas';
+import { getCreditAuthorityState } from './creditAuthority';
 import { roundMoney } from './formatters';
 
 export interface DebtAccountCreditAdjustment {
@@ -76,7 +77,13 @@ export function buildDebtAccountReassignmentPlan(
     const delta = roundMoney((afterDeltas.get(accountId) ?? 0) - (beforeDeltas.get(accountId) ?? 0));
     if (delta === 0) continue;
 
-    const resultingUsedCredit = roundMoney((account.usedCredit ?? 0) + delta);
+    const authority = getCreditAuthorityState(account);
+    if (!authority.ready || authority.usedCredit === null) {
+      throw new Error(
+        `La tarjeta ${account.name} requiere reconciliación antes de cambiar la deuda.`
+      );
+    }
+    const resultingUsedCredit = roundMoney(authority.usedCredit + delta);
     if (resultingUsedCredit < -0.01) {
       throw new Error(`El cambio dejaría deuda negativa en ${account.name}; el saldo persistido no es consistente.`);
     }

@@ -1,7 +1,11 @@
+import { ACCOUNT_VALIDATION, TRANSACTION_VALIDATION } from '../config/constants';
 import { generateId, roundMoney } from './formatters';
-import { getAccountReferenceIds } from './accountTransactions';
+import { findAccountForTransaction, getAccountReferenceIds } from './accountTransactions';
+import { BalanceCalculator } from './balanceCalculator';
 import { getCreditAuthorityState } from './creditAuthority';
 import { getCreditDelta } from './creditDeltas';
+import { validateLinkedCreditPaymentPair } from './creditPaymentPairs';
+import { normalizeLedgerAmount, planLedgerMutation } from './ledgerMutation';
 import type {
   Account,
   Debt,
@@ -162,6 +166,47 @@ const requireFinite = (value: unknown, label: string, minimum = 0): number => {
   return value;
 };
 
+const requireBoundedMoney = (
+  value: unknown,
+  label: string,
+  minimum: number,
+  maximum: number,
+): number => {
+  if (
+    typeof value !== 'number'
+    || !Number.isFinite(value)
+    || value < minimum
+    || value > maximum
+  ) {
+    throw new Error(`${label} no tiene un valor monetario válido.`);
+  }
+  const rounded = roundMoney(value);
+  const floatTolerance = Number.EPSILON * Math.max(1, Math.abs(value)) * 8;
+  if (Math.abs(value - rounded) > floatTolerance) {
+    throw new Error(`${label} debe expresarse con máximo dos decimales.`);
+  }
+  return rounded;
+};
+
+const requireLedgerAmount = (value: unknown, label: string): number => {
+  try {
+    return normalizeLedgerAmount(value as number);
+  } catch {
+    throw new Error(`${label} no tiene un valor monetario válido.`);
+  }
+};
+
+const requireValidDate = (value: unknown, label: string): void => {
+  const date = value instanceof Date
+    ? value
+    : typeof value === 'string' || typeof value === 'number'
+      ? new Date(value)
+      : null;
+  if (!date || !Number.isFinite(date.getTime())) {
+    throw new Error(`${label} no tiene una fecha válida.`);
+  }
+};
+
 const requireUniqueIds = (
   values: readonly { id?: string }[],
   label: string,
@@ -207,12 +252,27 @@ export function validateGuestLedgerData(data: GuestLedgerData): void {
     if (!['savings', 'credit', 'cash'].includes(String(value.type))) {
       throw new Error(`accounts[${index}] no tiene tipo válido.`);
     }
-    requireFinite(value.initialBalance, `accounts[${index}].initialBalance`);
+    requireBoundedMoney(
+      value.initialBalance,
+      `accounts[${index}].initialBalance`,
+      ACCOUNT_VALIDATION.initialBalance.min,
+      ACCOUNT_VALIDATION.initialBalance.max,
+    );
     if (typeof value.isDefault !== 'boolean') {
       throw new Error(`accounts[${index}].isDefault no es booleano.`);
     }
-    for (const field of ['creditLimit', 'usedCredit', 'interestRate'] as const) {
-      if (value[field] !== undefined) requireFinite(value[field], `accounts[${index}].${field}`);
+    for (const field of ['creditLimit', 'usedCredit'] as const) {
+      if (value[field] !== undefined) {
+        requireBoundedMoney(
+          value[field],
+          `accounts[${index}].${field}`,
+          0,
+          TRANSACTION_VALIDATION.amount.max,
+        );
+      }
+    }
+    if (value.interestRate !== undefined) {
+      requireFinite(value.interestRate, `accounts[${index}].interestRate`);
     }
   });
 
@@ -237,7 +297,8 @@ export function validateGuestLedgerData(data: GuestLedgerData): void {
     if (!['income', 'expense', 'transfer'].includes(String(value.type))) {
       throw new Error(`transactions[${index}] no tiene tipo válido.`);
     }
-    requireFinite(value.amount, `transactions[${index}].amount`, Number.EPSILON);
+    requireLedgerAmount(value.amount, `transactions[${index}].amount`);
+    requireValidDate(value.date, `transactions[${index}].date`);
     if (typeof value.category !== 'string' || typeof value.description !== 'string') {
       throw new Error(`transactions[${index}] no tiene texto válido.`);
     }
@@ -263,6 +324,16 @@ export function validateGuestLedgerData(data: GuestLedgerData): void {
       if (linked?.linkedTransactionId !== value.id) {
         throw new Error(`transactions[${index}] no tiene un enlace recíproco válido.`);
       }
+      const pair = validateLinkedCreditPaymentPair(
+        transaction,
+        linked,
+        data.accounts,
+      );
+      if (!pair.valid) {
+        throw new Error(
+          `transactions[${index}] tiene un vínculo de pago inválido (${pair.reason}); requiere reconciliación.`
+        );
+      }
     }
   });
 
@@ -275,7 +346,7 @@ export function validateGuestLedgerData(data: GuestLedgerData): void {
     ) {
       throw new Error(`recurringPayments[${index}] no tiene texto válido.`);
     }
-    requireFinite(value.amount, `recurringPayments[${index}].amount`, Number.EPSILON);
+    requireLedgerAmount(value.amount, `recurringPayments[${index}].amount`);
     if (
       typeof value.dueDay !== 'number'
       || !Number.isInteger(value.dueDay)
@@ -297,6 +368,60 @@ export function validateGuestLedgerData(data: GuestLedgerData): void {
       true,
     );
   });
+}
+
+const canonicalLedgerEffect = (
+  transaction: Transaction,
+  accounts: readonly Account[],
+): Transaction => ({
+  ...transaction,
+  accountId: findAccountForTransaction(accounts, transaction.accountId)?.id
+    ?? transaction.accountId,
+  toAccountId: transaction.toAccountId
+    ? findAccountForTransaction(accounts, transaction.toAccountId)?.id
+      ?? transaction.toAccountId
+    : undefined,
+});
+
+/** Revalida el delta contra la revisión que realmente ganará el commit. */
+export function validateGuestAssetMutation(
+  before: GuestLedgerData,
+  after: GuestLedgerData,
+): void {
+  const beforeById = new Map(before.transactions.map(transaction => [transaction.id!, transaction]));
+  const afterById = new Map(after.transactions.map(transaction => [transaction.id!, transaction]));
+  const changedIds = new Set([...beforeById.keys(), ...afterById.keys()]);
+  const changedBefore: Transaction[] = [];
+  const changedAfter: Transaction[] = [];
+
+  changedIds.forEach(id => {
+    const previous = beforeById.get(id);
+    const next = afterById.get(id);
+    if (stableStringify(previous) === stableStringify(next)) return;
+    if (previous) changedBefore.push(canonicalLedgerEffect(previous, before.accounts));
+    if (next) changedAfter.push(canonicalLedgerEffect(next, after.accounts));
+  });
+  if (changedBefore.length === 0 && changedAfter.length === 0) return;
+
+  const assets = after.accounts
+    .filter(account => account.type === 'savings' || account.type === 'cash')
+    .map(account => {
+      const previousAccount = before.accounts.find(candidate => candidate.id === account.id);
+      return {
+        account,
+        currentBalance: BalanceCalculator.calculateAccountBalance(
+          previousAccount ?? account,
+          before.transactions,
+        ),
+      };
+    });
+
+  planLedgerMutation({
+    kind: 'edit',
+    before: changedBefore,
+    after: changedAfter,
+    metadata: { mutationSource: 'manual' },
+  }, assets);
 }
 
 const creditEffectForReferences = (
@@ -708,6 +833,8 @@ export async function mutateGuestLedger(
 
       const draft = cloneData(base.data);
       await mutator(draft, { attempt, baseRevision: base.revision });
+      validateGuestLedgerData(draft);
+      validateGuestAssetMutation(base.data, draft);
       applyGuestCreditAuthorityDelta(base.data, draft);
       validateGuestLedgerData(draft);
       const serializedData = JSON.stringify(draft);

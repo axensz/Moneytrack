@@ -9,6 +9,8 @@ interface RetryOptions {
     maxRetries?: number;
     delayMs?: number;
     exponentialBackoff?: boolean;
+    /** Solo para operaciones con identidad durable o semántica idempotente. */
+    retryRecoverableErrors?: boolean;
 }
 
 /**
@@ -55,7 +57,8 @@ export async function withRetry<T>(
     const {
         maxRetries = 3,
         delayMs = 1000,
-        exponentialBackoff = true
+        exponentialBackoff = true,
+        retryRecoverableErrors = false
     } = options;
 
     let lastError: Error | undefined;
@@ -71,14 +74,13 @@ export async function withRetry<T>(
                 break;
             }
 
-            // Verificar si es un error de red
-            const isNetworkError =
+            const isLegacyNetworkError =
                 error instanceof Error &&
                 (error.message.includes('network') ||
                     error.message.includes('offline') ||
                     error.message.includes('Failed to fetch'));
 
-            if (isNetworkError) {
+            if (isLegacyNetworkError || (retryRecoverableErrors && isRecoverableError(error))) {
                 logger.warn(`Intento ${attempt + 1}/${maxRetries + 1} falló por error de red. Reintentando...`);
 
                 // Calcular delay con backoff exponencial si está habilitado

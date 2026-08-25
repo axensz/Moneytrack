@@ -30,7 +30,9 @@ import { db } from '../../lib/firebaseDb';
 import { safeFirestoreOperation, checkNetworkConnection, stripUndefined } from '../../utils/firestoreHelpers';
 import { getAccountReferenceIds } from '../../utils/accountTransactions';
 import { buildBalanceTargetAdjustment } from '../../utils/balanceTargetAdjustment';
+import { getCreditAuthorityState } from '../../utils/creditAuthority';
 import { creditDeltasByAccount, reconcileUsedCredit } from '../../utils/creditDeltas';
+import { validateLinkedCreditPaymentPair } from '../../utils/creditPaymentPairs';
 import type { Account, Transaction } from '../../types/finance';
 import {
   RULE_SAFE_COMPLEX_WRITE_LIMIT,
@@ -315,11 +317,33 @@ export async function deleteAccountCascade(
               getDocFromServer(doc(db, `users/${userId}/transactions`, linkedId))
             )
           );
+          const fetchedLinked = new Map<string, Transaction>();
           linkedSnaps.forEach((snap, index) => {
-            if (snap.exists()) {
-              const linkedId = linkedIds[index];
-              txDeletes.set(linkedId, { id: linkedId, ...(snap.data() as Transaction) });
+            if (!snap.exists()) return;
+            const linkedId = linkedIds[index];
+            fetchedLinked.set(linkedId, { id: linkedId, ...(snap.data() as Transaction) });
+          });
+
+          // El pointer solo amplía el cascade después de demostrar que ambas
+          // filas forman el pago de TC que Moneytrack reconoce. Ante corrupción,
+          // fallar cerrado evita borrar una transacción ajena.
+          for (const transaction of Array.from(txDeletes.values())) {
+            if (!transaction.linkedTransactionId) continue;
+            const linked = txDeletes.get(transaction.linkedTransactionId)
+              ?? fetchedLinked.get(transaction.linkedTransactionId);
+            const pair = validateLinkedCreditPaymentPair(
+              transaction,
+              linked,
+              currentAccounts,
+            );
+            if (!pair.valid) {
+              throw new Error(
+                `El vínculo de pago ${transaction.id} requiere reconciliación (${pair.reason}).`
+              );
             }
+          }
+          fetchedLinked.forEach((transaction, linkedId) => {
+            txDeletes.set(linkedId, transaction);
           });
         }
 
@@ -347,6 +371,11 @@ export async function deleteAccountCascade(
           if (!cardSnap.exists()) continue;
 
           const cardAccount = { id: cardId, ...(cardSnap.data() as Omit<Account, 'id'>) } as Account;
+          if (!getCreditAuthorityState(cardAccount).ready) {
+            throw new Error(
+              `La tarjeta ${cardAccount.name} requiere reconciliación antes de eliminar esta cuenta.`
+            );
+          }
           const referenceIds = getAccountReferenceIds(cardAccount);
           const snapshots = await Promise.all(
             referenceIds.flatMap(refId => [
@@ -503,6 +532,15 @@ export async function mergeCreditCardsOrchestrated(
       }
       if (currentExistingDestination && currentExistingDestination.type !== 'credit') {
         throw new Error('La cuenta destino debe ser una tarjeta de crédito');
+      }
+      const unresolvedAuthority = [
+        ...(currentSourceAccounts as Account[]),
+        ...(currentExistingDestination ? [currentExistingDestination] : []),
+      ].find(account => !getCreditAuthorityState(account).ready);
+      if (unresolvedAuthority) {
+        throw new Error(
+          `La tarjeta ${unresolvedAuthority.name} requiere reconciliación antes de unificar.`
+        );
       }
       if (
         currentExistingDestination &&

@@ -220,8 +220,8 @@ describe('registerDebtPayment (código real de useDebts) — A1', () => {
 
   it('reasigna localmente solo el principal y conserva pagos históricos', async () => {
     const accounts: Account[] = [
-      { id: 'acc-1', name: 'Ahorros', type: 'savings', isDefault: true, initialBalance: 0 },
-      { id: 'acc-2', name: 'Efectivo', type: 'cash', isDefault: false, initialBalance: 0 },
+      { id: 'acc-1', name: 'Ahorros', type: 'savings', isDefault: true, initialBalance: 2_000 },
+      { id: 'acc-2', name: 'Efectivo', type: 'cash', isDefault: false, initialBalance: 2_000 },
     ];
     const principal: Transaction = {
       id: 'principal', type: 'expense', amount: 1000, category: LOAN_CATEGORY,

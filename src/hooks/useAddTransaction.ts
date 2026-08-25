@@ -334,8 +334,9 @@ export function useAddTransaction({
             };
             await addCreditPaymentAtomic(transactionData, sourceTx);
           } else {
-            // Cuenta origen no encontrada — solo registrar el ingreso al crédito
-            await addTransaction(transactionData);
+            throw new Error(
+              'La cuenta origen del pago no está disponible. Actualiza las cuentas e intenta de nuevo.'
+            );
           }
         } else if (recurringPayment && transactionData.paid) {
           await addRecurringTransactionAtomic(transactionData);

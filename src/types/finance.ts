@@ -124,6 +124,16 @@ export interface Debt {
   createdAt?: Date;
   settledAt?: Date; // Fecha en que se saldó
   forgivenReason?: 'unpaid' | 'gift' | 'other'; // Presente = deuda condonada (no pagada / regalo / otro)
+  /** Identidad durable del compuesto que creó la deuda (retry/ACK ambiguo). */
+  creationOperationId?: string;
+  /** Recibos acotados para deduplicar pagos confirmados aunque no creen transacción. */
+  recentPaymentOperations?: DebtPaymentOperationReceipt[];
+}
+
+export interface DebtPaymentOperationReceipt {
+  operationId: string;
+  amount: number;
+  transactionId?: string;
 }
 
 // 🆕 PRESUPUESTOS

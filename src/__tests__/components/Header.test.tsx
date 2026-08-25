@@ -135,8 +135,11 @@ describe('Header', () => {
     });
     renderHeader({ showSettingsMenu: true, onOpenLedgerReconciliation });
     const settingsTrigger = screen.getByRole('button', { name: 'Abrir menú de ajustes' });
+    const integrityItem = screen.getByRole('menuitem', { name: 'Integridad del libro' });
 
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Integridad del libro' }));
+    expect(integrityItem).toHaveClass('control-target-44');
+
+    fireEvent.click(integrityItem);
 
     expect(onOpenLedgerReconciliation).toHaveBeenCalledTimes(1);
     expect(activeElementWhenOpened).toBe(settingsTrigger);

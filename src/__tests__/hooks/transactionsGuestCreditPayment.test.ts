@@ -30,7 +30,7 @@ import {
   readGuestLedgerEnvelope,
 } from '../../utils/guestLedger';
 
-const base = { category: 'Pago', description: '', date: new Date('2026-06-15'), paid: true } as const;
+const base = { category: 'Pago Crédito', description: '', date: new Date('2026-06-15'), paid: true } as const;
 const creditTx = { ...base, type: 'income' as const, amount: 50_000, accountId: 'tc' };
 const sourceTx = { ...base, type: 'expense' as const, amount: 50_000, accountId: 'sav' };
 const paymentAccounts: Account[] = [
@@ -74,7 +74,7 @@ describe('useTransactions.addCreditPaymentAtomic — modo invitado (#tx-1)', () 
     });
     expect(result.current.transactions.find(transaction => transaction.id === bank.id)?.amount).toBe(40_000);
     expect(result.current.transactions.find(transaction => transaction.id === card.id)?.amount).toBe(40_000);
-    expect(result.current.transactions.find(transaction => transaction.id === bank.id)?.category).toBe('Pago');
+    expect(result.current.transactions.find(transaction => transaction.id === bank.id)?.category).toBe('Pago Crédito');
 
     await act(async () => { await result.current.deleteTransaction(card.id!); });
     expect(result.current.transactions).toHaveLength(0);

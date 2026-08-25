@@ -339,8 +339,25 @@ describe('useAccounts.mergeCreditCards — caracterización', () => {
     const acc = renderHook(() => useAccounts(UID, [], vi.fn(), false)).result;
     await expect(
       acc.current.mergeCreditCards({ sourceAccountIds: ['cc1', 'cc2'], destination: { id: 'dest', name: 'X' } })
-    ).rejects.toThrow(/asentando|calculando/i);
+    ).rejects.toThrow(/reconciliación|autoridad/i);
     expect(M.log).toHaveLength(0);
+  });
+
+  it('revalida en servidor la autoridad usedCredit después del lease', async () => {
+    seed([bank, cc1, cc2, dest]);
+    const acc = renderHook(() => useAccounts(UID, [], vi.fn(), true)).result;
+    M.acctStore.set('cc1', { ...cc1, usedCredit: undefined });
+
+    await expect(
+      acc.current.mergeCreditCards({
+        sourceAccountIds: ['cc1', 'cc2'],
+        destination: { id: 'dest', name: 'Visa Unificada' },
+      })
+    ).rejects.toThrow(/reconciliación|autoridad/i);
+
+    expect(M.log).toHaveLength(0);
+    expect(M.acctStore.has('cc1')).toBe(true);
+    expect(M.acctStore.has('cc2')).toBe(true);
   });
 
   it('reconcilia usedCredit del destino desde las transacciones reapuntadas, ignorando un persistido stale (#4b)', async () => {
@@ -451,7 +468,7 @@ describe('useAccounts.mergeCreditCards — caracterización', () => {
     expect(cacheMutations).toHaveLength(0);
   });
 
-  it('con saldos asentados, confirma el usedCredit exacto del historial persistido', async () => {
+  it('no sintetiza usedCredit ausente aunque el historial ya esté asentado', async () => {
     const ccSinCupo: Account = { ...cc1, usedCredit: undefined };
     seed([bank, ccSinCupo, cc2, dest]);
     const fullHistory: Transaction[] = [
@@ -460,10 +477,12 @@ describe('useAccounts.mergeCreditCards — caracterización', () => {
     M.txStore.set('h1', { ...fullHistory[0] });
 
     const acc = renderHook(() => useAccounts(UID, fullHistory, vi.fn(), true)).result;
-    await acc.current.mergeCreditCards({ sourceAccountIds: ['cc1', 'cc2'], destination: { id: 'dest', name: 'Visa Unificada' } });
+    await expect(
+      acc.current.mergeCreditCards({ sourceAccountIds: ['cc1', 'cc2'], destination: { id: 'dest', name: 'Visa Unificada' } })
+    ).rejects.toThrow(/reconciliación|autoridad/i);
 
-    // El historial persistido contiene 500k; los campos acumulados stale no se arrastran.
-    expect(findOp('update', 'dest')?.data?.usedCredit).toBe(500_000);
+    expect(M.log).toHaveLength(0);
+    expect(M.acctStore.has('cc1')).toBe(true);
   });
 
   it('rechaza una fusión que excede el límite atómico antes de escribir', async () => {

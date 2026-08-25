@@ -246,6 +246,24 @@ afterEach(() => {
 
 describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
   describe('addTransaction', () => {
+    it('rejects a non-transfer with toAccountId instead of persisting half a card payment', async () => {
+      seedAccount(savings);
+      seedAccount(credit);
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.addTransaction(makeTx({
+        type: 'income',
+        amount: 100_000,
+        category: 'Pago Crédito',
+        accountId: 'cc',
+        toAccountId: 'sav',
+      }))).rejects.toThrow(/pago.*atómico|cuenta destino/i);
+
+      expect(mockState.writeLog).toHaveLength(0);
+      expect(mockState.batchCommits).toBe(0);
+      expect(cacheMutations).toHaveLength(0);
+    });
+
     it('commits a caller-supplied AI operation once and treats an exact retry as idempotent', async () => {
       seedAccount(savings);
       const crud = renderCRUD([]);

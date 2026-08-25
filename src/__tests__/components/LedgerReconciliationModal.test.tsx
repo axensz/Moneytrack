@@ -50,6 +50,33 @@ const negativeReport = buildLedgerReconciliationReport({
   recurringPayments: [],
 });
 
+const creditAccount: Account = {
+  id: 'credit-1',
+  name: 'Tarjeta privada',
+  type: 'credit',
+  isDefault: false,
+  initialBalance: 0,
+  creditLimit: 1_000,
+  usedCredit: 80,
+};
+
+const creditExpense: Transaction = {
+  ...expense,
+  id: 'credit-expense',
+  amount: 100,
+  accountId: 'credit-1',
+};
+
+const creditDivergenceReport = buildLedgerReconciliationReport({
+  source: 'server',
+  complete: true,
+  accounts: [creditAccount],
+  transactions: [creditExpense],
+  transactionIssues: [],
+  debts: [],
+  recurringPayments: [],
+});
+
 const readyState = () => ({
   report: negativeReport,
   transactions: [expense],
@@ -101,9 +128,32 @@ describe('LedgerReconciliationModal', () => {
 
     expect(screen.getAllByText('••••••').length).toBeGreaterThan(2);
     expect(screen.getByTestId('account-equation-account-1')).not.toHaveTextContent('$');
+    expect(screen.queryByText(/saldo negativo -10/i)).not.toBeInTheDocument();
+    expect(screen.getByText('La ecuación completa explica un saldo negativo oculto.'))
+      .toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /preparar ajuste a cero/i }));
+    expect(screen.getByRole('heading', { name: 'Vista previa: Ajuste de saldo' }))
+      .toBeInTheDocument();
+    expect(screen.queryByText(/ajustar cuenta principal a 0/i)).not.toBeInTheDocument();
     expect(screen.getByTestId('repair-before')).toHaveTextContent('••••••');
     expect(screen.getByTestId('repair-after')).toHaveTextContent('••••••');
+  });
+
+  it('oculta los importes embebidos en una divergencia de tarjeta', () => {
+    mocks.hideBalances = true;
+    mocks.state = {
+      ...readyState(),
+      report: creditDivergenceReport,
+      transactions: [creditExpense],
+    };
+    render(
+      <LedgerReconciliationModal isOpen onClose={() => {}} userId="user-1" />,
+    );
+
+    expect(screen.queryByText(/persiste 80 y el historial explica 100/i))
+      .not.toBeInTheDocument();
+    expect(screen.getByText('La autoridad persistida y el historial completo no coinciden.'))
+      .toBeInTheDocument();
   });
 
   it('explica por qué un invitado no puede ejecutar reparaciones', () => {

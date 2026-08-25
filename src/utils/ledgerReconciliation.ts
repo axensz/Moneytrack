@@ -265,6 +265,7 @@ export const ledgerReconciliationFingerprint = (
       createdAt: transactionValue.createdAt,
       category: transactionValue.category,
       description: transactionValue.description,
+      beneficiary: transactionValue.beneficiary,
       linkedTransactionId: transactionValue.linkedTransactionId,
       recurringPaymentId: transactionValue.recurringPaymentId,
       recurringCycle: transactionValue.recurringCycle,

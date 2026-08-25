@@ -13,6 +13,7 @@ const M = vi.hoisted(() => ({
   transactionCommits: 0,
   nextId: 0,
   failCommit: false,
+  failAfterCommitOnce: false,
 }));
 
 const collectionStore = (path: string) => {
@@ -39,7 +40,16 @@ vi.mock('../../lib/firebaseDb', () => ({ db: { __db: true } }));
 
 vi.mock('../../utils/firestoreHelpers', () => ({
   checkNetworkConnection: () => true,
-  safeFirestoreOperation: (operation: () => Promise<unknown>) => operation(),
+  safeFirestoreOperation: async (operation: () => Promise<unknown>) => {
+    try {
+      return await operation();
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('network')) {
+        return operation();
+      }
+      throw error;
+    }
+  },
   stripUndefined: (value: StoredDocument) => Object.fromEntries(
     Object.entries(value).filter(([, entry]) => entry !== undefined)
   ),
@@ -151,6 +161,10 @@ vi.mock('firebase/firestore', () => ({
           );
         });
         M.transactionCommits += 1;
+        if (M.failAfterCommitOnce) {
+          M.failAfterCommitOnce = false;
+          throw new Error('network acknowledgement lost');
+        }
       },
     };
   },
@@ -203,6 +217,7 @@ beforeEach(() => {
   M.transactionCommits = 0;
   M.nextId = 0;
   M.failCommit = false;
+  M.failAfterCommitOnce = false;
   M.accounts.set('credit', { ...creditAccount });
   Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
 });
@@ -260,6 +275,18 @@ describe('useDebts authenticated atomic writes', () => {
       mutationKind: 'create',
       mutationSource: 'debt',
     });
+    expect(M.accounts.get('credit')?.usedCredit).toBe(1_000_000);
+  });
+
+  it('treats an acknowledged-lost debt creation as one committed compound', async () => {
+    M.failAfterCommitOnce = true;
+    const { result } = renderHook(() => useDebts(UID, [], [], {}));
+
+    await result.current.addDebt(newDebt());
+
+    expect(M.transactionCommits).toBe(1);
+    expect(M.debts.size).toBe(1);
+    expect(M.transactions.size).toBe(1);
     expect(M.accounts.get('credit')?.usedCredit).toBe(1_000_000);
   });
 
@@ -338,6 +365,38 @@ describe('useDebts authenticated atomic writes', () => {
       debtId: debt.id,
     });
     expect(M.accounts.get('credit')?.usedCredit).toBe(600_000);
+  });
+
+  it('treats an acknowledged-lost debt payment as one committed compound', async () => {
+    const debt = existingDebt({ remainingAmount: 300_000, originalAmount: 300_000 });
+    M.debts.set(debt.id!, { ...debt, id: undefined });
+    M.accounts.set('credit', { ...creditAccount, usedCredit: 300_000 });
+    M.failAfterCommitOnce = true;
+    const { result } = renderHook(() => useDebts(UID, [], [debt], {}));
+
+    await result.current.registerDebtPayment(debt.id!, 100_000);
+
+    expect(M.transactionCommits).toBe(1);
+    expect(M.transactions.size).toBe(1);
+    expect(M.debts.get(debt.id!)).toMatchObject({ remainingAmount: 200_000 });
+    expect(M.accounts.get('credit')?.usedCredit).toBe(200_000);
+  });
+
+  it('deduplicates an acknowledged-lost tracking-only payment without a transaction row', async () => {
+    const debt = existingDebt({
+      accountId: undefined,
+      remainingAmount: 300_000,
+      originalAmount: 300_000,
+    });
+    M.debts.set(debt.id!, { ...debt, id: undefined });
+    M.failAfterCommitOnce = true;
+    const { result } = renderHook(() => useDebts(UID, [], [debt], {}));
+
+    await result.current.registerDebtPayment(debt.id!, 100_000);
+
+    expect(M.transactionCommits).toBe(1);
+    expect(M.transactions.size).toBe(0);
+    expect(M.debts.get(debt.id!)).toMatchObject({ remainingAmount: 200_000 });
   });
 
   it('clamps an overpayment against the persisted balance and settles exactly once', async () => {

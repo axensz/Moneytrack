@@ -4,6 +4,7 @@
 
 import { showToast } from './toastHelpers';
 import { logger } from './logger';
+import { LedgerMutationValidationError } from './ledgerMutation';
 
 interface RetryOptions {
     maxRetries?: number;
@@ -120,7 +121,16 @@ export async function safeFirestoreOperation<T>(
     try {
         return await withRetry(operation, options);
     } catch (error) {
-        logger.error(`Error en operación Firestore: ${operationName}`, error);
+        if (
+            error instanceof LedgerMutationValidationError &&
+            error.code === 'INSUFFICIENT_FUNDS'
+        ) {
+            logger.warn(`Operación rechazada por validación: ${operationName}`, {
+                code: error.code,
+            });
+        } else {
+            logger.error(`Error en operación Firestore: ${operationName}`, error);
+        }
         throw error;
     }
 }

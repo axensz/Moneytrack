@@ -118,6 +118,24 @@ describe('DebtsView - formulario nuevo', () => {
     });
   });
 
+  it('mantiene el borrador y muestra el motivo cuando la cuenta no tiene saldo', async () => {
+    mocks.addDebt.mockRejectedValueOnce(new Error('Saldo insuficiente. Disponible: $0'));
+
+    render(<DebtsView />);
+
+    fireEvent.click(screen.getByRole('button', { name: /nuevo/i }));
+    fireEvent.change(screen.getByPlaceholderText('Nombre de la persona'), { target: { value: 'QA saldo insuficiente' } });
+    fireEvent.change(screen.getByPlaceholderText('Monto'), { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('button', { name: /registrar/i }));
+
+    await waitFor(() => {
+      expect(mocks.toastError).toHaveBeenCalledWith('Saldo insuficiente. Disponible: $0');
+    });
+    expect(screen.getByPlaceholderText('Nombre de la persona')).toHaveValue('QA saldo insuficiente');
+    expect(screen.getByRole('button', { name: /registrar/i })).toBeEnabled();
+    expect(mocks.toastSuccess).not.toHaveBeenCalled();
+  });
+
   it('permite eliminar un préstamo saldado y explica la cascada', async () => {
     mocks.debts = [{
       id: 'settled-1',

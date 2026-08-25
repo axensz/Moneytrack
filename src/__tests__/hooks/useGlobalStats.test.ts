@@ -63,6 +63,17 @@ describe('useGlobalStats', () => {
     expect(result.current.unpaidTCExpenses).toBe(400_000);
   });
 
+  it('keeps pendientes at zero when there are no credit cards', () => {
+    const transactions: Transaction[] = [
+      tx({ type: 'expense', amount: 400_000, accountId: 'bank', paid: false }),
+    ];
+
+    const { result } = renderHook(() => useGlobalStats(transactions, [savings]));
+
+    expect(result.current.pendingExpenses).toBe(0);
+    expect(result.current.unpaidTCExpenses).toBe(0);
+  });
+
   it('totalExpenses only counts PAID expenses (TC purchase paid → gasto efectivo)', () => {
     const transactions: Transaction[] = [
       // Gasto pagado en banco → gasto efectivo

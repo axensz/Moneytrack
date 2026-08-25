@@ -9,5 +9,5 @@
     <dimen name="space_large">24dp</dimen>
     <dimen name="progress_height">4dp</dimen>
     <dimen name="progress_gap">6dp</dimen>
-    <dimen name="source_dialog_list_height">192dp</dimen>
+    <dimen name="source_dialog_max_list_height">192dp</dimen>
 </resources>

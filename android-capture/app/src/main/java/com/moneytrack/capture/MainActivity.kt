@@ -227,6 +227,10 @@ class MainActivity : AppCompatActivity() {
     private fun showSourceManagementDialog() {
         val sources = preferences.discoveredSources()
         val selected = sources.map { it.packageName in preferences.allowedPackages() }.toBooleanArray()
+        val listHeight = sourceDialogListHeight(
+            sources.size,
+            resources.getDimensionPixelSize(R.dimen.source_dialog_max_list_height),
+        )
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(
@@ -245,7 +249,7 @@ class MainActivity : AppCompatActivity() {
                 ScrollView(this@MainActivity).apply {
                     layoutParams = LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
-                        resources.getDimensionPixelSize(R.dimen.source_dialog_list_height),
+                        listHeight,
                     )
                     addView(
                         LinearLayout(this@MainActivity).apply {
@@ -344,3 +348,6 @@ class MainActivity : AppCompatActivity() {
         render()
     }
 }
+
+internal fun sourceDialogListHeight(sourceCount: Int, maxListHeight: Int): Int =
+    if (sourceCount > 2) maxListHeight else ViewGroup.LayoutParams.WRAP_CONTENT

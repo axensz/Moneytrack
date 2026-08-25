@@ -227,11 +227,28 @@ existing ledger boundary without copying financial authority.
 
 ## Remaining external gates
 
-- Register `com.moneytrack.capture` in the existing Firebase project, add the
-  actual debug/canary SHA-1 and SHA-256, and place the resulting ignored
-  `google-services.json` locally.
 - Deploy the reviewed Firestore rules/index and PWA only through the normal
   release process, then install the configured APK on one authorized device.
 - Complete authenticated browser states, device denial/offline/retry exercises
   and the private 14-day/50-event canary. Keep manual confirmation and leave the
   OpenSpec change unarchived until all thresholds pass.
+
+## Firebase Android registration
+
+- The authenticated Firebase CLI and Console both confirmed project
+  `moneytrack-889fe`; Google remains an enabled Authentication provider.
+- Android app `com.moneytrack.capture` was registered as
+  `Moneytrack Capture Android`. The current debug certificate SHA-1 and
+  SHA-256 were added and independently read back from Firebase.
+- The SDK configuration was downloaded directly to the ignored
+  `android-capture/app/google-services.json`. Its project, package, mobile app
+  ID and Android/web OAuth client types were validated without printing keys.
+- A clean configured build ran `processDebugGoogleServices`, all 28 unit tests,
+  lint and `assembleDebug`: 55 Gradle tasks completed successfully. The local
+  config and generated build outputs remain outside Git. The configured debug
+  APK is 9,759,953 bytes with SHA-256
+  `dbaabb3292dd2da0db6bbe6cdd7b508c61ad0911c4420d190bcd02286b315d6a`.
+- Firebase CLI 15.24.0 emitted a Windows libuv assertion while closing the
+  SHA-256 creation process after the API had reported success. A separate
+  remote `apps:android:sha:list` query confirmed both SHA records, so no retry
+  or duplicate mutation was performed.

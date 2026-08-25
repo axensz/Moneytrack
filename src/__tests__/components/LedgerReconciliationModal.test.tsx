@@ -84,10 +84,13 @@ describe('LedgerReconciliationModal', () => {
       'grid-cols-1',
       'xl:grid-cols-2',
     );
-    expect(screen.getByRole('button', { name: /actualizar conciliación/i }))
-      .toHaveClass('min-h-11');
-    expect(screen.getByRole('button', { name: /preparar ajuste a cero/i }))
-      .toHaveClass('min-h-11');
+    for (const name of [
+      /cerrar/i,
+      /actualizar conciliación/i,
+      /preparar ajuste a cero/i,
+    ]) {
+      expect(screen.getByRole('button', { name })).toHaveClass('control-target-44');
+    }
   });
 
   it('oculta importes en cuentas, cruces y evidencia del plan', () => {

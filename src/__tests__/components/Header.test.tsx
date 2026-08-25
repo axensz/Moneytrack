@@ -167,7 +167,7 @@ describe('Header', () => {
     );
 
     expect(utilitiesSource).toContain(
-      'button:not(.btn-type):not(.header-icon)',
+      ':where(button:not(.btn-type):not(.header-icon))',
     );
   });
 

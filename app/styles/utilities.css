@@ -406,8 +406,12 @@ span {
 
 /* Piso táctil en desktop (WCAG 2.5.8 AA = 24px). No fuerza ancho para no
    romper botones de texto inline; solo garantiza altura mínima accesible. */
+.control-target-44 {
+  min-height: 44px;
+}
+
 @media (min-width: 641px) and (pointer: fine) {
-  button:not(.btn-type):not(.header-icon) {
+  :where(button:not(.btn-type):not(.header-icon)) {
     min-height: 24px;
   }
 }

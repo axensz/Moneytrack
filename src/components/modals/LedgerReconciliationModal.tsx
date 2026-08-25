@@ -212,7 +212,7 @@ export function LedgerReconciliationModal({
             <button
               type="button"
               onClick={() => void refresh()}
-              className="mt-3 min-h-11 rounded-lg border border-destructive px-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="control-target-44 mt-3 rounded-lg border border-destructive px-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               Reintentar
             </button>
@@ -236,7 +236,7 @@ export function LedgerReconciliationModal({
                   type="button"
                   onClick={() => void refresh()}
                   disabled={refreshing || executing}
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="control-target-44 inline-flex items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   aria-label="Actualizar conciliación"
                 >
                   <RefreshCw size={17} className={refreshing ? 'animate-spin' : ''} aria-hidden="true" />
@@ -278,7 +278,7 @@ export function LedgerReconciliationModal({
                           <button
                             type="button"
                             onClick={() => prepareLinkRepair(reconciliationIssue)}
-                            className="min-h-11 shrink-0 rounded-lg border border-current px-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                            className="control-target-44 shrink-0 rounded-lg border border-current px-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                           >
                             Preparar vínculo
                           </button>
@@ -287,7 +287,7 @@ export function LedgerReconciliationModal({
                           <button
                             type="button"
                             onClick={() => prepareRecurringRepair(reconciliationIssue)}
-                            className="min-h-11 shrink-0 rounded-lg border border-current px-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                            className="control-target-44 shrink-0 rounded-lg border border-current px-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                           >
                             Preparar desduplicación
                           </button>
@@ -367,7 +367,7 @@ export function LedgerReconciliationModal({
                                 report,
                                 accountId: accountReport.accountId,
                               }))}
-                              className="min-h-11 rounded-lg border border-primary px-3 text-sm font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              className="control-target-44 rounded-lg border border-primary px-3 text-sm font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                             >
                               Usar historial
                             </button>
@@ -378,7 +378,7 @@ export function LedgerReconciliationModal({
                                 accountId: accountReport.accountId,
                                 effectiveAt: new Date(),
                               }))}
-                              className="min-h-11 rounded-lg border border-primary px-3 text-sm font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              className="control-target-44 rounded-lg border border-primary px-3 text-sm font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                             >
                               Conservar usedCredit
                             </button>
@@ -415,7 +415,7 @@ export function LedgerReconciliationModal({
                           targetBalance: 0,
                           effectiveAt: new Date(),
                         }))}
-                        className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-primary px-4 text-sm font-semibold text-primary hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        className="control-target-44 mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-primary px-4 text-sm font-semibold text-primary hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                       >
                         <Wrench size={17} aria-hidden="true" />
                         Preparar ajuste a cero
@@ -461,7 +461,7 @@ export function LedgerReconciliationModal({
                   onChange={event => setConfirmation(event.target.value)}
                   autoComplete="off"
                   spellCheck={false}
-                  className="mt-1 min-h-11 w-full rounded-lg border border-border bg-background px-3 font-mono text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="control-target-44 mt-1 w-full rounded-lg border border-border bg-background px-3 font-mono text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 />
                 <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                   <button
@@ -470,7 +470,7 @@ export function LedgerReconciliationModal({
                       setSelectedPlan(null);
                       setConfirmation('');
                     }}
-                    className="min-h-11 rounded-lg border border-border px-4 text-sm font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    className="control-target-44 rounded-lg border border-border px-4 text-sm font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     Cancelar plan
                   </button>
@@ -483,7 +483,7 @@ export function LedgerReconciliationModal({
                       || executing
                       || confirmation !== selectedPlan.confirmationPhrase
                     }
-                    className="min-h-11 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                    className="control-target-44 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                   >
                     {executing ? 'Aplicando…' : 'Aplicar plan confirmado'}
                   </button>

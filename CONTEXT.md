@@ -16,6 +16,14 @@ _Avoid_: Tarjeta física, tarjeta de wallet
 Plástico o token de wallet que identifica cómo se presentó una cuenta contable al pagar. Cada medio de pago pertenece a una sola cuenta contable; una cuenta puede tener varios.
 _Avoid_: Cuenta, TC
 
+**Alias del medio de pago**:
+Nombre corto elegido por la persona para reconocer un medio de pago, por ejemplo `Oro` o `Nu`. Ayuda a presentar una recomendación, pero no identifica por sí solo una cuenta contable.
+_Avoid_: Nombre de cuenta, banco, identidad de tarjeta
+
+**Terminación del medio de pago**:
+Últimos cuatro dígitos de un plástico o token de wallet, conservados como identificador mínimo para buscar una coincidencia inequívoca. No es el número completo de la tarjeta ni pertenece a la cuenta contable.
+_Avoid_: Número de tarjeta, últimos cuatro de la cuenta
+
 **Evento de pago observado**:
 Señal emitida por una fuente externa que parece describir una compra, pero aún no tiene autoridad sobre el registro financiero.
 _Avoid_: Transacción, movimiento confirmado

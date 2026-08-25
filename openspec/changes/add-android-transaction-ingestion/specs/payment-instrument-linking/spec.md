@@ -26,12 +26,23 @@ El sistema MUST aceptar únicamente etiqueta, tipo, red, últimos cuatro, cuenta
 - **WHEN** un cliente incluye `pan`, `cvv`, `otp`, texto crudo u otra clave no permitida
 - **THEN** las reglas de datos rechazan la escritura completa
 
+### Requirement: La PWA permite identificar cada medio de forma reconocible
+La gestión web MUST permitir crear y editar un medio mediante alias, exactamente cuatro dígitos, tipo, red y cuenta contable vinculada, y MUST mostrar la terminación enmascarada sin solicitar el PAN.
+
+#### Scenario: Registrar un apodo de Wallet
+- **WHEN** la persona registra el alias `Oro`, la terminación `9876` y selecciona su TC
+- **THEN** la PWA guarda el medio vinculado y lo presenta como `Oro` y `•••• 9876`
+
+#### Scenario: Escribir caracteres ajenos en la terminación
+- **WHEN** la persona pega espacios, letras o más de cuatro dígitos
+- **THEN** el control conserva solo los primeros cuatro dígitos y exige cuatro antes de guardar
+
 ### Requirement: La coincidencia automática usa únicamente medios activos
 El sistema MUST preseleccionar una cuenta solo cuando la terminación observada coincide con un medio activo y válido; una coincidencia ausente, ambigua o inactiva MUST requerir selección humana.
 
 #### Scenario: Preselección inequívoca
 - **WHEN** un candidato termina en `1234` y existe un único medio activo `1234`
-- **THEN** la revisión preselecciona la cuenta vinculada y permite cambiarla antes de confirmar
+- **THEN** la bandeja presenta el alias y la cuenta vinculada, y la revisión preselecciona esa cuenta permitiendo cambiarla antes de confirmar
 
 #### Scenario: Terminación ambigua
 - **WHEN** dos medios activos comparten los mismos últimos cuatro

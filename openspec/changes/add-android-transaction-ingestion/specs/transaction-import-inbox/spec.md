@@ -12,11 +12,15 @@ El sistema MUST mantener cada candidato fuera del libro hasta su confirmación y
 - **THEN** el flujo de importación no lo reconoce como confirmado y el candidato conserva cero efecto contable
 
 ### Requirement: La bandeja muestra un conjunto pendiente acotado y honesto
-El sistema MUST consultar como máximo los 100 candidatos pendientes más recientes y MUST mostrar monto COP, comercio, fecha observada, terminación disponible, fuente y confianza sin presentarlos como transacciones guardadas.
+El sistema MUST consultar como máximo los 100 candidatos pendientes más recientes y MUST mostrar monto COP, comercio, fecha observada y terminación disponible sin presentarlos como transacciones guardadas; paquete Android y confianza MUST permanecer ocultos en la interfaz normal.
 
 #### Scenario: Abrir la bandeja con candidatos
 - **WHEN** existen candidatos pendientes válidos
 - **THEN** la vista Transacciones muestra un contador, filas de revisión y copy que indica que aún no afectan el saldo
+
+#### Scenario: Mostrar una relación inequívoca
+- **WHEN** la terminación del candidato coincide con un único medio activo
+- **THEN** la fila muestra su alias y cuenta vinculada en lugar de metadatos técnicos del parser
 
 #### Scenario: Documento inválido
 - **WHEN** Firestore entrega un documento con esquema desconocido, monto inválido o estado incompatible
@@ -36,6 +40,10 @@ El sistema MUST exigir una cuenta y categoría válidas, permitir corregir monto
 #### Scenario: Revisar un gasto de TC
 - **WHEN** la cuenta seleccionada es `credit`
 - **THEN** la revisión permite elegir cuotas e interés y no inventa esos valores a partir del texto observado
+
+#### Scenario: Corregir el monto capturado
+- **WHEN** la persona escribe o pega letras junto al monto
+- **THEN** el campo elimina los caracteres ajenos, presenta el valor en formato colombiano y confirma únicamente el valor visible normalizado
 
 #### Scenario: Recordar un medio nuevo
 - **WHEN** un candidato incluye últimos cuatro sin coincidencia y el usuario selecciona una cuenta y “Recordar este medio de pago”
@@ -83,7 +91,7 @@ El sistema MUST exigir una acción humana por candidato durante el canario y MUS
 
 #### Scenario: Candidato de confianza alta
 - **WHEN** Android clasifica una compra con confianza `high`
-- **THEN** la captura aparece priorizada pero sigue pendiente hasta que una persona la confirma
+- **THEN** la captura sigue pendiente hasta que una persona la confirma sin exponer la clasificación técnica como etiqueta de producto
 
 #### Scenario: Servicio Android sincroniza
 - **WHEN** el compañero logra subir un candidato

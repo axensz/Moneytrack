@@ -6,7 +6,9 @@ Registrar manualmente cada compra hecha con una tarjeta del celular genera omisi
 
 - Añadir un proyecto Android complementario que, con permiso explícito de acceso a notificaciones, observe solo las aplicaciones financieras elegidas, extraiga datos normalizados de compras y envíe candidatos idempotentes al mismo proyecto Firebase de Moneytrack.
 - Añadir medios de pago que relacionen un plástico o token de wallet con exactamente una `Account`; una cuenta o TC podrá tener varios medios de pago.
+- Hacer explícitos en la PWA el alias, los últimos cuatro dígitos y la cuenta/TC de cada medio para recomendar la cuenta solo ante una coincidencia activa y única.
 - Añadir en la PWA una bandeja de candidatos pendientes para revisar, completar, confirmar o descartar compras capturadas.
+- Reorganizar el compañero Android como una configuración progresiva con identidad MoneyTrack, sesión, acceso a notificaciones, captura y una pantalla operativa final; respetará barras del sistema y modos claro/oscuro.
 - Confirmar cada candidato mediante la frontera contable autenticada existente, con identidad determinista y un único batch que escriba la transacción, actualice el cupo usado cuando corresponda y cierre el candidato.
 - Endurecer reglas e índices de Firestore para aceptar únicamente esquemas normalizados del propietario y transiciones válidas; título, texto completo, PAN, CVV y payload crudo de la notificación quedan prohibidos.
 - Integrar las asociaciones con la fusión y eliminación de cuentas para no dejar medios de pago apuntando a cuentas inexistentes.

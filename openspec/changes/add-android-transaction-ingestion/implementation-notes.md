@@ -285,3 +285,84 @@ existing ledger boundary without copying financial authority.
   Its review dialog opened and returned to the inbox; no confirm or dismiss
   action was invoked, so the candidate remained pending and no ledger mutation
   occurred.
+
+## 2026-08-25 — UX feedback intake (pending design approval)
+
+### User-requested experience
+
+- Replace the single long Android setup screen with a progressive experience:
+  MoneyTrack-branded launch, session, notification access, capture/source
+  selection and a ready-state home.
+- Explain the purpose and privacy boundary at the step where each permission or
+  choice is requested. Re-check the real state on launch; completed steps should
+  not block returning users.
+- Keep all content clear of the Android status, cutout and gesture/navigation
+  bars. Support a coherent light and dark appearance.
+- When signed out, show the Google sign-in action. When signed in, do not keep a
+  redundant disabled sign-in control next to sign-out.
+- Open the canonical PWA at `https://axensz.github.io/Moneytrack/`.
+- Remove parser confidence and raw Android package IDs from the normal purchase
+  row. A technical package such as `com.android.shell` is diagnostic metadata,
+  not user-facing product language.
+- Remove the prominent “Revisión humana obligatoria” explanation from the
+  review modal while preserving the canary rule that a pending candidate only
+  enters the ledger after an explicit confirmation.
+- Prefer a useful payment-method label such as `Oro` or `Nu` and recommend the
+  linked account automatically when the evidence is unambiguous.
+- Make the captured-purchase amount input follow the established MoneyTrack
+  money-input behavior and reject or normalize invalid characters visibly.
+
+### Verified current-state gaps
+
+- `MainActivity` renders auth, permission, capture, sources and operational
+  status in one `ScrollView`; it enables/disables both auth buttons instead of
+  rendering only the applicable action.
+- The Android theme is fixed to `Theme.Material.Light.NoActionBar`; no night
+  resource set or explicit system-bar inset handling exists. With target SDK 36,
+  the current top-level layout can render under system bars, matching the
+  overlap in the supplied screenshots.
+- The Android web URL still points to the previous Firebase Hosting origin.
+- The listener already discovers an application label locally, but the
+  normalized candidate persists only `sourcePackage`; the web inbox exposes
+  that raw package together with parser confidence.
+- Account recommendation already works for one unique active payment instrument
+  with matching last four digits. A missing or ambiguous match correctly leaves
+  the account unselected.
+- Wallet card nickname and Android application label are different domain
+  concepts. A nickname observed inside notification text is optional,
+  untrusted evidence and cannot replace an exact instrument identity without a
+  documented, ambiguity-safe rule.
+- The import review amount field is an isolated outlier: it stores
+  `event.target.value` directly. Other MoneyTrack monetary fields normalize with
+  `unformatNumber` and display with `formatNumberForInput`. As a result, invalid
+  letters remain visible here and lenient submit parsing can silently reinterpret
+  a malformed value as a different amount.
+
+### Decisions still requiring design approval
+
+- Returning behavior: skip directly to the ready-state home when every
+  prerequisite remains satisfied, and reopen only the first missing step.
+- Theme control: follow the phone by default, with or without an additional
+  in-app `Sistema / Claro / Oscuro` preference.
+- Payment-instrument hint: keep exact last-four matching as primary and add an
+  optional normalized Wallet nickname only after a sanitized real notification
+  fixture proves a stable phrase; never match an account from a non-unique
+  nickname.
+- Contract update: hide confidence/package in standard UI while retaining them
+  in the normalized canary record for diagnostics; decide separately whether an
+  optional bounded `observedInstrumentLabel` is justified.
+
+No implementation or OpenSpec requirement was changed by this intake. The
+approved design must amend the existing unarchived change before code work.
+
+## 2026-08-25 — UX design approved
+
+- The user approved the progressive Android flow and requested that the web
+  version explicitly manage the four digits used for unique matching.
+- Current code already persists and validates `PaymentInstrument.last4`; the
+  approved refinement makes alias, masked termination and linked account clear,
+  then exposes the unique match as a recommendation rather than adding another
+  identifier or trusting a Wallet nickname alone.
+- The existing change remains the correct OpenSpec boundary because the canary
+  is unarchived and this feedback modifies its Android and import UI before
+  acceptance.

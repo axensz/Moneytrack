@@ -19,6 +19,7 @@ Hay cambios OpenSpec activos sobre integridad del libro y entrega de notificacio
 - No persistir ni registrar texto crudo, PAN, CVV, códigos de seguridad ni identificadores de hardware.
 - Entregar una migración aditiva y reversible, sin backfill ni cambio de significado de datos existentes.
 - Funcionar en PWA móvil/escritorio y en un compañero Android pequeño, accesible y verificable.
+- Reducir la primera configuración Android a los pasos necesarios y omitir los ya satisfechos en aperturas posteriores.
 
 **Non-Goals:**
 
@@ -116,9 +117,9 @@ El texto original solo existe durante la llamada. No se guarda en archivo, prefe
 
 ### 6. La bandeja es una frontera de confianza
 
-`TransactionImportInbox` consultará como máximo los 100 candidatos `pending` más recientes y mostrará comercio, monto COP, fecha observada, terminación si existe, fuente y confianza. Ningún candidato participa en saldos, cupo, estadísticas, presupuestos o conciliación.
+`TransactionImportInbox` consultará como máximo los 100 candidatos `pending` más recientes y mostrará comercio, monto COP, fecha observada y terminación si existe. Cuando la terminación resuelva un único medio activo, mostrará su alias y cuenta vinculada. `sourcePackage` y `confidence` permanecen en el contrato normalizado para diagnóstico del canario, pero no se presentan como lenguaje de producto. Ningún candidato participa en saldos, cupo, estadísticas, presupuestos o conciliación.
 
-La revisión exige cuenta y categoría válidas. Si existe un medio activo coincidente, se preselecciona su cuenta; si no existe, la persona elige una cuenta y puede marcar “Recordar este medio de pago” cuando hay `cardLast4`. Ese instrumento se crea dentro del mismo commit de confirmación con la etiqueta inicial `Tarjeta •••• NNNN` y podrá editarse desde Cuentas.
+La revisión exige cuenta y categoría válidas. Si existe un medio activo coincidente, se preselecciona su cuenta; si no existe, la persona elige una cuenta y puede marcar “Recordar este medio de pago” cuando hay `cardLast4`. Ese instrumento se crea dentro del mismo commit de confirmación con la etiqueta inicial `Tarjeta •••• NNNN` y podrá editarse desde Cuentas. El campo monetario reutiliza la normalización visible de los demás formularios MoneyTrack: elimina caracteres ajenos al monto, conserva el formato colombiano y nunca confirma silenciosamente el texto crudo.
 
 La revisión de un gasto en TC permite indicar cuotas e interés; no los infiere de la notificación. La persona puede corregir monto, comercio, fecha y cuenta antes de confirmar.
 
@@ -156,7 +157,7 @@ Las pruebas del emulador cubrirán propietario/no propietario, esquemas prohibid
 
 ### 10. UI aditiva y accesible
 
-`AccountsView` incorporará una sección compacta “Medios de pago del celular” después de la lista de cuentas, sin cambiar `AccountCard`. Permitirá crear, editar, activar/desactivar y eliminar asociaciones. `TransactionsView` incorporará una bandeja colapsable antes de los filtros, con contador y diálogo de revisión.
+`AccountsView` incorporará una sección compacta “Medios de pago del celular” después de la lista de cuentas, sin cambiar `AccountCard`. Permitirá crear, editar, activar/desactivar y eliminar asociaciones mediante alias, tipo, red, últimos cuatro y cuenta vinculada; el copy recomendará reutilizar apodos reconocibles como `Oro` o `Nu`. `TransactionsView` incorporará una bandeja colapsable antes de los filtros, con contador y diálogo de revisión.
 
 Se reutilizarán tokens de `theme.css`/`components.css`, tarjetas y botones existentes. No habrá gradientes nuevos, glassmorphism ni una ruta de dashboard adicional. Controles táctiles tendrán al menos 44 px, foco visible, etiquetas accesibles, diálogo con retorno de foco y mensajes de estado mediante `role=status` o toasts existentes. Las dos superficies funcionarán a 390 px y 1440 px, en claro y oscuro.
 
@@ -168,16 +169,26 @@ Dependencias Android fijadas:
 
 - `com.google.firebase:firebase-bom:34.18.0`, módulos principales `firebase-auth` y `firebase-firestore` —no KTX retirados— y `com.google.gms.google-services:4.5.0` ([setup oficial](https://firebase.google.com/docs/android/setup));
 - `androidx.activity:activity-ktx:1.12.4`;
+- `androidx.appcompat:appcompat:1.8.0` para el tema DayNight y controles compatibles;
+- `androidx.core:core-splashscreen:1.2.0` para el arranque oficial compatible;
 - `androidx.credentials:credentials:1.6.0` y `credentials-play-services-auth:1.6.0`;
 - `com.google.android.libraries.identity.googleid:googleid:1.1.1`.
 
-La Activity usará vistas XML y componentes AndroidX, no Compose, DI, base local adicional ni framework de red. Firestore cubre autenticación, persistencia offline y sincronización. `google-services.json`, keystores, `local.properties`, builds y `.gradle` estarán ignorados; el repositorio solo conserva `.env.example`/README de configuración.
+La Activity usará vistas XML y componentes AndroidX, no Compose, Navigation, DI, base local adicional ni framework de red. Firestore cubre autenticación, persistencia offline y sincronización. `google-services.json`, keystores, `local.properties`, builds y `.gradle` estarán ignorados; el repositorio solo conserva `.env.example`/README de configuración.
+
+### 12. Arranque y configuración Android progresivos
+
+El sistema conservará una sola Activity y resolverá una etapa visible a partir del estado real: `SESSION`, `NOTIFICATION_ACCESS`, `CAPTURE` o `READY`. El splash oficial comparte el icono wallet, violeta y superficies de la PWA mientras se consulta sesión y preferencias; no introduce una espera artificial. Si todos los requisitos siguen satisfechos, una apertura posterior entra directamente a `READY`. Si una sesión o permiso se pierde, reaparece únicamente la primera etapa incompleta.
+
+Cada etapa explica en pocas líneas para qué sirve su acción. La etapa de sesión muestra solo inicio de sesión; con sesión activa, el inicio desaparece y queda disponible cerrar sesión. La etapa de acceso abre los ajustes oficiales de Android. La etapa de captura permite elegir etiquetas de aplicaciones descubiertas y activar el servicio sin exponer paquetes técnicos. `READY` resume el estado, permite abrir la PWA canónica `https://axensz.github.io/Moneytrack/` y ofrece `Sistema`, `Claro` y `Oscuro` con `Sistema` como valor inicial.
+
+La ventana usa edge-to-edge con insets de barras, recortes y navegación gestual aplicados al contenedor desplazable. Ningún título, acción o contenido puede quedar debajo de la barra de estado o de navegación. Colores claros/oscuros replican los roles semánticos existentes y mantienen objetivos de 48 dp, foco y contraste AA.
 
 ## Risks / Trade-offs
 
 - **[Formato de notificación cambia o no contiene monto/tarjeta]** → el parser falla cerrado, el evento no sube y el canario registra solo un código local no financiero; se añade un parser específico únicamente con ejemplos sanitizados y pruebas.
 - **[Notificación duplicada o actualizada]** → fingerprint determinista y confirmación idempotente; la bandeja sigue siendo obligatoria.
-- **[Notificación falsa, reversada o incompleta]** → exclusiones estrictas, confianza visible y sin contabilización autónoma.
+- **[Notificación falsa, reversada o incompleta]** → exclusiones estrictas, confianza conservada para diagnóstico y sin contabilización autónoma.
 - **[Android mata el proceso o no concede acceso]** → pantalla de estado y enlace directo a ajustes; no se promete captura mientras el servicio esté deshabilitado.
 - **[Sin red]** → Firestore encola el candidato normalizado; la PWA bloquea la confirmación financiera offline y conserva el formulario para reintentar.
 - **[Dos dispositivos capturan el mismo evento]** → alcance inicial de un dispositivo y revisión manual; no se añade coordinación global prematura.

@@ -105,6 +105,29 @@ El compañero MUST mostrar sesión, acceso a notificaciones, captura activa, paq
 - **WHEN** falta cualquiera de las precondiciones
 - **THEN** la pantalla identifica exactamente cuál falta y no muestra un éxito engañoso
 
+### Requirement: La configuración Android es progresiva y respeta el sistema
+El compañero MUST mostrar solo la primera etapa incompleta entre sesión, acceso a notificaciones y captura, MUST entrar directamente al estado operativo cuando todo siga listo y MUST mantener el contenido fuera de las barras y recortes del sistema.
+
+#### Scenario: Primera apertura sin sesión
+- **WHEN** termina la comprobación inicial y no existe una sesión válida
+- **THEN** el splash entrega una pantalla de sesión que explica su propósito y muestra solo la acción de iniciar con Google
+
+#### Scenario: Reanudar una configuración completa
+- **WHEN** sesión, acceso, fuente y captura permanecen activos
+- **THEN** la aplicación omite los pasos completados y abre el resumen operativo
+
+#### Scenario: Permiso revocado después de configurar
+- **WHEN** la aplicación vuelve al primer plano sin acceso a notificaciones
+- **THEN** muestra la etapa de acceso y no declara captura activa
+
+#### Scenario: Cambiar apariencia
+- **WHEN** la persona elige `Sistema`, `Claro` u `Oscuro`
+- **THEN** la Activity aplica y conserva el modo elegido con colores legibles y sin ocultar contenido bajo las barras del dispositivo
+
+#### Scenario: Sesión activa
+- **WHEN** Firebase conserva una persona autenticada
+- **THEN** la acción de iniciar sesión no se muestra y cerrar sesión continúa disponible
+
 ### Requirement: No se promete historial ni acceso interno a Wallet
 El compañero MUST describir que observa notificaciones futuras visibles después de habilitar el permiso y MUST abstenerse de afirmar que sincroniza el historial de Google Wallet.
 

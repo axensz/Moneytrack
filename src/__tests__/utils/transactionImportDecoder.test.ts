@@ -42,6 +42,14 @@ const validPendingCandidate = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const pendingCandidateId = 'a'.repeat(64);
+const mediumCandidateId = 'b'.repeat(64);
+const confirmedCandidateId = 'c'.repeat(64);
+const dismissedCandidateId = 'd'.repeat(64);
+const invalidFieldCandidateId = 'e'.repeat(64);
+const invalidStateCandidateId = 'f'.repeat(64);
+const sensitiveCandidateId = '0'.repeat(64);
+
 describe('transactionImportDecoder', () => {
   describe('decodePaymentInstrument', () => {
     it('decodes every persisted field without coercing its values', () => {
@@ -115,13 +123,13 @@ describe('transactionImportDecoder', () => {
   describe('decodeTransactionImportCandidate', () => {
     it('decodes a pending candidate with all optional observed fields', () => {
       const result = decodeTransactionImportCandidate(
-        document('candidate-pending', validPendingCandidate()),
+        document(pendingCandidateId, validPendingCandidate()),
       );
 
       expect(result).toEqual({
         ok: true,
         candidate: {
-          id: 'candidate-pending',
+          id: pendingCandidateId,
           schemaVersion: 1,
           source: 'android-notification',
           sourcePackage: 'com.example.bank',
@@ -143,13 +151,13 @@ describe('transactionImportDecoder', () => {
       delete data.cardLast4;
 
       const result = decodeTransactionImportCandidate(
-        document('candidate-medium', data),
+        document(mediumCandidateId, data),
       );
 
       expect(result).toEqual({
         ok: true,
         candidate: expect.objectContaining({
-          id: 'candidate-medium',
+          id: mediumCandidateId,
           confidence: 'medium',
           status: 'pending',
         }),
@@ -159,15 +167,15 @@ describe('transactionImportDecoder', () => {
 
     it('decodes only the fields allowed for each terminal state', () => {
       const confirmed = decodeTransactionImportCandidate(document(
-        'candidate-confirmed',
+        confirmedCandidateId,
         validPendingCandidate({
           status: 'confirmed',
-          transactionId: 'ledger-mutation:android:candidate-confirmed',
+          transactionId: `ledger-mutation:android:${confirmedCandidateId}`,
           confirmedAt: timestamp('2026-08-25T13:10:00.000Z'),
         }),
       ));
       const dismissed = decodeTransactionImportCandidate(document(
-        'candidate-dismissed',
+        dismissedCandidateId,
         validPendingCandidate({
           status: 'dismissed',
           dismissedAt: timestamp('2026-08-25T13:11:00.000Z'),
@@ -177,16 +185,16 @@ describe('transactionImportDecoder', () => {
       expect(confirmed).toEqual({
         ok: true,
         candidate: expect.objectContaining({
-          id: 'candidate-confirmed',
+          id: confirmedCandidateId,
           status: 'confirmed',
-          transactionId: 'ledger-mutation:android:candidate-confirmed',
+          transactionId: `ledger-mutation:android:${confirmedCandidateId}`,
           confirmedAt: new Date('2026-08-25T13:10:00.000Z'),
         }),
       });
       expect(dismissed).toEqual({
         ok: true,
         candidate: expect.objectContaining({
-          id: 'candidate-dismissed',
+          id: dismissedCandidateId,
           status: 'dismissed',
           dismissedAt: new Date('2026-08-25T13:11:00.000Z'),
         }),
@@ -212,14 +220,14 @@ describe('transactionImportDecoder', () => {
       ['status', { status: 'reviewing' }],
     ] as const)('rejects an invalid %s instead of coercing it', (field, overrides) => {
       const result = decodeTransactionImportCandidate(
-        document('candidate-invalid', validPendingCandidate(overrides)),
+        document(invalidFieldCandidateId, validPendingCandidate(overrides)),
       );
 
       expect(result).toEqual({
         ok: false,
         issue: expect.objectContaining({
           entity: 'transaction-import-candidate',
-          documentId: 'candidate-invalid',
+          documentId: invalidFieldCandidateId,
           field,
         }),
       });
@@ -244,14 +252,14 @@ describe('transactionImportDecoder', () => {
       }, 'transactionId'],
     ] as const)('rejects an illegal status-field combination', (overrides, field) => {
       const result = decodeTransactionImportCandidate(
-        document('candidate-state', validPendingCandidate(overrides)),
+        document(invalidStateCandidateId, validPendingCandidate(overrides)),
       );
 
       expect(result).toEqual({
         ok: false,
         issue: expect.objectContaining({
           entity: 'transaction-import-candidate',
-          documentId: 'candidate-state',
+          documentId: invalidStateCandidateId,
           code: 'invalid-state',
           field,
         }),
@@ -270,16 +278,35 @@ describe('transactionImportDecoder', () => {
       'unexpected',
     ])('rejects the forbidden or unknown key %s', key => {
       const result = decodeTransactionImportCandidate(
-        document('candidate-sensitive', validPendingCandidate({ [key]: 'secret' })),
+        document(sensitiveCandidateId, validPendingCandidate({ [key]: 'secret' })),
       );
 
       expect(result).toEqual({
         ok: false,
         issue: expect.objectContaining({
           entity: 'transaction-import-candidate',
-          documentId: 'candidate-sensitive',
+          documentId: sensitiveCandidateId,
           code: 'unknown-field',
           field: key,
+        }),
+      });
+    });
+
+    it.each([
+      'a'.repeat(63),
+      'g'.repeat(64),
+      'A'.repeat(64),
+    ])('rejects malformed candidate document id %s', candidateId => {
+      const result = decodeTransactionImportCandidate(
+        document(candidateId, validPendingCandidate()),
+      );
+
+      expect(result).toEqual({
+        ok: false,
+        issue: expect.objectContaining({
+          entity: 'transaction-import-candidate',
+          documentId: candidateId,
+          code: 'invalid-document',
         }),
       });
     });

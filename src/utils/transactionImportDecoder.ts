@@ -92,6 +92,8 @@ const TRANSACTION_IMPORT_STATUSES = new Set<TransactionImportStatus>([
   'dismissed',
 ]);
 
+const TRANSACTION_IMPORT_CANDIDATE_ID = /^[0-9a-f]{64}$/;
+
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   value !== null
   && typeof value === 'object'
@@ -267,6 +269,9 @@ const invalidCandidate = (
 export function decodeTransactionImportCandidate(
   document: TransactionImportDocumentLike,
 ): TransactionImportCandidateDecodeResult {
+  if (!TRANSACTION_IMPORT_CANDIDATE_ID.test(document.id)) {
+    return invalidCandidate(document.id, 'invalid-document');
+  }
   const data = document.data();
   if (!isRecord(data)) return invalidCandidate(document.id, 'invalid-document');
 

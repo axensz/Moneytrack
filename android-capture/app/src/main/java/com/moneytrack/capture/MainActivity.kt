@@ -7,11 +7,12 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.CheckBox
+import android.widget.ImageButton
 import android.widget.LinearLayout
-import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.net.toUri
@@ -26,6 +27,7 @@ import com.moneytrack.capture.auth.AuthenticationResult
 import com.moneytrack.capture.auth.GoogleSignInController
 import com.moneytrack.capture.core.CaptureSetupFlow
 import com.moneytrack.capture.core.CaptureSetupStep
+import com.moneytrack.capture.core.SourceLabelResolver
 import com.moneytrack.capture.notification.NotificationAccess
 import com.moneytrack.capture.preferences.AppThemeMode
 import com.moneytrack.capture.preferences.CapturePreferences
@@ -47,7 +49,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var captureSwitch: CheckBox
     private lateinit var signInButton: Button
     private lateinit var signOutButton: Button
-    private lateinit var themeGroup: RadioGroup
+    private lateinit var themeButton: ImageButton
     private var firebaseAuth: FirebaseAuth? = null
     private var rendering = false
     private val authStateListener = FirebaseAuth.AuthStateListener { render() }
@@ -93,7 +95,7 @@ class MainActivity : AppCompatActivity() {
         captureSwitch = findViewById(R.id.capture_switch)
         signInButton = findViewById(R.id.sign_in_button)
         signOutButton = findViewById(R.id.sign_out_button)
-        themeGroup = findViewById(R.id.theme_group)
+        themeButton = findViewById(R.id.theme_button)
     }
 
     private fun applyWindowInsets() {
@@ -126,22 +128,14 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.open_pwa_button).setOnClickListener {
             startActivity(Intent(Intent.ACTION_VIEW, getString(R.string.pwa_url).toUri()))
         }
+        findViewById<Button>(R.id.manage_sources_button).setOnClickListener {
+            showSourceManagementDialog()
+        }
+        themeButton.setOnClickListener { showThemeDialog() }
         captureSwitch.setOnCheckedChangeListener { _, isChecked ->
             if (rendering) return@setOnCheckedChangeListener
             preferences.captureEnabled = isChecked
             render()
-        }
-        themeGroup.setOnCheckedChangeListener { _, checkedId ->
-            if (rendering) return@setOnCheckedChangeListener
-            val selectedMode = when (checkedId) {
-                R.id.theme_light -> AppThemeMode.LIGHT
-                R.id.theme_dark -> AppThemeMode.DARK
-                else -> AppThemeMode.SYSTEM
-            }
-            if (preferences.appThemeMode != selectedMode) {
-                preferences.appThemeMode = selectedMode
-                applyThemeMode(selectedMode)
-            }
         }
     }
 
@@ -161,7 +155,6 @@ class MainActivity : AppCompatActivity() {
         captureSwitch.isChecked = preferences.captureEnabled
         signInButton.visibility = if (signedIn) View.GONE else View.VISIBLE
         signOutButton.visibility = if (signedIn) View.VISIBLE else View.GONE
-        themeGroup.check(themeIdFor(preferences.appThemeMode))
         renderSources(allowedPackages)
         rendering = false
     }
@@ -226,6 +219,50 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showSourceManagementDialog() {
+        val sources = preferences.discoveredSources()
+        val selected = sources.map { it.packageName in preferences.allowedPackages() }.toBooleanArray()
+        AlertDialog.Builder(this)
+            .setTitle(R.string.manage_sources_title)
+            .setMessage(R.string.manage_sources_explanation)
+            .setMultiChoiceItems(sources.map(::displayLabel).toTypedArray(), selected) { _, which, checked ->
+                selected[which] = checked
+            }
+            .setNegativeButton(R.string.cancel_action, null)
+            .setPositiveButton(R.string.save_action) { _, _ ->
+                preferences.setAllowedPackages(
+                    sources.filterIndexed { index, _ -> selected[index] }
+                        .mapTo(mutableSetOf()) { it.packageName },
+                )
+                render()
+            }
+            .show()
+    }
+
+    private fun showThemeDialog() {
+        val modes = AppThemeMode.entries
+        var selectedIndex = modes.indexOf(preferences.appThemeMode)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.theme_dialog_title)
+            .setSingleChoiceItems(
+                arrayOf(
+                    getString(R.string.theme_system),
+                    getString(R.string.theme_light),
+                    getString(R.string.theme_dark),
+                ),
+                selectedIndex,
+            ) { _, which -> selectedIndex = which }
+            .setNegativeButton(R.string.cancel_action, null)
+            .setPositiveButton(R.string.save_action) { _, _ ->
+                val selectedMode = modes[selectedIndex]
+                if (preferences.appThemeMode != selectedMode) {
+                    preferences.appThemeMode = selectedMode
+                    applyThemeMode(selectedMode)
+                }
+            }
+            .show()
+    }
+
     private fun sourceTextView(label: String) = TextView(this).apply {
         text = label
         minHeight = resources.getDimensionPixelSize(R.dimen.control_min_height)
@@ -234,14 +271,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun displayLabel(source: DiscoveredNotificationSource): String =
-        source.label.takeIf { it.isNotBlank() && it != source.packageName }
-            ?: getString(R.string.source_unnamed)
-
-    private fun themeIdFor(mode: AppThemeMode): Int = when (mode) {
-        AppThemeMode.SYSTEM -> R.id.theme_system
-        AppThemeMode.LIGHT -> R.id.theme_light
-        AppThemeMode.DARK -> R.id.theme_dark
-    }
+        SourceLabelResolver.resolve(
+            packageName = source.packageName,
+            label = source.label,
+            testSourceLabel = getString(R.string.source_test),
+            fallbackLabel = getString(R.string.source_unnamed),
+        )
 
     private fun applyThemeMode(mode: AppThemeMode) {
         val nightMode = when (mode) {

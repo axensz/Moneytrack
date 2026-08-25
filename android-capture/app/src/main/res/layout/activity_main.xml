@@ -16,13 +16,30 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <TextView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/screen_title"
-            android:textColor="@color/text_primary"
-            android:textSize="28sp"
-            android:textStyle="bold" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/screen_title"
+                android:textColor="@color/text_primary"
+                android:textSize="28sp"
+                android:textStyle="bold" />
+
+            <ImageButton
+                android:id="@+id/theme_button"
+                android:layout_width="@dimen/control_min_height"
+                android:layout_height="@dimen/control_min_height"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/theme_button_description"
+                android:padding="12dp"
+                android:src="@drawable/ic_theme" />
+        </LinearLayout>
 
         <TextView
             android:layout_width="match_parent"
@@ -246,6 +263,14 @@
                 android:orientation="vertical" />
 
             <Button
+                android:id="@+id/manage_sources_button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_small"
+                android:minHeight="@dimen/control_min_height"
+                android:text="@string/manage_sources_action" />
+
+            <Button
                 android:id="@+id/open_pwa_button"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -262,43 +287,6 @@
             android:minHeight="@dimen/control_min_height"
             android:text="@string/sign_out_action"
             android:visibility="gone" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/space_large"
-            android:text="@string/theme_heading"
-            android:textColor="@color/text_primary"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-
-        <RadioGroup
-            android:id="@+id/theme_group"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
-
-            <RadioButton
-                android:id="@+id/theme_system"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="@dimen/control_min_height"
-                android:text="@string/theme_system" />
-
-            <RadioButton
-                android:id="@+id/theme_light"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="@dimen/control_min_height"
-                android:text="@string/theme_light" />
-
-            <RadioButton
-                android:id="@+id/theme_dark"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="@dimen/control_min_height"
-                android:text="@string/theme_dark" />
-        </RadioGroup>
 
         <TextView
             android:layout_width="match_parent"

@@ -19,7 +19,6 @@
         android:orientation="vertical">
 
         <LinearLayout
-            android:id="@+id/setup_progress_panel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
@@ -53,6 +52,7 @@
             android:textSize="16sp" />
 
         <LinearLayout
+            android:id="@+id/setup_progress_panel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/space_large"
@@ -241,7 +241,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/space_large"
-            android:background="@drawable/status_success_panel"
+            android:background="@drawable/status_panel"
             android:orientation="vertical"
             android:padding="@dimen/panel_padding"
             android:visibility="gone">

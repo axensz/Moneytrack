@@ -1,10 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <color name="background">#FAF9F7</color>
+    <color name="card">#FFFFFF</color>
+    <color name="text_primary">#1F1F1F</color>
+    <color name="text_secondary">#6B6B6B</color>
+    <color name="border">#E5E5E5</color>
     <color name="brand_violet">#7C3AED</color>
     <color name="brand_violet_dark">#5B21B6</color>
-    <color name="surface_background">#FAFAFA</color>
-    <color name="surface_panel">#FFFFFF</color>
-    <color name="border_subtle">#E5E7EB</color>
-    <color name="text_primary">#18181B</color>
-    <color name="text_secondary">#52525B</color>
+    <color name="brand_violet_solid">#7C3AED</color>
+    <color name="brand_mark_accent">#DDD6FE</color>
+    <color name="primary_foreground">#FFFFFF</color>
+    <color name="status_success">#047857</color>
+    <color name="status_success_muted">#ECFDF5</color>
+    <color name="status_destructive">#C81E1E</color>
+    <color name="status_destructive_muted">#FEF2F2</color>
+    <color name="status_warning">#B45309</color>
+    <color name="status_warning_muted">#FFFBEB</color>
+    <color name="status_info">#2563EB</color>
+    <color name="status_info_muted">#EFF6FF</color>
+    <color name="surface_background">@color/background</color>
+    <color name="surface_panel">@color/card</color>
+    <color name="border_subtle">@color/border</color>
 </resources>

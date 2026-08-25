@@ -9,8 +9,9 @@ import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.moneytrack.capture.auth.AuthenticationResult
@@ -22,7 +23,7 @@ import com.moneytrack.capture.core.CaptureResultCode
 import com.moneytrack.capture.notification.NotificationAccess
 import com.moneytrack.capture.preferences.CapturePreferences
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
     private lateinit var preferences: CapturePreferences
     private lateinit var signInController: GoogleSignInController
     private lateinit var sessionStatus: TextView
@@ -39,6 +40,7 @@ class MainActivity : ComponentActivity() {
     private val authStateListener = FirebaseAuth.AuthStateListener { render() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 

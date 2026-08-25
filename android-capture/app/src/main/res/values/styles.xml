@@ -15,4 +15,27 @@
         <item name="windowSplashScreenAnimatedIcon">@drawable/moneytrack_icon_maskable</item>
         <item name="postSplashScreenTheme">@style/Theme.MoneytrackCapture</item>
     </style>
+
+    <style name="Widget.MoneyTrack.Button.Primary" parent="Widget.AppCompat.Button">
+        <item name="android:backgroundTint">@color/brand_violet_solid</item>
+        <item name="android:minHeight">@dimen/control_min_height</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textColor">@color/primary_foreground</item>
+    </style>
+
+    <style name="Widget.MoneyTrack.Button.Tertiary" parent="Widget.AppCompat.Button.Borderless">
+        <item name="android:minHeight">@dimen/control_min_height</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textColor">@color/text_secondary</item>
+    </style>
+
+    <style name="Widget.MoneyTrack.Button.Utility" parent="Widget.AppCompat.Button">
+        <item name="android:background">@drawable/button_utility</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:minHeight">@dimen/control_min_height</item>
+        <item name="android:paddingStart">@dimen/panel_padding</item>
+        <item name="android:paddingEnd">@dimen/panel_padding</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textColor">@color/text_primary</item>
+    </style>
 </resources>

@@ -8,6 +8,7 @@
     <color name="brand_violet">#7C3AED</color>
     <color name="brand_violet_dark">#5B21B6</color>
     <color name="brand_violet_solid">#7C3AED</color>
+    <color name="primary_muted">#F3E8FF</color>
     <color name="brand_mark_accent">#DDD6FE</color>
     <color name="primary_foreground">#FFFFFF</color>
     <color name="status_success">#047857</color>

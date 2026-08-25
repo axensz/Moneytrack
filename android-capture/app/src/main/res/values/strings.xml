@@ -3,8 +3,8 @@
     <string name="app_name">MoneyTrack</string>
     <string name="notification_listener_label">Captura de compras de MoneyTrack</string>
     <string name="screen_title">MoneyTrack móvil</string>
-    <string name="screen_intro">Tus compras de las aplicaciones elegidas llegan a MoneyTrack.</string>
-    <string name="privacy_note">El texto completo de la notificación nunca se guarda ni se registra.</string>
+    <string name="screen_intro">Tus compras seleccionadas llegan a MoneyTrack para revisarlas.</string>
+    <string name="privacy_note">El texto original se procesa en el celular y no se conserva.</string>
     <string name="step_progress">Paso %1$d de 3</string>
     <string name="configuration_complete">Configuración completa</string>
     <string name="session_heading">Conecta tu cuenta</string>

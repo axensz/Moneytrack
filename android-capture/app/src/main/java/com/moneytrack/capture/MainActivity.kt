@@ -15,11 +15,13 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.appcompat.widget.SwitchCompat
 import androidx.core.net.toUri
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.doOnLayout
 import androidx.core.view.updatePadding
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
@@ -42,6 +44,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var notificationStep: View
     private lateinit var captureStep: View
     private lateinit var readyStep: View
+    private lateinit var contentColumn: View
+    private lateinit var setupProgressPanel: View
+    private lateinit var progressTrack: View
     private lateinit var openPwaButton: Button
     private lateinit var stepProgress: TextView
     private lateinit var progressOne: View
@@ -49,7 +54,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progressThree: View
     private lateinit var sourceList: LinearLayout
     private lateinit var readySourceList: LinearLayout
-    private lateinit var captureSwitch: CheckBox
+    private lateinit var captureSwitch: SwitchCompat
     private lateinit var signInButton: Button
     private lateinit var signOutButton: Button
     private lateinit var themeButton: ImageButton
@@ -89,6 +94,9 @@ class MainActivity : AppCompatActivity() {
         notificationStep = findViewById(R.id.notification_step)
         captureStep = findViewById(R.id.capture_step)
         readyStep = findViewById(R.id.ready_step)
+        contentColumn = findViewById(R.id.content_column)
+        setupProgressPanel = findViewById(R.id.setup_progress_panel)
+        progressTrack = findViewById(R.id.progress_track)
         openPwaButton = findViewById(R.id.open_pwa_button)
         stepProgress = findViewById(R.id.step_progress)
         progressOne = findViewById(R.id.progress_one)
@@ -108,6 +116,7 @@ class MainActivity : AppCompatActivity() {
         val originalTop = scrollView.paddingTop
         val originalRight = scrollView.paddingRight
         val originalBottom = scrollView.paddingBottom
+        scrollView.doOnLayout { updateContentWidth(scrollView) }
         ViewCompat.setOnApplyWindowInsetsListener(scrollView) { view, insets ->
             val systemInsets = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
@@ -118,9 +127,21 @@ class MainActivity : AppCompatActivity() {
                 right = originalRight + systemInsets.right,
                 bottom = originalBottom + systemInsets.bottom,
             )
+            updateContentWidth(scrollView)
             insets
         }
         ViewCompat.requestApplyInsets(scrollView)
+    }
+
+    private fun updateContentWidth(scrollView: ScrollView) {
+        val availableWidth = scrollView.width - scrollView.paddingLeft - scrollView.paddingRight
+        val targetWidth = contentColumnWidth(
+            availableWidth = availableWidth,
+            maximumWidth = resources.getDimensionPixelSize(R.dimen.content_max_width),
+        )
+        if (targetWidth > 0 && contentColumn.layoutParams.width != targetWidth) {
+            contentColumn.layoutParams = contentColumn.layoutParams.apply { width = targetWidth }
+        }
     }
 
     private fun bindActions() {
@@ -186,6 +207,21 @@ class MainActivity : AppCompatActivity() {
         }
         stepProgress.text = currentStep?.let { getString(R.string.step_progress, it) }
             ?: getString(R.string.configuration_complete)
+        val ready = step == CaptureSetupStep.READY
+        progressTrack.visibility = if (ready) View.GONE else View.VISIBLE
+        setupProgressPanel.setBackgroundResource(
+            if (ready) R.drawable.status_success_panel else R.drawable.status_panel,
+        )
+        stepProgress.setTextColor(
+            getColor(if (ready) R.color.status_success else R.color.brand_violet_dark),
+        )
+        stepProgress.setCompoundDrawablesRelativeWithIntrinsicBounds(
+            if (ready) R.drawable.ic_check_circle else 0,
+            0,
+            0,
+            0,
+        )
+        stepProgress.compoundDrawablePadding = resources.getDimensionPixelSize(R.dimen.space_small)
         listOf(progressOne, progressTwo, progressThree).forEachIndexed { index, progress ->
             progress.setBackgroundResource(
                 if (index < completedSteps) R.drawable.progress_complete else R.drawable.progress_pending,
@@ -284,7 +320,11 @@ class MainActivity : AppCompatActivity() {
                 )
                 render()
             }
-            .show()
+            .create()
+            .also { dialog ->
+                dialog.show()
+                dialog.applyMoneyTrackActions()
+            }
     }
 
     private fun showThemeDialog() {
@@ -308,7 +348,22 @@ class MainActivity : AppCompatActivity() {
                     applyThemeMode(selectedMode)
                 }
             }
-            .show()
+            .create()
+            .also { dialog ->
+                dialog.show()
+                dialog.applyMoneyTrackActions()
+            }
+    }
+
+    private fun AlertDialog.applyMoneyTrackActions() {
+        listOf(AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_POSITIVE).forEach { which ->
+            getButton(which)?.apply {
+                isAllCaps = false
+                minHeight = this@MainActivity.resources.getDimensionPixelSize(
+                    R.dimen.control_min_height,
+                )
+            }
+        }
     }
 
     private fun sourceTextView(label: String) = TextView(this).apply {
@@ -363,3 +418,6 @@ class MainActivity : AppCompatActivity() {
 
 internal fun sourceDialogListHeight(sourceCount: Int, maxListHeight: Int): Int =
     if (sourceCount > 2) maxListHeight else ViewGroup.LayoutParams.WRAP_CONTENT
+
+internal fun contentColumnWidth(availableWidth: Int, maximumWidth: Int): Int =
+    minOf(availableWidth.coerceAtLeast(0), maximumWidth)

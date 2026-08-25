@@ -20,7 +20,9 @@ class ReadyScreenLayoutTest {
 
         assertFalse(layout.contains("@+id/ready_web_card"))
         assertTrue(layout.contains("@+id/open_pwa_button"))
+        assertTrue(layout.contains("style=\"@style/Widget.MoneyTrack.Button.Utility\""))
         assertTrue(layout.contains("@drawable/ic_open_in_new"))
+        assertFalse(layout.contains("@string/ready_sources_heading"))
     }
 
     private fun activityMainLayout(): String {

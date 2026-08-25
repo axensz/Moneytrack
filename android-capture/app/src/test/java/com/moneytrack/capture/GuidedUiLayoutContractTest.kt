@@ -58,6 +58,16 @@ class GuidedUiLayoutContractTest {
     }
 
     @Test
+    fun `observed application names are visibly marked as unverified`() {
+        val activity = source("java/com/moneytrack/capture/MainActivity.kt")
+        val strings = resource("values/strings.xml")
+
+        assertTrue(strings.contains("<string name=\"observed_source_label\">%1\$s · No verificada</string>"))
+        assertTrue(activity.contains("source.origin == CaptureSourceOrigin.OBSERVED"))
+        assertTrue(activity.contains("R.string.observed_source_label"))
+    }
+
+    @Test
     fun `button labels are sentence case and privacy copy is neutral`() {
         val styles = resource("values/styles.xml")
         val layout = resource("layout/activity_main.xml")

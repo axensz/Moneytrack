@@ -16,6 +16,7 @@ class AvailableCaptureSourceCatalogTest {
         assertEquals("Google Wallet", sources.single().label)
         assertEquals(CaptureSourceOrigin.KNOWN, sources.single().origin)
         assertFalse(sources.single().isSelected)
+        assertEquals(setOf("Google Wallet"), AvailableCaptureSourceCatalog.verifiedLabels)
     }
 
     @Test

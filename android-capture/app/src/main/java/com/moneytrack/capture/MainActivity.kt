@@ -420,11 +420,18 @@ class MainActivity : AppCompatActivity() {
             label = source.label,
             testSourceLabel = getString(R.string.source_test),
             fallbackLabel = getString(R.string.source_unnamed),
+            reservedLabels = if (source.origin == CaptureSourceOrigin.OBSERVED) {
+                AvailableCaptureSourceCatalog.verifiedLabels
+            } else {
+                emptySet()
+            },
         )
-        return if (showRecommendation && source.origin == CaptureSourceOrigin.KNOWN) {
-            getString(R.string.recommended_source_label, label)
-        } else {
-            label
+        return when {
+            showRecommendation && source.origin == CaptureSourceOrigin.KNOWN ->
+                getString(R.string.recommended_source_label, label)
+            source.origin == CaptureSourceOrigin.OBSERVED ->
+                getString(R.string.observed_source_label, label)
+            else -> label
         }
     }
 

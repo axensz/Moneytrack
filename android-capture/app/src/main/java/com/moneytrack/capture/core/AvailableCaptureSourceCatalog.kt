@@ -16,14 +16,18 @@ data class AvailableCaptureSource(
 
 object AvailableCaptureSourceCatalog {
     const val GOOGLE_WALLET_PACKAGE = "com.google.android.apps.walletnfcrel"
+    const val GOOGLE_WALLET_LABEL = "Google Wallet"
     const val DIAGNOSTIC_SHELL_PACKAGE = "com.android.shell"
 
     private val googleWallet = AvailableCaptureSource(
         packageName = GOOGLE_WALLET_PACKAGE,
-        label = "Google Wallet",
+        label = GOOGLE_WALLET_LABEL,
         origin = CaptureSourceOrigin.KNOWN,
         isSelected = false,
     )
+    private val knownSources = listOf(googleWallet)
+
+    val verifiedLabels: Set<String> = knownSources.mapTo(linkedSetOf()) { it.label }
 
     fun productAllowedPackages(allowedPackages: Set<String>): Set<String> =
         allowedPackages - DIAGNOSTIC_SHELL_PACKAGE
@@ -38,7 +42,7 @@ object AvailableCaptureSourceCatalog {
         } else {
             productAllowedPackages(allowedPackages)
         }
-        return (listOf(googleWallet) + observedSources.map { source ->
+        return (knownSources + observedSources.map { source ->
             AvailableCaptureSource(
                 packageName = source.packageName,
                 label = source.label,

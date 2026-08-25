@@ -122,6 +122,171 @@ service cloud.firestore {
         );
     }
 
+    function isValidLast4(value) {
+      return value is string && value.matches('[0-9]{4}');
+    }
+
+    function isValidPaymentInstrument(userId, data) {
+      return data.keys().hasOnly([
+          'schemaVersion',
+          'label',
+          'accountId',
+          'kind',
+          'last4',
+          'network',
+          'active',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasAll([
+          'schemaVersion',
+          'label',
+          'accountId',
+          'kind',
+          'last4',
+          'network',
+          'active',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.schemaVersion == 1
+        && isValidString(data.label, 1, 80)
+        && accountExistsAfter(userId, data.accountId)
+        && data.kind in ['physical-card', 'wallet-token']
+        && isValidLast4(data.last4)
+        && data.network in ['visa', 'mastercard', 'amex', 'other', 'unknown']
+        && data.active is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTransactionImportCandidateBase(candidateId, data) {
+      return candidateId.matches('[a-f0-9]{64}')
+        && data.keys().hasOnly([
+          'schemaVersion',
+          'source',
+          'sourcePackage',
+          'occurredAt',
+          'amountMinor',
+          'currency',
+          'merchant',
+          'cardLast4',
+          'parserId',
+          'parserVersion',
+          'confidence',
+          'status',
+          'transactionId',
+          'confirmedAt',
+          'dismissedAt'
+        ])
+        && data.keys().hasAll([
+          'schemaVersion',
+          'source',
+          'sourcePackage',
+          'occurredAt',
+          'amountMinor',
+          'currency',
+          'merchant',
+          'parserId',
+          'parserVersion',
+          'confidence',
+          'status'
+        ])
+        && data.schemaVersion == 1
+        && data.source == 'android-notification'
+        && isValidString(data.sourcePackage, 1, 160)
+        && data.occurredAt is timestamp
+        && data.amountMinor is int
+        && data.amountMinor > 0
+        && data.amountMinor <= 100000000000
+        && data.currency == 'COP'
+        && isValidString(data.merchant, 1, 140)
+        && (
+          !('cardLast4' in data.keys())
+          || isValidLast4(data.cardLast4)
+        )
+        && data.parserId == 'strict-cop-purchase'
+        && data.parserVersion == 1
+        && data.confidence in ['high', 'medium']
+        && data.status in ['pending', 'confirmed', 'dismissed'];
+    }
+
+    function isValidTransactionImportCandidateState(candidateId, data) {
+      return isValidTransactionImportCandidateBase(candidateId, data)
+        && (
+          (
+            data.status == 'pending'
+            && !('transactionId' in data.keys())
+            && !('confirmedAt' in data.keys())
+            && !('dismissedAt' in data.keys())
+          )
+          || (
+            data.status == 'confirmed'
+            && isValidString(data.transactionId, 1, 200)
+            && data.confirmedAt is timestamp
+            && !('dismissedAt' in data.keys())
+          )
+          || (
+            data.status == 'dismissed'
+            && data.dismissedAt is timestamp
+            && !('transactionId' in data.keys())
+            && !('confirmedAt' in data.keys())
+          )
+        );
+    }
+
+    function transactionImportCandidateNoOp(candidateId) {
+      return isValidTransactionImportCandidateState(
+          candidateId,
+          request.resource.data
+        )
+        && request.resource.data.diff(resource.data).affectedKeys().size() == 0;
+    }
+
+    function transactionImportCandidateDismissAllowed(candidateId) {
+      return resource.data.status == 'pending'
+        && request.resource.data.status == 'dismissed'
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'dismissedAt'])
+        && isValidTransactionImportCandidateState(
+          candidateId,
+          request.resource.data
+        )
+        && request.resource.data.dismissedAt == request.time;
+    }
+
+    function transactionImportCandidateConfirmationAllowed(
+      userId,
+      candidateId
+    ) {
+      let operationId = 'ledger-mutation:android:' + candidateId;
+      let userPath = /databases/$(database)/documents/users/$(userId);
+      let transactionPath = /databases/$(database)/documents/users/$(userId)/transactions/$(operationId);
+      return resource.data.status == 'pending'
+        && request.resource.data.status == 'confirmed'
+        && request.resource.data.transactionId == operationId
+        && request.resource.data.confirmedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'transactionId', 'confirmedAt'])
+        && isValidTransactionImportCandidateState(
+          candidateId,
+          request.resource.data
+        )
+        && exists(userPath)
+        && accountOperationLockIsActive(get(userPath).data)
+        && get(userPath).data.accountOperationLock.id == operationId
+        && get(userPath).data.accountOperationLock.kind == 'ledger-mutation'
+        && !exists(transactionPath)
+        && existsAfter(transactionPath)
+        && getAfter(transactionPath).data.operationId == operationId
+        && getAfter(transactionPath).data.mutationKind == 'create'
+        && getAfter(transactionPath).data.mutationSource == 'android'
+        && isValidAccountOperationRelease(
+          getAfter(userPath).data.accountOperationLock,
+          get(userPath).data.accountOperationLock
+        );
+    }
+
     function hasValidCreditAuthority(data) {
       return data.type != 'credit'
         || (
@@ -317,6 +482,51 @@ service cloud.firestore {
 
         allow delete: if isOwner(userId)
           && accountOperationAllowsWrite(userId);
+      }
+
+      // Physical cards and wallet tokens point to an existing Account. They
+      // never carry PAN/CVV/raw notification data because the shape is exact.
+      match /paymentInstruments/{instrumentId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId)
+          && accountOperationAllowsWrite(userId)
+          && isValidPaymentInstrument(userId, request.resource.data)
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time;
+
+        allow update: if isOwner(userId)
+          && accountOperationAllowsWrite(userId)
+          && isValidPaymentInstrument(userId, request.resource.data)
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.updatedAt == request.time;
+
+        allow delete: if isOwner(userId)
+          && accountOperationAllowsWrite(userId);
+      }
+
+      // Android writes only normalized, non-financial candidates. A candidate
+      // can enter the ledger solely through the matching ledger lease, canonical
+      // transaction and release in the same atomic commit.
+      match /transactionImportCandidates/{candidateId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId)
+          && isValidTransactionImportCandidateState(
+            candidateId,
+            request.resource.data
+          )
+          && request.resource.data.status == 'pending';
+
+        allow update: if isOwner(userId)
+          && (
+            transactionImportCandidateNoOp(candidateId)
+            || transactionImportCandidateDismissAllowed(candidateId)
+            || transactionImportCandidateConfirmationAllowed(
+              userId,
+              candidateId
+            )
+          );
       }
 
       // Categories subcollection

@@ -11,7 +11,7 @@
     "test": "vitest --config vitest.config.mjs --configLoader runner",
     "test:run": "vitest run --config vitest.config.mjs --configLoader runner",
     "test:rules": "npx --yes firebase-tools@15.24.0 emulators:exec --only firestore --project demo-moneytrack \"npm run test:rules:run\"",
-    "test:rules:run": "vitest run src/__tests__/firestore/accountOperationLock.rules.test.ts --config vitest.config.mjs --configLoader runner",
+    "test:rules:run": "vitest run src/__tests__/firestore/accountOperationLock.rules.test.ts src/__tests__/firestore/transactionImport.rules.test.ts --no-file-parallelism --config vitest.config.mjs --configLoader runner",
     "prepare": "husky || exit 0",
     "test:coverage": "vitest run --config vitest.config.mjs --configLoader runner --coverage"
   },

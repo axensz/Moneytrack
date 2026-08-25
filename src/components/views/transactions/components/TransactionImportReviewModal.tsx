@@ -92,9 +92,6 @@ export function TransactionImportReviewModal({
       hasInterest,
     )
     : null;
-  const matchedInstrument = match.status === 'matched'
-    ? instruments.find(instrument => instrument.id === match.instrumentId)
-    : undefined;
   const canRememberInstrument = Boolean(
     candidate.cardLast4 && match.status === 'none',
   );
@@ -201,9 +198,9 @@ export function TransactionImportReviewModal({
               <option key={account.id} value={account.id}>{account.name}</option>
             ))}
           </select>
-          {match.status === 'matched' && matchedInstrument && (
+          {match.status === 'matched' && (
             <p className="mt-1.5 text-xs text-success">
-              Sugerida por {matchedInstrument.label}.
+              Cuenta sugerida automáticamente.
             </p>
           )}
           {match.status === 'ambiguous' && (

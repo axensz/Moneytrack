@@ -111,10 +111,10 @@ beforeEach(() => {
 });
 
 describe('TransactionImportReviewModal', () => {
-  it('preselects one exact instrument and explains ambiguous or absent matches', () => {
+  it('preselects an exact account without exposing the instrument alias', () => {
     const { rerender } = renderModal();
     expect(screen.getByLabelText('Cuenta')).toHaveValue('card');
-    expect(screen.getByText(/sugerida por Visa celular instrument-1/i)).toBeInTheDocument();
+    expect(screen.queryByText(/sugerida por Visa celular instrument-1/i)).not.toBeInTheDocument();
 
     rerender(
       <TransactionImportReviewModal

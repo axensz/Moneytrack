@@ -28,6 +28,14 @@ _Avoid_: Número de tarjeta, últimos cuatro de la cuenta
 Señal emitida por una fuente externa que parece describir una compra, pero aún no tiene autoridad sobre el registro financiero.
 _Avoid_: Transacción, movimiento confirmado
 
+**Fuente de captura conocida**:
+Aplicación financiera incluida explícitamente en el catálogo local de Moneytrack mediante su paquete exacto, por ejemplo Google Wallet. Puede aparecer como recomendada antes de emitir notificaciones, pero no entra al allowlist hasta que la persona la activa.
+_Avoid_: Aplicación elegida automáticamente, acceso al historial de Wallet
+
+**Fuente de captura observada**:
+Aplicación que el listener recordó localmente después de que emitió una notificación. Conserva solo paquete y etiqueta para ofrecerla en el administrador; observarla no equivale a permitirla.
+_Avoid_: Aplicación instalada, fuente autorizada
+
 **Candidato de importación**:
 Propuesta financiera normalizada a partir de un evento de pago observado. No modifica saldos, deuda ni estadísticas mientras siga pendiente.
 _Avoid_: Transacción automática, transacción

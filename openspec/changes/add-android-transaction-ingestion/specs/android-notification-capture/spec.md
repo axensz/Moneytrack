@@ -15,6 +15,14 @@ El compañero Android MUST permanecer inactivo hasta que el usuario autenticado 
 - **WHEN** una aplicación aún no permitida emite una notificación después de conceder acceso al listener
 - **THEN** el compañero puede recordar localmente solo su paquete y etiqueta para ofrecerla en el selector, sin leer los extras ni solicitar acceso general al inventario de aplicaciones
 
+#### Scenario: Google Wallet como fuente conocida
+- **WHEN** la persona abre la selección de fuentes antes de que Google Wallet haya emitido una notificación
+- **THEN** el compañero muestra `Google Wallet` como opción recomendada mediante su paquete exacto interno, pero la deja fuera del allowlist hasta que la persona la active y guarde
+
+#### Scenario: Conservar Google Wallet elegida
+- **WHEN** la persona activa Google Wallet y vuelve a abrir o actualizar el compañero
+- **THEN** la selección persiste y solo sus notificaciones futuras pueden pasar el filtro del paquete antes del parser
+
 #### Scenario: Revocar el permiso
 - **WHEN** el usuario revoca el acceso a notificaciones o desactiva la captura
 - **THEN** no se crean candidatos nuevos y la pantalla comunica el estado real
@@ -95,11 +103,35 @@ El compañero MUST usar la persistencia local de Firestore para encolar únicame
 - **THEN** la pantalla muestra un estado de error genérico y el compañero no declara la captura como disponible en Moneytrack
 
 ### Requirement: La pantalla Android expone estado operativo verificable
-El compañero MUST mostrar sesión, acceso a notificaciones, captura activa, paquetes seleccionados y último resultado no financiero, y MUST ofrecer acciones para iniciar/cerrar sesión, abrir ajustes y abrir la PWA.
+El compañero MUST comunicar sesión, acceso a notificaciones, captura activa y paquetes seleccionados en la etapa o resumen correspondiente, y MUST ofrecer las acciones aplicables para iniciar/cerrar sesión, abrir ajustes y abrir la PWA; MUST NOT exponer códigos técnicos ni un bloque de último resultado en la interfaz normal.
 
 #### Scenario: Configuración lista
 - **WHEN** existe sesión, permiso y al menos un paquete seleccionado
-- **THEN** la pantalla indica “Captura activa” y qué aplicaciones están habilitadas
+- **THEN** la pantalla indica “Configuración completa” y “Captura activa”, muestra qué aplicaciones están habilitadas y ofrece administrarlas
+
+#### Scenario: Administrar fuentes desde el estado listo
+- **WHEN** la persona abre `Administrar aplicaciones`, activa o desactiva fuentes descubiertas y guarda
+- **THEN** un diálogo sobre la misma Activity muestra la fuente conocida y todas las fuentes observadas con casillas, persiste exactamente esa selección y, si queda vacía, regresa a la etapa `CAPTURE`
+
+#### Scenario: Cancelar la administración de fuentes
+- **WHEN** la persona cambia casillas y pulsa `Cancelar`
+- **THEN** el diálogo se cierra sin modificar el allowlist ni navegar a otra pantalla
+
+#### Scenario: Una o muchas fuentes descubiertas
+- **WHEN** el diálogo contiene hasta dos fuentes o una lista más larga
+- **THEN** la lista usa su altura natural en el primer caso y un contenedor desplazable acotado desde tres fuentes, sin ocultar casillas
+
+#### Scenario: La fuente deseada aún no está disponible
+- **WHEN** la persona abre `Administrar aplicaciones` antes de que otra aplicación haya emitido una notificación
+- **THEN** el diálogo explica que aparecerá después de una notificación futura y no solicita acceso al inventario general de aplicaciones
+
+#### Scenario: Resumen listo sin texto repetido
+- **WHEN** la configuración está completa y existe al menos una fuente seleccionada
+- **THEN** el bloque `Captura activa` muestra directamente las etiquetas de esas fuentes y la acción `Administrar aplicaciones`, sin repetir una explicación ni el rótulo `Aplicaciones elegidas`
+
+#### Scenario: Abrir la aplicación web
+- **WHEN** la configuración está completa
+- **THEN** `Abrir MoneyTrack` aparece como una acción secundaria independiente, con etiqueta visible e icono vectorial externo, fuera del bloque de captura y sin otra tarjeta explicativa
 
 #### Scenario: Configuración incompleta
 - **WHEN** falta cualquiera de las precondiciones
@@ -121,8 +153,12 @@ El compañero MUST mostrar solo la primera etapa incompleta entre sesión, acces
 - **THEN** muestra la etapa de acceso y no declara captura activa
 
 #### Scenario: Cambiar apariencia
-- **WHEN** la persona elige `Sistema`, `Claro` u `Oscuro`
-- **THEN** la Activity aplica y conserva el modo elegido con colores legibles y sin ocultar contenido bajo las barras del dispositivo
+- **WHEN** la persona abre el botón de apariencia con sol delineado de la cabecera y guarda `Sistema`, `Claro` u `Oscuro` en el diálogo
+- **THEN** la Activity aplica y conserva el modo elegido con colores legibles, sin un selector permanente en el contenido y sin ocultarlo bajo las barras del dispositivo
+
+#### Scenario: Pantalla compacta o texto ampliado
+- **WHEN** cambia el ancho, la orientación o la escala de fuente del dispositivo
+- **THEN** el contenido se ajusta o desplaza verticalmente sin solapar barras, cortar acciones ni producir desbordamiento horizontal
 
 #### Scenario: Sesión activa
 - **WHEN** Firebase conserva una persona autenticada

@@ -369,3 +369,63 @@ approved design must amend the existing unarchived change before code work.
 - Follow-up wording ruling: the purchase row identifies the functional origin
   as `Android` and appends only a uniquely recommended account. The alias stays
   in payment-medium management and matching; it is not shown as the source.
+
+## 2026-08-25 — Device feedback: source management and compact theme control
+
+- The canary ready state exposed the discovered test source as `Shell` but did
+  not provide a direct way to remove it or add another discovered source. The
+  persistent theme radio group also competed with the primary capture status.
+- `com.android.shell` now resolves only at presentation time to `Fuente de
+  prueba`; the internal package allowlist remains unchanged and ordinary
+  financial application labels continue to be shown without package IDs.
+- `READY` now exposes `Administrar aplicaciones`, a custom modal backed by all
+  locally discovered sources. Saving persists the exact selection; saving none
+  returns the guided flow to `CAPTURE`. Its copy explains that another app
+  becomes available after emitting a future notification, without requesting
+  general installed-app visibility.
+- Theme selection moved to an accessible 48 dp header icon and a
+  `Sistema / Claro / Oscuro` dialog with explicit save/cancel actions. The
+  inline theme block was removed and the stored mode is applied only when it
+  changes.
+- A short-lived per-source `Quitar` action was removed after device feedback.
+  READY now keeps selected labels read-only and centralizes activation and
+  deactivation in `Administrar aplicaciones`.
+- Real-device inspection found that the OEM AppCompat dialog displayed the
+  message but hid `setMultiChoiceItems`. The source manager now uses a custom
+  explanation plus 48 dp checkboxes for every discovered source. Cancel keeps
+  changes local; Save persists the exact selection. Up to two sources use their
+  natural height and longer lists are bounded and scrollable.
+- A later device capture identified Google Wallet itself as the desired base
+  source and verified its installed package. The approved refinement adds it to
+  a pure known-source catalog so it is always offered as recommended, while the
+  allowlist remains empty until explicit consent and no installed-app inventory
+  permission is introduced.
+- The header now says `MoneyTrack móvil`; READY says `Configuración completa`
+  and `Captura activa`. The appearance control uses an outlined sun instead of
+  the previous pie-shaped glyph.
+- Real-device verification showed the corrected custom source modal with the
+  known and observed options. The user selected Google Wallet, disabled the
+  test source and returned to READY with Google Wallet as the only visible
+  source; no package name or financial notification content was displayed.
+- Follow-up feedback found the ready explanation, `Aplicaciones elegidas`
+  heading and separate explanatory web card redundant. RED layout-source tests
+  now protect the shorter structure. READY shows `Captura activa`, the selected
+  labels and `Administrar aplicaciones`; `Abrir MoneyTrack` is a standalone
+  secondary button with a visible label and vector external-link icon.
+- The full-width controls, flexible title, source labels and outer ScrollView
+  preserve compact, landscape, long-label and enlarged-text behavior without
+  horizontal overflow.
+- Focused resolver/dialog-sizing tests, Android JVM tests, `lintDebug` and
+  `assembleDebug` passed. Independent review reported no remaining Critical,
+  Important or Minor findings. The previous debug APK reinstalled successfully
+  on the authorized device without clearing its session. At that checkpoint,
+  the later concise READY revision had not yet been built.
+- The concise build then passed its focused RED/GREEN layout tests plus the full
+  Android JVM, lint and debug-assembly gates, and strict OpenSpec validation.
+  It installed over the existing canary session and a dark-mode capture verified
+  `Captura activa`, Google Wallet, the single source manager, the standalone
+  vector-labeled web action and system-bar clearance without financial data.
+- The OEM denied a temporary forced-display-size probe because shell lacks
+  `WRITE_SECURE_SETTINGS`; the physical 400 dp-wide display remained unchanged.
+  Manual landscape/enlarged-text and appearance-dialog verification therefore
+  remains open rather than being inferred.

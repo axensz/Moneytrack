@@ -287,7 +287,7 @@ Call edge-to-edge and apply `WindowInsetsCompat.Type.systemBars() or displayCuto
 
 - [ ] **Step 4: Wire theme and capture controls**
 
-Persist `Sistema / Claro / Oscuro`, apply with `AppCompatDelegate`, recreate only when the value changes, and preserve source/capture state.
+Expose an accessible 48 dp outlined-sun appearance button in the header that opens a `Sistema / Claro / Oscuro` dialog; persist the choice, apply with `AppCompatDelegate` only when it changes, and keep the selector out of the main content. In `READY`, render `Configuración completa`, then keep the capture card to `Captura activa`, selected labels and one `Administrar aplicaciones` action without a repeated explanation or `Aplicaciones elegidas` heading. A pure source catalog must always offer Google Wallet as recommended but unchecked until explicit consent, merge it once with observed sources, and never expose its package. The custom modal must render explanation plus every available source as a 48 dp checkbox, keep changes local until Save, use natural height through two sources and scroll from three, persist the exact allowlist, return to `CAPTURE` when it becomes empty, and explain future-notification discovery without querying installed-app inventory. Place the canonical web action as a standalone secondary button with a visible label and vector external-link icon outside the capture card, not inside another explanatory card, and preserve wrapping/vertical scrolling for compact widths, landscape, long labels and enlarged text.
 
 - [ ] **Step 5: Run Android GREEN checks**
 

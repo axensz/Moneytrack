@@ -102,3 +102,136 @@ existing ledger boundary without copying financial authority.
 - Offline review preserves edits and blocks the financial action. Server
   failures remain visible and the synchronous guard permits only one canonical
   confirmation per submit gesture.
+
+## Android project and pure capture core
+
+- The isolated Android module uses AGP 9.3.0, Gradle 9.5.0, API 26–36 and
+  Java 17 bytecode. Firebase main modules, Activity KTX and Credential Manager
+  are pinned; Compose, Analytics, Crashlytics and dependency injection remain
+  absent.
+- The Google Services plugin is conditional on the ignored local
+  `app/google-services.json`, so source verification does not require checking
+  credentials into Git. Android Studio JBR 21.0.10 and Gradle 9.5.0 were
+  verified; Gradle installed the missing API 36 platform locally.
+- RED/GREEN evidence was captured independently for parser, SHA-256 fingerprint
+  and eligibility policy. The final pure-core task passed all current Android
+  unit tests.
+- The parser accepts only unambiguous COP purchase notifications and rejects
+  multiple amounts, foreign currency, malformed values, reversals, failures and
+  security/OTP messages. Raw notification text never enters the fingerprint.
+- Capture is fail-closed for signed-out, disabled, missing-access, empty-list
+  and non-allowed-package states. Preferences are private, allowlist reads are
+  defensive copies, and installation identity is a locally persisted random
+  UUID.
+
+## Android authenticated capture boundary
+
+- RED/GREEN repository tests verify the exact user path, deterministic document
+  ID, normalized pending payload, optional last-four behavior, forbidden raw
+  keys and generic error mapping. Its public persistence input is the normalized
+  candidate; Firestore receives no notification object or installation ID.
+- Credential Manager uses the generated web OAuth client ID and exchanges only
+  the Google ID token in memory for a Firebase credential. Sign-out clears both
+  Firebase Auth and provider credential state, and application code logs no
+  token or authentication exception content.
+- A non-allowed package is remembered locally by package and label before any
+  notification extra is read. The injectable coordinator proves that wrong
+  packages, rejected parses and inspection errors never call the repository;
+  repeated delivery produces the same 64-character document ID.
+- The manifest exposes only the launcher activity. The listener is non-exported,
+  guarded by `BIND_NOTIFICATION_LISTENER_SERVICE`, and the source declares none
+  of the prohibited broad permissions. Private preferences are excluded from
+  backup and device transfer.
+- The Spanish XML status surface shows session, access, readiness, selected
+  sources and generic last result. It uses resource strings, 48 dp controls,
+  the existing violet brand hue, solid surfaces and no gradients.
+- Exact phase command `testDebugUnitTest lintDebug` passed: 28 tests, zero test
+  failures/errors and zero lint errors. The seven remaining lint findings are
+  version-availability notices caused by the versions intentionally pinned in
+  this OpenSpec change; there are no security or accessibility findings.
+- Scoped commit: `c97c183 feat(android): capture normalized purchase notifications`.
+  Its staged-file audit contained only `.gitignore` and `android-capture/`; the
+  ignored Firebase config, local SDK path, keys and build directories were all
+  absent.
+
+## Android runbook and local artifact
+
+- `android-capture/README.md` documents JDK/SDK prerequisites, same-project
+  Firebase registration, ignored config placement, build/install commands,
+  consent flow, privacy boundary and rollback. It explicitly distinguishes
+  future Android notifications from unavailable Wallet history.
+- `docs/android-capture-canary.md` permits only candidate prefix, package,
+  parser code and yes/no outcomes. It prohibits raw text, merchant, amount,
+  last-four, UID, notification key and installation ID, and defines the 14-day,
+  50-event acceptance formulas.
+- `signingReport` passed locally and produced debug SHA-1/SHA-256 values; they
+  were not copied into repository evidence. Firebase Console registration and
+  insertion of the ignored project config remain an external step.
+- The exact clean matrix completed 54 tasks successfully in 1m58s. All 28 unit
+  tests passed, lint had zero non-version findings, and the ignored debug APK
+  was produced at `android-capture/app/build/outputs/apk/debug/app-debug.apk`
+  (9,756,917 bytes; SHA-256
+  `16ce327f9b84a41291cd7588232288657ed175f020efc62a28851ab2ecf00744`).
+- This source-validation APK has no checked-in Firebase configuration and is
+  therefore not evidence of working Google sign-in or a canary-ready build.
+
+## Full local verification and handoff
+
+- Every focused decoder, matching, rule, hook, account-lifecycle,
+  orchestration and UI suite passed before the full regression. No snapshot was
+  accepted as a substitute for behavioral or visual assertions.
+- Firestore emulator verification passed 2 files and 49 tests. The complete
+  Vitest run passed 163 files and 1,505 tests, with 2 files and 49 tests skipped
+  by their existing environment gates. TypeScript, ESLint and the production
+  Next.js build all passed; the static build emitted `/`, `/_not-found` and
+  `/icon.svg`.
+- The first final `test:rules` invocation stopped before starting the emulator
+  because Java was absent from that process's `PATH`. Re-running the exact suite
+  with Android Studio JBR set in `JAVA_HOME`/`PATH` passed all 49 assertions;
+  this was an environment-only prerequisite failure, not a failed rule test.
+- The clean Android matrix completed 54 tasks and 28 unit tests, with zero
+  errors. Lint reported only seven availability notices for versions deliberately
+  pinned by this change; it reported no security or accessibility finding.
+- OpenSpec 1.6.0 strict validation reported the change valid and
+  `git diff --check` reported no whitespace error. The required source scan
+  found no `TBD`/`FIXME` planning placeholder and no persisted raw field in
+  production. Remaining matches are intentional contract/tests, local Firebase
+  setup documentation, transient in-memory notification parsing, rejection
+  vocabulary, and pre-existing Spanish words such as “TODOS” outside this
+  change.
+- Browser verification used exact 390×844 and 1440×900 viewports in light and
+  dark modes. Cuentas and Transacciones had no horizontal overflow, the account
+  and transaction dialogs closed with Escape and returned focus to their
+  launchers, and a clean guest origin produced no console warning or error.
+- Authenticated payment-instrument, candidate-inbox and confirmation states were
+  intentionally not exercised against live Firebase because this task did not
+  authorize login, deployment or external data mutation. OpenSpec item 10.4
+  therefore remains incomplete together with the device/canary items.
+
+## Final graph review
+
+- `detect_changes` against `origin/main` mapped 79 changed files, 350 changed
+  functions/classes, 12 affected flows and a 0.70 review-risk score. The flows
+  include account lifecycle, candidate review and transaction paths expected by
+  the change.
+- `tests_for` found 2 direct tests for `decodePaymentInstrument`, 26 for
+  `confirmTransactionImport`, 12 at file level for
+  `PaymentInstrumentsSection`, 36 for the orchestration module and 41 for the
+  review modal.
+- The graph did not attach a direct edge to the local `runAction` callback or
+  private `requireCurrentPendingCandidate` helper, a documented limitation for
+  TypeScript callbacks/private helpers. Their file-level suites cover every
+  create/edit/toggle/delete action and every pending/terminal/server-reload
+  confirmation branch, including retry idempotency and credit authority. No
+  uncovered high-risk financial path remained.
+
+## Remaining external gates
+
+- Register `com.moneytrack.capture` in the existing Firebase project, add the
+  actual debug/canary SHA-1 and SHA-256, and place the resulting ignored
+  `google-services.json` locally.
+- Deploy the reviewed Firestore rules/index and PWA only through the normal
+  release process, then install the configured APK on one authorized device.
+- Complete authenticated browser states, device denial/offline/retry exercises
+  and the private 14-day/50-event canary. Keep manual confirmation and leave the
+  OpenSpec change unarchived until all thresholds pass.

@@ -240,26 +240,11 @@
                 android:textSize="20sp"
                 android:textStyle="bold" />
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/space_small"
-                android:text="@string/ready_explanation"
-                android:textColor="@color/text_secondary"
-                android:textSize="16sp" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/space_medium"
-                android:text="@string/ready_sources_heading"
-                android:textColor="@color/text_primary"
-                android:textStyle="bold" />
-
             <LinearLayout
                 android:id="@+id/ready_source_list"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_small"
                 android:orientation="vertical" />
 
             <Button
@@ -271,39 +256,18 @@
                 android:text="@string/manage_sources_action" />
         </LinearLayout>
 
-        <LinearLayout
-            android:id="@+id/ready_web_card"
+        <Button
+            android:id="@+id/open_pwa_button"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/space_large"
-            android:background="@drawable/status_panel"
-            android:orientation="vertical"
-            android:padding="@dimen/panel_padding"
-            android:visibility="gone">
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/web_card_title"
-                android:textColor="@color/text_primary"
-                android:textSize="18sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/space_small"
-                android:text="@string/web_card_explanation"
-                android:textColor="@color/text_secondary" />
-
-            <Button
-                android:id="@+id/open_pwa_button"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/space_medium"
-                android:minHeight="@dimen/control_min_height"
-                android:text="@string/open_pwa_action" />
-        </LinearLayout>
+            android:drawableStart="@drawable/ic_open_in_new"
+            android:drawablePadding="@dimen/space_small"
+            android:drawableTint="@color/text_primary"
+            android:minHeight="@dimen/control_min_height"
+            android:text="@string/open_pwa_action"
+            android:textColor="@color/text_primary"
+            android:visibility="gone" />
 
         <Button
             android:id="@+id/sign_out_button"

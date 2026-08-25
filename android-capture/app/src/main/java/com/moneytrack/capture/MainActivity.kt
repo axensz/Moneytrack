@@ -42,7 +42,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var notificationStep: View
     private lateinit var captureStep: View
     private lateinit var readyStep: View
-    private lateinit var readyWebCard: View
+    private lateinit var openPwaButton: Button
     private lateinit var stepProgress: TextView
     private lateinit var progressOne: View
     private lateinit var progressTwo: View
@@ -89,7 +89,7 @@ class MainActivity : AppCompatActivity() {
         notificationStep = findViewById(R.id.notification_step)
         captureStep = findViewById(R.id.capture_step)
         readyStep = findViewById(R.id.ready_step)
-        readyWebCard = findViewById(R.id.ready_web_card)
+        openPwaButton = findViewById(R.id.open_pwa_button)
         stepProgress = findViewById(R.id.step_progress)
         progressOne = findViewById(R.id.progress_one)
         progressTwo = findViewById(R.id.progress_two)
@@ -129,7 +129,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.notification_settings_button).setOnClickListener {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }
-        findViewById<Button>(R.id.open_pwa_button).setOnClickListener {
+        openPwaButton.setOnClickListener {
             startActivity(Intent(Intent.ACTION_VIEW, getString(R.string.pwa_url).toUri()))
         }
         findViewById<Button>(R.id.manage_sources_button).setOnClickListener {
@@ -168,7 +168,7 @@ class MainActivity : AppCompatActivity() {
         notificationStep.visibility = if (step == CaptureSetupStep.NOTIFICATION_ACCESS) View.VISIBLE else View.GONE
         captureStep.visibility = if (step == CaptureSetupStep.CAPTURE) View.VISIBLE else View.GONE
         readyStep.visibility = if (step == CaptureSetupStep.READY) View.VISIBLE else View.GONE
-        readyWebCard.visibility = if (step == CaptureSetupStep.READY) View.VISIBLE else View.GONE
+        openPwaButton.visibility = if (step == CaptureSetupStep.READY) View.VISIBLE else View.GONE
 
         val completedSteps = when (step) {
             CaptureSetupStep.SESSION -> 0

@@ -452,3 +452,50 @@ approved design must amend the existing unarchived change before code work.
 - This checkpoint changes OpenSpec documentation only. Android production edits
   begin after the written specification is reviewed, and the responsive device
   matrix remains an evidence gate rather than an inferred pass.
+
+## 2026-08-25 — Approved Android UX implementation and PR readiness
+
+- The approved UI/UX refinement was implemented as small scoped commits:
+  canonical MoneyTrack branding and appearance, sanitized notification-source
+  presentation, guided ready-state hierarchy, single-flight Google sign-in
+  feedback, neutral active-capture surface, safe-area clipping and actionable
+  lint cleanup.
+- `Captura activa` now uses the same neutral surface as the rest of the app.
+  Success remains visible through the check icon and status text. The separate
+  `Configuración completa` panel retains the solid success treatment.
+- A regression test first failed against the green ready-card background and
+  passed after the neutral surface change. A second regression test first
+  failed while scrolling content could paint into system-bar padding and passed
+  after clipping the scroll viewport to its inset-safe area.
+- The physical canary verified the final visual behavior before the lint-only
+  cleanup: dark appearance, Google Wallet as the sole selected source, no raw
+  package identifier, neutral `Captura activa`, clean status-bar placement and
+  a separate `Abrir MoneyTrack` utility row. The header/status-panel binding bug
+  found by the first screenshot was corrected before this checkpoint.
+- A reversible device matrix verified the screen at 130% font scale in portrait
+  and landscape. The controls remained horizontally bounded and the landscape
+  viewport no longer painted an interactive control beneath the gesture bar.
+  Font scale and rotation were restored in a `finally` block. OEM policy denied
+  scripted swipe injection, so scroll-to-bottom interaction was not claimed.
+- No emulator or AVD was installed, so the 320/700/900 dp override matrix was
+  not fabricated and no physical display-size override was attempted. The pure
+  content-width tests continue to cover the 600 dp maximum-column rule.
+- The definitive clean Android command completed 55 executed Gradle tasks in
+  22 seconds. All 54 JVM tests passed with zero failures, errors or skips;
+  `lintDebug` and `assembleDebug` passed. SARIF contains only seven version
+  availability notices for the SDK, Gradle plugin/wrapper and dependencies
+  intentionally pinned by this OpenSpec change. No accessibility, resource,
+  overdraw, compatibility-drawable or adaptive-icon finding remains.
+- The configured debug APK is 9,905,923 bytes with SHA-256
+  `986a859f46cdf712fb9738044a90ced189381c46f2ef07b77d7e0e6bbc9727b9`.
+  The phone disconnected from ADB before this lint-cleanup build could be
+  reinstalled; the immediately preceding behavior-equivalent build had already
+  installed successfully and supplied the device evidence above.
+- Web validation passed TypeScript, ESLint, the production Next.js build and
+  the complete Vitest regression: 163 files and 1,511 tests passed, with the
+  existing emulator-gated 2 files / 49 tests skipped. Running those two suites
+  separately against the local Firestore demo emulator passed all 49 tests.
+- OpenSpec 1.6.0 strict validation passed. Concurrent uncommitted web/OpenSpec
+  edits in the shared worktree were preserved and intentionally excluded from
+  these Android commits; this file records the verification without claiming
+  completion of the private 14-day/50-event canary or archiving the change.

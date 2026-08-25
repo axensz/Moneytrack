@@ -1,9 +1,11 @@
 package com.moneytrack.capture.preferences
 
 import android.content.SharedPreferences
+import com.moneytrack.capture.core.CaptureResultCode
 import java.lang.reflect.Proxy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class AppThemeModeTest {
@@ -51,6 +53,21 @@ class AppThemeModeTest {
             preferences.notificationDeliveryStartedAt(packageName, notificationKey, 3_000L),
         )
         assertFalse(storedValues.keys.any { it.contains(notificationKey) })
+    }
+
+    @Test
+    fun `write failure survives irrelevant results and clears only after stored`() {
+        val preferences = capturePreferences()
+
+        preferences.recordCaptureResult(CaptureResultCode.WRITE_FAILED, recordedAtEpochMillis = 4_000L)
+        assertEquals(4_000L, preferences.pendingSyncFailureAtEpochMillis)
+
+        preferences.recordCaptureResult(CaptureResultCode.PACKAGE_NOT_ALLOWED, recordedAtEpochMillis = 5_000L)
+        assertEquals(4_000L, preferences.pendingSyncFailureAtEpochMillis)
+
+        preferences.recordCaptureResult(CaptureResultCode.STORED, recordedAtEpochMillis = 6_000L)
+        assertNull(preferences.pendingSyncFailureAtEpochMillis)
+        assertEquals(CaptureResultCode.STORED.name, preferences.lastResultCode)
     }
 
     private fun capturePreferences(

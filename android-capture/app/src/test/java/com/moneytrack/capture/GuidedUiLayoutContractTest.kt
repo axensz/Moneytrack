@@ -42,6 +42,22 @@ class GuidedUiLayoutContractTest {
     }
 
     @Test
+    fun `ready state exposes a polite repairable sync failure`() {
+        val layout = resource("layout/activity_main.xml")
+        val activity = source("java/com/moneytrack/capture/MainActivity.kt")
+        val strings = resource("values/strings.xml")
+
+        assertTrue(layout.contains("@+id/ready_heading"))
+        assertTrue(layout.contains("@+id/sync_failure_panel"))
+        assertTrue(layout.contains("android:accessibilityLiveRegion=\"polite\""))
+        assertTrue(layout.contains("@drawable/status_error_panel"))
+        assertTrue(activity.contains("preferences.pendingSyncFailureAtEpochMillis"))
+        assertTrue(activity.contains("syncFailurePanel.visibility"))
+        assertTrue(strings.contains("No se pudo sincronizar la última compra"))
+        assertTrue(strings.contains("esa compra podría no estar disponible en MoneyTrack"))
+    }
+
+    @Test
     fun `button labels are sentence case and privacy copy is neutral`() {
         val styles = resource("values/styles.xml")
         val layout = resource("layout/activity_main.xml")
@@ -91,6 +107,16 @@ class GuidedUiLayoutContractTest {
     }
 
     private fun resource(relative: String): String = resourceFile(relative).readText()
+
+    private fun source(relative: String): String {
+        val candidates = listOf(
+            File("android-capture/app/src/main/$relative"),
+            File("app/src/main/$relative"),
+            File("src/main/$relative"),
+        )
+        return candidates.firstOrNull(File::isFile)?.readText()
+            ?: error("Missing Android source $relative")
+    }
 
     private fun resourceFile(relative: String): File {
         val candidates = listOf(

@@ -3,6 +3,7 @@ package com.moneytrack.capture.preferences
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import com.moneytrack.capture.core.CaptureResultCode
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.UUID
@@ -121,9 +122,30 @@ class CapturePreferences private constructor(
 
     var lastResultCode: String?
         get() = preferences.getString(KEY_LAST_RESULT, null)
-        set(value) {
+        private set(value) {
             preferences.edit { putString(KEY_LAST_RESULT, value) }
         }
+
+    val pendingSyncFailureAtEpochMillis: Long?
+        get() = preferences.getLong(KEY_PENDING_SYNC_FAILURE_AT, 0L).takeIf { it > 0L }
+
+    fun recordCaptureResult(
+        result: CaptureResultCode,
+        recordedAtEpochMillis: Long = System.currentTimeMillis(),
+    ) {
+        require(recordedAtEpochMillis > 0L) { "Invalid result time" }
+        preferences.edit(commit = true) {
+            putString(KEY_LAST_RESULT, result.name)
+            when (result) {
+                CaptureResultCode.WRITE_FAILED -> putLong(
+                    KEY_PENDING_SYNC_FAILURE_AT,
+                    recordedAtEpochMillis,
+                )
+                CaptureResultCode.STORED -> remove(KEY_PENDING_SYNC_FAILURE_AT)
+                else -> Unit
+            }
+        }
+    }
 
     companion object {
         private const val PREFERENCES_NAME = "moneytrack_capture_private"
@@ -133,6 +155,7 @@ class CapturePreferences private constructor(
         private const val KEY_INSTALLATION_ID = "installation_id"
         private const val KEY_DISCOVERED_PACKAGES = "discovered_packages"
         private const val KEY_LAST_RESULT = "last_result_code"
+        private const val KEY_PENDING_SYNC_FAILURE_AT = "pending_sync_failure_at"
         private const val SOURCE_LABEL_PREFIX = "source_label."
         private const val NOTIFICATION_DELIVERY_PREFIX = "notification_delivery."
         private const val MAX_ACTIVE_DELIVERY_AGE_MILLIS = 24 * 60 * 60 * 1_000L

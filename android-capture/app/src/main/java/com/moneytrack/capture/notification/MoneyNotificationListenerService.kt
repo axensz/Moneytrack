@@ -101,7 +101,7 @@ class MoneyNotificationListenerService : NotificationListenerService() {
     }
 
     private fun record(preferences: CapturePreferences, result: CaptureResultCode) {
-        preferences.lastResultCode = result.name
+        preferences.recordCaptureResult(result)
         Log.i(LOG_TAG, result.name)
     }
 

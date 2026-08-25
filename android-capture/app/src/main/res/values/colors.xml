@@ -13,6 +13,7 @@
     <color name="status_success">#047857</color>
     <color name="status_success_muted">#ECFDF5</color>
     <color name="status_destructive">#C81E1E</color>
+    <color name="status_destructive_muted">#FEF2F2</color>
     <color name="surface_background">@color/background</color>
     <color name="surface_panel">@color/card</color>
     <color name="border_subtle">@color/border</color>

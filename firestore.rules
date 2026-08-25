@@ -122,6 +122,29 @@ service cloud.firestore {
         );
     }
 
+    function hasValidCreditAuthority(data) {
+      return data.type != 'credit'
+        || (
+          'usedCredit' in data.keys()
+          && data.usedCredit is number
+          && data.usedCredit >= 0
+          && data.usedCredit <= 1000000000
+        );
+    }
+
+    function hasValidTransferReferences(userId, data) {
+      let sourcePath = /databases/$(database)/documents/users/$(userId)/accounts/$(data.accountId);
+      return data.type != 'transfer'
+        || (
+          'toAccountId' in data.keys()
+          && data.toAccountId is string
+          && data.toAccountId != data.accountId
+          && accountExistsAfter(userId, data.accountId)
+          && accountExistsAfter(userId, data.toAccountId)
+          && getAfter(sourcePath).data.type != 'credit'
+        );
+    }
+
     function debtExistsAfter(userId, debtId) {
       return debtId is string
         && existsAfter(
@@ -223,6 +246,7 @@ service cloud.firestore {
             request.resource.data,
             'toAccountId'
           )
+          && hasValidTransferReferences(userId, request.resource.data)
           && hasValidOptionalDebtReference(userId, request.resource.data)
           && request.resource.data.date is timestamp
           && request.resource.data.createdAt is timestamp
@@ -252,6 +276,7 @@ service cloud.firestore {
           && request.resource.data.accountId is string
           && updatedAccountReferenceIsValid(userId, 'accountId')
           && updatedAccountReferenceIsValid(userId, 'toAccountId')
+          && hasValidTransferReferences(userId, request.resource.data)
           && updatedDebtReferenceIsValid(userId)
           && isValidAmount(request.resource.data.amount)
           && request.resource.data.description is string
@@ -279,14 +304,16 @@ service cloud.firestore {
           && request.resource.data.isDefault is bool
           && request.resource.data.initialBalance is number
           && request.resource.data.initialBalance >= -1000000000
-          && request.resource.data.initialBalance <= 1000000000;
+          && request.resource.data.initialBalance <= 1000000000
+          && hasValidCreditAuthority(request.resource.data);
 
         // AUDIT-FIX: update valida que type sea inmutable y name sea válido
         allow update: if isOwner(userId)
           && accountOperationAllowsWrite(userId)
           && request.resource.data.type == resource.data.type
           && request.resource.data.name is string
-          && request.resource.data.name.size() > 0;
+          && request.resource.data.name.size() > 0
+          && hasValidCreditAuthority(request.resource.data);
 
         allow delete: if isOwner(userId)
           && accountOperationAllowsWrite(userId);

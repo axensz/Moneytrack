@@ -429,3 +429,26 @@ approved design must amend the existing unarchived change before code work.
   `WRITE_SECURE_SETTINGS`; the physical 400 dp-wide display remained unchanged.
   Manual landscape/enlarged-text and appearance-dialog verification therefore
   remains open rather than being inferred.
+
+## 2026-08-25 — Whole-app UI/UX audit approved for specification
+
+- The user approved the UI UX Pro Max audit as the next Android refinement.
+  `PRODUCT.md` and `DESIGN.md` remain authoritative: confident, warm, expert;
+  one violet brand hue; semantic status pairs; system typography; AA contrast;
+  and 44–48 dp targets.
+- Live review confirmed that guided routing, source management, light/dark
+  surfaces, system-bar clearance and vertical scrolling already work. The
+  approved scope keeps that native AppCompat/XML architecture and adds no visual
+  dependency.
+- Remaining observed gaps are now explicit contracts: reuse the canonical PWA
+  logo for launcher/splash; replace gray all-caps actions that resemble disabled
+  controls; prevent the OEM cyan accent caused by a missing unprefixed AppCompat
+  `colorAccent`; use a neutral appearance icon; constrain landscape reading
+  width; improve auth progress/errors; and verify large text and TalkBack.
+- The ready state will use a compact complete treatment, a semantic active
+  capture panel, one source-management action and a separate bordered web
+  utility row. Production UI hides `com.android.shell`, packages and confidence;
+  Google Wallet remains recommended but never selected without consent.
+- This checkpoint changes OpenSpec documentation only. Android production edits
+  begin after the written specification is reviewed, and the responsive device
+  matrix remains an evidence gate rather than an inferred pass.

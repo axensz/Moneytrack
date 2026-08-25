@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: La captura requiere consentimiento y fuentes explícitas
-El compañero Android MUST permanecer inactivo hasta que el usuario autenticado habilite acceso a notificaciones y seleccione al menos un paquete financiero; el allowlist MUST iniciar vacío.
+El compañero Android MUST permanecer inactivo hasta que el usuario autenticado habilite acceso a notificaciones y seleccione al menos una fuente; el allowlist MUST iniciar vacío.
 
 #### Scenario: Primera apertura sin permiso
 - **WHEN** el usuario abre el compañero por primera vez
@@ -103,10 +103,10 @@ El compañero MUST usar la persistencia local de Firestore para encolar únicame
 - **THEN** la pantalla muestra un estado de error genérico y el compañero no declara la captura como disponible en Moneytrack
 
 ### Requirement: La pantalla Android expone estado operativo verificable
-El compañero MUST comunicar sesión, acceso a notificaciones, captura activa y paquetes seleccionados en la etapa o resumen correspondiente, y MUST ofrecer las acciones aplicables para iniciar/cerrar sesión, abrir ajustes y abrir la PWA; MUST NOT exponer códigos técnicos ni un bloque de último resultado en la interfaz normal.
+El compañero MUST comunicar sesión, acceso a notificaciones, captura activa y fuentes seleccionadas en la etapa o resumen correspondiente, y MUST ofrecer las acciones aplicables para iniciar/cerrar sesión, abrir ajustes y abrir la PWA; MUST NOT exponer códigos técnicos ni un bloque de último resultado en la interfaz normal.
 
 #### Scenario: Configuración lista
-- **WHEN** existe sesión, permiso y al menos un paquete seleccionado
+- **WHEN** existe sesión, permiso y al menos una fuente seleccionada
 - **THEN** la pantalla indica “Configuración completa” y “Captura activa”, muestra qué aplicaciones están habilitadas y ofrece administrarlas
 
 #### Scenario: Administrar fuentes desde el estado listo
@@ -127,11 +127,19 @@ El compañero MUST comunicar sesión, acceso a notificaciones, captura activa y 
 
 #### Scenario: Resumen listo sin texto repetido
 - **WHEN** la configuración está completa y existe al menos una fuente seleccionada
-- **THEN** el bloque `Captura activa` muestra directamente las etiquetas de esas fuentes y la acción `Administrar aplicaciones`, sin repetir una explicación ni el rótulo `Aplicaciones elegidas`
+- **THEN** un tratamiento compacto con icono y texto comunica `Configuración completa`, y el bloque success `Captura activa` muestra directamente las etiquetas de esas fuentes y la acción principal `Administrar aplicaciones`, sin repetir una explicación ni el rótulo `Aplicaciones elegidas`
 
 #### Scenario: Abrir la aplicación web
 - **WHEN** la configuración está completa
-- **THEN** `Abrir MoneyTrack` aparece como una acción secundaria independiente, con etiqueta visible e icono vectorial externo, fuera del bloque de captura y sin otra tarjeta explicativa
+- **THEN** `Abrir MoneyTrack` aparece como una fila de utilidad secundaria con padding, borde, etiqueta visible e icono vectorial externo, fuera del bloque de captura, sin otra tarjeta explicativa y sin competir con la acción principal
+
+#### Scenario: Fuente técnica en una variante de producción
+- **WHEN** `com.android.shell` fue observada o quedó permitida localmente y la interfaz se ejecuta como producto
+- **THEN** la fuente no aparece en el selector ni en el resumen, mientras una variante diagnóstica puede presentarla únicamente como `Fuente de prueba`
+
+#### Scenario: Fuente observada sin etiqueta segura
+- **WHEN** la etiqueta está vacía o equivale a un identificador de paquete
+- **THEN** la interfaz muestra `Aplicación detectada` y nunca el paquete técnico ni una clasificación financiera inventada
 
 #### Scenario: Configuración incompleta
 - **WHEN** falta cualquiera de las precondiciones
@@ -142,7 +150,7 @@ El compañero MUST mostrar solo la primera etapa incompleta entre sesión, acces
 
 #### Scenario: Primera apertura sin sesión
 - **WHEN** termina la comprobación inicial y no existe una sesión válida
-- **THEN** el splash entrega una pantalla de sesión que explica su propósito y muestra solo la acción de iniciar con Google
+- **THEN** el splash con la identidad canónica de MoneyTrack entrega una pantalla de sesión que explica su propósito y muestra solo la acción primaria de iniciar con Google
 
 #### Scenario: Reanudar una configuración completa
 - **WHEN** sesión, acceso, fuente y captura permanecen activos
@@ -153,16 +161,43 @@ El compañero MUST mostrar solo la primera etapa incompleta entre sesión, acces
 - **THEN** muestra la etapa de acceso y no declara captura activa
 
 #### Scenario: Cambiar apariencia
-- **WHEN** la persona abre el botón de apariencia con sol delineado de la cabecera y guarda `Sistema`, `Claro` u `Oscuro` en el diálogo
-- **THEN** la Activity aplica y conserva el modo elegido con colores legibles, sin un selector permanente en el contenido y sin ocultarlo bajo las barras del dispositivo
+- **WHEN** la persona abre el botón de apariencia con icono neutro de contraste de la cabecera y guarda `Sistema`, `Claro` u `Oscuro` en el diálogo `Apariencia`
+- **THEN** la Activity aplica y conserva el modo elegido con radios y acciones violetas, colores legibles, `Cancelar` y `Guardar`, sin un selector permanente en el contenido y sin ocultarlo bajo las barras del dispositivo
 
 #### Scenario: Pantalla compacta o texto ampliado
 - **WHEN** cambia el ancho, la orientación o la escala de fuente del dispositivo
-- **THEN** el contenido se ajusta o desplaza verticalmente sin solapar barras, cortar acciones ni producir desbordamiento horizontal
+- **THEN** el contenido usa gutters adaptativos, conserva una columna legible y se ajusta o desplaza verticalmente sin solapar barras, cortar acciones ni producir desbordamiento horizontal
 
 #### Scenario: Sesión activa
 - **WHEN** Firebase conserva una persona autenticada
 - **THEN** la acción de iniciar sesión no se muestra y cerrar sesión continúa disponible
+
+### Requirement: La interfaz Android mantiene identidad, jerarquía y controles semánticos
+El compañero MUST derivar launcher y SplashScreen del logo canónico de MoneyTrack, MUST conservar la arquitectura AppCompat/XML y MUST aplicar una única jerarquía visual accesible en claro y oscuro, sin añadir Compose, Material 3 ni otra dependencia visual.
+
+#### Scenario: Inicio y launcher reconocibles
+- **WHEN** la persona inicia o localiza la aplicación en Android
+- **THEN** launcher, icono adaptativo y SplashScreen muestran la misma marca reconocible que la PWA y el nombre visible conserva la escritura `MoneyTrack`
+
+#### Scenario: Acciones habilitadas
+- **WHEN** un estado ofrece una acción primaria, una secundaria y una terciaria
+- **THEN** existe como máximo una primaria violeta, las demás usan tratamiento delineado/tonal o texto, todas usan estilo oración y ninguna acción habilitada parece desactivada
+
+#### Scenario: Activar o desactivar captura
+- **WHEN** la etapa de captura permite cambiar el estado global y seleccionar varias fuentes
+- **THEN** el estado global usa `SwitchCompat` y cada fuente usa una casilla, con objetivos de 48 dp, nombres TalkBack y estado comprensible sin depender solo del color
+
+#### Scenario: Estado completo y captura activa
+- **WHEN** la configuración está lista
+- **THEN** los estados completado y activo combinan icono, texto y el par success sólido-sobre-muted, mientras la privacidad se explica una sola vez con copy neutral
+
+#### Scenario: Inicio de sesión en curso o fallido
+- **WHEN** Credential Manager está abierto o devuelve un error recuperable
+- **THEN** la aplicación impide un segundo gesto, comunica progreso y muestra el fallo cerca de la acción con una recomendación reparable, sin exponer tokens, paquetes de configuración ni excepciones internas
+
+#### Scenario: Accesibilidad y adaptación verificables
+- **WHEN** la interfaz se usa a 320 dp, 400 dp, ancho mediano o expandido, landscape, texto a 1,3×, tema claro u oscuro y navegación por TalkBack
+- **THEN** mantiene orden lógico, nombres accesibles, objetivos de 48 dp, contraste AA, foco visible, barras seguras, modal desplazable y una columna de lectura sin contenido cortado
 
 ### Requirement: No se promete historial ni acceso interno a Wallet
 El compañero MUST describir que observa notificaciones futuras visibles después de habilitar el permiso y MUST abstenerse de afirmar que sincroniza el historial de Google Wallet.

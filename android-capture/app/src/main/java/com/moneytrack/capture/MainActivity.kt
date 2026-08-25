@@ -17,6 +17,7 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.net.toUri
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import com.google.firebase.FirebaseApp
@@ -56,6 +57,7 @@ class MainActivity : AppCompatActivity() {
         preferences = CapturePreferences.create(this)
         applyThemeMode(preferences.appThemeMode)
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContentView(R.layout.activity_main)
 
         signInController = GoogleSignInController(this)

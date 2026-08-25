@@ -9,16 +9,10 @@
     <color name="brand_violet_dark">#5B21B6</color>
     <color name="brand_violet_solid">#7C3AED</color>
     <color name="primary_muted">#F3E8FF</color>
-    <color name="brand_mark_accent">#DDD6FE</color>
     <color name="primary_foreground">#FFFFFF</color>
     <color name="status_success">#047857</color>
     <color name="status_success_muted">#ECFDF5</color>
     <color name="status_destructive">#C81E1E</color>
-    <color name="status_destructive_muted">#FEF2F2</color>
-    <color name="status_warning">#B45309</color>
-    <color name="status_warning_muted">#FFFBEB</color>
-    <color name="status_info">#2563EB</color>
-    <color name="status_info_muted">#EFF6FF</color>
     <color name="surface_background">@color/background</color>
     <color name="surface_panel">@color/card</color>
     <color name="border_subtle">@color/border</color>

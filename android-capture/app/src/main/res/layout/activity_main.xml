@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/content_scroll"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/surface_background"
     android:clipToPadding="true"
     android:fillViewport="true"
     android:paddingStart="@dimen/screen_padding"
@@ -249,7 +249,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:drawableStart="@drawable/ic_check_circle"
+                app:drawableStartCompat="@drawable/ic_check_circle"
                 android:drawablePadding="@dimen/space_small"
                 android:text="@string/ready_heading"
                 android:textColor="@color/status_success"
@@ -278,7 +278,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/space_large"
-            android:drawableStart="@drawable/ic_open_in_new"
+            app:drawableStartCompat="@drawable/ic_open_in_new"
             android:drawablePadding="@dimen/space_small"
             android:drawableTint="@color/text_primary"
             android:text="@string/open_pwa_action"

@@ -2,4 +2,11 @@
 <resources>
     <dimen name="screen_padding">20dp</dimen>
     <dimen name="control_min_height">48dp</dimen>
+    <dimen name="panel_padding">16dp</dimen>
+    <dimen name="space_tiny">4dp</dimen>
+    <dimen name="space_small">8dp</dimen>
+    <dimen name="space_medium">16dp</dimen>
+    <dimen name="space_large">24dp</dimen>
+    <dimen name="progress_height">4dp</dimen>
+    <dimen name="progress_gap">6dp</dimen>
 </resources>

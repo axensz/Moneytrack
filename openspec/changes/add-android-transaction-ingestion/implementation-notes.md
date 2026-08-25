@@ -203,10 +203,11 @@ existing ledger boundary without copying financial authority.
   dark modes. Cuentas and Transacciones had no horizontal overflow, the account
   and transaction dialogs closed with Escape and returned focus to their
   launchers, and a clean guest origin produced no console warning or error.
-- Authenticated payment-instrument, candidate-inbox and confirmation states were
-  intentionally not exercised against live Firebase because this task did not
-  authorize login, deployment or external data mutation. OpenSpec item 10.4
-  therefore remains incomplete together with the device/canary items.
+- At this checkpoint, authenticated payment-instrument, candidate-inbox and
+  confirmation states were intentionally not exercised against live Firebase
+  because the task had not yet authorized login, deployment or external data
+  mutation. That restriction was later superseded by the explicit authorization
+  and live evidence recorded below; OpenSpec item 10.4 remains incomplete.
 
 ## Final graph review
 
@@ -227,11 +228,13 @@ existing ledger boundary without copying financial authority.
 
 ## Remaining external gates
 
-- Deploy the reviewed Firestore rules/index and PWA only through the normal
-  release process, then install the configured APK on one authorized device.
-- Complete authenticated browser states, device denial/offline/retry exercises
-  and the private 14-day/50-event canary. Keep manual confirmation and leave the
-  OpenSpec change unarchived until all thresholds pass.
+- Integrate and release the PWA through the normal branch-review process. The
+  reviewed Firestore rules/index and configured canary APK were deployed and
+  installed only after explicit authorization, as recorded below.
+- Complete the live confirmation/lost-response exercise, device
+  denial/offline/retry exercises, the remaining browser matrix and the private
+  14-day/50-event canary. Keep manual confirmation and leave the OpenSpec change
+  unarchived until all thresholds pass.
 
 ## Firebase Android registration
 
@@ -252,3 +255,33 @@ existing ledger boundary without copying financial authority.
   SHA-256 creation process after the API had reported success. A separate
   remote `apps:android:sha:list` query confirmed both SHA records, so no retry
   or duplicate mutation was performed.
+
+## Live Firestore deployment and device bootstrap
+
+- The user authorized the production target `moneytrack-889fe`. A Firestore
+  dry run compiled the rules and indexes before the real deployment. Firebase
+  then released `firestore.rules` and deployed `firestore.indexes.json` with
+  exit code 0.
+- Post-action Console verification showed the new rules release as the active
+  version from the current session and the
+  `transactionImportCandidates(status ASC, occurredAt DESC)` index as
+  `Habilitado` after its asynchronous build completed.
+- Windows and ADB identified the authorized POCO canary without recording its
+  serial number. The first install was correctly blocked by HyperOS until the
+  user enabled its explicit “Instalar vía USB” control; the next single retry
+  returned `Success`.
+- Package Manager verified `com.moneytrack.capture` version `0.1.0`, version
+  code 1, minimum API 26 and target API 36. `MainActivity` opened in the
+  foreground with no fatal Android runtime entry.
+- The user granted notification-listener access, completed Google sign-in and
+  explicitly selected one discovered source package. The app then reported an
+  active Moneytrack session and active capture.
+- One privacy-safe synthetic accepted fixture synchronized exactly one
+  64-character pending candidate. A fixture containing an excluded status was
+  rejected locally and did not increase the remote candidate count.
+- Firebase Auth and the candidate path proved that Android and the authenticated
+  local PWA used the same user UID without recording it. The PWA showed exactly
+  one pending candidate together with the explicit no-balance-effect message.
+  Its review dialog opened and returned to the inbox; no confirm or dismiss
+  action was invoked, so the candidate remained pending and no ledger mutation
+  occurred.

@@ -152,6 +152,15 @@ firebase-debug.log
 firestore-debug.log
 ui-debug.log
 
+# Android capture companion (local/generated/secrets)
+android-capture/.gradle/
+android-capture/**/build/
+android-capture/local.properties
+android-capture/app/google-services.json
+android-capture/signing.properties
+*.jks
+*.keystore
+
 # ============================================================
 # Claude Code / asistentes de IA
 # ============================================================

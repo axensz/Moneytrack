@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Moneytrack Capture</string>
+    <string name="notification_listener_label">Captura de compras de Moneytrack</string>
+    <string name="screen_title">Captura móvil</string>
+    <string name="screen_intro">Observa únicamente notificaciones futuras de las aplicaciones que elijas. Cada compra queda pendiente de revisión en Moneytrack web.</string>
+    <string name="privacy_note">El texto completo de la notificación nunca se guarda ni se registra.</string>
+    <string name="status_heading">Estado operativo</string>
+    <string name="status_session_label">Sesión</string>
+    <string name="status_session_active">Sesión de Moneytrack activa</string>
+    <string name="status_session_inactive">Sin sesión de Moneytrack</string>
+    <string name="status_access_label">Acceso a notificaciones</string>
+    <string name="status_access_granted">Acceso concedido</string>
+    <string name="status_access_missing">Acceso pendiente</string>
+    <string name="status_capture_label">Captura</string>
+    <string name="status_capture_active">Captura activa</string>
+    <string name="status_capture_inactive">Captura inactiva</string>
+    <string name="status_packages_label">Aplicaciones seleccionadas</string>
+    <string name="status_packages_empty">Ninguna aplicación seleccionada</string>
+    <string name="status_result_label">Último resultado</string>
+    <string name="last_result_none">Sin eventos procesados</string>
+    <string name="session_heading">Cuenta</string>
+    <string name="sign_in_action">Iniciar sesión con Google</string>
+    <string name="sign_out_action">Cerrar sesión</string>
+    <string name="capture_heading">Permiso y captura</string>
+    <string name="open_notification_settings_action">Abrir acceso a notificaciones</string>
+    <string name="capture_switch_label">Permitir captura de compras</string>
+    <string name="source_heading">Fuentes permitidas</string>
+    <string name="source_help">Selecciona solo aplicaciones financieras de confianza. Aparecerán aquí después de que emitan una notificación futura.</string>
+    <string name="source_list_empty">Aún no se han descubierto aplicaciones.</string>
+    <string name="source_option">%1$s\n%2$s</string>
+    <string name="open_pwa_action">Abrir Moneytrack web</string>
+    <string name="pwa_url" translatable="false">https://moneytrack-889fe.web.app</string>
+    <string name="auth_signed_in">Sesión iniciada.</string>
+    <string name="auth_signed_out">Sesión cerrada y credenciales locales despejadas.</string>
+    <string name="auth_configuration_missing">Falta configurar google-services.json para este proyecto.</string>
+    <string name="auth_failed">No fue posible completar la autenticación.</string>
+    <string name="result_signed_out">Evento ignorado: no hay sesión.</string>
+    <string name="result_capture_disabled">Evento ignorado: la captura está desactivada.</string>
+    <string name="result_access_missing">Evento ignorado: falta acceso a notificaciones.</string>
+    <string name="result_allowlist_empty">Evento ignorado: no hay fuentes permitidas.</string>
+    <string name="result_package_not_allowed">Fuente descubierta; su contenido no fue leído.</string>
+    <string name="result_no_purchase_marker">Evento ignorado: no parece una compra.</string>
+    <string name="result_forbidden_marker">Evento ignorado: contiene un estado excluido.</string>
+    <string name="result_no_cop_amount">Evento ignorado: no hay un monto COP.</string>
+    <string name="result_ambiguous_amount">Evento ignorado: contiene más de un monto.</string>
+    <string name="result_unsupported_currency">Evento ignorado: moneda no admitida.</string>
+    <string name="result_malformed_amount">Evento ignorado: monto no válido.</string>
+    <string name="result_accepted_high">Compra normalizada con confianza alta.</string>
+    <string name="result_accepted_medium">Compra normalizada con confianza media.</string>
+    <string name="result_stored">Candidato sincronizado con Moneytrack.</string>
+    <string name="result_write_failed">No fue posible sincronizar el candidato.</string>
+    <string name="result_inspection_failed">Evento ignorado por una validación interna.</string>
+</resources>

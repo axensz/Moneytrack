@@ -24,6 +24,7 @@ const OWNER_ID = 'owner';
 const INTRUDER_ID = 'intruder';
 const CANDIDATE_ID = 'a'.repeat(64);
 const TRANSACTION_ID = `ledger-mutation:android:${CANDIDATE_ID}`;
+const LEASE_ID = 'ledger-mutation:lease-attempt-1';
 
 let testEnv: RulesTestEnvironment;
 
@@ -114,7 +115,7 @@ const acquireLedgerLease = () => setDoc(
   userRef(),
   {
     accountOperationLock: {
-      id: TRANSACTION_ID,
+      id: LEASE_ID,
       kind: 'ledger-mutation',
       acquiredAt: serverTimestamp(),
     },
@@ -154,7 +155,7 @@ const stageCandidateConfirmation = (
     userRef(db),
     {
       accountOperationLock: {
-        id: TRANSACTION_ID,
+        id: LEASE_ID,
         kind: 'ledger-mutation',
         releasedAt: serverTimestamp(),
       },

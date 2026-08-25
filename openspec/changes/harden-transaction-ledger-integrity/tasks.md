@@ -22,7 +22,7 @@
 - [x] 3.3 Implement a pure before/after delta planner for create, edit, delete, restore, transfer, card payment, recurring post, and balance adjustment across all affected account IDs.
 - [x] 3.4 Define the ordinary-negative rule in planner tests: a mutation cannot cross a non-negative asset below zero or worsen a historical negative, but corrective intents can improve it.
 - [x] 3.5 Implement reciprocal linked-payment validation as a pure function and test missing, one-way, wrong-role, wrong-account, mismatched-amount/date, and valid historical pairs.
-- [ ] 3.6 Replace duplicated UI-only balance checks with adapters to the planner while preserving `TransactionValidator` form errors and current interest/TRM behavior.
+- [x] 3.6 Replace duplicated UI-only balance checks with adapters to the planner while preserving `TransactionValidator` form errors and current interest/TRM behavior.
 
 ## Task 4: Serialize authenticated balance-sensitive writes
 
@@ -32,19 +32,19 @@
 - [x] 4.4 Route ordinary savings/cash creates and transfers through the facade; add two-client tests where only the affordable subset commits.
 - [x] 4.5 Route edits and deletes through before/after validation, including deleting income/incoming transfer and editing a debit upward; prove all failed cases leave documents/cache unchanged.
 - [x] 4.6 Route mixed card-payment pairs through the facade so source funds, both rows, reciprocal IDs, and `usedCredit` update are one operation.
-- [ ] 4.7 Extend rules-emulator tests for owner/non-owner, ledger kind acquire/release/reacquire, malformed/stale release, invalid transfer references, and zero partial writes.
-- [ ] 4.8 Measure account-scoped server reads and commit latency with representative 499/500/501 and multi-account histories; document the threshold for a future rollup without adding one now.
+- [x] 4.7 Extend rules-emulator tests for owner/non-owner, ledger kind acquire/release/reacquire, malformed/stale release, invalid transfer references, and zero partial writes.
+- [x] 4.8 Measure account-scoped server reads and commit latency with representative 499/500/501 and multi-account histories; document the threshold for a future rollup without adding one now.
 
 ## Task 5: Harden credit authority and linked pairs
 
-- [ ] 5.1 Add writer and rules tests for absent, `null`, negative, non-finite, over-debt, and valid `usedCredit`; require zero writes until authority is valid.
-- [ ] 5.2 Expose per-card `creditAuthorityReady`/reconciliation state and block every card-affecting entry point without a finite non-negative persisted value.
+- [x] 5.1 Add writer and rules tests for absent, `null`, negative, non-finite, over-debt, and valid `usedCredit`; require zero writes until authority is valid.
+- [x] 5.2 Expose per-card `creditAuthorityReady`/reconciliation state and block every card-affecting entry point without a finite non-negative persisted value.
 - [x] 5.3 Serialize `useCreditMigration` under the shared lease, use server reads, verify the model version before commit, and persist value/version/release together.
 - [x] 5.4 Derive account type and affected credit deltas from server documents in create/update/delete, removing correctness dependence on `accountsRef` while retaining it only as a UI optimization.
 - [x] 5.5 Reject edit/delete on a corrupt linked pointer and surface a reconciliation issue; test that an unrelated pointed transaction is never touched.
 - [x] 5.6 Preserve current green regressions for financed interest, payment overage, transfer-to-card, delete reversal, pair edit, cache post-commit, and guest pair parity.
 
-  Evidence 2026-08-24: migration now reloads complete strict server rows only after the shared lease, rechecks the server model, and commits `usedCredit`, reciprocal links, model versions, and release in one batch. Focused and full suites preserve every regression listed in 5.6. Tasks 5.1 and 5.2 remain open because the expanded rules matrix and explicit per-card reconciliation UI/state are not implemented.
+  Evidence 2026-08-24: migration reloads complete strict server rows only after the shared lease, rechecks the server model, and commits `usedCredit`, reciprocal links, model versions, and release in one batch. `creditAuthorityReady` now derives from one shared finite, non-negative, bounded contract used by authenticated writers, guest compounds, merge/delete entry points and the visible card state. Missing, `null`, negative, non-finite, out-of-range, overpayment and valid cases reject or commit with zero partial writes; the expanded emulator matrix passed 14/14 tests.
 
 ## Task 6: Route every product entry point and make compounds atomic
 
@@ -91,20 +91,24 @@
 
 ## Task 10: Add read-only reconciliation and explicit repair plans
 
-- [ ] 10.1 Implement a pure per-account reconciliation report with initial balance, signed paid movements, crossing-zero sequence, calculated balance, and persisted card authority comparison.
-- [ ] 10.2 Classify incomplete authority, invalid record, orphan account/debt, broken link, credit divergence, recurring duplicate, explained negative, and dependent debt mismatch; test each classification.
-- [ ] 10.3 Make the paginated and complete readers share one runtime transaction decoder so invalid documents are reported consistently instead of silently filtered or inconsistently included.
-- [ ] 10.4 Build the read-only reconciliation surface with existing cards/modals/tokens, keyboard focus, 44px targets, hidden-value preference, light/dark mode, and responsive behavior.
-- [ ] 10.5 Implement pure repair-plan builders with before/after evidence and explicit confirmation; do not execute a real repair as part of automated migration or browser validation.
-- [ ] 10.6 Add safe authenticated repair commands for confirmed savings adjustment, credit-ledger reconciliation, link repair, and recurring deduplication, each under lease and followed by a fresh server report.
-- [ ] 10.7 Run reconciliation read-only on the current real account and record whether the negative is `negative-explained` or inconsistent; obtain separate authorization before applying any plan.
+- [x] 10.1 Implement a pure per-account reconciliation report with initial balance, signed paid movements, crossing-zero sequence, calculated balance, and persisted card authority comparison.
+- [x] 10.2 Classify incomplete authority, invalid record, orphan account/debt, broken link, credit divergence, recurring duplicate, explained negative, and dependent debt mismatch; test each classification.
+- [x] 10.3 Make the paginated and complete readers share one runtime transaction decoder so invalid documents are reported consistently instead of silently filtered or inconsistently included.
+- [x] 10.4 Build the read-only reconciliation surface with existing cards/modals/tokens, keyboard focus, 44px targets, hidden-value preference, light/dark mode, and responsive behavior.
+- [x] 10.5 Implement pure repair-plan builders with before/after evidence and explicit confirmation; do not execute a real repair as part of automated migration or browser validation.
+- [x] 10.6 Add safe authenticated repair commands for confirmed savings adjustment, credit-ledger reconciliation, link repair, and recurring deduplication, each under lease and followed by a fresh server report.
+- [x] 10.7 Run reconciliation read-only on the current real account and record whether the negative is `negative-explained` or inconsistent; obtain separate authorization before applying any plan.
+
+  Evidence 2026-08-24: the pure report, shared decoder, explicit repair plans and authenticated lease commands are covered by focused tests. Chrome read 909 valid and 0 invalid server rows without executing a plan. No asset account is currently negative, so neither `negative-explained` nor an inconsistent asset negative applies; all observed negative credit balances reconcile exactly to persisted `usedCredit`. The report identified four orphan recurring references and three dependent-debt mismatches. Details and the separate-authorization gate are recorded in `docs/ledger-integrity-handoff-2026-08-24.md`.
 
 ## Task 11: Integrated verification and handoff
 
-- [ ] 11.1 Run focused readiness, planner, writer, concurrency, rules, credit, linked-pair, recurring, undo, guest, reconciliation, metric-scope, and dependent debt/notification suites; record exact passing counts.
-- [ ] 11.2 Run `npm run test:run`, `npm run typecheck`, `npm run lint`, `npm run build`, and `git diff --check`; repair every regression before claiming completion.
-- [ ] 11.3 Run `openspec.cmd validate harden-transaction-ledger-integrity --strict` and refresh statuses of `repair-debt-lifecycle-and-account-links`, `clarify-ledger-metric-scopes`, and `harden-notification-delivery-and-recurring-reminders`.
-- [ ] 11.4 Rebuild the code-review graph, inspect detected changes/affected flows/tests, and verify no unrelated metric, shell, notification-delivery, debt-lifecycle, or user-owned file drift.
+- [x] 11.1 Run focused readiness, planner, writer, concurrency, rules, credit, linked-pair, recurring, undo, guest, reconciliation, metric-scope, and dependent debt/notification suites; record exact passing counts.
+- [x] 11.2 Run `npm run test:run`, `npm run typecheck`, `npm run lint`, `npm run build`, and `git diff --check`; repair every regression before claiming completion.
+- [x] 11.3 Run `openspec.cmd validate harden-transaction-ledger-integrity --strict` and refresh statuses of `repair-debt-lifecycle-and-account-links`, `clarify-ledger-metric-scopes`, and `harden-notification-delivery-and-recurring-reminders`.
+- [x] 11.4 Rebuild the code-review graph, inspect detected changes/affected flows/tests, and verify no unrelated metric, shell, notification-delivery, debt-lifecycle, or user-owned file drift.
 - [ ] 11.5 In Chrome, use only disposable savings, cash, credit, recurring, and debt records to verify success, rejection, two-tab contention, retry, undo, reconciliation, focus, dark mode, 375/1214/1440 widths, and zero console errors.
-- [ ] 11.6 Re-check that every lower Transaction filter changes only list/CSV and leaves all four General overview values unchanged.
-- [ ] 11.7 Record rules-before-client rollout, client rollback, guest-envelope recovery, performance evidence, and the explicit prohibition on automatic repair of real data.
+- [x] 11.6 Re-check that every lower Transaction filter changes only list/CSV and leaves all four General overview values unchanged.
+- [x] 11.7 Record rules-before-client rollout, client rollback, guest-envelope recovery, performance evidence, and the explicit prohibition on automatic repair of real data.
+
+  Evidence 2026-08-24: the final change-focused matrix passed 632 tests with 14 skipped across 50 passing files and 1 skipped file, excluding the user's two WIP test files from attribution; the Firestore emulator passed 14/14. The full regression passed 1,396 tests with 14 skipped across 155 passing files and 1 skipped file; typecheck, lint, static build and diff validation exited 0. OpenSpec strict validation passed through transient `@fission-ai/openspec@1.10.0`; related status is metric scopes complete, debt lifecycle 24/26 and notification delivery 0/41. Chrome read-only validation passed focus/Escape, privacy with 79 masked values and zero currency symbols, light/dark, 375/1214/1440 responsive widths, 44px targets and zero console entries. The fresh server report read 909 valid and 0 invalid rows with fingerprint `ledger-v1-e08ab88f88ea6393afc17ecd3ee9febf`. Independent re-review reported no Critical/Important findings and `Ready to merge: Yes`. Task 11.5 remains open because its mutating disposable-data matrix was intentionally not repeated on the real account without separate authorization.

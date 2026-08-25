@@ -56,4 +56,35 @@ class AvailableCaptureSourceCatalogTest {
         assertFalse(sources.first().isSelected)
         assertTrue(sources[1].isSelected)
     }
+
+    @Test
+    fun `product options hide shell and remove it from the effective allowlist`() {
+        val allowed = setOf("com.android.shell", "com.banco.uno")
+        val observed = listOf(
+            DiscoveredNotificationSource("com.android.shell", "Shell"),
+            DiscoveredNotificationSource("com.banco.uno", "Banco Uno"),
+        )
+
+        assertEquals(
+            setOf("com.banco.uno"),
+            AvailableCaptureSourceCatalog.productAllowedPackages(allowed),
+        )
+        assertEquals(
+            listOf("com.google.android.apps.walletnfcrel", "com.banco.uno"),
+            AvailableCaptureSourceCatalog.options(observed, allowed).map { it.packageName },
+        )
+    }
+
+    @Test
+    fun `diagnostic options can name shell without making Wallet selected`() {
+        val sources = AvailableCaptureSourceCatalog.options(
+            observedSources = listOf(DiscoveredNotificationSource("com.android.shell", "Shell")),
+            allowedPackages = setOf("com.android.shell"),
+            includeDiagnostics = true,
+        )
+
+        assertFalse(sources.first().isSelected)
+        assertEquals("com.android.shell", sources.last().packageName)
+        assertTrue(sources.last().isSelected)
+    }
 }

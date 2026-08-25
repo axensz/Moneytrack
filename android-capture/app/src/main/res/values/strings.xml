@@ -18,10 +18,10 @@
     <string name="capture_explanation">Activa la captura y selecciona las aplicaciones que reconoces para enviar sus compras a revisión.</string>
     <string name="capture_switch_label">Permitir captura de compras</string>
     <string name="source_heading">Fuentes permitidas</string>
-    <string name="source_help">Aparecerán después de emitir una notificación. Selecciona solo fuentes financieras de confianza.</string>
+    <string name="source_help">Las aplicaciones aparecen después de enviar una notificación. Google Wallet siempre está disponible.</string>
     <string name="source_test">Fuente de prueba</string>
     <string name="recommended_source_label">%1$s · Recomendada</string>
-    <string name="source_unnamed">Aplicación financiera</string>
+    <string name="source_unnamed">Aplicación detectada</string>
     <string name="ready_heading">Captura activa</string>
     <string name="manage_sources_action">Administrar aplicaciones</string>
     <string name="manage_sources_title">Aplicaciones de captura</string>

@@ -9,6 +9,7 @@ import android.service.notification.StatusBarNotification
 import android.util.Log
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
+import com.moneytrack.capture.core.AvailableCaptureSourceCatalog
 import com.moneytrack.capture.core.CaptureEligibilityState
 import com.moneytrack.capture.core.CaptureResultCode
 import com.moneytrack.capture.core.NotificationCaptureCoordinator
@@ -23,7 +24,13 @@ class MoneyNotificationListenerService : NotificationListenerService() {
         val event = statusBarNotification ?: return
         val sourcePackage = event.packageName
         val preferences = CapturePreferences.create(this)
-        val allowedPackages = preferences.allowedPackages()
+        if (sourcePackage == AvailableCaptureSourceCatalog.DIAGNOSTIC_SHELL_PACKAGE) {
+            record(preferences, CaptureResultCode.PACKAGE_NOT_ALLOWED)
+            return
+        }
+        val allowedPackages = AvailableCaptureSourceCatalog.productAllowedPackages(
+            preferences.allowedPackages(),
+        )
 
         if (sourcePackage !in allowedPackages) {
             preferences.rememberDiscoveredSource(

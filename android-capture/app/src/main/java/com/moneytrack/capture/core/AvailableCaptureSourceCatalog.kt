@@ -15,18 +15,30 @@ data class AvailableCaptureSource(
 )
 
 object AvailableCaptureSourceCatalog {
+    const val GOOGLE_WALLET_PACKAGE = "com.google.android.apps.walletnfcrel"
+    const val DIAGNOSTIC_SHELL_PACKAGE = "com.android.shell"
+
     private val googleWallet = AvailableCaptureSource(
-        packageName = "com.google.android.apps.walletnfcrel",
+        packageName = GOOGLE_WALLET_PACKAGE,
         label = "Google Wallet",
         origin = CaptureSourceOrigin.KNOWN,
         isSelected = false,
     )
 
+    fun productAllowedPackages(allowedPackages: Set<String>): Set<String> =
+        allowedPackages - DIAGNOSTIC_SHELL_PACKAGE
+
     fun options(
         observedSources: List<DiscoveredNotificationSource>,
         allowedPackages: Set<String>,
-    ): List<AvailableCaptureSource> =
-        (listOf(googleWallet) + observedSources.map { source ->
+        includeDiagnostics: Boolean = false,
+    ): List<AvailableCaptureSource> {
+        val effectiveAllowed = if (includeDiagnostics) {
+            allowedPackages.toSet()
+        } else {
+            productAllowedPackages(allowedPackages)
+        }
+        return (listOf(googleWallet) + observedSources.map { source ->
             AvailableCaptureSource(
                 packageName = source.packageName,
                 label = source.label,
@@ -35,5 +47,7 @@ object AvailableCaptureSourceCatalog {
             )
         })
             .distinctBy { it.packageName }
-            .map { source -> source.copy(isSelected = source.packageName in allowedPackages) }
+            .filter { includeDiagnostics || it.packageName != DIAGNOSTIC_SHELL_PACKAGE }
+            .map { source -> source.copy(isSelected = source.packageName in effectiveAllowed) }
+    }
 }

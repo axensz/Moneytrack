@@ -7,7 +7,7 @@ class SourceLabelResolverTest {
     @Test
     fun `resolves safe labels for synthetic real and unnamed sources`() {
         val testSource = "Fuente de prueba"
-        val fallback = "Aplicación financiera"
+        val fallback = "Aplicación detectada"
 
         assertEquals(
             testSource,

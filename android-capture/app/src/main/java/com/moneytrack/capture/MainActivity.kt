@@ -147,7 +147,9 @@ class MainActivity : AppCompatActivity() {
         rendering = true
         val signedIn = firebaseAuth?.currentUser != null
         val accessGranted = NotificationAccess.isGranted(this)
-        val allowedPackages = preferences.allowedPackages()
+        val allowedPackages = AvailableCaptureSourceCatalog.productAllowedPackages(
+            preferences.allowedPackages(),
+        )
         val step = CaptureSetupFlow.resolve(
             signedIn = signedIn,
             notificationAccessGranted = accessGranted,

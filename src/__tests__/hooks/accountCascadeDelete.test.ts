@@ -280,19 +280,59 @@ describe('useAccounts.deleteAccount — cascade + reconciliación (A2)', () => {
 
   it('al borrar una TC también elimina el egreso bancario vinculado', async () => {
     seedFirestoreData([sav, cc]);
+    const date = new Date('2026-08-24T12:00:00.000Z');
     seedTx({
       id: 'pay-card', linkedTransactionId: 'pay-bank', type: 'income', amount: 200_000,
-      accountId: 'cc', category: 'Pago Crédito', paid: true,
+      accountId: 'cc', category: 'Pago Crédito', date, paid: true,
     });
     seedTx({
       id: 'pay-bank', linkedTransactionId: 'pay-card', type: 'expense', amount: 200_000,
-      accountId: 'sav', category: 'Pago Crédito', paid: true,
+      accountId: 'sav', category: 'Pago Crédito', date, paid: true,
     });
 
     const acc = renderAccounts();
     await acc.current.deleteAccount('cc');
 
     expect(deletedIds()).toEqual(expect.arrayContaining(['pay-card', 'pay-bank', 'cc']));
+  });
+
+  it('rechaza un pointer recíproco corrupto sin borrar la transacción ajena', async () => {
+    seedFirestoreData([sav, cc]);
+    const date = new Date('2026-08-24T12:00:00.000Z');
+    seedTx({
+      id: 'pay-card', linkedTransactionId: 'unrelated', type: 'income', amount: 200_000,
+      accountId: 'cc', category: 'Pago Crédito', beneficiary: 'Titular A', date, paid: true,
+    });
+    seedTx({
+      id: 'unrelated', linkedTransactionId: 'pay-card', type: 'expense', amount: 200_000,
+      accountId: 'sav', category: 'Pago Crédito', beneficiary: 'Titular B', date, paid: true,
+    });
+
+    const acc = renderAccounts();
+    await expect(acc.current.deleteAccount('cc')).rejects.toThrow(/vínculo|pago|reconciliación/i);
+
+    expect(M.log).toHaveLength(0);
+    expect(M.acctStore.has('cc')).toBe(true);
+    expect(M.txStore.has('pay-card')).toBe(true);
+    expect(M.txStore.has('unrelated')).toBe(true);
+    expect(cacheMutations).toHaveLength(0);
+  });
+
+  it('bloquea la reconciliación del cascade si una tarjeta afectada no tiene usedCredit', async () => {
+    const cardWithoutAuthority = { ...cc, usedCredit: undefined };
+    seedFirestoreData([sav, cardWithoutAuthority]);
+    seedTx({
+      id: 'payment', type: 'transfer', amount: 100_000, accountId: 'sav',
+      toAccountId: 'cc', category: 'Transferencia', paid: true,
+    });
+
+    const acc = renderAccounts();
+    await expect(acc.current.deleteAccount('sav')).rejects.toThrow(/reconciliación|autoridad/i);
+
+    expect(M.log).toHaveLength(0);
+    expect(M.acctStore.has('sav')).toBe(true);
+    expect(M.txStore.has('payment')).toBe(true);
+    expect(cacheMutations).toHaveLength(0);
   });
 
   it('rechaza un cascade que excede el límite atómico antes de escribir', async () => {

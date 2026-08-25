@@ -1,15 +1,23 @@
 import { useMemo, useCallback } from 'react';
 import { useFirestoreData } from '../contexts/FirestoreContext';
-import { useLocalStorage } from './useLocalStorage';
+import { useGuestLedger } from './useGuestLedger';
 import { BalanceCalculator } from '../utils/balanceCalculator';
 import { safeFirestoreOperation, checkNetworkConnection } from '../utils/firestoreHelpers';
-import { generateId } from '../utils/formatters';
-import { transactionUsesAccount } from '../utils/accountTransactions';
-import { getCreditCardUsedCredit } from '../utils/accountStrategies';
+import { generateId, roundMoney } from '../utils/formatters';
+import { getAccountReferenceIds, transactionUsesAccount } from '../utils/accountTransactions';
+import { getCreditAuthorityState } from '../utils/creditAuthority';
+import {
+  buildBalanceTargetAdjustment,
+  normalizeBalanceTarget,
+} from '../utils/balanceTargetAdjustment';
 import { CURRENT_CREDIT_DEBT_MODEL_VERSION } from '../utils/creditDeltas';
 import { CURRENT_PAYMENT_PAIR_MODEL_VERSION } from '../utils/creditPaymentPairs';
 import { deleteAccountCascade, mergeCreditCardsOrchestrated, setDefaultAccountAtomic } from './firestore/accountOrchestration';
-import type { Account, Transaction, RecurringPayment, Debt } from '../types/finance';
+import {
+  sanitizeBalanceTargetAccountUpdates,
+  updateAccountWithBalanceTarget,
+} from './firestore/accountBalanceTarget';
+import type { Account, Transaction } from '../types/finance';
 
 export type MergeCreditCardsDestination = Pick<Account, 'name'> & Partial<Omit<Account, 'id' | 'name' | 'type' | 'createdAt'>> & {
   id?: string;
@@ -18,16 +26,24 @@ export type MergeCreditCardsDestination = Pick<Account, 'name'> & Partial<Omit<A
 export interface MergeCreditCardsParams {
   sourceAccountIds: string[];
   destination: MergeCreditCardsDestination;
+  desiredDebt?: number;
+}
+
+export interface AccountUpdateOptions {
+  targetBalance?: number;
 }
 
 export function useAccounts(
   userId: string | null,
   transactions: Transaction[],
-  deleteTransactionFn: (id: string) => Promise<void>,
+  deleteTransactionFn: (id: string) => Promise<unknown>,
   // false mientras el primer fetch del historial completo está en vuelo (ventana
   // paginada): cualquier cálculo derivado de `transactions` puede subcontar.
   balancesReady: boolean = true
 ) {
+  // Se conserva por compatibilidad de la API del hook; la autoridad de TC ya no
+  // puede derivarse de historial aunque este flag esté asentado.
+  void balancesReady;
   const {
     accounts: firestoreAccounts,
     loading: firestoreLoading,
@@ -35,10 +51,10 @@ export function useAccounts(
     updateAccount: firestoreUpdateAccount
   } = useFirestoreData();
 
-  const [localAccounts, setLocalAccounts] = useLocalStorage<Account[]>('accounts', []);
-  const [, setLocalTransactions] = useLocalStorage<Transaction[]>('transactions', []);
-  const [, setLocalRecurringPayments] = useLocalStorage<RecurringPayment[]>('recurringPayments', []);
-  const [, setLocalDebts] = useLocalStorage<Debt[]>('debts', []);
+  const {
+    accounts: localAccounts,
+    mutate: mutateGuestLedger,
+  } = useGuestLedger();
 
   // Usar Firebase si hay usuario, localStorage si no
   const accounts = userId ? firestoreAccounts : localAccounts;
@@ -112,31 +128,82 @@ export function useAccounts(
         id: generateId(),
         createdAt: new Date()
       };
-      setLocalAccounts(prev => [...prev, newAccount]);
+      await mutateGuestLedger(draft => {
+        draft.accounts.push(newAccount);
+      }, { operationId: `guest-add-account:${newAccount.id}` });
     }
   };
 
-  const updateAccount = async (id: string, updates: Partial<Account>) => {
+  const updateAccount = async (
+    id: string,
+    updates: Partial<Account>,
+    options: AccountUpdateOptions = {}
+  ) => {
+    const targetBalance = options.targetBalance;
+
     if (userId) {
       if (!checkNetworkConnection()) {
         throw new Error('Sin conexión a internet');
       }
 
-      await safeFirestoreOperation(
-        () => firestoreUpdateAccount(id, updates),
-        'updateAccount',
-        { maxRetries: 2 }
-      );
+      if (targetBalance === undefined) {
+        await safeFirestoreOperation(
+          () => firestoreUpdateAccount(id, updates),
+          'updateAccount',
+          { maxRetries: 2 }
+        );
+      } else {
+        await safeFirestoreOperation(
+          () => updateAccountWithBalanceTarget(userId, id, updates, targetBalance),
+          'updateAccountWithBalanceTarget',
+          { maxRetries: 2 }
+        );
+      }
     } else {
-      setLocalAccounts(prev =>
-        prev.map(acc => acc.id === id ? { ...acc, ...updates } : acc)
-      );
+      const operationId = targetBalance === undefined
+        ? `guest-update-account:${id}:${generateId()}`
+        : `guest-balance-adjustment:${generateId()}`;
+      const transactionId = targetBalance === undefined ? undefined : generateId();
+      await mutateGuestLedger(draft => {
+        const account = draft.accounts.find(candidate => candidate.id === id);
+        if (!account) throw new Error('La cuenta ya no existe');
+        let safeUpdates = updates;
+        let adjustment: Transaction | null = null;
+
+        if (targetBalance !== undefined) {
+          const snapshot = BalanceCalculator.calculateBalanceSnapshot(
+            draft.accounts,
+            draft.transactions,
+          );
+          const currentValue = account.type === 'credit'
+            ? snapshot.creditUsedByAccountId.get(id) ?? 0
+            : snapshot.balancesByAccountId.get(id) ?? 0;
+          adjustment = buildBalanceTargetAdjustment({
+            account,
+            currentValue,
+            targetBalance,
+            operationId,
+            transactionId: transactionId!,
+          });
+          safeUpdates = {
+            ...sanitizeBalanceTargetAccountUpdates(updates),
+            ...(account.type === 'credit'
+              ? { usedCredit: adjustment?.targetBalance ?? roundMoney(targetBalance) }
+              : {}),
+          };
+        }
+
+        draft.accounts = draft.accounts.map(candidate => (
+          candidate.id === id ? { ...candidate, ...safeUpdates } : candidate
+        ));
+        if (adjustment) draft.transactions.push(adjustment);
+      }, { operationId });
     }
   };
 
   const deleteAccount = async (id: string, options: { preserveTransactions?: boolean; allowDefaultDelete?: boolean } = {}) => {
     const account = accounts.find(a => a.id === id);
-    if (account?.isDefault && !options.allowDefaultDelete) {
+    if (userId && account?.isDefault && !options.allowDefaultDelete) {
       throw new Error('No puedes eliminar la cuenta por defecto');
     }
 
@@ -152,31 +219,41 @@ export function useAccounts(
       // debe limpiar el bankAccountId colgante de las TC asociadas y conservar
       // la invariante de "exactamente una cuenta por defecto". Antes solo
       // quitaba la cuenta y corrompía saldos/stats con referencias colgantes.
-      if (!options.preserveTransactions) {
-        setLocalTransactions(prev => {
-          const direct = prev.filter(t => t.accountId === id || t.toAccountId === id);
+      await mutateGuestLedger(draft => {
+        const currentAccount = draft.accounts.find(candidate => candidate.id === id);
+        if (!currentAccount) return;
+        if (currentAccount.isDefault && !options.allowDefaultDelete) {
+          throw new Error('No puedes eliminar la cuenta por defecto');
+        }
+        if (!options.preserveTransactions) {
+          const direct = draft.transactions.filter(t => t.accountId === id || t.toAccountId === id);
           const deleteIds = new Set(direct.flatMap(t => [t.id, t.linkedTransactionId]).filter(
             (value): value is string => Boolean(value)
           ));
-          return prev.filter(t => !t.id || !deleteIds.has(t.id));
-        });
-      }
-      setLocalDebts(prev => prev.filter(d => d.accountId !== id));
-      setLocalRecurringPayments(prev => prev.filter(p => p.accountId !== id));
-      setLocalAccounts(prev => {
-        let remaining = prev
+          draft.transactions = draft.transactions.filter(t => !t.id || !deleteIds.has(t.id));
+        }
+        draft.debts = draft.debts.filter(debt => debt.accountId !== id);
+        draft.recurringPayments = draft.recurringPayments.filter(payment => payment.accountId !== id);
+        let remaining = draft.accounts
           .filter(acc => acc.id !== id)
           .map(acc => (acc.bankAccountId === id ? { ...acc, bankAccountId: undefined } : acc));
         // Si se borró la cuenta por defecto, promover otra para no quedar sin default.
-        if (account?.isDefault && remaining.length > 0 && !remaining.some(a => a.isDefault)) {
+        if (currentAccount.isDefault && remaining.length > 0 && !remaining.some(a => a.isDefault)) {
           remaining = remaining.map((acc, i) => (i === 0 ? { ...acc, isDefault: true } : acc));
         }
-        return remaining;
-      });
+        draft.accounts = remaining;
+      }, { operationId: `guest-delete-account:${id}:${generateId()}` });
     }
   };
 
-  const mergeCreditCards = async ({ sourceAccountIds, destination }: MergeCreditCardsParams) => {
+  const mergeCreditCards = async ({
+    sourceAccountIds,
+    destination,
+    desiredDebt,
+  }: MergeCreditCardsParams) => {
+    const normalizedDesiredDebt = desiredDebt === undefined
+      ? undefined
+      : normalizeBalanceTarget(desiredDebt);
     const uniqueSourceIds = Array.from(new Set(sourceAccountIds.filter(Boolean)));
 
     if (uniqueSourceIds.length === 0) {
@@ -242,25 +319,23 @@ export function useAccounts(
       (destination.isDefault ?? existingDestination?.isDefault ?? false) || sourceHadDefault;
     const destinationId = destination.id ?? generateId();
 
-    // Consolidar el cupo utilizado: la deuda del destino pasa a ser la suma de la
-    // deuda de TODAS las tarjetas unificadas (destino + orígenes), ya que sus
-    // transacciones se reapuntan al destino. Sin esto la deuda de las tarjetas
-    // origen se perdería al eliminarlas. Se prefiere el valor persistido; si una
-    // tarjeta aún no lo tiene, se calcula desde sus transacciones en memoria.
+    // Consolidar exclusivamente autoridad persistida. El historial es evidencia
+    // para conciliación, no permiso para inventar usedCredit durante un merge.
     const cardsToConsolidate = [existingDestination, ...sourceAccounts].filter(
       (account): account is Account => Boolean(account)
     );
-    // El fallback (sin usedCredit persistido) deriva la deuda del historial:
-    // con la ventana paginada aún sin asentar subcontaría. Bloquear hasta ready.
-    if (!balancesReady && cardsToConsolidate.some(account => account.usedCredit == null)) {
-      throw new Error('Los saldos aún se están calculando. Intenta unificar de nuevo en unos segundos.');
+    const creditAuthorities = cardsToConsolidate.map(account => ({
+      account,
+      authority: getCreditAuthorityState(account),
+    }));
+    const unresolvedAuthority = creditAuthorities.find(({ authority }) => !authority.ready);
+    if (unresolvedAuthority) {
+      throw new Error(
+        `La tarjeta ${unresolvedAuthority.account.name} requiere reconciliación antes de unificar.`
+      );
     }
-    const mergedUsedCredit = cardsToConsolidate.reduce(
-      (sum, account) =>
-        sum +
-        (account.usedCredit != null
-          ? Math.max(0, account.usedCredit)
-          : getCreditCardUsedCredit(account, transactions)),
+    const mergedUsedCredit = creditAuthorities.reduce(
+      (sum, { authority }) => sum + authority.usedCredit!,
       0
     );
 
@@ -278,7 +353,10 @@ export function useAccounts(
       initialBalance: 0,
       isDefault: shouldMakeDestinationDefault,
       createdAt: existingDestination?.createdAt ?? new Date(),
-      usedCredit: mergedUsedCredit,
+      mergedAccountIds: Array.from(new Set(
+        cardsToConsolidate.flatMap(getAccountReferenceIds)
+      )).filter(referenceId => referenceId !== destinationId),
+      usedCredit: normalizedDesiredDebt ?? mergedUsedCredit,
       creditDebtModelVersion: CURRENT_CREDIT_DEBT_MODEL_VERSION,
     };
 
@@ -292,44 +370,115 @@ export function useAccounts(
         destinationAccount,
         existingDestination,
         uniqueSourceIds,
+        desiredDebt: normalizedDesiredDebt,
       });
     } else {
-      setLocalAccounts(prev => {
-        const existingLocalDestination = prev.find(account => account.id === destination.id);
-        const localDestinationAccount: Account = {
-          ...(existingLocalDestination ?? destinationAccount),
-          ...destinationAccount,
-          createdAt: existingLocalDestination?.createdAt ?? destinationAccount.createdAt,
-        };
+      const guestMergeOperationId = `guest-merge-credit-cards:${generateId()}`;
+      await mutateGuestLedger(draft => {
+        const localSourceAccounts = uniqueSourceIds.map(id => (
+          draft.accounts.find(account => account.id === id)
+        ));
+        const missingLocalSourceId = uniqueSourceIds.find((_, index) => !localSourceAccounts[index]);
+        if (missingLocalSourceId) {
+          throw new Error(`La cuenta origen ${missingLocalSourceId} ya no existe`);
+        }
+        const invalidLocalSource = localSourceAccounts.find(account => account?.type !== 'credit');
+        if (invalidLocalSource) {
+          throw new Error(`La cuenta origen ${invalidLocalSource.name} ya no es una tarjeta de crédito`);
+        }
+        const existingLocalDestination = destination.id
+          ? draft.accounts.find(account => account.id === destination.id)
+          : undefined;
+        if (destination.id && !existingLocalDestination) {
+          throw new Error(`La cuenta destino ${destination.id} ya no existe`);
+        }
+        if (existingLocalDestination && existingLocalDestination.type !== 'credit') {
+          throw new Error(`La cuenta destino ${existingLocalDestination.name} ya no es una tarjeta de crédito`);
+        }
 
-        const withoutSourcesAndDestination = prev.filter(account =>
+        const localCardsToConsolidate = [
+          existingLocalDestination,
+          ...localSourceAccounts,
+        ].filter((account): account is Account => Boolean(account));
+        const localBankIds = localCardsToConsolidate
+          .map(account => account.bankAccountId)
+          .filter((id): id is string => Boolean(id));
+        if (
+          localBankIds.length !== localCardsToConsolidate.length
+          || new Set(localBankIds).size !== 1
+        ) {
+          throw new Error('Las tarjetas cambiaron y ya no pertenecen al mismo banco');
+        }
+        if (localCardsToConsolidate.some(account => !getCreditAuthorityState(account).ready)) {
+          throw new Error('Las tarjetas requieren reconciliación antes de unificarse');
+        }
+        const localMergedUsedCredit = localCardsToConsolidate.reduce(
+          (sum, account) => sum + (account.usedCredit ?? 0),
+          0,
+        );
+        const localShouldMakeDefault =
+          (destination.isDefault ?? existingLocalDestination?.isDefault ?? false)
+          || localSourceAccounts.some(account => account?.isDefault);
+        const localDestinationAccount: Account = {
+          ...(existingLocalDestination ?? {
+            id: destinationId,
+            type: 'credit' as const,
+            initialBalance: 0,
+            createdAt: new Date(),
+            isDefault: localShouldMakeDefault,
+          }),
+          ...destination,
+          id: destinationId,
+          type: 'credit',
+          initialBalance: 0,
+          isDefault: localShouldMakeDefault,
+          createdAt: existingLocalDestination?.createdAt ?? new Date(),
+          mergedAccountIds: Array.from(new Set(
+            localCardsToConsolidate.flatMap(getAccountReferenceIds)
+          )).filter(referenceId => referenceId !== destinationId),
+          usedCredit: normalizedDesiredDebt ?? localMergedUsedCredit,
+          creditDebtModelVersion: CURRENT_CREDIT_DEBT_MODEL_VERSION,
+        };
+        const localDesiredDebtAdjustment = normalizedDesiredDebt === undefined
+          ? null
+          : buildBalanceTargetAdjustment({
+              account: localDestinationAccount,
+              currentValue: localMergedUsedCredit,
+              targetBalance: normalizedDesiredDebt,
+              operationId: guestMergeOperationId,
+              transactionId: generateId(),
+            });
+
+        const withoutSourcesAndDestination = draft.accounts.filter(account =>
           account.id !== destinationId && (!account.id || !sourceIdSet.has(account.id))
         );
 
-        return [
+        draft.accounts = [
           ...withoutSourcesAndDestination.map(account => ({
             ...account,
-            isDefault: shouldMakeDestinationDefault ? false : account.isDefault,
+            isDefault: localShouldMakeDefault ? false : account.isDefault,
           })),
           localDestinationAccount,
         ];
-      });
-
-      setLocalTransactions(prev => prev.map(transactionItem => ({
-        ...transactionItem,
-        accountId: migrateAccountReference(transactionItem.accountId) ?? transactionItem.accountId,
-        toAccountId: migrateAccountReference(transactionItem.toAccountId),
-      })));
-
-      setLocalRecurringPayments(prev => prev.map(payment => ({
+        const rewritten = draft.transactions.map(transactionItem => ({
+          ...transactionItem,
+          accountId: migrateAccountReference(transactionItem.accountId) ?? transactionItem.accountId,
+          toAccountId: migrateAccountReference(transactionItem.toAccountId),
+        }));
+        draft.transactions = localDesiredDebtAdjustment
+          ? [...rewritten, localDesiredDebtAdjustment]
+          : rewritten;
+        draft.recurringPayments = draft.recurringPayments.map(payment => ({
         ...payment,
         accountId: migrateAccountReference(payment.accountId) ?? payment.accountId,
-      })));
-
-      setLocalDebts(prev => prev.map(debt => ({
+        }));
+        draft.debts = draft.debts.map(debt => ({
         ...debt,
         accountId: migrateAccountReference(debt.accountId) ?? debt.accountId,
-      })));
+        }));
+      }, {
+        operationId: guestMergeOperationId,
+      });
     }
   };
 
@@ -337,9 +486,15 @@ export function useAccounts(
     if (userId) {
       await setDefaultAccountAtomic(userId, id);
     } else {
-      setLocalAccounts(prev =>
-        prev.map(acc => ({ ...acc, isDefault: acc.id === id }))
-      );
+      await mutateGuestLedger(draft => {
+        if (!draft.accounts.some(account => account.id === id)) {
+          throw new Error('La cuenta ya no existe');
+        }
+        draft.accounts = draft.accounts.map(account => ({
+          ...account,
+          isDefault: account.id === id,
+        }));
+      }, { operationId: `guest-default-account:${id}:${generateId()}` });
     }
   };
 

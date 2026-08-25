@@ -6,15 +6,18 @@ type StoredDocument = Record<string, unknown>;
 type MockRef = { __path: string; __id: string; id: string };
 
 const M = vi.hoisted(() => ({
+  users: new Map<string, StoredDocument>(),
   accounts: new Map<string, StoredDocument>(),
   debts: new Map<string, StoredDocument>(),
   transactions: new Map<string, StoredDocument>(),
   transactionCommits: 0,
   nextId: 0,
   failCommit: false,
+  failAfterCommitOnce: false,
 }));
 
 const collectionStore = (path: string) => {
+  if (path === 'users') return M.users;
   if (path.endsWith('/accounts')) return M.accounts;
   if (path.endsWith('/debts')) return M.debts;
   if (path.endsWith('/transactions')) return M.transactions;
@@ -37,19 +40,30 @@ vi.mock('../../lib/firebaseDb', () => ({ db: { __db: true } }));
 
 vi.mock('../../utils/firestoreHelpers', () => ({
   checkNetworkConnection: () => true,
-  safeFirestoreOperation: (operation: () => Promise<unknown>) => operation(),
+  safeFirestoreOperation: async (operation: () => Promise<unknown>) => {
+    try {
+      return await operation();
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('network')) {
+        return operation();
+      }
+      throw error;
+    }
+  },
   stripUndefined: (value: StoredDocument) => Object.fromEntries(
     Object.entries(value).filter(([, entry]) => entry !== undefined)
   ),
 }));
 
 vi.mock('../../hooks/firestore/accountOrchestration', () => ({
-  acquireAccountOperationLock: vi.fn(),
+  acquireAccountOperationLock: vi.fn(async () => undefined),
   assertAtomicBatchCapacity: vi.fn(),
-  createAccountOperationId: vi.fn(() => 'test-operation'),
-  createAccountOperationRelease: vi.fn(),
-  releaseAccountOperationLock: vi.fn(),
-  renewAccountOperationLock: vi.fn(),
+  createAccountOperationId: vi.fn(() => 'ledger-mutation:test-operation'),
+  createAccountOperationRelease: vi.fn((id: string, kind: string) => ({
+    accountOperationLock: { id, kind, releasedAt: { __serverTimestamp: true } },
+  })),
+  releaseAccountOperationLock: vi.fn(async () => undefined),
+  renewAccountOperationLock: vi.fn(async () => undefined),
 }));
 
 vi.mock('../../hooks/firestore/transactionPaginationCache', () => ({
@@ -102,11 +116,59 @@ vi.mock('firebase/firestore', () => ({
   deleteField: () => ({ __deleteField: true }),
   onSnapshot: () => () => undefined,
   orderBy: () => ({}),
-  query: () => ({}),
-  where: () => ({}),
-  getDocsFromServer: vi.fn(),
-  getDocFromServer: vi.fn(),
-  writeBatch: vi.fn(),
+  query: (source: { __path: string }, ...filters: Array<{ field: string; value: unknown }>) => ({
+    ...source,
+    __filters: filters,
+  }),
+  where: (field: string, _operator: string, value: unknown) => ({ field, value }),
+  getDocsFromServer: async (reference: {
+    __path: string;
+    __filters?: Array<{ field: string; value: unknown }>;
+  }) => {
+    const filters = reference.__filters ?? [];
+    const docs = [...collectionStore(reference.__path).entries()]
+      .filter(([, data]) => filters.every(filter => data[filter.field] === filter.value))
+      .map(([id, data]) => ({ id, data: () => data }));
+    return { docs };
+  },
+  getDocFromServer: async (ref: MockRef) => {
+    const data = collectionStore(ref.__path).get(ref.__id);
+    return { exists: () => Boolean(data), data: () => data ?? {} };
+  },
+  writeBatch: () => {
+    const staged: Array<{
+      kind: 'set' | 'update' | 'delete';
+      ref: MockRef;
+      data?: StoredDocument;
+    }> = [];
+    return {
+      set: (ref: MockRef, data: StoredDocument) => staged.push({ kind: 'set', ref, data }),
+      update: (ref: MockRef, data: StoredDocument) => staged.push({ kind: 'update', ref, data }),
+      delete: (ref: MockRef) => staged.push({ kind: 'delete', ref }),
+      commit: async () => {
+        if (M.failCommit) throw new Error('commit rejected');
+        staged.forEach(({ kind, ref, data }) => {
+          const store = collectionStore(ref.__path);
+          if (kind === 'delete') {
+            store.delete(ref.__id);
+            return;
+          }
+          store.set(
+            ref.__id,
+            kind === 'set'
+              ? (data ?? {})
+              : applyUpdate(store.get(ref.__id) ?? {}, data ?? {})
+          );
+        });
+        M.transactionCommits += 1;
+        if (M.failAfterCommitOnce) {
+          M.failAfterCommitOnce = false;
+          throw new Error('network acknowledgement lost');
+        }
+      },
+    };
+  },
+  serverTimestamp: () => ({ __serverTimestamp: true }),
 }));
 
 import { useDebts } from '../../hooks/useDebts';
@@ -121,6 +183,14 @@ const creditAccount: Account = {
   initialBalance: 0,
   creditLimit: 5_000_000,
   usedCredit: 0,
+};
+
+const savingsAccount: Account = {
+  id: 'savings',
+  name: 'Ahorros',
+  type: 'savings',
+  isDefault: false,
+  initialBalance: 1_000,
 };
 
 const newDebt = (): Omit<Debt, 'id' | 'createdAt'> => ({
@@ -140,17 +210,54 @@ const existingDebt = (updates: Partial<Debt> = {}): Debt => ({
 });
 
 beforeEach(() => {
+  M.users.clear();
   M.accounts.clear();
   M.debts.clear();
   M.transactions.clear();
   M.transactionCommits = 0;
   M.nextId = 0;
   M.failCommit = false;
+  M.failAfterCommitOnce = false;
   M.accounts.set('credit', { ...creditAccount });
   Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
 });
 
 describe('useDebts authenticated atomic writes', () => {
+  it('rejects lent origination that would overdraw persisted savings', async () => {
+    M.accounts.set('savings', { ...savingsAccount });
+    const { result } = renderHook(() => useDebts(UID, [], [], {}));
+
+    await expect(result.current.addDebt({
+      ...newDebt(),
+      accountId: 'savings',
+      originalAmount: 1_000.01,
+      remainingAmount: 1_000.01,
+    })).rejects.toMatchObject({ code: 'INSUFFICIENT_FUNDS' });
+
+    expect(M.transactionCommits).toBe(0);
+    expect(M.debts.size).toBe(0);
+    expect(M.transactions.size).toBe(0);
+  });
+
+  it('rejects borrowed repayment that would overdraw persisted savings', async () => {
+    M.accounts.set('savings', { ...savingsAccount });
+    const debt = existingDebt({
+      type: 'borrowed',
+      accountId: 'savings',
+      originalAmount: 1_000.01,
+      remainingAmount: 1_000.01,
+    });
+    M.debts.set(debt.id!, { ...debt, id: undefined });
+    const { result } = renderHook(() => useDebts(UID, [], [debt], {}));
+
+    await expect(result.current.registerDebtPayment(debt.id!, 1_000.01))
+      .rejects.toMatchObject({ code: 'INSUFFICIENT_FUNDS' });
+
+    expect(M.transactionCommits).toBe(0);
+    expect(M.transactions.size).toBe(0);
+    expect(M.debts.get(debt.id!)).toMatchObject({ remainingAmount: 1_000.01 });
+  });
+
   it('creates the debt, original transaction, and usedCredit in one transaction', async () => {
     const { result } = renderHook(() => useDebts(UID, [], [], {}));
 
@@ -164,7 +271,22 @@ describe('useDebts authenticated atomic writes', () => {
       amount: 1_000_000,
       accountId: 'credit',
       debtId: [...M.debts.keys()][0],
+      operationId: 'ledger-mutation:test-operation',
+      mutationKind: 'create',
+      mutationSource: 'debt',
     });
+    expect(M.accounts.get('credit')?.usedCredit).toBe(1_000_000);
+  });
+
+  it('treats an acknowledged-lost debt creation as one committed compound', async () => {
+    M.failAfterCommitOnce = true;
+    const { result } = renderHook(() => useDebts(UID, [], [], {}));
+
+    await result.current.addDebt(newDebt());
+
+    expect(M.transactionCommits).toBe(1);
+    expect(M.debts.size).toBe(1);
+    expect(M.transactions.size).toBe(1);
     expect(M.accounts.get('credit')?.usedCredit).toBe(1_000_000);
   });
 
@@ -243,6 +365,38 @@ describe('useDebts authenticated atomic writes', () => {
       debtId: debt.id,
     });
     expect(M.accounts.get('credit')?.usedCredit).toBe(600_000);
+  });
+
+  it('treats an acknowledged-lost debt payment as one committed compound', async () => {
+    const debt = existingDebt({ remainingAmount: 300_000, originalAmount: 300_000 });
+    M.debts.set(debt.id!, { ...debt, id: undefined });
+    M.accounts.set('credit', { ...creditAccount, usedCredit: 300_000 });
+    M.failAfterCommitOnce = true;
+    const { result } = renderHook(() => useDebts(UID, [], [debt], {}));
+
+    await result.current.registerDebtPayment(debt.id!, 100_000);
+
+    expect(M.transactionCommits).toBe(1);
+    expect(M.transactions.size).toBe(1);
+    expect(M.debts.get(debt.id!)).toMatchObject({ remainingAmount: 200_000 });
+    expect(M.accounts.get('credit')?.usedCredit).toBe(200_000);
+  });
+
+  it('deduplicates an acknowledged-lost tracking-only payment without a transaction row', async () => {
+    const debt = existingDebt({
+      accountId: undefined,
+      remainingAmount: 300_000,
+      originalAmount: 300_000,
+    });
+    M.debts.set(debt.id!, { ...debt, id: undefined });
+    M.failAfterCommitOnce = true;
+    const { result } = renderHook(() => useDebts(UID, [], [debt], {}));
+
+    await result.current.registerDebtPayment(debt.id!, 100_000);
+
+    expect(M.transactionCommits).toBe(1);
+    expect(M.transactions.size).toBe(0);
+    expect(M.debts.get(debt.id!)).toMatchObject({ remainingAmount: 200_000 });
   });
 
   it('clamps an overpayment against the persisted balance and settles exactly once', async () => {

@@ -1,9 +1,10 @@
 import { useState, useCallback, useRef } from 'react';
-import type { Account, NewAccount, Transaction } from '../../../../types/finance';
+import type { Account, NewAccount } from '../../../../types/finance';
+import type { AccountUpdateOptions } from '../../../../hooks/useAccounts';
 import { showToast } from '../../../../utils/toastHelpers';
-import { formatNumberForInput, unformatNumber } from '../../../../utils/formatters';
+import { formatNumberForInput, parseCurrency, unformatNumber } from '../../../../utils/formatters';
 import { logger } from '../../../../utils/logger';
-import { ERROR_MESSAGES, SUCCESS_MESSAGES, BALANCE_ADJUSTMENT_CATEGORY } from '../../../../config/constants';
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../../../../config/constants';
 
 const INITIAL_ACCOUNT: NewAccount = {
   name: '',
@@ -19,11 +20,11 @@ const INITIAL_ACCOUNT: NewAccount = {
 
 interface UseAccountFormProps {
   addAccount: (account: Omit<Account, 'id'>) => Promise<void>;
-  updateAccount: (id: string, updates: Partial<Account>) => Promise<void>;
-  addTransaction: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
-  getAccountBalance: (id: string) => number;
-  getCreditUsed: (id: string) => number;
-  formatCurrency: (amount: number) => string;
+  updateAccount: (
+    id: string,
+    updates: Partial<Account>,
+    options?: AccountUpdateOptions
+  ) => Promise<void>;
   /**
    * false mientras el saldo aún se deriva de la ventana paginada (fetch del
    * historial completo en vuelo). En ese estado el ajuste de saldo se BLOQUEA:
@@ -64,10 +65,6 @@ interface UseAccountFormReturn {
 export function useAccountForm({
   addAccount,
   updateAccount,
-  addTransaction,
-  getAccountBalance,
-  getCreditUsed,
-  formatCurrency,
   balancesReady = true,
 }: UseAccountFormProps): UseAccountFormReturn {
   const [showAccountForm, setShowAccountForm] = useState(false);
@@ -155,8 +152,7 @@ export function useAccountForm({
     try {
       if (editingAccount) {
         // EDITAR cuenta existente
-        let needsBalanceAdjustment = false;
-        let adjustmentData: Omit<Transaction, 'id'> | null = null;
+        let targetBalance: number | undefined;
 
         if (balanceAdjustment.trim() !== '') {
           // Mientras el historial completo no haya asentado, el saldo actual es
@@ -166,51 +162,13 @@ export function useAccountForm({
             showToast.error('Los saldos aún se están calculando. Intenta de nuevo en unos segundos.');
             return;
           }
-          const cleanValue = balanceAdjustment.trim().replace(/\./g, '').replace(',', '.');
-          const newBalance = parseFloat(cleanValue);
+          const newBalance = parseCurrency(balanceAdjustment);
 
-          if (isNaN(newBalance) || newBalance < 0) {
-            showToast.error('Ingresa un saldo válido (debe ser un número positivo)');
+          if (!Number.isFinite(newBalance) || newBalance < 0) {
+            showToast.error('Ingresa un saldo válido (debe ser mayor o igual a cero)');
             return;
           }
-
-          if (editingAccount.type === 'credit') {
-            // Para TC: ajustar la deuda pendiente
-            const currentDebt = getCreditUsed(editingAccount.id!);
-            const debtDifference = newBalance - currentDebt;
-
-            if (Math.abs(debtDifference) >= 0.01) {
-              needsBalanceAdjustment = true;
-              // Si la deuda nueva es mayor, agregar un gasto de ajuste
-              // Si la deuda nueva es menor, agregar un ingreso (pago) de ajuste
-              adjustmentData = {
-                type: debtDifference > 0 ? 'expense' : 'income',
-                amount: Math.abs(debtDifference),
-                category: BALANCE_ADJUSTMENT_CATEGORY,
-                description: `Ajuste de deuda TC: ${debtDifference > 0 ? '+' : '-'}${formatCurrency(Math.abs(debtDifference))}`,
-                date: new Date(),
-                paid: true,
-                accountId: editingAccount.id!,
-              };
-            }
-          } else {
-            // Para cuentas normales: ajustar saldo
-            const currentBalance = getAccountBalance(editingAccount.id!);
-            const adjustment = newBalance - currentBalance;
-
-            if (Math.abs(adjustment) >= 0.01) {
-              needsBalanceAdjustment = true;
-              adjustmentData = {
-                type: adjustment > 0 ? 'income' : 'expense',
-                amount: Math.abs(adjustment),
-                category: BALANCE_ADJUSTMENT_CATEGORY,
-                description: `Ajuste de saldo: ${adjustment > 0 ? '+' : ''}${formatCurrency(adjustment)}`,
-                date: new Date(),
-                paid: true,
-                accountId: editingAccount.id!,
-              };
-            }
-          }
+          targetBalance = newBalance;
         }
 
         const accountId = editingAccount.id!;
@@ -243,16 +201,15 @@ export function useAccountForm({
           updates.monthlySpendingLimit = newAccount.monthlySpendingLimit || 0;
         }
 
-        await updateAccount(accountId, updates);
-
-        if (needsBalanceAdjustment && adjustmentData) {
-          await addTransaction(adjustmentData);
+        if (targetBalance !== undefined) {
+          await updateAccount(accountId, updates, { targetBalance });
           const msg = editingAccount.type === 'credit' 
             ? 'Cuenta actualizada y deuda ajustada correctamente'
             : 'Cuenta actualizada y saldo ajustado correctamente';
           closeForm();
           showToast.success(msg);
         } else {
+          await updateAccount(accountId, updates);
           closeForm();
           showToast.success(SUCCESS_MESSAGES.ACCOUNT_UPDATED);
         }
@@ -325,10 +282,6 @@ export function useAccountForm({
     balancesReady,
     addAccount,
     updateAccount,
-    addTransaction,
-    getAccountBalance,
-    getCreditUsed,
-    formatCurrency,
     closeForm,
   ]);
 

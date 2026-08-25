@@ -25,7 +25,7 @@ export function transactionDestinationIs(transaction: Transaction, account: Acco
 }
 
 export function findAccountForTransaction(
-  accounts: Account[],
+  accounts: readonly Account[],
   accountId: string | undefined
 ): Account | undefined {
   if (!accountId) return undefined;

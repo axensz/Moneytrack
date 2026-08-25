@@ -3,26 +3,48 @@
  * Incluye lógica de transferencias atómicas
  */
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback } from 'react';
 import {
   collection,
   doc,
-  addDoc,
-  runTransaction,
+  getDocFromServer,
   increment,
   deleteField,
 } from 'firebase/firestore';
 import { db } from '../../lib/firebaseDb';
-import { LOAN_PAYMENT_CATEGORY, TRANSFER_CATEGORY } from '../../config/constants';
-import type { Transaction, Account } from '../../types/finance';
+import {
+  LOAN_PAYMENT_CATEGORY,
+  SPECIAL_CATEGORIES,
+  TRANSFER_CATEGORY,
+} from '../../config/constants';
+import type { Transaction, Account, RecurringPayment } from '../../types/finance';
+import { getAccountReferenceIds } from '../../utils/accountTransactions';
+import { ensureDate } from '../../utils/dateUtils';
 import { isOffline, stripUndefined } from '../../utils/firestoreHelpers';
-import { getCreditDelta, creditDeltasByAccount } from '../../utils/creditDeltas';
+import { validateCreditPaymentPair } from '../../utils/creditPaymentPairs';
+import { roundMoney } from '../../utils/formatters';
 import { logger } from '../../utils/logger';
+import {
+  LedgerMutationValidationError,
+  normalizeLedgerAmount,
+} from '../../utils/ledgerMutation';
 import { validateTransactionUpdate } from '../../utils/transactionValidation';
+import {
+  isRecurringCycleKeyForPayment,
+  recurringTransactionSatisfiesCycleKey,
+} from '../../utils/recurringPayments';
+import {
+  collectLedgerMutationAccountIds,
+  executeAuthenticatedLedgerMutation,
+  loadServerLedgerTransaction,
+  loadServerLedgerTransactionsByRecurringPayment,
+  planCreditAuthorityChanges,
+  validateLedgerMutationOperationId,
+} from './ledgerMutationOrchestration';
 import { publishTransactionCacheMutation } from './transactionPaginationCache';
 
-// Las escrituras de transacciones requieren conexión: las que ajustan usedCredit
-// usan runTransaction (no funciona offline) y queremos evitar estados optimistas
+// Las escrituras de transacciones requieren conexión: usan autoridad confirmada
+// del servidor y queremos evitar estados optimistas
 // inconsistentes que descuadren balances. Offline → error claro (sin toast aquí;
 // lo muestra el caller). La lectura offline sigue disponible vía persistentLocalCache.
 const OFFLINE_WRITE_ERROR = 'Sin conexión a internet. Conéctate para guardar los cambios.';
@@ -45,14 +67,36 @@ const safePaymentUpdates = (updates: Partial<Transaction>): Partial<Transaction>
   return safe;
 };
 
-const sumCreditDeltas = (transactions: Transaction[], accounts: Account[]): Map<string, number> => {
-  const totals = new Map<string, number>();
-  transactions.forEach(transaction => {
-    creditDeltasByAccount(transaction, accounts).forEach((delta, accountId) => {
-      totals.set(accountId, (totals.get(accountId) ?? 0) + delta);
-    });
-  });
-  return totals;
+const reconciliationError = (reason: string): LedgerMutationValidationError =>
+  new LedgerMutationValidationError(
+    'INVALID_ACCOUNT_AUTHORITY',
+    `El enlace financiero requiere reconciliación: ${reason}`
+  );
+
+const assertValidLinkedPaymentPair = (
+  first: Transaction,
+  second: Transaction | null,
+  accounts: readonly Account[]
+): void => {
+  if (!second) throw reconciliationError('falta la transacción contraparte');
+  const rows = [first, second];
+  const creditTransaction = rows.find(row =>
+    row.type === 'income' && accounts.some(account =>
+      account.type === 'credit' && getAccountReferenceIds(account).includes(row.accountId)
+    )
+  );
+  if (!creditTransaction) throw reconciliationError('no se pudo identificar la mitad de tarjeta');
+  const sourceTransaction = rows.find(row => row.id !== creditTransaction.id);
+  const creditAccount = accounts.find(account =>
+    account.type === 'credit' && getAccountReferenceIds(account).includes(creditTransaction.accountId)
+  );
+  if (!creditAccount) throw reconciliationError('la tarjeta vinculada no existe');
+  const validation = validateCreditPaymentPair(
+    creditTransaction,
+    sourceTransaction,
+    creditAccount
+  );
+  if (!validation.valid) throw reconciliationError(validation.reason);
 };
 
 /**
@@ -79,6 +123,173 @@ function validateTransactionSchema(
   }
 }
 
+const IDEMPOTENCY_IGNORED_FIELDS = new Set([
+  'id',
+  'createdAt',
+  'operationId',
+  'mutationKind',
+  'mutationSource',
+]);
+
+const sameTransactionValue = (left: unknown, right: unknown): boolean => {
+  if (left instanceof Date || right instanceof Date) {
+    return left instanceof Date && right instanceof Date
+      && left.getTime() === right.getTime();
+  }
+  if (left && right && typeof left === 'object' && typeof right === 'object') {
+    return JSON.stringify(left) === JSON.stringify(right);
+  }
+  return Object.is(left, right);
+};
+
+const transactionMatchesRequest = (
+  existing: Transaction,
+  requested: Partial<Transaction>
+): boolean => Object.entries(requested).every(([field, value]) => (
+  IDEMPOTENCY_IGNORED_FIELDS.has(field)
+  || value === undefined
+  || sameTransactionValue(existing[field as keyof Transaction], value)
+));
+
+const loadCommittedOperation = async (
+  userId: string,
+  transactionId: string,
+  operationId: string,
+  mutationKind: 'create' | 'transfer' | 'edit',
+  requested: Partial<Transaction>
+): Promise<Transaction | null> => {
+  const existing = await loadServerLedgerTransaction(userId, transactionId);
+  if (!existing) return null;
+  if (
+    existing.operationId !== operationId
+    || existing.mutationKind !== mutationKind
+    || !transactionMatchesRequest(existing, requested)
+  ) {
+    throw new Error(
+      'El identificador de operación ya pertenece a una mutación financiera diferente.'
+    );
+  }
+  return existing;
+};
+
+const recurringCycleOperationId = (
+  recurringPaymentId: string,
+  recurringCycle: string
+): string => validateLedgerMutationOperationId(
+  `ledger-mutation:recurring:${recurringPaymentId}:${recurringCycle}`
+);
+
+const loadServerRecurringPayment = async (
+  userId: string,
+  recurringPaymentId: string
+): Promise<RecurringPayment> => {
+  const snapshot = await getDocFromServer(
+    doc(db, `users/${userId}/recurringPayments`, recurringPaymentId)
+  );
+  if (!snapshot.exists()) {
+    throw new Error('El pago periódico ya no existe. Actualiza e intenta de nuevo.');
+  }
+  const data = snapshot.data();
+  if (
+    typeof data.name !== 'string'
+    || typeof data.category !== 'string'
+    || typeof data.amount !== 'number'
+    || !Number.isFinite(data.amount)
+    || data.amount <= 0
+    || typeof data.dueDay !== 'number'
+    || !Number.isInteger(data.dueDay)
+    || data.dueDay < 1
+    || data.dueDay > 31
+    || (data.frequency !== 'monthly' && data.frequency !== 'yearly')
+    || typeof data.isActive !== 'boolean'
+  ) {
+    throw new LedgerMutationValidationError(
+      'INVALID_ACCOUNT_AUTHORITY',
+      'El pago periódico no tiene una estructura válida'
+    );
+  }
+  const createdAt = data.createdAt === undefined ? undefined : ensureDate(data.createdAt);
+  if (createdAt && !Number.isFinite(createdAt.getTime())) {
+    throw new LedgerMutationValidationError(
+      'INVALID_ACCOUNT_AUTHORITY',
+      'El pago periódico no tiene una fecha de creación válida'
+    );
+  }
+  return {
+    ...data,
+    id: recurringPaymentId,
+    name: data.name,
+    category: data.category,
+    amount: data.amount,
+    dueDay: data.dueDay,
+    frequency: data.frequency,
+    isActive: data.isActive,
+    createdAt,
+  } as RecurringPayment;
+};
+
+const assertRecurringPaidDraft = (
+  transaction: Omit<Transaction, 'id' | 'createdAt'>
+): { recurringPaymentId: string; recurringCycle: string } => {
+  validateTransactionSchema(transaction);
+  if (transaction.type !== 'expense' || transaction.paid !== true) {
+    throw new Error('Solo un gasto pagado puede completar un ciclo periódico.');
+  }
+  if (!transaction.recurringPaymentId || !transaction.recurringCycle) {
+    throw new Error('El pago periódico requiere una identidad de ciclo.');
+  }
+  return {
+    recurringPaymentId: transaction.recurringPaymentId,
+    recurringCycle: transaction.recurringCycle,
+  };
+};
+
+const recurringMetadata = (transaction: Transaction) => ({
+  amount: transaction.amount,
+  lastPaidAmount: transaction.amount,
+  lastPaidDate: transaction.date,
+});
+
+const restoreOperationId = (transactionId: string): string => (
+  validateLedgerMutationOperationId(`ledger-mutation:undo:${transactionId}:restore`)
+);
+
+const assertRestorableSnapshot = (transaction: Transaction): void => {
+  if (!transaction.id) throw new Error('No se puede restaurar una fila sin identidad original.');
+  validateTransactionSchema(transaction);
+  if (transaction.mutationKind === 'migration' || transaction.mutationSource === 'migration') {
+    throw new Error('No se puede restaurar una fila de migración sin reconciliarla.');
+  }
+  if (transaction.linkedTransactionId) {
+    throw new Error('No se puede restaurar un pago vinculado sin su agregado completo.');
+  }
+  if (transaction.recurringPaymentId) {
+    throw new Error('No se puede restaurar un pago periódico sin su agregado completo.');
+  }
+  if (transaction.mutationKind === 'credit-payment') {
+    throw new Error('No se puede restaurar una mitad de pago sin su agregado completo.');
+  }
+  if (transaction.mutationKind === 'recurring-post' || transaction.mutationSource === 'recurring') {
+    throw new Error('No se puede restaurar una fila periódica incompleta.');
+  }
+  if (transaction.mutationSource === 'debt' && !transaction.debtId) {
+    throw new Error('No se puede restaurar una fila de deuda incompleta.');
+  }
+  if (transaction.type === 'transfer') {
+    throw new Error('No se puede restaurar una transferencia desde el deshacer genérico.');
+  }
+  if (
+    transaction.mutationKind === 'balance-adjustment'
+    || transaction.mutationSource === 'account'
+    || SPECIAL_CATEGORIES.groupedAdjustmentCategories.includes(transaction.category)
+  ) {
+    throw new Error('No se puede restaurar un ajuste de saldo desde el deshacer genérico.');
+  }
+  if (transaction.debtId && transaction.category !== LOAN_PAYMENT_CATEGORY) {
+    throw new Error('No se puede restaurar el movimiento principal de una deuda sin recrearla.');
+  }
+};
+
 interface UseTransactionsCRUDReturn {
   addTransaction: (
     transaction: Omit<Transaction, 'id' | 'createdAt'>
@@ -87,7 +298,16 @@ interface UseTransactionsCRUDReturn {
     creditTx: Omit<Transaction, 'id' | 'createdAt'>,
     sourceTx: Omit<Transaction, 'id' | 'createdAt'>
   ) => Promise<void>;
-  deleteTransaction: (id: string) => Promise<void>;
+  addRecurringTransactionAtomic: (
+    transaction: Omit<Transaction, 'id' | 'createdAt'>
+  ) => Promise<void>;
+  linkRecurringTransactionAtomic: (
+    transactionId: string,
+    recurringPaymentId: string,
+    recurringCycle: string
+  ) => Promise<void>;
+  restoreTransaction: (transaction: Transaction) => Promise<void>;
+  deleteTransaction: (id: string) => Promise<Transaction | null>;
   updateTransaction: (
     id: string,
     updates: Partial<Transaction>
@@ -99,114 +319,10 @@ interface UseTransactionsCRUDReturn {
  */
 export function useTransactionsCRUD(
   userId: string | null,
-  accounts: Account[] = []
+  _accounts: Account[] = []
 ): UseTransactionsCRUDReturn {
-  // Ref para leer las cuentas dentro de los callbacks sin recrear sus identidades
-  // en cada cambio de la suscripción (evita re-renders/efectos en cascada).
-  const accountsRef = useRef(accounts);
-  useEffect(() => {
-    accountsRef.current = accounts;
-  }, [accounts]);
-
-  /**
-   * Transferencia atómica con Firebase Transaction
-   */
-  const addTransferAtomic = useCallback(
-    async (
-      uid: string,
-      transaction: Omit<Transaction, 'id' | 'createdAt'>
-    ): Promise<Transaction> => {
-      const { accountId, toAccountId, amount, description, date } = transaction;
-      const createdAt = new Date();
-      const transactionDate = date || createdAt;
-      let createdTransaction: Transaction | null = null;
-
-      if (!accountId || !toAccountId) {
-        throw new Error(
-          'Se requieren cuenta origen y destino para transferencias'
-        );
-      }
-
-      if (accountId === toAccountId) {
-        throw new Error('No puedes transferir a la misma cuenta');
-      }
-
-      await runTransaction(db, async (firestoreTransaction) => {
-        // Referencias a documentos
-        const fromAccountRef = doc(db, `users/${uid}/accounts`, accountId);
-        const toAccountRef = doc(db, `users/${uid}/accounts`, toAccountId);
-
-        // Leer ambas cuentas
-        const fromAccountSnap = await firestoreTransaction.get(fromAccountRef);
-        const toAccountSnap = await firestoreTransaction.get(toAccountRef);
-
-        // Validar existencia
-        if (!fromAccountSnap.exists()) {
-          throw new Error('La cuenta origen no existe');
-        }
-        if (!toAccountSnap.exists()) {
-          throw new Error('La cuenta destino no existe');
-        }
-
-        // Bloquear transferencias DESDE una TC ANTES de escribir nada: una TC no es
-        // un activo del que se pueda extraer dinero; permitirlo crearía cupo/saldo
-        // de la nada. Validamos aquí (no solo en el formulario) porque toda creación
-        // programática de transferencias —import y undo/restore— pasa por
-        // addTransaction → addTransferAtomic, sin el guard de la UI; este es el
-        // único punto que las cubre a todas. Lanzar dentro de runTransaction aborta
-        // toda la operación, así que ninguna escritura se confirma.
-        const fromAccountData = fromAccountSnap.data() as Account;
-        if (fromAccountData.type === 'credit') {
-          throw new Error('No se puede transferir desde una tarjeta de crédito');
-        }
-        const toAccountData = toAccountSnap.data() as Account;
-        if (
-          toAccountData.type === 'credit' &&
-          toAccountData.usedCredit != null &&
-          amount > Math.max(0, toAccountData.usedCredit) + 0.01
-        ) {
-          throw new Error('No puedes pagar más de lo que debes en la tarjeta');
-        }
-
-        // Crear documento de transacción
-        const transactionRef = doc(
-          collection(db, `users/${uid}/transactions`)
-        );
-        firestoreTransaction.set(transactionRef, {
-          type: 'transfer',
-          amount,
-          accountId,
-          toAccountId,
-          category: TRANSFER_CATEGORY,
-          description: description || 'Transferencia entre cuentas',
-          date: transactionDate,
-          paid: true,
-          createdAt,
-        });
-        createdTransaction = {
-          id: transactionRef.id,
-          type: 'transfer',
-          amount,
-          accountId,
-          toAccountId,
-          category: TRANSFER_CATEGORY,
-          description: description || 'Transferencia entre cuentas',
-          date: transactionDate,
-          paid: true,
-          createdAt,
-        } as Transaction;
-
-        // Actualizar usedCredit en cuentas TC afectadas (destino: la transferencia
-        // hacia una TC es un pago que reduce la deuda).
-        if (toAccountData.type === 'credit') {
-          firestoreTransaction.update(toAccountRef, { usedCredit: increment(-amount) });
-        }
-      });
-      if (!createdTransaction) throw new Error('No se pudo crear la transferencia');
-      return createdTransaction;
-    },
-    []
-  );
+  // Conserva la firma pública; la autoridad financiera siempre se recarga del servidor.
+  void _accounts;
 
   /**
    * AUDIT-FIX: Pago de crédito atómico — crea ambas transacciones en una sola operación
@@ -223,51 +339,85 @@ export function useTransactionsCRUD(
       validateTransactionSchema(creditTx);
       validateTransactionSchema(sourceTx);
       const createdAt = new Date();
-      let createdTransactions: Transaction[] = [];
+      const creditTxRef = doc(collection(db, `users/${userId}/transactions`));
+      const sourceTxRef = doc(collection(db, `users/${userId}/transactions`));
+      const createdTransactions = await executeAuthenticatedLedgerMutation(
+        userId,
+        async ({ operationId, loadContext }) => {
+          const creditDraft = {
+            ...stripUndefined(creditTx),
+            id: creditTxRef.id,
+            amount: normalizeLedgerAmount(creditTx.amount),
+            linkedTransactionId: sourceTxRef.id,
+            createdAt,
+            operationId,
+            mutationKind: 'credit-payment' as const,
+            mutationSource: creditTx.mutationSource ?? ('manual' as const),
+          } as Transaction;
+          const sourceDraft = {
+            ...stripUndefined(sourceTx),
+            id: sourceTxRef.id,
+            amount: normalizeLedgerAmount(sourceTx.amount),
+            linkedTransactionId: creditTxRef.id,
+            createdAt,
+            operationId,
+            mutationKind: 'credit-payment' as const,
+            mutationSource: sourceTx.mutationSource ?? creditDraft.mutationSource,
+          } as Transaction;
+          const context = await loadContext([creditDraft.accountId, sourceDraft.accountId]);
+          const credit = {
+            ...creditDraft,
+            accountId: context.canonicalAccountId(creditDraft.accountId),
+          };
+          const source = {
+            ...sourceDraft,
+            accountId: context.canonicalAccountId(sourceDraft.accountId),
+          };
+          const creditAccount = context.accounts.find(
+            account => account.id === credit.accountId && account.type === 'credit'
+          );
+          if (!creditAccount) throw new Error('La cuenta de crédito no existe');
+          const sourceAccount = context.accounts.find(account => account.id === source.accountId);
+          if (!sourceAccount) throw new Error('La cuenta origen no existe');
+          if (sourceAccount.type === 'credit') {
+            throw new Error('La cuenta origen del pago debe ser de ahorro o efectivo');
+          }
 
-      await runTransaction(db, async (firestoreTransaction) => {
-        // Verificar que ambas cuentas existan
-        const creditAccountRef = doc(db, `users/${userId}/accounts`, creditTx.accountId);
-        const sourceAccountRef = doc(db, `users/${userId}/accounts`, sourceTx.accountId);
+          const pair = validateCreditPaymentPair(credit, source, creditAccount);
+          if (!pair.valid) {
+            throw new Error(`El par de pago de tarjeta es inválido: ${pair.reason}`);
+          }
 
-        const creditSnap = await firestoreTransaction.get(creditAccountRef);
-        const sourceSnap = await firestoreTransaction.get(sourceAccountRef);
+          const intent = {
+            kind: 'credit-payment' as const,
+            before: [],
+            after: [credit, source],
+            metadata: {
+              operationId,
+              mutationSource: credit.mutationSource ?? 'manual' as const,
+            },
+          };
+          const creditChanges = planCreditAuthorityChanges(intent, context);
 
-        if (!creditSnap.exists()) throw new Error('La cuenta de crédito no existe');
-        if (!sourceSnap.exists()) throw new Error('La cuenta origen no existe');
-        const persistedDebt = (creditSnap.data() as Account).usedCredit;
-        if (persistedDebt != null && creditTx.amount > Math.max(0, persistedDebt) + 0.01) {
-          throw new Error('No puedes pagar más de lo que debes en la tarjeta');
+          return {
+            intent,
+            context,
+            writeCount: 2 + creditChanges.length,
+            stage: (batch) => {
+              const persistedCredit = stripUndefined({ ...credit, id: undefined });
+              const persistedSource = stripUndefined({ ...source, id: undefined });
+              batch.set(creditTxRef, persistedCredit);
+              batch.set(sourceTxRef, persistedSource);
+              creditChanges.forEach(({ accountId, delta }) => {
+                batch.update(doc(db, `users/${userId}/accounts`, accountId), {
+                  usedCredit: increment(delta),
+                });
+              });
+            },
+            result: [credit, source],
+          };
         }
-
-        // Crear ambas transacciones atómicamente
-        const creditTxRef = doc(collection(db, `users/${userId}/transactions`));
-        const sourceTxRef = doc(collection(db, `users/${userId}/transactions`));
-
-        const cleanCredit = stripUndefined(creditTx);
-        const cleanSource = stripUndefined(sourceTx);
-
-        firestoreTransaction.set(creditTxRef, {
-          ...cleanCredit,
-          linkedTransactionId: sourceTxRef.id,
-          createdAt,
-        });
-        firestoreTransaction.set(sourceTxRef, {
-          ...cleanSource,
-          linkedTransactionId: creditTxRef.id,
-          createdAt,
-        });
-        createdTransactions = [
-          { id: creditTxRef.id, ...cleanCredit, linkedTransactionId: sourceTxRef.id, createdAt },
-          { id: sourceTxRef.id, ...cleanSource, linkedTransactionId: creditTxRef.id, createdAt },
-        ] as Transaction[];
-
-        // Actualizar usedCredit en la TC (el creditTx es un ingreso que reduce deuda)
-        const creditDelta = getCreditDelta(creditTx, creditTx.accountId);
-        if (creditDelta !== 0) {
-          firestoreTransaction.update(creditAccountRef, { usedCredit: increment(creditDelta) });
-        }
-      });
+      );
       publishTransactionCacheMutation({
         userId,
         type: 'update',
@@ -287,153 +437,687 @@ export function useTransactionsCRUD(
 
       // Validación de esquema como última línea de defensa
       validateTransactionSchema(transaction);
+      if (transaction.type !== 'transfer' && transaction.toAccountId) {
+        throw new Error(
+          'Una cuenta destino en un ingreso o gasto requiere el writer de pago atómico.'
+        );
+      }
 
-      // Transferencias usan atomicidad
-      if (transaction.type === 'transfer' && transaction.toAccountId) {
-        const createdTransaction = await addTransferAtomic(userId, transaction);
+      const createdAt = new Date();
+      const amount = normalizeLedgerAmount(transaction.amount);
+      const persistedInput = stripUndefined(transaction.type === 'transfer'
+        ? {
+            ...transaction,
+            category: TRANSFER_CATEGORY,
+            description: transaction.description || 'Transferencia entre cuentas',
+            date: transaction.date || createdAt,
+            paid: true,
+          }
+        : transaction);
+      const mutationKind = transaction.type === 'transfer' ? 'transfer' as const : 'create' as const;
+      const callerOperationId = transaction.operationId
+        ? validateLedgerMutationOperationId(transaction.operationId)
+        : undefined;
+      const transactionRef = callerOperationId
+        ? doc(db, `users/${userId}/transactions`, callerOperationId)
+        : doc(collection(db, `users/${userId}/transactions`));
+      const requestedTransaction = { ...persistedInput, amount } as Partial<Transaction>;
+      const publishCreatedTransaction = (createdTransaction: Transaction) => {
         publishTransactionCacheMutation({
           userId,
           type: 'update',
           transactions: [createdTransaction],
         });
-        return;
+      };
+
+      if (callerOperationId) {
+        const committed = await loadCommittedOperation(
+          userId,
+          transactionRef.id,
+          callerOperationId,
+          mutationKind,
+          requestedTransaction
+        );
+        if (committed) {
+          publishCreatedTransaction(committed);
+          return;
+        }
       }
 
-      // Gasto/Ingreso
-      const cleanTransaction = stripUndefined(transaction);
+      try {
+        const createdTransaction = await executeAuthenticatedLedgerMutation(
+          userId,
+          async ({ operationId, loadContext }) => {
+            const draft = {
+              ...persistedInput,
+              amount,
+              id: transactionRef.id,
+              createdAt,
+              operationId,
+              mutationKind,
+              mutationSource: transaction.mutationSource ?? ('manual' as const),
+            } as Transaction;
+            const context = await loadContext([
+              draft.accountId,
+              ...(draft.toAccountId ? [draft.toAccountId] : []),
+            ]);
+            const normalizedTransaction = {
+              ...draft,
+              accountId: context.canonicalAccountId(draft.accountId),
+              toAccountId: draft.toAccountId
+                ? context.canonicalAccountId(draft.toAccountId)
+                : undefined,
+            };
 
-      const deltas = creditDeltasByAccount(transaction, accountsRef.current);
+            if (normalizedTransaction.type === 'transfer') {
+              if (!normalizedTransaction.toAccountId) {
+                throw new Error('Se requieren cuenta origen y destino para transferencias');
+              }
+              if (normalizedTransaction.accountId === normalizedTransaction.toAccountId) {
+                throw new Error('No puedes transferir a la misma cuenta');
+              }
+              const sourceAccount = context.accounts.find(
+                account => account.id === normalizedTransaction.accountId
+              );
+              if (sourceAccount?.type === 'credit') {
+                throw new Error('No se puede transferir desde una tarjeta de crédito');
+              }
+            }
 
-      // Si no afecta ninguna TC, basta una escritura simple
-      if (deltas.size === 0) {
-        const createdAt = new Date();
-        const transactionRef = await addDoc(collection(db, `users/${userId}/transactions`), {
-          ...cleanTransaction,
-          createdAt,
-        });
+            const intent = {
+              kind: normalizedTransaction.type === 'transfer' ? 'transfer' as const : 'create' as const,
+              before: [],
+              after: [normalizedTransaction],
+              metadata: {
+                operationId,
+                mutationSource: normalizedTransaction.mutationSource ?? 'manual' as const,
+              },
+            };
+            const creditChanges = planCreditAuthorityChanges(intent, context);
+
+            return {
+              intent,
+              context,
+              writeCount: 1 + creditChanges.length,
+              stage: (batch) => {
+                const persistedTransaction = { ...normalizedTransaction };
+                delete persistedTransaction.id;
+                batch.set(transactionRef, persistedTransaction);
+                creditChanges.forEach(({ accountId, delta }) => {
+                  batch.update(doc(db, `users/${userId}/accounts`, accountId), {
+                    usedCredit: increment(delta),
+                  });
+                });
+              },
+              result: normalizedTransaction,
+            };
+          },
+          { operationId: callerOperationId }
+        );
+        publishCreatedTransaction(createdTransaction);
+      } catch (error) {
+        if (callerOperationId) {
+          try {
+            const committed = await loadCommittedOperation(
+              userId,
+              transactionRef.id,
+              callerOperationId,
+              mutationKind,
+              requestedTransaction
+            );
+            if (committed) {
+              publishCreatedTransaction(committed);
+              return;
+            }
+          } catch {
+            // Conservar el error del commit. Un reintento volverá a validar el ID.
+          }
+        }
+        throw error;
+      }
+    },
+    [userId]
+  );
+
+  const addRecurringTransactionAtomic = useCallback(
+    async (transaction: Omit<Transaction, 'id' | 'createdAt'>) => {
+      if (!userId) return;
+      if (isOffline()) throw new Error(OFFLINE_WRITE_ERROR);
+      const { recurringPaymentId, recurringCycle } = assertRecurringPaidDraft(transaction);
+      const operationId = recurringCycleOperationId(recurringPaymentId, recurringCycle);
+      const transactionRef = doc(db, `users/${userId}/transactions`, operationId);
+      const publish = (committed: Transaction) => {
         publishTransactionCacheMutation({
           userId,
           type: 'update',
-          transactions: [{ id: transactionRef.id, ...cleanTransaction, createdAt } as Transaction],
+          transactions: [committed],
         });
+      };
+      const loadCommitted = async (): Promise<Transaction | null> => {
+        const committed = await loadServerLedgerTransaction(userId, operationId);
+        if (!committed) return null;
+        if (
+          committed.operationId !== operationId
+          || committed.mutationKind !== 'recurring-post'
+          || committed.recurringPaymentId !== recurringPaymentId
+          || committed.recurringCycle !== recurringCycle
+          || committed.paid !== true
+        ) {
+          throw new Error('La identidad del ciclo pertenece a otra mutación financiera.');
+        }
+        return committed;
+      };
+
+      const alreadyCommitted = await loadCommitted();
+      if (alreadyCommitted) {
+        publish(alreadyCommitted);
         return;
       }
 
-      // Afecta una TC: crear la transacción y ajustar usedCredit ATÓMICAMENTE,
-      // para que nunca queden desincronizados si una de las dos escrituras falla.
-      const createdAt = new Date();
-      let createdTransaction: Transaction | null = null;
-      await runTransaction(db, async (firestoreTransaction) => {
-        // Lecturas primero (requisito de Firestore): validar que las TC existan
-        const accountRefs = Array.from(deltas.keys()).map(accountId =>
-          doc(db, `users/${userId}/accounts`, accountId)
-        );
-        const snaps = await Promise.all(
-          accountRefs.map(ref => firestoreTransaction.get(ref))
-        );
-        snaps.forEach(snap => {
-          if (!snap.exists()) throw new Error('La cuenta de la transacción no existe');
-        });
-        Array.from(deltas.entries()).forEach(([accountId, delta], index) => {
-          const currentDebt = (snaps[index].data() as Account).usedCredit;
-          if (currentDebt != null && currentDebt + delta < -0.01) {
-            throw new Error(`El movimiento dejaría deuda negativa en la tarjeta ${accountId}`);
-          }
-        });
+      try {
+        const committed = await executeAuthenticatedLedgerMutation(
+          userId,
+          async ({ loadContext }) => {
+            const [payment, linkedTransactions] = await Promise.all([
+              loadServerRecurringPayment(userId, recurringPaymentId),
+              loadServerLedgerTransactionsByRecurringPayment(userId, recurringPaymentId),
+            ]);
+            if (!isRecurringCycleKeyForPayment(payment, recurringCycle)) {
+              throw new Error('La identidad del ciclo no corresponde al pago periódico.');
+            }
+            const duplicate = linkedTransactions.find(candidate => (
+              recurringTransactionSatisfiesCycleKey(payment, candidate, recurringCycle)
+            ));
+            if (duplicate) {
+              const context = await loadContext([]);
+              return {
+                intent: {
+                  kind: 'recurring-post' as const,
+                  before: [],
+                  after: [],
+                  metadata: { operationId, mutationSource: 'recurring' as const },
+                },
+                context,
+                writeCount: 1,
+                stage: (batch) => {
+                  batch.update(
+                    doc(db, `users/${userId}/recurringPayments`, recurringPaymentId),
+                    recurringMetadata(duplicate)
+                  );
+                },
+                result: duplicate,
+              };
+            }
 
-        const txRef = doc(collection(db, `users/${userId}/transactions`));
-        firestoreTransaction.set(txRef, { ...cleanTransaction, createdAt });
-        createdTransaction = { id: txRef.id, ...cleanTransaction, createdAt } as Transaction;
+            const createdAt = new Date();
+            const draft = {
+              ...stripUndefined(transaction),
+              id: operationId,
+              amount: normalizeLedgerAmount(transaction.amount),
+              createdAt,
+              operationId,
+              mutationKind: 'recurring-post' as const,
+              mutationSource: 'recurring' as const,
+            } as Transaction;
+            const context = await loadContext([draft.accountId]);
+            const normalized = {
+              ...draft,
+              accountId: context.canonicalAccountId(draft.accountId),
+            };
+            const intent = {
+              kind: 'recurring-post' as const,
+              before: [],
+              after: [normalized],
+              metadata: { operationId, mutationSource: 'recurring' as const },
+            };
+            const creditChanges = planCreditAuthorityChanges(intent, context);
 
-        for (const [accountId, delta] of deltas) {
-          firestoreTransaction.update(doc(db, `users/${userId}/accounts`, accountId), {
-            usedCredit: increment(delta),
-          });
+            return {
+              intent,
+              context,
+              writeCount: 2 + creditChanges.length,
+              stage: (batch) => {
+                const persisted = { ...normalized };
+                delete persisted.id;
+                batch.set(transactionRef, persisted);
+                batch.update(
+                  doc(db, `users/${userId}/recurringPayments`, recurringPaymentId),
+                  recurringMetadata(normalized)
+                );
+                creditChanges.forEach(({ accountId, delta }) => {
+                  batch.update(doc(db, `users/${userId}/accounts`, accountId), {
+                    usedCredit: increment(delta),
+                  });
+                });
+              },
+              result: normalized,
+            };
+          },
+          { operationId }
+        );
+        publish(committed);
+      } catch (error) {
+        const committed = await loadCommitted();
+        if (committed) {
+          publish(committed);
+          return;
         }
-      });
-      if (!createdTransaction) throw new Error('No se pudo crear la transacción');
-      publishTransactionCacheMutation({
+        throw error;
+      }
+    },
+    [userId]
+  );
+
+  const linkRecurringTransactionAtomic = useCallback(
+    async (
+      transactionId: string,
+      recurringPaymentId: string,
+      recurringCycle: string
+    ) => {
+      if (!userId) return;
+      if (isOffline()) throw new Error(OFFLINE_WRITE_ERROR);
+      const operationId = recurringCycleOperationId(recurringPaymentId, recurringCycle);
+      const publish = (linked: Transaction) => publishTransactionCacheMutation({
         userId,
         type: 'update',
-        transactions: [createdTransaction],
+        transactions: [linked],
       });
+      try {
+        const linked = await executeAuthenticatedLedgerMutation(
+          userId,
+          async ({ loadContext }) => {
+            const [payment, transaction, linkedTransactions] = await Promise.all([
+              loadServerRecurringPayment(userId, recurringPaymentId),
+              loadServerLedgerTransaction(userId, transactionId),
+              loadServerLedgerTransactionsByRecurringPayment(userId, recurringPaymentId),
+            ]);
+            if (!isRecurringCycleKeyForPayment(payment, recurringCycle)) {
+              throw new Error('La identidad del ciclo no corresponde al pago periódico.');
+            }
+            if (!transaction) {
+              throw new Error('La transacción ya no existe. Actualiza e intenta de nuevo.');
+            }
+            if (transaction.type !== 'expense' || transaction.paid !== true) {
+              throw new Error('Solo un gasto pagado puede vincularse a un ciclo periódico.');
+            }
+            if (
+              transaction.recurringPaymentId
+              && transaction.recurringPaymentId !== recurringPaymentId
+            ) {
+              throw new Error('La transacción ya pertenece a otro pago periódico.');
+            }
+            if (
+              transaction.recurringPaymentId === recurringPaymentId
+              && transaction.recurringCycle === recurringCycle
+            ) {
+              const context = await loadContext([]);
+              return {
+                intent: {
+                  kind: 'recurring-post' as const,
+                  before: [],
+                  after: [],
+                  metadata: { operationId, mutationSource: 'recurring' as const },
+                },
+                context,
+                writeCount: 0,
+                stage: () => undefined,
+                result: transaction,
+              };
+            }
+
+            const duplicate = linkedTransactions.find(candidate => (
+              candidate.id !== transactionId
+              && recurringTransactionSatisfiesCycleKey(payment, candidate, recurringCycle)
+            ));
+            if (duplicate) {
+              const context = await loadContext([]);
+              return {
+                intent: {
+                  kind: 'recurring-post' as const,
+                  before: [],
+                  after: [],
+                  metadata: { operationId, mutationSource: 'recurring' as const },
+                },
+                context,
+                writeCount: 0,
+                stage: () => undefined,
+                result: duplicate,
+              };
+            }
+
+            const candidate = {
+              ...transaction,
+              recurringPaymentId,
+              recurringCycle,
+              operationId,
+              mutationKind: 'recurring-post' as const,
+              mutationSource: 'recurring' as const,
+            } as Transaction;
+            const context = await loadContext([candidate.accountId]);
+            const normalized = {
+              ...candidate,
+              accountId: context.canonicalAccountId(candidate.accountId),
+            };
+            const intent = {
+              kind: 'recurring-post' as const,
+              before: [transaction],
+              after: [normalized],
+              metadata: { operationId, mutationSource: 'recurring' as const },
+            };
+
+            return {
+              intent,
+              context,
+              writeCount: 2,
+              stage: (batch) => {
+                batch.update(doc(db, `users/${userId}/transactions`, transactionId), {
+                  recurringPaymentId,
+                  recurringCycle,
+                  operationId,
+                  mutationKind: 'recurring-post',
+                  mutationSource: 'recurring',
+                });
+                batch.update(
+                  doc(db, `users/${userId}/recurringPayments`, recurringPaymentId),
+                  recurringMetadata(normalized)
+                );
+              },
+              result: normalized,
+            };
+          },
+          { operationId }
+        );
+        publish(linked);
+      } catch (error) {
+        try {
+          const committed = await loadServerLedgerTransaction(userId, transactionId);
+          if (
+            committed
+            && committed.recurringPaymentId === recurringPaymentId
+            && committed.recurringCycle === recurringCycle
+            && committed.paid === true
+          ) {
+            publish(committed);
+            return;
+          }
+          const payment = await loadServerRecurringPayment(userId, recurringPaymentId);
+          const duplicate = (
+            await loadServerLedgerTransactionsByRecurringPayment(userId, recurringPaymentId)
+          ).find(candidate => (
+            recurringTransactionSatisfiesCycleKey(payment, candidate, recurringCycle)
+          ));
+          if (duplicate) {
+            publish(duplicate);
+            return;
+          }
+        } catch {
+          // Conservar el error original; un reintento vuelve a leer autoridad.
+        }
+        throw error;
+      }
     },
-    [userId, addTransferAtomic]
+    [userId]
+  );
+
+  const restoreTransaction = useCallback(
+    async (transaction: Transaction) => {
+      if (!userId) return;
+      if (isOffline()) throw new Error(OFFLINE_WRITE_ERROR);
+      assertRestorableSnapshot(transaction);
+
+      const transactionId = transaction.id!;
+      const operationId = restoreOperationId(transactionId);
+      const requested = { ...transaction } as Partial<Transaction>;
+      delete requested.id;
+      delete requested.operationId;
+      delete requested.mutationKind;
+      delete requested.mutationSource;
+      const publish = (restored: Transaction) => publishTransactionCacheMutation({
+        userId,
+        type: 'update',
+        transactions: [restored],
+      });
+      const loadRestored = async (): Promise<Transaction | null> => {
+        const existing = await loadServerLedgerTransaction(userId, transactionId);
+        if (!existing) return null;
+        if (
+          existing.operationId !== operationId
+          || existing.mutationKind !== 'restore'
+          || existing.mutationSource !== 'undo'
+          || !transactionMatchesRequest(existing, requested)
+        ) {
+          throw new Error('La identidad original ya pertenece a otra transacción.');
+        }
+        return existing;
+      };
+
+      const alreadyRestored = await loadRestored();
+      if (alreadyRestored) {
+        publish(alreadyRestored);
+        return;
+      }
+
+      try {
+        const restored = await executeAuthenticatedLedgerMutation(
+          userId,
+          async ({ loadContext }) => {
+            const collision = await loadServerLedgerTransaction(userId, transactionId);
+            if (collision) {
+              throw new Error('La identidad original ya pertenece a otra transacción.');
+            }
+
+            const normalizedAmount = normalizeLedgerAmount(transaction.amount);
+            const draft = {
+              ...stripUndefined(transaction as unknown as Record<string, unknown>),
+              id: transactionId,
+              amount: normalizedAmount,
+              createdAt: transaction.createdAt ?? new Date(),
+              operationId,
+              mutationKind: 'restore' as const,
+              mutationSource: 'undo' as const,
+            } as Transaction;
+            let debtRef: ReturnType<typeof doc> | null = null;
+            let debtUpdate: Record<string, unknown> | null = null;
+
+            if (draft.debtId) {
+              debtRef = doc(db, `users/${userId}/debts`, draft.debtId);
+              const debtSnapshot = await getDocFromServer(debtRef);
+              if (!debtSnapshot.exists()) {
+                throw new Error('No se puede restaurar el pago porque la deuda ya no existe.');
+              }
+              const debt = debtSnapshot.data();
+              const expectedType = debt.type === 'lent'
+                ? 'income'
+                : debt.type === 'borrowed'
+                  ? 'expense'
+                  : null;
+              if (
+                expectedType === null
+                || draft.type !== expectedType
+                || typeof debt.remainingAmount !== 'number'
+                || !Number.isFinite(debt.remainingAmount)
+                || debt.remainingAmount < normalizedAmount
+                || typeof debt.accountId !== 'string'
+                || debt.accountId !== draft.accountId
+              ) {
+                throw new Error('No se puede restaurar el pago con el saldo pendiente actual.');
+              }
+              const remainingAmount = roundMoney(debt.remainingAmount - normalizedAmount);
+              const isSettled = remainingAmount === 0;
+              debtUpdate = {
+                remainingAmount,
+                isSettled,
+                settledAt: isSettled ? draft.date : deleteField(),
+              };
+            }
+
+            const context = await loadContext([draft.accountId]);
+            const normalized = {
+              ...draft,
+              accountId: context.canonicalAccountId(draft.accountId),
+            };
+            const sourceAccount = context.accounts.find(
+              account => account.id === normalized.accountId
+            );
+            if (!draft.debtId && sourceAccount?.type === 'credit') {
+              throw new Error('No se puede restaurar una transacción de tarjeta sin reconciliarla.');
+            }
+            const intent = {
+              kind: 'restore' as const,
+              before: [],
+              after: [normalized],
+              metadata: { operationId, mutationSource: 'undo' as const },
+            };
+            const creditChanges = planCreditAuthorityChanges(intent, context);
+
+            return {
+              intent,
+              context,
+              writeCount: 1 + (debtRef ? 1 : 0) + creditChanges.length,
+              stage: (batch) => {
+                const persisted = { ...normalized };
+                delete persisted.id;
+                batch.set(
+                  doc(db, `users/${userId}/transactions`, transactionId),
+                  persisted
+                );
+                if (debtRef && debtUpdate) batch.update(debtRef, debtUpdate);
+                creditChanges.forEach(({ accountId, delta }) => {
+                  batch.update(doc(db, `users/${userId}/accounts`, accountId), {
+                    usedCredit: increment(delta),
+                  });
+                });
+              },
+              result: normalized,
+            };
+          },
+          { operationId }
+        );
+        publish(restored);
+      } catch (error) {
+        try {
+          const restored = await loadRestored();
+          if (restored) {
+            publish(restored);
+            return;
+          }
+        } catch {
+          // Conservar el error original; el reintento volverá a comprobar el ID.
+        }
+        throw error;
+      }
+    },
+    [userId]
   );
 
   const deleteTransaction = useCallback(
     async (id: string) => {
-      if (!userId) return;
+      if (!userId) return null;
       if (isOffline()) throw new Error(OFFLINE_WRITE_ERROR);
-      let deletedTransactionIds: string[] = [];
-
-      // Borrar la transacción y revertir usedCredit en las TC afectadas
-      // ATÓMICAMENTE: si una de las escrituras falla, ninguna se aplica y
-      // usedCredit nunca queda desincronizado del set de transacciones.
-      await runTransaction(db, async (firestoreTransaction) => {
-        const txRef = doc(db, `users/${userId}/transactions`, id);
-        const txSnap = await firestoreTransaction.get(txRef);
-        if (!txSnap.exists()) return;
-        const txData = { id, ...(txSnap.data() as Transaction) } as Transaction;
-
-        const debtRef = txData.category === LOAN_PAYMENT_CATEGORY && txData.debtId
-          ? doc(db, `users/${userId}/debts`, txData.debtId)
-          : null;
-        const debtSnap = debtRef ? await firestoreTransaction.get(debtRef) : null;
-        if (debtRef && !debtSnap?.exists()) {
-          throw new Error('La deuda del pago ya no existe. Actualiza e intenta de nuevo.');
-        }
-
-        const linkedRef = txData.linkedTransactionId
-          ? doc(db, `users/${userId}/transactions`, txData.linkedTransactionId)
-          : null;
-        const linkedSnap = linkedRef ? await firestoreTransaction.get(linkedRef) : null;
-        const transactionsToDelete = [
-          txData,
-          ...(linkedSnap?.exists()
-            ? [{ id: linkedRef!.id, ...(linkedSnap.data() as Transaction) } as Transaction]
-            : []),
-        ];
-        deletedTransactionIds = transactionsToDelete
-          .map(transaction => transaction.id)
-          .filter((transactionId): transactionId is string => Boolean(transactionId));
-
-        // Lecturas primero (requisito de Firestore): leer las TC afectadas.
-        const deltas = sumCreditDeltas(transactionsToDelete, accountsRef.current);
-        const accountEntries = Array.from(deltas.entries()).map(([accountId, delta]) => ({
-          accountId,
-          delta,
-          ref: doc(db, `users/${userId}/accounts`, accountId),
-        }));
-        const snaps = await Promise.all(
-          accountEntries.map(entry => firestoreTransaction.get(entry.ref))
-        );
-
-        // Escrituras después.
-        firestoreTransaction.delete(txRef);
-        if (linkedRef && linkedSnap?.exists()) firestoreTransaction.delete(linkedRef);
-        if (debtRef && debtSnap?.exists()) {
-          const debt = debtSnap.data() as { remainingAmount: number };
-          firestoreTransaction.update(debtRef, {
-            remainingAmount: debt.remainingAmount + txData.amount,
-            isSettled: false,
-            settledAt: deleteField(),
-          });
-        }
-        accountEntries.forEach((entry, index) => {
-          if (snaps[index].exists() && entry.delta !== 0) {
-            firestoreTransaction.update(entry.ref, { usedCredit: increment(-entry.delta) });
+      const deleted = await executeAuthenticatedLedgerMutation(
+        userId,
+        async ({ operationId, loadContext }) => {
+          const primary = await loadServerLedgerTransaction(userId, id);
+          if (!primary) {
+            const context = await loadContext([]);
+            return {
+              intent: {
+                kind: 'delete' as const,
+                before: [],
+                after: [],
+                metadata: { operationId, mutationSource: 'manual' as const },
+              },
+              context,
+              writeCount: 0,
+              stage: () => undefined,
+              result: {
+                transaction: null as Transaction | null,
+                transactionIds: [] as string[],
+              },
+            };
           }
-        });
-      });
 
-      if (deletedTransactionIds.length > 0) {
+          const counterpart = primary.linkedTransactionId
+            ? await loadServerLedgerTransaction(userId, primary.linkedTransactionId)
+            : null;
+          const before = [primary, ...(counterpart ? [counterpart] : [])];
+          const intent = {
+            kind: 'delete' as const,
+            before,
+            after: [],
+            metadata: {
+              operationId,
+              mutationSource: primary.mutationSource ?? 'manual' as const,
+            },
+          };
+          const context = await loadContext(collectLedgerMutationAccountIds(intent));
+          if (primary.linkedTransactionId) {
+            assertValidLinkedPaymentPair(primary, counterpart, context.accounts);
+          }
+
+          const debtRef = primary.category === LOAN_PAYMENT_CATEGORY && primary.debtId
+            ? doc(db, `users/${userId}/debts`, primary.debtId)
+            : null;
+          let debtUpdate: Record<string, unknown> | null = null;
+          if (debtRef) {
+            const debtSnapshot = await getDocFromServer(debtRef);
+            if (!debtSnapshot.exists()) {
+              throw new Error('La deuda del pago ya no existe. Actualiza e intenta de nuevo.');
+            }
+            const remainingAmount = debtSnapshot.data().remainingAmount;
+            if (
+              typeof remainingAmount !== 'number' ||
+              !Number.isFinite(remainingAmount) ||
+              remainingAmount < 0
+            ) {
+              throw new LedgerMutationValidationError(
+                'INVALID_ACCOUNT_AUTHORITY',
+                'No se pudo validar el saldo persistido de la deuda'
+              );
+            }
+            debtUpdate = {
+              remainingAmount: roundMoney(remainingAmount + primary.amount),
+              isSettled: false,
+              settledAt: deleteField(),
+            };
+          }
+
+          const creditChanges = planCreditAuthorityChanges(intent, context);
+          const transactionIds = before
+            .map(transaction => transaction.id)
+            .filter((transactionId): transactionId is string => Boolean(transactionId));
+
+          return {
+            intent,
+            context,
+            writeCount: transactionIds.length + creditChanges.length + (debtRef ? 1 : 0),
+            stage: (batch) => {
+              transactionIds.forEach(transactionId => {
+                batch.delete(doc(db, `users/${userId}/transactions`, transactionId));
+              });
+              if (debtRef && debtUpdate) batch.update(debtRef, debtUpdate);
+              creditChanges.forEach(({ accountId, delta }) => {
+                batch.update(doc(db, `users/${userId}/accounts`, accountId), {
+                  usedCredit: increment(delta),
+                });
+              });
+            },
+            result: {
+              transaction: primary,
+              transactionIds,
+            },
+          };
+        }
+      );
+
+      if (deleted.transactionIds.length > 0) {
         publishTransactionCacheMutation({
           userId,
           type: 'delete',
-          transactionIds: deletedTransactionIds,
+          transactionIds: deleted.transactionIds,
         });
       }
+      return deleted.transaction;
     },
     [userId]
   );
@@ -452,82 +1136,199 @@ export function useTransactionsCRUD(
 
       // Filter undefined values
       const cleanUpdates = stripUndefined(updates);
+      const callerOperationId = cleanUpdates.operationId
+        ? validateLedgerMutationOperationId(cleanUpdates.operationId)
+        : undefined;
+      const requestedMutationSource = cleanUpdates.mutationSource;
+      const publishUpdatedTransactions = (updatedTransactions: Transaction[]) => {
+        if (updatedTransactions.length === 0) return;
+        publishTransactionCacheMutation({
+          userId,
+          type: 'update',
+          transactions: updatedTransactions,
+        });
+      };
+      const loadAppliedEdit = async (): Promise<Transaction | null> => {
+        if (!callerOperationId) return null;
+        const existing = await loadServerLedgerTransaction(userId, id);
+        if (!existing || existing.operationId !== callerOperationId) return null;
+        const requested = existing.linkedTransactionId
+          ? safePaymentUpdates(cleanUpdates as Partial<Transaction>)
+          : { ...cleanUpdates } as Partial<Transaction>;
+        if (
+          existing.mutationKind !== 'edit'
+          || !transactionMatchesRequest(existing, requested)
+        ) {
+          throw new Error(
+            'El identificador de operación ya pertenece a una edición financiera diferente.'
+          );
+        }
+        return existing;
+      };
 
       try {
-        let updatedTransactions: Transaction[] = [];
-
-        // Actualizar la transacción y ajustar usedCredit ATÓMICAMENTE comparando
-        // el efecto antes/después por cada TC. Cubre cambios de monto, tipo,
-        // cuenta origen y cuenta destino (transferencias). Si algo falla, nada
-        // se aplica y usedCredit nunca queda desincronizado.
-        await runTransaction(db, async (firestoreTransaction) => {
-          const txRef = doc(db, `users/${userId}/transactions`, id);
-          const txSnap = await firestoreTransaction.get(txRef);
-          const oldData = txSnap.exists() ? ({ id, ...(txSnap.data() as Transaction) } as Transaction) : null;
-
-          const linkedRef = oldData?.linkedTransactionId
-            ? doc(db, `users/${userId}/transactions`, oldData.linkedTransactionId)
-            : null;
-          const linkedSnap = linkedRef ? await firestoreTransaction.get(linkedRef) : null;
-          const oldLinked = linkedSnap?.exists()
-            ? ({ id: linkedRef!.id, ...(linkedSnap.data() as Transaction) } as Transaction)
-            : null;
-
-          const primaryUpdates = oldData?.linkedTransactionId
-            ? safePaymentUpdates(cleanUpdates as Partial<Transaction>)
-            : cleanUpdates;
-          const counterpartUpdates = linkedPaymentUpdates(primaryUpdates as Partial<Transaction>);
-
-          // Lecturas primero (requisito de Firestore): leer todas las TC afectadas.
-          let affectedAccounts: { accountId: string; diff: number; ref: ReturnType<typeof doc> }[] = [];
-          if (oldData) {
-            const oldTransactions = [oldData, ...(oldLinked ? [oldLinked] : [])];
-            const newTransactions = [
-              { ...oldData, ...primaryUpdates } as Transaction,
-              ...(oldLinked ? [{ ...oldLinked, ...counterpartUpdates } as Transaction] : []),
-            ];
-            updatedTransactions = newTransactions;
-            const oldDeltas = sumCreditDeltas(oldTransactions, accountsRef.current);
-            const newDeltas = sumCreditDeltas(newTransactions, accountsRef.current);
-            const affectedAccountIds = new Set([...oldDeltas.keys(), ...newDeltas.keys()]);
-            affectedAccounts = Array.from(affectedAccountIds).map(accountId => ({
-              accountId,
-              diff: (newDeltas.get(accountId) ?? 0) - (oldDeltas.get(accountId) ?? 0),
-              ref: doc(db, `users/${userId}/accounts`, accountId),
-            }));
-          }
-          const snaps = await Promise.all(
-            affectedAccounts.map(entry => firestoreTransaction.get(entry.ref))
-          );
-          affectedAccounts.forEach((entry, index) => {
-            if (!snaps[index].exists()) return;
-            const currentDebt = (snaps[index].data() as Account).usedCredit;
-            if (currentDebt != null && currentDebt + entry.diff < -0.01) {
-              throw new Error('La actualización dejaría deuda negativa en la tarjeta');
-            }
-          });
-
-          // Escrituras después.
-          firestoreTransaction.update(txRef, primaryUpdates);
-          if (linkedRef && oldLinked && Object.keys(counterpartUpdates).length > 0) {
-            firestoreTransaction.update(linkedRef, counterpartUpdates);
-          }
-          affectedAccounts.forEach((entry, index) => {
-            if (snaps[index].exists() && entry.diff !== 0) {
-              firestoreTransaction.update(entry.ref, { usedCredit: increment(entry.diff) });
-            }
-          });
-        });
-
-        if (updatedTransactions.length > 0) {
-          publishTransactionCacheMutation({
-            userId,
-            type: 'update',
-            transactions: updatedTransactions,
-          });
+        const alreadyApplied = await loadAppliedEdit();
+        if (alreadyApplied) {
+          publishUpdatedTransactions([alreadyApplied]);
+          return;
         }
+
+        const updatedTransactions = await executeAuthenticatedLedgerMutation(
+          userId,
+          async ({ operationId, loadContext }) => {
+            const oldData = await loadServerLedgerTransaction(userId, id);
+            if (!oldData) {
+              throw new Error('La transacción ya no existe. Actualiza e intenta de nuevo.');
+            }
+
+            const oldLinked = oldData.linkedTransactionId
+              ? await loadServerLedgerTransaction(userId, oldData.linkedTransactionId)
+              : null;
+            const requestedUpdates = oldData.linkedTransactionId
+              ? safePaymentUpdates(cleanUpdates as Partial<Transaction>)
+              : { ...cleanUpdates } as Partial<Transaction>;
+            delete requestedUpdates.id;
+            delete requestedUpdates.createdAt;
+            delete requestedUpdates.linkedTransactionId;
+            delete requestedUpdates.operationId;
+            delete requestedUpdates.mutationKind;
+            delete requestedUpdates.mutationSource;
+            if (requestedUpdates.amount !== undefined) {
+              requestedUpdates.amount = normalizeLedgerAmount(requestedUpdates.amount);
+            }
+
+            const counterpartUpdates = linkedPaymentUpdates(requestedUpdates);
+            const mutationSource = requestedMutationSource
+              ?? oldData.mutationSource
+              ?? 'manual';
+            const auditUpdates = {
+              operationId,
+              mutationKind: 'edit' as const,
+              mutationSource,
+            };
+            const candidatePrimary = {
+              ...oldData,
+              ...requestedUpdates,
+              ...auditUpdates,
+            } as Transaction;
+            const candidateLinked = oldLinked
+              ? {
+                  ...oldLinked,
+                  ...counterpartUpdates,
+                  ...auditUpdates,
+                } as Transaction
+              : null;
+            const before = [oldData, ...(oldLinked ? [oldLinked] : [])];
+            const candidateIntent = {
+              kind: 'edit' as const,
+              before,
+              after: [candidatePrimary, ...(candidateLinked ? [candidateLinked] : [])],
+              metadata: { operationId, mutationSource },
+            };
+            const context = await loadContext(
+              collectLedgerMutationAccountIds(candidateIntent)
+            );
+            const normalizedPrimary = {
+              ...candidatePrimary,
+              accountId: context.canonicalAccountId(candidatePrimary.accountId),
+              toAccountId: candidatePrimary.toAccountId
+                ? context.canonicalAccountId(candidatePrimary.toAccountId)
+                : undefined,
+            };
+            const normalizedLinked = candidateLinked
+              ? {
+                  ...candidateLinked,
+                  accountId: context.canonicalAccountId(candidateLinked.accountId),
+                  toAccountId: candidateLinked.toAccountId
+                    ? context.canonicalAccountId(candidateLinked.toAccountId)
+                    : undefined,
+                }
+              : null;
+
+            validateTransactionSchema(normalizedPrimary);
+            if (normalizedLinked) validateTransactionSchema(normalizedLinked);
+            if (normalizedPrimary.type === 'transfer') {
+              const sourceAccount = context.accounts.find(
+                account => account.id === normalizedPrimary.accountId
+              );
+              if (sourceAccount?.type === 'credit') {
+                throw new Error('No se puede transferir desde una tarjeta de crédito');
+              }
+            }
+            if (oldData.linkedTransactionId) {
+              assertValidLinkedPaymentPair(oldData, oldLinked, context.accounts);
+              assertValidLinkedPaymentPair(
+                normalizedPrimary,
+                normalizedLinked,
+                context.accounts
+              );
+            }
+
+            const intent = {
+              ...candidateIntent,
+              after: [
+                normalizedPrimary,
+                ...(normalizedLinked ? [normalizedLinked] : []),
+              ],
+            };
+            const creditChanges = planCreditAuthorityChanges(intent, context);
+            const primaryWrite = stripUndefined({
+              ...requestedUpdates,
+              ...(requestedUpdates.accountId !== undefined
+                ? { accountId: normalizedPrimary.accountId }
+                : {}),
+              ...(requestedUpdates.toAccountId !== undefined
+                ? { toAccountId: normalizedPrimary.toAccountId }
+                : {}),
+              ...auditUpdates,
+            });
+            const linkedWrite = stripUndefined({
+              ...counterpartUpdates,
+              ...auditUpdates,
+            });
+
+            return {
+              intent,
+              context,
+              writeCount: 1 + (normalizedLinked ? 1 : 0) + creditChanges.length,
+              stage: (batch) => {
+                batch.update(doc(db, `users/${userId}/transactions`, id), primaryWrite);
+                if (normalizedLinked) {
+                  batch.update(
+                    doc(db, `users/${userId}/transactions`, normalizedLinked.id!),
+                    linkedWrite
+                  );
+                }
+                creditChanges.forEach(({ accountId, delta }) => {
+                  batch.update(doc(db, `users/${userId}/accounts`, accountId), {
+                    usedCredit: increment(delta),
+                  });
+                });
+              },
+              result: [
+                normalizedPrimary,
+                ...(normalizedLinked ? [normalizedLinked] : []),
+              ],
+            };
+          },
+          { operationId: callerOperationId }
+        );
+
+        publishUpdatedTransactions(updatedTransactions);
       } catch (error) {
+        if (callerOperationId) {
+          try {
+            const committed = await loadAppliedEdit();
+            if (committed) {
+              publishUpdatedTransactions([committed]);
+              return;
+            }
+          } catch {
+            // Conservar el error original; el siguiente intento vuelve a validar.
+          }
+        }
         logger.error('Firestore error updating transaction:', error);
+        if (error instanceof LedgerMutationValidationError) throw error;
         throw new Error('Error al actualizar la transacción. Por favor intenta de nuevo.');
       }
     },
@@ -537,6 +1338,9 @@ export function useTransactionsCRUD(
   return {
     addTransaction,
     addCreditPaymentAtomic,
+    addRecurringTransactionAtomic,
+    linkRecurringTransactionAtomic,
+    restoreTransaction,
     deleteTransaction,
     updateTransaction,
   };

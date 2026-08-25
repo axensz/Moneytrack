@@ -1,3 +1,30 @@
+export type LedgerMutationKind =
+  | 'create'
+  | 'edit'
+  | 'delete'
+  | 'restore'
+  | 'transfer'
+  | 'credit-payment'
+  | 'recurring-post'
+  | 'balance-adjustment'
+  | 'migration';
+
+export type LedgerMutationSource =
+  | 'manual'
+  | 'ai'
+  | 'recurring'
+  | 'account'
+  | 'debt'
+  | 'undo'
+  | 'migration';
+
+export interface LedgerMutationMetadata {
+  operationId?: string;
+  mutationSource?: LedgerMutationSource;
+  expectedBefore?: number;
+  targetBalance?: number;
+}
+
 export interface Transaction {
   id?: string; // Firestore usa string IDs
   type: 'income' | 'expense' | 'transfer';
@@ -12,6 +39,11 @@ export interface Transaction {
   linkedTransactionId?: string;
   createdAt?: Date;
   beneficiary?: TransactionBeneficiary;
+  operationId?: string;
+  mutationKind?: LedgerMutationKind;
+  mutationSource?: LedgerMutationSource;
+  expectedBefore?: number;
+  targetBalance?: number;
 
   // 🆕 Campos para manejo de intereses en TC
   hasInterest?: boolean; // Si la compra genera intereses
@@ -38,6 +70,25 @@ export interface Transaction {
   originalAmount?: number;    // Monto en la moneda original (ej. 99.99)
   originalCurrency?: string;  // Código de la moneda original (ej. 'USD')
   exchangeRate?: number;      // TRM aplicada: COP por unidad de la moneda original
+}
+
+export type LedgerTransactionEffect = Pick<
+  Transaction,
+  | 'id'
+  | 'type'
+  | 'amount'
+  | 'date'
+  | 'paid'
+  | 'accountId'
+  | 'toAccountId'
+  | 'linkedTransactionId'
+>;
+
+export interface LedgerMutationIntent {
+  kind: LedgerMutationKind;
+  before: readonly LedgerTransactionEffect[];
+  after: readonly LedgerTransactionEffect[];
+  metadata?: LedgerMutationMetadata;
 }
 
 // 🆕 PAGOS PERIÓDICOS (Suscripciones, Servicios, etc.)
@@ -73,6 +124,16 @@ export interface Debt {
   createdAt?: Date;
   settledAt?: Date; // Fecha en que se saldó
   forgivenReason?: 'unpaid' | 'gift' | 'other'; // Presente = deuda condonada (no pagada / regalo / otro)
+  /** Identidad durable del compuesto que creó la deuda (retry/ACK ambiguo). */
+  creationOperationId?: string;
+  /** Recibos acotados para deduplicar pagos confirmados aunque no creen transacción. */
+  recentPaymentOperations?: DebtPaymentOperationReceipt[];
+}
+
+export interface DebtPaymentOperationReceipt {
+  operationId: string;
+  amount: number;
+  transactionId?: string;
 }
 
 // 🆕 PRESUPUESTOS

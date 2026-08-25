@@ -39,7 +39,7 @@ interface TransactionsViewProps {
   customEndDate: string;
   setCustomEndDate: (date: string) => void;
   loading?: boolean;
-  onRestore?: (transaction: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
+  onRestore?: (transaction: Transaction) => Promise<void>;
   onGoToAccounts?: () => void;
 }
 

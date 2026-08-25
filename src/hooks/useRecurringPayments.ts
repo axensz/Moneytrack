@@ -23,7 +23,7 @@ import { db } from '../lib/firebaseDb';
 import { logger } from '../utils/logger';
 import { safeFirestoreOperation, checkNetworkConnection, stripUndefined } from '../utils/firestoreHelpers';
 import { generateId } from '../utils/formatters';
-import { useLocalStorage } from './useLocalStorage';
+import { useGuestLedger } from './useGuestLedger';
 import { useRecurringUtils } from './recurring/useRecurringUtils';
 import type { Transaction, RecurringPayment } from '../types/finance';
 
@@ -32,8 +32,10 @@ export function useRecurringPayments(
   transactions: Transaction[],
   externalPayments?: RecurringPayment[]
 ) {
-  // LocalStorage para modo invitado.
-  const [localPayments, setLocalPayments] = useLocalStorage<RecurringPayment[]>('recurringPayments', []);
+  const {
+    recurringPayments: localPayments,
+    mutate: mutateGuestLedger,
+  } = useGuestLedger();
 
   // ── Subscripción Firestore (se omite si los datos vienen por externalPayments) ──
   const subscriptionUserId = externalPayments !== undefined ? null : userId;
@@ -91,10 +93,12 @@ export function useRecurringPayments(
         );
       } else {
         const newPayment: RecurringPayment = { ...payment, id: generateId(), createdAt: new Date() };
-        setLocalPayments((prev) => [...prev, newPayment]);
+        await mutateGuestLedger(draft => {
+          draft.recurringPayments.push(newPayment);
+        }, { operationId: `guest-add-recurring:${newPayment.id}` });
       }
     },
-    [userId, setLocalPayments]
+    [userId, mutateGuestLedger]
   );
 
   const updateRecurringPayment = useCallback(
@@ -108,10 +112,14 @@ export function useRecurringPayments(
           { maxRetries: 2 }
         );
       } else {
-        setLocalPayments((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+        await mutateGuestLedger(draft => {
+          draft.recurringPayments = draft.recurringPayments.map(payment => (
+            payment.id === id ? { ...payment, ...updates } : payment
+          ));
+        }, { operationId: `guest-update-recurring:${id}:${generateId()}` });
       }
     },
-    [userId, setLocalPayments]
+    [userId, mutateGuestLedger]
   );
 
   const deleteRecurringPayment = useCallback(
@@ -124,10 +132,21 @@ export function useRecurringPayments(
           { maxRetries: 2 }
         );
       } else {
-        setLocalPayments((prev) => prev.filter((p) => p.id !== id));
+        await mutateGuestLedger(draft => {
+          draft.recurringPayments = draft.recurringPayments.filter(payment => payment.id !== id);
+          draft.transactions = draft.transactions.map(transaction => (
+            transaction.recurringPaymentId === id
+              ? {
+                  ...transaction,
+                  recurringPaymentId: undefined,
+                  recurringCycle: undefined,
+                }
+              : transaction
+          ));
+        }, { operationId: `guest-delete-recurring:${id}` });
       }
     },
-    [userId, setLocalPayments]
+    [userId, mutateGuestLedger]
   );
 
   // ── Utilidades y estadísticas (cómputo puro) ──

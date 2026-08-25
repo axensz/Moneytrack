@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useAccountForm } from '../../components/views/accounts/hooks/useAccountForm';
+import type { AccountUpdateOptions } from '../../hooks/useAccounts';
 import { unformatNumber } from '../../utils/formatters';
-import type { Account, Transaction } from '../../types/finance';
+import type { Account } from '../../types/finance';
 
 const savings: Account = {
   id: 'sav', name: 'Ahorros', type: 'savings', isDefault: true, initialBalance: 0,
@@ -12,78 +13,78 @@ const credit: Account = {
 };
 
 function setup(currentBalance: number, balancesReady = true) {
-  const addTransaction = vi.fn<
-    (tx: Omit<Transaction, 'id'>) => Promise<void>
-  >(async () => {});
-  const updateAccount = vi.fn(async () => {});
+  const updateAccount = vi.fn<(
+    id: string,
+    updates: Partial<Account>,
+    options?: AccountUpdateOptions
+  ) => Promise<void>>(async () => {});
   const hook = renderHook(() =>
     useAccountForm({
       addAccount: vi.fn(async () => {}),
       updateAccount,
-      addTransaction,
-      getAccountBalance: () => currentBalance,
-      getCreditUsed: () => 0,
-      formatCurrency: (n) => `$${n}`,
       balancesReady,
     })
   );
-  return { ...hook, addTransaction, updateAccount };
+  return { ...hook, updateAccount, currentBalance };
 }
 
 describe('useAccountForm — ajuste de saldo (repro del reporte)', () => {
-  it('saldo 603088.11 → nuevo 563088.89 crea ajuste de gasto 39999.22 (no más)', async () => {
-    const { result, addTransaction } = setup(603088.11);
+  it('envía el saldo objetivo exacto con la edición y no crea una segunda fase', async () => {
+    const { result, updateAccount } = setup(603088.11);
     act(() => result.current.openEditForm(savings));
     // El input guarda el valor unformateado (coma decimal, sin miles).
     act(() => result.current.setBalanceAdjustment('563088,89'));
     await act(async () => { await result.current.handleSubmit(); });
 
-    expect(addTransaction).toHaveBeenCalledTimes(1);
-    const tx = addTransaction.mock.calls[0][0];
-    expect(tx.type).toBe('expense');
-    expect(tx.amount).toBeCloseTo(39999.22, 2);
+    expect(updateAccount).toHaveBeenCalledWith(
+      'sav',
+      expect.objectContaining({ name: 'Ahorros' }),
+      { targetBalance: 563088.89 }
+    );
   });
 
   it('input con PUNTO decimal "563088.89" NO infla el ajuste (path real vía unformatNumber)', async () => {
-    const { result, addTransaction } = setup(603088.11);
+    const { result, updateAccount } = setup(603088.11);
     act(() => result.current.openEditForm(savings));
     // Simula el onChange real del campo: guarda unformatNumber(valor tecleado).
     act(() => result.current.setBalanceAdjustment(unformatNumber('563088.89')));
     await act(async () => { await result.current.handleSubmit(); });
-    const tx = addTransaction.mock.calls[0]?.[0];
-    expect(tx?.type).toBe('expense');
-    expect(tx?.amount).toBeCloseTo(39999.22, 2);
+    expect(updateAccount).toHaveBeenCalledWith(
+      'sav',
+      expect.any(Object),
+      { targetBalance: 563088.89 }
+    );
   });
 
   it('con saldos NO asentados (balancesReady=false) el ajuste se BLOQUEA: no escribe nada', async () => {
-    const { result, addTransaction, updateAccount } = setup(603088.11, false);
+    const { result, updateAccount } = setup(603088.11, false);
     act(() => result.current.openEditForm(savings));
     act(() => result.current.setBalanceAdjustment('563088,89'));
     await act(async () => { await result.current.handleSubmit(); });
 
-    // Ni transacción de ajuste ni update de cuenta: el delta saldría de un
-    // saldo de ventana transitorio y persistiría un ajuste mal dimensionado.
-    expect(addTransaction).not.toHaveBeenCalled();
+    // No actualiza la cuenta: el servidor todavía no puede ofrecer una
+    // autoridad asentada al flujo de edición.
     expect(updateAccount).not.toHaveBeenCalled();
   });
 
   it('con saldos NO asentados pero SIN tocar el campo de ajuste, editar nombre sí funciona', async () => {
-    const { result, addTransaction, updateAccount } = setup(603088.11, false);
+    const { result, updateAccount } = setup(603088.11, false);
     act(() => result.current.openEditForm(savings));
     await act(async () => { await result.current.handleSubmit(); });
 
     expect(updateAccount).toHaveBeenCalledTimes(1);
-    expect(addTransaction).not.toHaveBeenCalled();
   });
 
   it('input con MILES "563.088" se interpreta como 563088 (no decimal)', async () => {
-    const { result, addTransaction } = setup(603088.11);
+    const { result, updateAccount } = setup(603088.11);
     act(() => result.current.openEditForm(savings));
     act(() => result.current.setBalanceAdjustment(unformatNumber('563.088')));
     await act(async () => { await result.current.handleSubmit(); });
-    const tx = addTransaction.mock.calls[0]?.[0];
-    // 563088 - 603088.11 = -40000.11 → gasto.
-    expect(tx?.amount).toBeCloseTo(40000.11, 2);
+    expect(updateAccount).toHaveBeenCalledWith(
+      'sav',
+      expect.any(Object),
+      { targetBalance: 563088 }
+    );
   });
 
   it('al editar una TC guarda día de corte y día de pago', async () => {

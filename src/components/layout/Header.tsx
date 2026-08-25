@@ -8,6 +8,7 @@ import {
   LogIn,
   LogOut,
   Settings,
+  ShieldCheck,
   Tag,
   User as UserIcon,
 } from 'lucide-react';
@@ -26,12 +27,13 @@ interface HeaderProps {
   onOpenHelp: () => void;
   onOpenCategories: () => void;
   onOpenNotificationPreferences: () => void;
+  onOpenLedgerReconciliation: () => void;
   onGoToTransactions: () => void;
   onLogout: () => Promise<void>;
 }
 
 const menuItemClass =
-  'w-full flex items-center justify-start gap-3 px-4 py-2.5 text-left text-sm text-foreground whitespace-nowrap hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary';
+  'control-target-44 w-full flex items-center justify-start gap-3 px-4 py-2.5 text-left text-sm text-foreground whitespace-nowrap hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary';
 
 export const Header: React.FC<HeaderProps> = ({
   user,
@@ -43,6 +45,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenHelp,
   onOpenCategories,
   onOpenNotificationPreferences,
+  onOpenLedgerReconciliation,
   onGoToTransactions,
   onLogout,
 }) => {
@@ -218,6 +221,14 @@ export const Header: React.FC<HeaderProps> = ({
                       <span>Notificaciones</span>
                     </button>
                   )}
+                  <button
+                    onClick={() => openSettingsModal(onOpenLedgerReconciliation)}
+                    className={menuItemClass}
+                    role="menuitem"
+                  >
+                    <ShieldCheck size={18} aria-hidden="true" />
+                    <span>Integridad del libro</span>
+                  </button>
                   <div className="my-1 border-t border-border" aria-hidden="true" />
                   <button
                     onClick={() => openSettingsModal(onOpenHelp)}

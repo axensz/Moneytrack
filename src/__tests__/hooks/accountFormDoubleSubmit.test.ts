@@ -1,9 +1,9 @@
 /**
  * useAccountForm — guard de doble submit (#accounts-2).
  *
- * Al EDITAR una cuenta, closeForm() corre después de `await updateAccount` y
- * `await addTransaction`, así que un doble clic en "Actualizar" creaba DOS
- * transacciones de ajuste de saldo. El ref síncrono bloquea la segunda entrada.
+ * Al EDITAR una cuenta, closeForm() corre después de `await updateAccount`, así
+ * que un doble clic en "Actualizar" podía solicitar DOS ajustes. El ref
+ * síncrono bloquea la segunda entrada.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
@@ -23,17 +23,13 @@ const savings: Account = { id: 'sav', name: 'Ahorros', type: 'savings', isDefaul
 const makeParams = () => ({
   addAccount: vi.fn(async () => {}),
   updateAccount: vi.fn(async () => {}),
-  addTransaction: vi.fn(async () => {}),
-  getAccountBalance: vi.fn(() => 100_000), // saldo actual 100k
-  getCreditUsed: vi.fn(() => 0),
-  formatCurrency: (n: number) => `$${n}`,
   balancesReady: true,
 });
 
 beforeEach(() => vi.clearAllMocks());
 
 describe('useAccountForm — doble submit (#accounts-2)', () => {
-  it('un doble clic en Actualizar crea UNA sola transacción de ajuste', async () => {
+  it('un doble clic en Actualizar solicita UN solo update atómico', async () => {
     const params = makeParams();
     const { result } = renderHook(() => useAccountForm(params));
 
@@ -47,6 +43,10 @@ describe('useAccountForm — doble submit (#accounts-2)', () => {
     });
 
     expect(params.updateAccount).toHaveBeenCalledTimes(1);
-    expect(params.addTransaction).toHaveBeenCalledTimes(1); // NO dos ajustes
+    expect(params.updateAccount).toHaveBeenCalledWith(
+      'sav',
+      expect.any(Object),
+      { targetBalance: 150000 }
+    );
   });
 });

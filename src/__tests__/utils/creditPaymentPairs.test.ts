@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Account, Transaction } from '../../types/finance';
-import { findHistoricalCreditPaymentPairs } from '../../utils/creditPaymentPairs';
+import {
+  findHistoricalCreditPaymentPairs,
+  validateCreditPaymentPair,
+  validateLinkedCreditPaymentPair,
+} from '../../utils/creditPaymentPairs';
 
 const card: Account = {
   id: 'card',
@@ -20,6 +24,23 @@ const transaction = (overrides: Partial<Transaction>): Transaction => ({
   paid: true,
   accountId: 'card',
   ...overrides,
+});
+
+const currentPair = () => ({
+  account: card,
+  credit: transaction({
+    id: 'credit-current',
+    beneficiary: 'Banco Prueba',
+    linkedTransactionId: 'source-current',
+  }),
+  source: transaction({
+    id: 'source-current',
+    type: 'expense',
+    accountId: 'savings',
+    beneficiary: 'Banco Prueba',
+    description: 'Pago a Visa Gold: Junio',
+    linkedTransactionId: 'credit-current',
+  }),
 });
 
 describe('findHistoricalCreditPaymentPairs', () => {
@@ -71,5 +92,74 @@ describe('findHistoricalCreditPaymentPairs', () => {
     });
 
     expect(findHistoricalCreditPaymentPairs(card, [credit, source])).toEqual([]);
+  });
+});
+
+describe('validateCreditPaymentPair', () => {
+  const invalidCases: Array<[
+    string,
+    Partial<Transaction>,
+    Partial<Transaction> | undefined,
+    string,
+  ]> = [
+    ['missing counterpart', {}, undefined, 'MISSING_COUNTERPART'],
+    ['one-way link', {}, { linkedTransactionId: undefined }, 'NON_RECIPROCAL_LINK'],
+    ['wrong role', {}, { type: 'income' }, 'WRONG_ROLE'],
+    ['wrong credit account', { accountId: 'other-card' }, {}, 'WRONG_ACCOUNT'],
+    ['credit account as source', {}, { accountId: 'card' }, 'WRONG_ACCOUNT'],
+    ['wrong category', {}, { category: 'Comida' }, 'CATEGORY_MISMATCH'],
+    ['different beneficiary', {}, { beneficiary: 'Otro banco' }, 'BENEFICIARY_MISMATCH'],
+    ['different amount', {}, { amount: 99_999 }, 'AMOUNT_MISMATCH'],
+    [
+      'different date',
+      {},
+      { date: new Date('2026-08-25T12:00:00-05:00') },
+      'DATE_MISMATCH',
+    ],
+    ['different paid state', {}, { paid: false }, 'PAID_MISMATCH'],
+  ];
+
+  it.each(invalidCases)('rejects a %s', (_name, creditOverrides, sourceOverrides, reason) => {
+    const { account, credit, source } = currentPair();
+    const candidate = sourceOverrides === undefined
+      ? undefined
+      : { ...source, ...sourceOverrides };
+
+    expect(
+      validateCreditPaymentPair({ ...credit, ...creditOverrides }, candidate, account)
+    ).toEqual({ valid: false, reason });
+  });
+
+  it('accepts an exact current reciprocal pair', () => {
+    const { account, credit, source } = currentPair();
+
+    expect(validateCreditPaymentPair(credit, source, account)).toEqual({
+      valid: true,
+      creditTransaction: credit,
+      sourceTransaction: source,
+    });
+  });
+});
+
+describe('validateLinkedCreditPaymentPair', () => {
+  it('resolves either half of a valid pair against the authoritative account set', () => {
+    const pair = currentPair();
+    const accounts: Account[] = [
+      { id: 'savings', name: 'Banco', type: 'savings', initialBalance: 0, isDefault: true },
+      pair.account,
+    ];
+
+    expect(validateLinkedCreditPaymentPair(pair.credit, pair.source, accounts).valid).toBe(true);
+    expect(validateLinkedCreditPaymentPair(pair.source, pair.credit, accounts).valid).toBe(true);
+  });
+
+  it('rejects reciprocal pointers that do not form a semantic card-payment pair', () => {
+    const pair = currentPair();
+    const unrelated = { ...pair.source, beneficiary: 'Persona ajena' };
+
+    expect(validateLinkedCreditPaymentPair(pair.credit, unrelated, [pair.account])).toEqual({
+      valid: false,
+      reason: 'BENEFICIARY_MISMATCH',
+    });
   });
 });

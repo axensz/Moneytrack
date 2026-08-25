@@ -11,9 +11,8 @@ import {
   effectiveDueDay,
   getYearlyAnchorMonth,
   getNextDueDate as computeNextDueDate,
-  getCycleWindow as computeCycleWindow,
-  cycleKey as computeCycleKey,
 } from '../../utils/recurringDates';
+import { recurringTransactionSatisfiesCycle } from '../../utils/recurringPayments';
 
 interface RecurringStats {
   total: number;
@@ -51,7 +50,7 @@ export function useRecurringUtils(
   const paidPaymentsByMonth = useMemo(() => {
     const map = new Map<string, Set<string>>();
     for (const t of transactions) {
-      if (!t.recurringPaymentId) continue;
+      if (!t.recurringPaymentId || t.paid !== true) continue;
       const d = new Date(t.date);
       const key = `${d.getFullYear()}-${d.getMonth()}`;
       if (!map.has(key)) map.set(key, new Set());
@@ -68,7 +67,7 @@ export function useRecurringUtils(
   const transactionsByPaymentId = useMemo(() => {
     const map = new Map<string, Transaction[]>();
     for (const t of transactions) {
-      if (!t.recurringPaymentId) continue;
+      if (!t.recurringPaymentId || t.paid !== true) continue;
       if (!map.has(t.recurringPaymentId)) map.set(t.recurringPaymentId, []);
       map.get(t.recurringPaymentId)!.push(t);
     }
@@ -88,21 +87,6 @@ export function useRecurringUtils(
     }
     return map;
   }, [recurringPayments]);
-
-  /**
-   * Ventana del ciclo de facturación que contiene la fecha de referencia.
-   * Devuelve [inicio, fin) donde:
-   *  - fin = próximo vencimiento (exclusivo)
-   *  - inicio = vencimiento del ciclo anterior (inclusivo)
-   * Para 'monthly' el periodo es 1 mes; para 'yearly' el mes de vencimiento
-   * se ancla en payment.createdAt (#8) y el periodo es 1 año.
-   * El día se acota al último día real de cada mes (#7).
-   */
-  const getCycleWindow = useCallback(
-    (payment: RecurringPayment, reference: Date): { start: Date; end: Date } =>
-      computeCycleWindow(payment, reference),
-    []
-  );
 
   /**
    * Verificar si un pago periódico está pagado para el CICLO de facturación
@@ -126,24 +110,11 @@ export function useRecurringUtils(
       const list = transactionsByPaymentId.get(paymentId);
       if (!list || list.length === 0) return false;
 
-      // Atribución explícita: una transacción estampada con recurringCycle salda
-      // ESE ciclo, sin importar dónde caiga su fecha (pago anticipado/atrasado o
-      // vinculado tarde desde la tarjeta).
-      const targetKey = computeCycleKey(payment, month);
-
-      const { start, end } = getCycleWindow(payment, month);
-      const startMs = start.getTime();
-      const endMs = end.getTime();
-
-      return list.some((t) => {
-        if (t.recurringCycle) return t.recurringCycle === targetKey;
-        // Fallback retrocompatible: transacciones sin estampa cuentan por la
-        // ventana que contiene su fecha.
-        const tMs = new Date(t.date).getTime();
-        return tMs >= startMs && tMs < endMs;
-      });
+      return list.some((transaction) => (
+        recurringTransactionSatisfiesCycle(payment, transaction, month)
+      ));
     },
-    [paymentsById, transactionsByPaymentId, getCycleWindow, paidPaymentsByMonth]
+    [paymentsById, transactionsByPaymentId, paidPaymentsByMonth]
   );
 
   /**
@@ -153,7 +124,7 @@ export function useRecurringUtils(
   const paymentTransactionsByMonth = useMemo(() => {
     const map = new Map<string, Map<string, Transaction>>();
     for (const t of transactions) {
-      if (!t.recurringPaymentId) continue;
+      if (!t.recurringPaymentId || t.paid !== true) continue;
       const d = new Date(t.date);
       const key = `${d.getFullYear()}-${d.getMonth()}`;
       if (!map.has(key)) map.set(key, new Map());
@@ -247,7 +218,7 @@ export function useRecurringUtils(
   const getPaymentHistory = useCallback(
     (paymentId: string, limit: number = 12): Transaction[] => {
       return transactions
-        .filter((t) => t.recurringPaymentId === paymentId)
+        .filter((t) => t.recurringPaymentId === paymentId && t.paid === true)
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, limit);
     },

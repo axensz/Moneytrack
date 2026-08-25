@@ -1,0 +1,884 @@
+import { ACCOUNT_VALIDATION, TRANSACTION_VALIDATION } from '../config/constants';
+import { generateId, roundMoney } from './formatters';
+import { findAccountForTransaction, getAccountReferenceIds } from './accountTransactions';
+import { BalanceCalculator } from './balanceCalculator';
+import { getCreditAuthorityState } from './creditAuthority';
+import { getCreditDelta } from './creditDeltas';
+import { validateLinkedCreditPaymentPair } from './creditPaymentPairs';
+import { normalizeLedgerAmount, planLedgerMutation } from './ledgerMutation';
+import type {
+  Account,
+  Debt,
+  RecurringPayment,
+  Transaction,
+} from '../types/finance';
+
+export const GUEST_LEDGER_SCHEMA_VERSION = 1 as const;
+export const GUEST_LEDGER_STORAGE_KEY = 'moneytrack_guest_ledger_v1';
+export const GUEST_LEDGER_RECOVERY_KEY = 'moneytrack_guest_ledger_previous_v1';
+export const GUEST_LEDGER_LOCK_NAME = 'moneytrack_guest_ledger';
+
+export const GUEST_LEDGER_LEGACY_KEYS = [
+  'accounts',
+  'transactions',
+  'debts',
+  'recurringPayments',
+] as const;
+
+export interface GuestLedgerData {
+  accounts: Account[];
+  transactions: Transaction[];
+  debts: Debt[];
+  recurringPayments: RecurringPayment[];
+}
+
+export interface GuestLedgerEnvelope {
+  schemaVersion: typeof GUEST_LEDGER_SCHEMA_VERSION;
+  revision: number;
+  commitId: string;
+  committedAt: string;
+  recentOperationIds: string[];
+  data: GuestLedgerData;
+}
+
+export interface GuestLedgerStorage {
+  readonly length?: number;
+  key?(index: number): string | null;
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+export type GuestLedgerLock = <T>(task: () => Promise<T>) => Promise<T>;
+
+export interface GuestLedgerReadOptions {
+  storage?: GuestLedgerStorage;
+}
+
+export interface GuestLedgerMutationOptions extends GuestLedgerReadOptions {
+  operationId?: string;
+  maxRetries?: number;
+  lock?: GuestLedgerLock;
+  now?: () => Date;
+  createCommitId?: () => string;
+}
+
+export type GuestLedgerMutator = (
+  draft: GuestLedgerData,
+  context: { attempt: number; baseRevision: number },
+) => void | Promise<void>;
+
+type GuestLedgerSubscriber = (envelope: GuestLedgerEnvelope) => void;
+
+const subscribers = new Set<GuestLedgerSubscriber>();
+const GUEST_LEDGER_FALLBACK_LOCK_PREFIX = 'moneytrack_guest_ledger_lock_v1:';
+const GUEST_LEDGER_FALLBACK_LEASE_MS = 5 * 60 * 1000;
+
+const getDefaultStorage = (): GuestLedgerStorage => {
+  if (typeof localStorage === 'undefined') {
+    throw new Error('El almacenamiento local no está disponible.');
+  }
+  return localStorage;
+};
+
+const cloneData = (data: GuestLedgerData): GuestLedgerData => {
+  if (typeof structuredClone === 'function') return structuredClone(data);
+  return JSON.parse(JSON.stringify(data)) as GuestLedgerData;
+};
+
+const stableStringify = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right));
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+};
+
+const stableHash = (input: string): string => {
+  let hash = 5381;
+  for (let index = 0; index < input.length; index += 1) {
+    hash = ((hash << 5) + hash + input.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(36);
+};
+
+const withStableLegacyIds = <T extends { id?: string }>(
+  collection: string,
+  items: T[],
+): T[] => items.map((item, index) => (
+  typeof item.id === 'string' && item.id.length > 0
+    ? item
+    : {
+        ...item,
+        id: `legacy_${collection}_${stableHash(`${collection}:${index}:${stableStringify(item)}`)}`,
+      }
+));
+
+const readLegacyArray = <T extends { id?: string }>(
+  storage: GuestLedgerStorage,
+  key: string,
+): T[] => {
+  const raw = storage.getItem(key);
+  if (!raw) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`La clave legacy ${key} contiene JSON inválido.`);
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error(`La clave legacy ${key} no contiene una colección válida.`);
+  }
+  return withStableLegacyIds(key, parsed as T[]);
+};
+
+export const readLegacyGuestLedgerData = (
+  storage: GuestLedgerStorage = getDefaultStorage(),
+): GuestLedgerData => ({
+  accounts: readLegacyArray<Account>(storage, 'accounts'),
+  transactions: readLegacyArray<Transaction>(storage, 'transactions'),
+  debts: readLegacyArray<Debt>(storage, 'debts'),
+  recurringPayments: readLegacyArray<RecurringPayment>(storage, 'recurringPayments'),
+});
+
+const requireRecord = (value: unknown, label: string): Record<string, unknown> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} no tiene un formato válido.`);
+  }
+  return value as Record<string, unknown>;
+};
+
+const requireId = (value: unknown, label: string): string => {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`${label} no tiene un identificador válido.`);
+  }
+  return value;
+};
+
+const requireFinite = (value: unknown, label: string, minimum = 0): number => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < minimum) {
+    throw new Error(`${label} no tiene un valor monetario válido.`);
+  }
+  return value;
+};
+
+const requireBoundedMoney = (
+  value: unknown,
+  label: string,
+  minimum: number,
+  maximum: number,
+): number => {
+  if (
+    typeof value !== 'number'
+    || !Number.isFinite(value)
+    || value < minimum
+    || value > maximum
+  ) {
+    throw new Error(`${label} no tiene un valor monetario válido.`);
+  }
+  const rounded = roundMoney(value);
+  const floatTolerance = Number.EPSILON * Math.max(1, Math.abs(value)) * 8;
+  if (Math.abs(value - rounded) > floatTolerance) {
+    throw new Error(`${label} debe expresarse con máximo dos decimales.`);
+  }
+  return rounded;
+};
+
+const requireLedgerAmount = (value: unknown, label: string): number => {
+  try {
+    return normalizeLedgerAmount(value as number);
+  } catch {
+    throw new Error(`${label} no tiene un valor monetario válido.`);
+  }
+};
+
+const requireValidDate = (value: unknown, label: string): void => {
+  const date = value instanceof Date
+    ? value
+    : typeof value === 'string' || typeof value === 'number'
+      ? new Date(value)
+      : null;
+  if (!date || !Number.isFinite(date.getTime())) {
+    throw new Error(`${label} no tiene una fecha válida.`);
+  }
+};
+
+const requireUniqueIds = (
+  values: readonly { id?: string }[],
+  label: string,
+): Set<string> => {
+  const ids = new Set<string>();
+  values.forEach((value, index) => {
+    const id = requireId(value.id, `${label}[${index}]`);
+    if (ids.has(id)) throw new Error(`${label} contiene el identificador duplicado ${id}.`);
+    ids.add(id);
+  });
+  return ids;
+};
+
+const requireAccountReference = (
+  accountIds: Set<string>,
+  value: unknown,
+  label: string,
+  optional = false,
+): void => {
+  if (optional && (value === undefined || value === null || value === '')) return;
+  const accountId = requireId(value, label);
+  if (!accountIds.has(accountId)) {
+    throw new Error(`${label} referencia una cuenta inexistente.`);
+  }
+};
+
+export function validateGuestLedgerData(data: GuestLedgerData): void {
+  if (!data || typeof data !== 'object') throw new Error('El guest ledger no es válido.');
+  for (const key of GUEST_LEDGER_LEGACY_KEYS) {
+    if (!Array.isArray(data[key])) throw new Error(`La colección ${key} no es válida.`);
+  }
+
+  const accountIds = requireUniqueIds(data.accounts, 'accounts');
+  const transactionIds = requireUniqueIds(data.transactions, 'transactions');
+  const debtIds = requireUniqueIds(data.debts, 'debts');
+  requireUniqueIds(data.recurringPayments, 'recurringPayments');
+
+  data.accounts.forEach((account, index) => {
+    const value = requireRecord(account, `accounts[${index}]`);
+    if (typeof value.name !== 'string' || value.name.trim().length === 0) {
+      throw new Error(`accounts[${index}] no tiene nombre válido.`);
+    }
+    if (!['savings', 'credit', 'cash'].includes(String(value.type))) {
+      throw new Error(`accounts[${index}] no tiene tipo válido.`);
+    }
+    requireBoundedMoney(
+      value.initialBalance,
+      `accounts[${index}].initialBalance`,
+      ACCOUNT_VALIDATION.initialBalance.min,
+      ACCOUNT_VALIDATION.initialBalance.max,
+    );
+    if (typeof value.isDefault !== 'boolean') {
+      throw new Error(`accounts[${index}].isDefault no es booleano.`);
+    }
+    for (const field of ['creditLimit', 'usedCredit'] as const) {
+      if (value[field] !== undefined) {
+        requireBoundedMoney(
+          value[field],
+          `accounts[${index}].${field}`,
+          0,
+          TRANSACTION_VALIDATION.amount.max,
+        );
+      }
+    }
+    if (value.interestRate !== undefined) {
+      requireFinite(value.interestRate, `accounts[${index}].interestRate`);
+    }
+  });
+
+  data.debts.forEach((debt, index) => {
+    const value = requireRecord(debt, `debts[${index}]`);
+    if (typeof value.personName !== 'string' || value.personName.trim().length === 0) {
+      throw new Error(`debts[${index}] no tiene persona válida.`);
+    }
+    if (!['lent', 'borrowed'].includes(String(value.type))) {
+      throw new Error(`debts[${index}] no tiene tipo válido.`);
+    }
+    requireFinite(value.originalAmount, `debts[${index}].originalAmount`);
+    requireFinite(value.remainingAmount, `debts[${index}].remainingAmount`);
+    if (typeof value.isSettled !== 'boolean') {
+      throw new Error(`debts[${index}].isSettled no es booleano.`);
+    }
+    requireAccountReference(accountIds, value.accountId, `debts[${index}].accountId`, true);
+  });
+
+  data.transactions.forEach((transaction, index) => {
+    const value = requireRecord(transaction, `transactions[${index}]`);
+    if (!['income', 'expense', 'transfer'].includes(String(value.type))) {
+      throw new Error(`transactions[${index}] no tiene tipo válido.`);
+    }
+    requireLedgerAmount(value.amount, `transactions[${index}].amount`);
+    requireValidDate(value.date, `transactions[${index}].date`);
+    if (typeof value.category !== 'string' || typeof value.description !== 'string') {
+      throw new Error(`transactions[${index}] no tiene texto válido.`);
+    }
+    if (typeof value.paid !== 'boolean') {
+      throw new Error(`transactions[${index}].paid no es booleano.`);
+    }
+    requireAccountReference(accountIds, value.accountId, `transactions[${index}].accountId`);
+    if (value.type === 'transfer') {
+      requireAccountReference(accountIds, value.toAccountId, `transactions[${index}].toAccountId`);
+      if (value.toAccountId === value.accountId) {
+        throw new Error(`transactions[${index}] referencia la misma cuenta de origen y destino.`);
+      }
+    }
+    if (value.debtId !== undefined && !debtIds.has(requireId(value.debtId, `transactions[${index}].debtId`))) {
+      throw new Error(`transactions[${index}].debtId referencia una deuda inexistente.`);
+    }
+    if (value.linkedTransactionId !== undefined) {
+      const linkedId = requireId(value.linkedTransactionId, `transactions[${index}].linkedTransactionId`);
+      if (!transactionIds.has(linkedId)) {
+        throw new Error(`transactions[${index}].linkedTransactionId referencia una transacción inexistente.`);
+      }
+      const linked = data.transactions.find(candidate => candidate.id === linkedId);
+      if (linked?.linkedTransactionId !== value.id) {
+        throw new Error(`transactions[${index}] no tiene un enlace recíproco válido.`);
+      }
+      const pair = validateLinkedCreditPaymentPair(
+        transaction,
+        linked,
+        data.accounts,
+      );
+      if (!pair.valid) {
+        throw new Error(
+          `transactions[${index}] tiene un vínculo de pago inválido (${pair.reason}); requiere reconciliación.`
+        );
+      }
+    }
+  });
+
+  data.recurringPayments.forEach((payment, index) => {
+    const value = requireRecord(payment, `recurringPayments[${index}]`);
+    if (
+      typeof value.name !== 'string'
+      || value.name.trim().length === 0
+      || typeof value.category !== 'string'
+    ) {
+      throw new Error(`recurringPayments[${index}] no tiene texto válido.`);
+    }
+    requireLedgerAmount(value.amount, `recurringPayments[${index}].amount`);
+    if (
+      typeof value.dueDay !== 'number'
+      || !Number.isInteger(value.dueDay)
+      || value.dueDay < 1
+      || value.dueDay > 31
+    ) {
+      throw new Error(`recurringPayments[${index}].dueDay no es válido.`);
+    }
+    if (!['monthly', 'yearly'].includes(String(value.frequency))) {
+      throw new Error(`recurringPayments[${index}] no tiene frecuencia válida.`);
+    }
+    if (typeof value.isActive !== 'boolean') {
+      throw new Error(`recurringPayments[${index}].isActive no es booleano.`);
+    }
+    requireAccountReference(
+      accountIds,
+      value.accountId,
+      `recurringPayments[${index}].accountId`,
+      true,
+    );
+  });
+}
+
+const canonicalLedgerEffect = (
+  transaction: Transaction,
+  accounts: readonly Account[],
+): Transaction => ({
+  ...transaction,
+  accountId: findAccountForTransaction(accounts, transaction.accountId)?.id
+    ?? transaction.accountId,
+  toAccountId: transaction.toAccountId
+    ? findAccountForTransaction(accounts, transaction.toAccountId)?.id
+      ?? transaction.toAccountId
+    : undefined,
+});
+
+/** Revalida el delta contra la revisión que realmente ganará el commit. */
+export function validateGuestAssetMutation(
+  before: GuestLedgerData,
+  after: GuestLedgerData,
+): void {
+  const beforeById = new Map(before.transactions.map(transaction => [transaction.id!, transaction]));
+  const afterById = new Map(after.transactions.map(transaction => [transaction.id!, transaction]));
+  const changedIds = new Set([...beforeById.keys(), ...afterById.keys()]);
+  const changedBefore: Transaction[] = [];
+  const changedAfter: Transaction[] = [];
+
+  changedIds.forEach(id => {
+    const previous = beforeById.get(id);
+    const next = afterById.get(id);
+    if (stableStringify(previous) === stableStringify(next)) return;
+    if (previous) changedBefore.push(canonicalLedgerEffect(previous, before.accounts));
+    if (next) changedAfter.push(canonicalLedgerEffect(next, after.accounts));
+  });
+  if (changedBefore.length === 0 && changedAfter.length === 0) return;
+
+  const assets = after.accounts
+    .filter(account => account.type === 'savings' || account.type === 'cash')
+    .map(account => {
+      const previousAccount = before.accounts.find(candidate => candidate.id === account.id);
+      return {
+        account,
+        currentBalance: BalanceCalculator.calculateAccountBalance(
+          previousAccount ?? account,
+          before.transactions,
+        ),
+      };
+    });
+
+  planLedgerMutation({
+    kind: 'edit',
+    before: changedBefore,
+    after: changedAfter,
+    metadata: { mutationSource: 'manual' },
+  }, assets);
+}
+
+const creditEffectForReferences = (
+  referenceIds: readonly string[],
+  transactions: readonly Transaction[],
+): number => {
+  const references = new Set(referenceIds);
+  let effect = 0;
+  transactions.forEach(transaction => {
+    if (references.has(transaction.accountId)) {
+      effect += getCreditDelta(transaction, transaction.accountId);
+    }
+    if (transaction.toAccountId && references.has(transaction.toAccountId)) {
+      effect += getCreditDelta(transaction, transaction.toAccountId);
+    }
+  });
+  return roundMoney(effect);
+};
+
+/**
+ * Conserva `usedCredit` como autoridad persistida y aplica únicamente el delta
+ * de las filas que la mutación agregó, quitó o cambió. Esto permite operar una
+ * tarjeta legacy cuyo historial local no explica toda la deuda sin convertir la
+ * persistencia del envelope en una reparación automática.
+ */
+export function applyGuestCreditAuthorityDelta(
+  before: GuestLedgerData,
+  after: GuestLedgerData,
+): void {
+  after.accounts = after.accounts.map(account => {
+    if (account.type !== 'credit' || !account.id) return account;
+
+    const afterReferences = getAccountReferenceIds(account);
+    const beforeCards = before.accounts.filter(candidate => (
+      candidate.type === 'credit'
+      && getAccountReferenceIds(candidate).some(reference => afterReferences.includes(reference))
+    ));
+    const beforeReferences = Array.from(new Set(
+      beforeCards.flatMap(getAccountReferenceIds)
+    ));
+    const beforeEffect = creditEffectForReferences(beforeReferences, before.transactions);
+    const afterEffect = creditEffectForReferences(afterReferences, after.transactions);
+    const ledgerDelta = roundMoney(afterEffect - beforeEffect);
+    if (ledgerDelta === 0) return account;
+
+    const authorityAccounts = beforeCards.length > 0 ? beforeCards : [account];
+    const authorities = authorityAccounts.map(getCreditAuthorityState);
+    if (authorities.some(authority => !authority.ready || authority.usedCredit === null)) {
+      throw new Error(
+        `La tarjeta ${account.name} requiere reconciliación antes de cambiar su deuda.`
+      );
+    }
+    const persistedAuthority = authorities.reduce<number>(
+      (sum, authority) => sum + authority.usedCredit!,
+      0,
+    );
+    const nextAuthority = roundMoney(persistedAuthority + ledgerDelta);
+    if (nextAuthority < 0) {
+      throw new Error('No puedes pagar más de lo que debes en la tarjeta.');
+    }
+    return {
+      ...account,
+      usedCredit: nextAuthority,
+    };
+  });
+}
+
+export function createGuestLedgerEnvelope(
+  data: GuestLedgerData,
+  options: {
+    revision?: number;
+    commitId?: string;
+    committedAt?: string;
+    recentOperationIds?: string[];
+  } = {},
+): GuestLedgerEnvelope {
+  validateGuestLedgerData(data);
+  return {
+    schemaVersion: GUEST_LEDGER_SCHEMA_VERSION,
+    revision: options.revision ?? 0,
+    commitId: options.commitId ?? 'guest-ledger-empty',
+    committedAt: options.committedAt ?? new Date(0).toISOString(),
+    recentOperationIds: options.recentOperationIds ?? [],
+    data,
+  };
+}
+
+export function parseGuestLedgerEnvelope(raw: string): GuestLedgerEnvelope {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('El guest ledger persistido contiene JSON inválido.');
+  }
+  const value = requireRecord(parsed, 'guest ledger');
+  if (value.schemaVersion !== GUEST_LEDGER_SCHEMA_VERSION) {
+    throw new Error('La versión del guest ledger no es compatible.');
+  }
+  if (!Number.isSafeInteger(value.revision) || Number(value.revision) < 0) {
+    throw new Error('La revisión del guest ledger no es válida.');
+  }
+  if (typeof value.commitId !== 'string' || typeof value.committedAt !== 'string') {
+    throw new Error('La metadata del guest ledger no es válida.');
+  }
+  if (!Array.isArray(value.recentOperationIds) || value.recentOperationIds.some(item => typeof item !== 'string')) {
+    throw new Error('El historial de operaciones del guest ledger no es válido.');
+  }
+  const data = value.data as GuestLedgerData;
+  validateGuestLedgerData(data);
+  return value as unknown as GuestLedgerEnvelope;
+}
+
+export function readGuestLedgerEnvelope(
+  options: GuestLedgerReadOptions = {},
+): GuestLedgerEnvelope {
+  const storage = options.storage ?? getDefaultStorage();
+  const persisted = readPersistedGuestLedgerEnvelope({ storage });
+  if (persisted) return persisted;
+  return createGuestLedgerEnvelope(readLegacyGuestLedgerData(storage));
+}
+
+export function readPersistedGuestLedgerEnvelope(
+  options: GuestLedgerReadOptions = {},
+): GuestLedgerEnvelope | null {
+  const storage = options.storage ?? getDefaultStorage();
+  const raw = storage.getItem(GUEST_LEDGER_STORAGE_KEY);
+  return raw ? parseGuestLedgerEnvelope(raw) : null;
+}
+
+export function subscribeGuestLedger(subscriber: GuestLedgerSubscriber): () => void {
+  subscribers.add(subscriber);
+  return () => subscribers.delete(subscriber);
+}
+
+const publishGuestLedger = (envelope: GuestLedgerEnvelope): void => {
+  subscribers.forEach(subscriber => subscriber(envelope));
+};
+
+const cleanupLegacyKeys = (storage: GuestLedgerStorage): void => {
+  GUEST_LEDGER_LEGACY_KEYS.forEach(key => {
+    try {
+      storage.removeItem(key);
+    } catch {
+      // El envelope ya está verificado. El siguiente arranque termina la limpieza.
+    }
+  });
+};
+
+const rollbackEnvelope = (
+  storage: GuestLedgerStorage,
+  previousRaw: string | null,
+): void => {
+  if (previousRaw === null) storage.removeItem(GUEST_LEDGER_STORAGE_KEY);
+  else storage.setItem(GUEST_LEDGER_STORAGE_KEY, previousRaw);
+};
+
+class GuestLedgerRevisionConflictError extends Error {
+  constructor() {
+    super('El guest ledger cambió durante la verificación.');
+    this.name = 'GuestLedgerRevisionConflictError';
+  }
+}
+
+const persistCandidate = (
+  storage: GuestLedgerStorage,
+  candidate: GuestLedgerEnvelope,
+  previousRaw: string | null,
+): GuestLedgerEnvelope => {
+  const serialized = JSON.stringify(candidate);
+  if (previousRaw !== null) {
+    storage.setItem(GUEST_LEDGER_RECOVERY_KEY, previousRaw);
+  }
+  storage.setItem(GUEST_LEDGER_STORAGE_KEY, serialized);
+  const observed = storage.getItem(GUEST_LEDGER_STORAGE_KEY);
+  if (observed === serialized) return parseGuestLedgerEnvelope(observed);
+
+  if (observed) {
+    try {
+      const conflicting = parseGuestLedgerEnvelope(observed);
+      if (
+        conflicting.commitId !== candidate.commitId
+        && conflicting.revision >= candidate.revision
+      ) {
+        throw new GuestLedgerRevisionConflictError();
+      }
+    } catch (error) {
+      if (error instanceof GuestLedgerRevisionConflictError) throw error;
+    }
+  }
+
+  try {
+    rollbackEnvelope(storage, previousRaw);
+  } catch {
+    // El error original de verificación es el que explica que no hubo commit.
+  }
+  throw new Error('No se pudo verificar el guest ledger después de persistirlo.');
+};
+
+interface GuestLedgerFallbackLockOptions {
+  pollDelayMs?: number;
+  acquireTimeoutMs?: number;
+  leaseMs?: number;
+}
+
+interface GuestLedgerFallbackRequest {
+  ownerId: string;
+  choosing: boolean;
+  ticket: number;
+  expiresAt: number;
+}
+
+const waitForLockPoll = (delayMs: number): Promise<void> => new Promise(resolve => {
+  setTimeout(resolve, delayMs);
+});
+
+const fallbackLockRequests = (
+  storage: GuestLedgerStorage,
+  now: number,
+): GuestLedgerFallbackRequest[] => {
+  if (typeof storage.length !== 'number' || typeof storage.key !== 'function') {
+    throw new Error('Este navegador no ofrece un bloqueo seguro para el guest ledger.');
+  }
+  const keys = Array.from({ length: storage.length }, (_, index) => storage.key!(index))
+    .filter((key): key is string => Boolean(key?.startsWith(GUEST_LEDGER_FALLBACK_LOCK_PREFIX)));
+  const requests: GuestLedgerFallbackRequest[] = [];
+  keys.forEach(key => {
+    const raw = storage.getItem(key);
+    if (!raw) return;
+    try {
+      const request = JSON.parse(raw) as Partial<GuestLedgerFallbackRequest>;
+      if (
+        typeof request.ownerId !== 'string'
+        || typeof request.choosing !== 'boolean'
+        || !Number.isSafeInteger(request.ticket)
+        || typeof request.expiresAt !== 'number'
+      ) {
+        storage.removeItem(key);
+        return;
+      }
+      if (request.expiresAt <= now) {
+        storage.removeItem(key);
+        return;
+      }
+      requests.push(request as GuestLedgerFallbackRequest);
+    } catch {
+      storage.removeItem(key);
+    }
+  });
+  return requests;
+};
+
+const fallbackRequestPrecedes = (
+  left: GuestLedgerFallbackRequest,
+  right: GuestLedgerFallbackRequest,
+): boolean => left.ticket < right.ticket
+  || (left.ticket === right.ticket && left.ownerId.localeCompare(right.ownerId) < 0);
+
+/** Lamport bakery lock persisted in per-contender keys, shared by every tab. */
+export const createGuestLedgerFallbackLock = (
+  storage: GuestLedgerStorage,
+  options: GuestLedgerFallbackLockOptions = {},
+): GuestLedgerLock => async <T>(task: () => Promise<T>): Promise<T> => {
+  const pollDelayMs = options.pollDelayMs ?? 12;
+  const acquireTimeoutMs = options.acquireTimeoutMs ?? 30_000;
+  const leaseMs = options.leaseMs ?? GUEST_LEDGER_FALLBACK_LEASE_MS;
+  const ownerId = generateId();
+  const requestKey = `${GUEST_LEDGER_FALLBACK_LOCK_PREFIX}${ownerId}`;
+  const startedAt = Date.now();
+  const writeRequest = (request: GuestLedgerFallbackRequest) => {
+    storage.setItem(requestKey, JSON.stringify(request));
+  };
+  let request: GuestLedgerFallbackRequest = {
+    ownerId,
+    choosing: true,
+    ticket: 0,
+    expiresAt: Date.now() + leaseMs,
+  };
+  writeRequest(request);
+  const existing = fallbackLockRequests(storage, Date.now());
+  request = {
+    ...request,
+    choosing: false,
+    ticket: Math.max(0, ...existing.map(candidate => candidate.ticket)) + 1,
+    expiresAt: Date.now() + leaseMs,
+  };
+  writeRequest(request);
+
+  try {
+    while (true) {
+      const contenders = fallbackLockRequests(storage, Date.now());
+      const own = contenders.find(candidate => candidate.ownerId === ownerId);
+      if (!own) throw new Error('Se perdió el bloqueo del guest ledger antes del commit.');
+      const anotherIsChoosing = contenders.some(candidate => (
+        candidate.ownerId !== ownerId && candidate.choosing
+      ));
+      const predecessorExists = contenders.some(candidate => (
+        candidate.ownerId !== ownerId
+        && !candidate.choosing
+        && fallbackRequestPrecedes(candidate, own)
+      ));
+      if (!anotherIsChoosing && !predecessorExists) break;
+      if (Date.now() - startedAt >= acquireTimeoutMs) {
+        throw new Error('Otra pestaña mantiene ocupado el guest ledger. Reintenta en unos segundos.');
+      }
+      await waitForLockPoll(pollDelayMs);
+    }
+
+    const heartbeat = setInterval(() => {
+      const raw = storage.getItem(requestKey);
+      if (!raw) return;
+      try {
+        const current = JSON.parse(raw) as GuestLedgerFallbackRequest;
+        if (current.ownerId === ownerId && current.ticket === request.ticket) {
+          request = { ...current, expiresAt: Date.now() + leaseMs };
+          writeRequest(request);
+        }
+      } catch {
+        // La verificación previa al commit detectará la pérdida del lock.
+      }
+    }, Math.max(1000, Math.floor(leaseMs / 3)));
+    try {
+      return await task();
+    } finally {
+      clearInterval(heartbeat);
+    }
+  } finally {
+    const raw = storage.getItem(requestKey);
+    if (raw) {
+      try {
+        const current = JSON.parse(raw) as GuestLedgerFallbackRequest;
+        if (current.ownerId === ownerId) storage.removeItem(requestKey);
+      } catch {
+        storage.removeItem(requestKey);
+      }
+    }
+  }
+};
+
+const createDefaultLock = (storage: GuestLedgerStorage): GuestLedgerLock => async <T>(
+  task: () => Promise<T>
+): Promise<T> => {
+  const lockManager = typeof navigator === 'undefined'
+    ? undefined
+    : (navigator as Navigator & {
+        locks?: { request<R>(name: string, callback: () => Promise<R>): Promise<R> };
+      }).locks;
+  if (lockManager) return lockManager.request(GUEST_LEDGER_LOCK_NAME, task);
+  return createGuestLedgerFallbackLock(storage)(task);
+};
+
+const isValidConflictingEnvelope = (
+  observedRaw: string | null,
+  baseRevision: number,
+): boolean => {
+  if (!observedRaw) return false;
+  try {
+    return parseGuestLedgerEnvelope(observedRaw).revision > baseRevision;
+  } catch {
+    return false;
+  }
+};
+
+export async function ensureGuestLedgerEnvelope(
+  options: GuestLedgerMutationOptions = {},
+): Promise<GuestLedgerEnvelope> {
+  const storage = options.storage ?? getDefaultStorage();
+  const lock = options.lock ?? createDefaultLock(storage);
+  return lock(async () => {
+    const raw = storage.getItem(GUEST_LEDGER_STORAGE_KEY);
+    if (raw) {
+      const existing = parseGuestLedgerEnvelope(raw);
+      cleanupLegacyKeys(storage);
+      return existing;
+    }
+
+    const data = readLegacyGuestLedgerData(storage);
+    const candidate = createGuestLedgerEnvelope(data, {
+      revision: 1,
+      commitId: options.createCommitId?.() ?? generateId(),
+      committedAt: (options.now?.() ?? new Date()).toISOString(),
+    });
+    const verified = persistCandidate(storage, candidate, null);
+    cleanupLegacyKeys(storage);
+    publishGuestLedger(verified);
+    return verified;
+  });
+}
+
+export async function mutateGuestLedger(
+  mutator: GuestLedgerMutator,
+  options: GuestLedgerMutationOptions = {},
+): Promise<GuestLedgerEnvelope> {
+  const storage = options.storage ?? getDefaultStorage();
+  const lock = options.lock ?? createDefaultLock(storage);
+  const maxRetries = options.maxRetries ?? 5;
+  const operationId = options.operationId;
+
+  return lock(async () => {
+    for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+      const baseRaw = storage.getItem(GUEST_LEDGER_STORAGE_KEY);
+      const base = baseRaw
+        ? parseGuestLedgerEnvelope(baseRaw)
+        : createGuestLedgerEnvelope(readLegacyGuestLedgerData(storage));
+
+      if (operationId && base.recentOperationIds.includes(operationId)) {
+        cleanupLegacyKeys(storage);
+        return base;
+      }
+
+      const draft = cloneData(base.data);
+      await mutator(draft, { attempt, baseRevision: base.revision });
+      validateGuestLedgerData(draft);
+      validateGuestAssetMutation(base.data, draft);
+      applyGuestCreditAuthorityDelta(base.data, draft);
+      validateGuestLedgerData(draft);
+      const serializedData = JSON.stringify(draft);
+      if (serializedData === JSON.stringify(base.data)) return base;
+      const recentOperationIds = operationId
+        ? [...base.recentOperationIds.filter(id => id !== operationId), operationId].slice(-100)
+        : base.recentOperationIds.slice(-100);
+      const candidate = createGuestLedgerEnvelope(draft, {
+        revision: base.revision + 1,
+        commitId: options.createCommitId?.() ?? generateId(),
+        committedAt: (options.now?.() ?? new Date()).toISOString(),
+        recentOperationIds,
+      });
+
+      // Force serialization before touching either durable key.
+      JSON.stringify(candidate);
+
+      const latestRaw = storage.getItem(GUEST_LEDGER_STORAGE_KEY);
+      if (latestRaw !== baseRaw) continue;
+
+      try {
+        const verified = persistCandidate(storage, candidate, baseRaw);
+        cleanupLegacyKeys(storage);
+        publishGuestLedger(verified);
+        return verified;
+      } catch (error) {
+        if (error instanceof GuestLedgerRevisionConflictError) continue;
+        const observedRaw = storage.getItem(GUEST_LEDGER_STORAGE_KEY);
+        if (isValidConflictingEnvelope(observedRaw, base.revision)) continue;
+        throw error;
+      }
+
+    }
+    throw new Error('El guest ledger cambió en otra pestaña. Reintenta la operación.');
+  });
+}
+
+export function exportGuestLedgerRecovery(
+  options: GuestLedgerReadOptions = {},
+): string {
+  const storage = options.storage ?? getDefaultStorage();
+  return JSON.stringify({
+    exportedAt: new Date().toISOString(),
+    current: storage.getItem(GUEST_LEDGER_STORAGE_KEY),
+    previous: storage.getItem(GUEST_LEDGER_RECOVERY_KEY),
+  }, null, 2);
+}

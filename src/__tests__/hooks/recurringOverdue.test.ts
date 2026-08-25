@@ -58,6 +58,17 @@ describe('useRecurringUtils — vencidos', () => {
     expect(result.current.isOverdue(p)).toBe(false);
   });
 
+  it('mantiene vencido un movimiento recurrente pendiente y lo excluye del historial pagado', () => {
+    const p = payment({ id: 'pending-payment', dueDay: 10 });
+    const tx = { ...paidTx(p.id!, new Date(2026, 5, 11)), paid: false };
+    const { result } = renderHook(() => useRecurringUtils([p], [tx]));
+
+    expect(result.current.isPaidForMonth(p.id!)).toBe(false);
+    expect(result.current.getDaysOverdue(p)).toBe(5);
+    expect(result.current.getPaymentHistory(p.id!)).toEqual([]);
+    expect(result.current.getPaymentTransactionForMonth(p.id!)).toBeUndefined();
+  });
+
   it('incluye los vencidos en stats.overduePayments y los excluye de upcoming', () => {
     const overdue = payment({ id: 'o1', dueDay: 10 });
     const upcoming = payment({ id: 'u1', dueDay: 18 }); // dentro de 3 días
@@ -85,6 +96,30 @@ describe('useRecurringUtils — vencidos', () => {
     const { result } = renderHook(() => useRecurringUtils([p], [tx]));
     expect(result.current.isPaidForMonth('pc1', new Date(2026, 5, 15))).toBe(true);
     expect(result.current.isOverdue(p)).toBe(false);
+  });
+
+  it('returns to unpaid immediately when the paid transaction is deleted or unlinked', () => {
+    const p = payment({ id: 'delete-cycle', dueDay: 10 });
+    const linked = {
+      ...paidTx(p.id!, new Date(2026, 5, 11)),
+      recurringCycle: cycleKey(p, new Date(2026, 5, 15)),
+    };
+    const { result, rerender } = renderHook(
+      ({ transactions }) => useRecurringUtils([p], transactions),
+      { initialProps: { transactions: [linked] as Transaction[] } }
+    );
+
+    expect(result.current.isPaidForMonth(p.id!)).toBe(true);
+    rerender({ transactions: [] });
+    expect(result.current.isPaidForMonth(p.id!)).toBe(false);
+    rerender({
+      transactions: [{
+        ...linked,
+        recurringPaymentId: undefined,
+        recurringCycle: undefined,
+      }],
+    });
+    expect(result.current.isPaidForMonth(p.id!)).toBe(false);
   });
 
   it('la estampa manda: tx con fecha EN la ventana pero estampada a otro ciclo NO cuenta', () => {

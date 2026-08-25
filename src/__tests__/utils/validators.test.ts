@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { TransactionValidator, AccountValidator, CategoryValidator } from '../../utils/validators';
-import type { NewTransaction, NewAccount } from '../../types/finance';
+import type { Account, NewTransaction, NewAccount, Transaction } from '../../types/finance';
 
 const baseTransaction: NewTransaction = {
   type: 'expense',
@@ -106,6 +106,102 @@ describe('TransactionValidator', () => {
 
     it('fails for NaN', () => {
       expect(TransactionValidator.validateAmount('abc').isValid).toBe(false);
+    });
+  });
+
+  describe('ledger planner adapter', () => {
+    const savings: Account = {
+      id: 'acc-1',
+      name: 'Ahorros',
+      type: 'savings',
+      isDefault: true,
+      initialBalance: 100,
+    };
+
+    it('does not reserve funds for a pending expense', () => {
+      const result = TransactionValidator.validate(
+        { ...baseTransaction, amount: '150', paid: false },
+        savings,
+        []
+      );
+
+      expect(result).toEqual({ isValid: true, errors: [] });
+    });
+
+    it('rejects editing an income downward when the complete before/after plan crosses below zero', () => {
+      const original: Transaction = {
+        id: 'income',
+        type: 'income',
+        amount: 100,
+        category: 'Ingresos',
+        description: 'Ingreso',
+        date: new Date('2026-08-01T12:00:00.000Z'),
+        paid: true,
+        accountId: 'acc-1',
+      };
+      const expense: Transaction = {
+        id: 'expense',
+        type: 'expense',
+        amount: 180,
+        category: 'Gastos',
+        description: 'Gasto',
+        date: new Date('2026-08-02T12:00:00.000Z'),
+        paid: true,
+        accountId: 'acc-1',
+      };
+
+      const result = TransactionValidator.validate(
+        { ...baseTransaction, type: 'income', amount: '50' },
+        savings,
+        [original, expense],
+        original
+      );
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors.join(' ')).toMatch(/Saldo insuficiente/i);
+    });
+
+    it.each([
+      ['absent', undefined],
+      ['negative', -1],
+      ['non-finite', Number.POSITIVE_INFINITY],
+    ])('blocks a card preview when persisted authority is %s', (_caseName, usedCredit) => {
+      const card: Account = {
+        id: 'card',
+        name: 'Visa',
+        type: 'credit',
+        isDefault: false,
+        initialBalance: 0,
+        creditLimit: 1_000,
+        usedCredit,
+      };
+
+      const result = TransactionValidator.validate(
+        { ...baseTransaction, accountId: 'card', amount: '50' },
+        card,
+        []
+      );
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors.join(' ')).toMatch(/conciliación|deuda persistida/i);
+    });
+
+    it('keeps the current form contract for a card with valid persisted authority', () => {
+      const card: Account = {
+        id: 'card',
+        name: 'Visa',
+        type: 'credit',
+        isDefault: false,
+        initialBalance: 0,
+        creditLimit: 1_000,
+        usedCredit: 100,
+      };
+
+      expect(TransactionValidator.validate(
+        { ...baseTransaction, accountId: 'card', amount: '50' },
+        card,
+        []
+      )).toEqual({ isValid: true, errors: [] });
     });
   });
 

@@ -22,7 +22,15 @@ export function useFirestore(userId: string | null) {
     retryLoad,
   } = useFirestoreSubscriptions(userId);
 
-  const { addTransaction, addCreditPaymentAtomic, deleteTransaction, updateTransaction } =
+  const {
+    addTransaction,
+    addCreditPaymentAtomic,
+    addRecurringTransactionAtomic,
+    linkRecurringTransactionAtomic,
+    restoreTransaction,
+    deleteTransaction,
+    updateTransaction,
+  } =
     useTransactionsCRUD(userId, accounts);
 
   const { addAccount, deleteAccount, updateAccount } = useAccountsCRUD(userId);
@@ -39,7 +47,13 @@ export function useFirestore(userId: string | null) {
     transactionsServerSettled, transactionsHeadExhaustive, transactionsUnresolvedReason, transactionsRetrying,
     retryLoad,
     // Transactions CRUD
-    addTransaction, addCreditPaymentAtomic, deleteTransaction, updateTransaction,
+    addTransaction,
+    addCreditPaymentAtomic,
+    addRecurringTransactionAtomic,
+    linkRecurringTransactionAtomic,
+    restoreTransaction,
+    deleteTransaction,
+    updateTransaction,
     // Accounts CRUD
     addAccount, deleteAccount, updateAccount,
     // Categories CRUD

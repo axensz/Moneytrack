@@ -45,7 +45,7 @@ const makeParams = (overrides: Record<string, unknown> = {}): Params =>
     defaultAccount: savings,
     addTransaction: vi.fn(async () => {}),
     addCreditPaymentAtomic: vi.fn(async () => {}),
-    updateRecurringPayment: vi.fn(async () => {}),
+    addRecurringTransactionAtomic: vi.fn(async () => {}),
     setNewTransaction: vi.fn(),
     setShowForm: vi.fn(),
     setShowWelcomeModal: vi.fn(),
@@ -132,6 +132,36 @@ describe('useAddTransaction - beneficiario', () => {
   });
 });
 
+describe('useAddTransaction — durable guest failure feedback', () => {
+  it('does not publish success when the guest persistence promise rejects', async () => {
+    const params = makeParams({
+      addTransaction: vi.fn(async () => {
+        throw new DOMException('quota', 'QuotaExceededError');
+      }),
+    });
+    const { result } = renderHook(() => useAddTransaction(params));
+
+    await act(async () => {
+      await result.current.handleAddTransaction({
+        type: 'income',
+        amount: '50000',
+        category: 'Sueldo',
+        description: 'pago',
+        date: '2026-06-15',
+        paid: true,
+        accountId: 'sav',
+        toAccountId: '',
+        hasInterest: false,
+        installments: 1,
+      });
+    });
+
+    expect(M.toastSuccess).toEqual([]);
+    expect(M.toastErrors).toHaveLength(1);
+    expect(params.setShowForm).not.toHaveBeenCalledWith(false);
+  });
+});
+
 describe('useAddTransaction — gate de balancesReady (#3)', () => {
   it('con saldos asentados (ready=true) valida y RECHAZA un gasto que sobregira', async () => {
     const params = makeParams();
@@ -173,7 +203,63 @@ describe('useAddTransaction — gate de balancesReady (#3)', () => {
   });
 });
 
+describe('useAddTransaction — pago periódico autenticable', () => {
+  it('routes a paid recurring expense through the aggregate writer without a prior template write', async () => {
+    const recurringPayment = {
+      id: 'rent', name: 'Arriendo', amount: 100_000, category: 'Vivienda',
+      dueDay: 5, frequency: 'monthly' as const, isActive: true,
+    };
+    const account = { ...savings, initialBalance: 500_000 };
+    const legacyTemplateWrite = vi.fn(async () => undefined);
+    const params = makeParams({
+      accounts: [account],
+      defaultAccount: account,
+      recurringPayments: [recurringPayment],
+      updateRecurringPayment: legacyTemplateWrite,
+    });
+    const { result } = renderHook(() => useAddTransaction(params));
+
+    await act(async () => {
+      await result.current.handleAddTransaction({
+        ...expense150k,
+        amount: '120000',
+        category: 'Vivienda',
+        recurringPaymentId: 'rent',
+      });
+    });
+
+    expect(params.addRecurringTransactionAtomic).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 120_000,
+        recurringPaymentId: 'rent',
+        recurringCycle: expect.any(String),
+      })
+    );
+    expect(params.addTransaction).not.toHaveBeenCalled();
+    expect(legacyTemplateWrite).not.toHaveBeenCalled();
+  });
+});
+
 describe('useAddTransaction — pagos y deuda contractual de TC', () => {
+  it('no degrada un pago a una sola mitad si la cuenta origen falta en el snapshot React', async () => {
+    const card = { ...credit, usedCredit: 200_000 };
+    const params = makeParams({ accounts: [card], defaultAccount: card });
+    const { result } = renderHook(() => useAddTransaction(params));
+
+    await act(async () => {
+      await result.current.handleAddTransaction({
+        type: 'income', amount: '100000', category: '', description: 'Pago',
+        date: '2026-06-15', paid: true, accountId: 'tc', toAccountId: 'sav',
+        hasInterest: false, installments: 0,
+      });
+    });
+
+    expect(params.addCreditPaymentAtomic).not.toHaveBeenCalled();
+    expect(params.addTransaction).not.toHaveBeenCalled();
+    expect(params.setShowForm).not.toHaveBeenCalledWith(false);
+    expect(M.toastErrors.join(' ')).toMatch(/cuenta origen|actualiza|recarga/i);
+  });
+
   it('rechaza pagar la TC desde una cuenta sin saldo suficiente', async () => {
     const bank = { ...savings, initialBalance: 50_000 };
     const card = { ...credit, usedCredit: 200_000 };

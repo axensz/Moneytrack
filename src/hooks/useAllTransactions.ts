@@ -17,31 +17,21 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebaseDb';
-import { ensureDate } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 import type { Transaction } from '../types/finance';
+import {
+  collectDecodedTransactions,
+  type TransactionDecodeIssue,
+} from '../utils/transactionDecoder';
 import { mergeTransactionsById } from './useCreditCardTransactions';
 import { publishTransactionCacheMutation } from './firestore/transactionPaginationCache';
 
 interface FullHistoryState {
   userId: string;
   transactions: Transaction[];
+  issues: TransactionDecodeIssue[];
   settled: boolean;
 }
-
-type TransactionDocument = {
-  id: string;
-  data: () => Record<string, unknown>;
-};
-
-const transactionFromDocument = (document: TransactionDocument): Transaction => {
-  const data = document.data();
-  return {
-    ...data,
-    id: document.id,
-    date: ensureDate(data.date),
-  } as Transaction;
-};
 
 /**
  * Devuelve TODAS las transacciones del usuario. Hasta confirmar el servidor
@@ -69,7 +59,11 @@ export function useAllTransactions(
 export function useAllTransactionsWithStatus(
   userId: string | null,
   liveTransactions: Transaction[],
-): { transactions: Transaction[]; settled: boolean } {
+): {
+  transactions: Transaction[];
+  issues: TransactionDecodeIssue[];
+  settled: boolean;
+} {
   const [fullHistory, setFullHistory] = useState<FullHistoryState | null>(null);
 
   useEffect(() => {
@@ -94,12 +88,13 @@ export function useAllTransactionsWithStatus(
         if (!active) return;
 
         const settledFromServer = !snapshot.metadata.fromCache;
+        const decodedSnapshot = collectDecodedTransactions(snapshot.docs);
 
         if (!initialized) {
           initialized = true;
           setFullHistory({
             userId,
-            transactions: snapshot.docs.map(transactionFromDocument),
+            ...decodedSnapshot,
             settled: settledFromServer,
           });
           return;
@@ -112,12 +107,17 @@ export function useAllTransactionsWithStatus(
         // las escrituras locales pendientes ya se publican tras su commit y una
         // mutación optimista rechazada no debe borrar una fila de la caché.
         if (!snapshot.metadata.hasPendingWrites && changes.length > 0) {
-          const deletedIds = changes
+          const decodedChanges = collectDecodedTransactions(
+            changes
+              .filter((change) => change.type !== 'removed')
+              .map((change) => change.doc),
+          );
+          const deletedIds = [
+            ...changes
             .filter((change) => change.type === 'removed')
-            .map((change) => change.doc.id);
-          const updatedTransactions = changes
-            .filter((change) => change.type !== 'removed')
-            .map((change) => transactionFromDocument(change.doc));
+            .map((change) => change.doc.id),
+            ...decodedChanges.issues.map((issue) => issue.transactionId),
+          ];
 
           if (deletedIds.length > 0) {
             publishTransactionCacheMutation({
@@ -126,11 +126,11 @@ export function useAllTransactionsWithStatus(
               transactionIds: deletedIds,
             });
           }
-          if (updatedTransactions.length > 0) {
+          if (decodedChanges.transactions.length > 0) {
             publishTransactionCacheMutation({
               userId,
               type: 'update',
-              transactions: updatedTransactions,
+              transactions: decodedChanges.transactions,
             });
           }
         }
@@ -139,7 +139,7 @@ export function useAllTransactionsWithStatus(
           if (!current || current.userId !== userId) {
             return {
               userId,
-              transactions: snapshot.docs.map(transactionFromDocument),
+              ...decodedSnapshot,
               settled: settledFromServer,
             };
           }
@@ -149,35 +149,7 @@ export function useAllTransactionsWithStatus(
             return settled === current.settled ? current : { ...current, settled };
           }
 
-          // Firestore entrega oldIndex/newIndex en el orden necesario para
-          // transformar el snapshot anterior en el nuevo sin reconstruirlo.
-          const transactions = [...current.transactions];
-          changes.forEach((change) => {
-            const indexMatchesDocument = change.oldIndex >= 0
-              && transactions[change.oldIndex]?.id === change.doc.id;
-            const currentIndex = change.type === 'added'
-              ? -1
-              : indexMatchesDocument
-                ? change.oldIndex
-                : transactions.findIndex(
-                    (transaction) => transaction.id === change.doc.id
-                  );
-            if (currentIndex >= 0) transactions.splice(currentIndex, 1);
-
-            if (change.type !== 'removed') {
-              const targetIndex = Math.max(
-                0,
-                Math.min(change.newIndex, transactions.length)
-              );
-              transactions.splice(
-                targetIndex,
-                0,
-                transactionFromDocument(change.doc)
-              );
-            }
-          });
-
-          return { userId, transactions, settled };
+          return { userId, ...decodedSnapshot, settled };
         });
       },
       (err) => {
@@ -214,6 +186,7 @@ export function useAllTransactionsWithStatus(
 
   return {
     transactions,
+    issues: fullHistory?.userId === userId ? fullHistory.issues : [],
     // Invitado (sin userId): no hay nada que fetchear → siempre asentado.
     settled: !userId || (
       fullHistory?.userId === userId

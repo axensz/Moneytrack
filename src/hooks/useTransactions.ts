@@ -15,16 +15,26 @@
 
 import { useEffect, useMemo } from 'react';
 import { useFirestoreData } from '../contexts/FirestoreContext';
-import { useLocalStorage } from './useLocalStorage';
+import { useGuestLedger } from './useGuestLedger';
 import { generateId } from '../utils/formatters';
 import { ensureDate } from '../utils/dateUtils';
 import { getAccountReferenceIds } from '../utils/accountTransactions';
-import { reconcileUsedCredit } from '../utils/creditDeltas';
+import { BalanceCalculator } from '../utils/balanceCalculator';
+import { planLedgerMutation } from '../utils/ledgerMutation';
+import { logger } from '../utils/logger';
+import {
+  getTransactionRestorePolicy,
+  transactionMatchesRestoreSnapshot,
+} from '../utils/transactionRestorePolicy';
 import {
   CURRENT_PAYMENT_PAIR_MODEL_VERSION,
   findHistoricalCreditPaymentPairs,
 } from '../utils/creditPaymentPairs';
-import type { Account, Transaction } from '../types/finance';
+import {
+  isRecurringCycleKeyForPayment,
+  recurringTransactionSatisfiesCycleKey,
+} from '../utils/recurringPayments';
+import type { Transaction } from '../types/finance';
 
 const linkedPaymentUpdates = (updates: Partial<Transaction>): Partial<Transaction> => {
   const linked: Partial<Transaction> = {};
@@ -70,62 +80,49 @@ export function useTransactions(userId: string | null) {
     loading: firestoreLoading,
     addTransaction: firestoreAddTransaction,
     addCreditPaymentAtomic: firestoreAddCreditPaymentAtomic,
+    addRecurringTransactionAtomic: firestoreAddRecurringTransactionAtomic,
+    linkRecurringTransactionAtomic: firestoreLinkRecurringTransactionAtomic,
+    restoreTransaction: firestoreRestoreTransaction,
     deleteTransaction: firestoreDeleteTransaction,
     updateTransaction: firestoreUpdateTransaction
   } = useFirestoreData();
 
-  const [localTransactions, setLocalTransactions] = useLocalStorage<Transaction[]>('transactions', []);
-  const [localAccounts, setLocalAccounts] = useLocalStorage<Account[]>('accounts', []);
+  const {
+    transactions: localTransactions,
+    mutate: mutateGuestLedger,
+  } = useGuestLedger();
 
   // Los pagos creados antes de linkedTransactionId eran dos movimientos
   // independientes. En invitado se enlazan una vez, solo cuando el par es
   // inequívoco, para que editar/borrar conserve ambos lados sincronizados.
   useEffect(() => {
     if (userId) return;
-    const pendingAccounts = localAccounts.filter(account =>
-      account.type === 'credit' && account.id &&
-      account.paymentPairModelVersion !== CURRENT_PAYMENT_PAIR_MODEL_VERSION
-    );
-    if (pendingAccounts.length === 0) return;
-
-    setLocalTransactions(previous => {
+    void mutateGuestLedger(draft => {
+      const pendingAccounts = draft.accounts.filter(account =>
+        account.type === 'credit' && account.id &&
+        account.paymentPairModelVersion !== CURRENT_PAYMENT_PAIR_MODEL_VERSION
+      );
+      if (pendingAccounts.length === 0) return;
       const links = new Map<string, string>();
       pendingAccounts.forEach(account => {
-        findHistoricalCreditPaymentPairs(account, previous).forEach(pair => {
+        findHistoricalCreditPaymentPairs(account, draft.transactions).forEach(pair => {
           links.set(pair.creditTransactionId, pair.sourceTransactionId);
           links.set(pair.sourceTransactionId, pair.creditTransactionId);
         });
       });
-      if (links.size === 0) return previous;
-      return previous.map(transaction => {
+      if (links.size > 0) draft.transactions = draft.transactions.map(transaction => {
         const linkedTransactionId = transaction.id ? links.get(transaction.id) : undefined;
         return linkedTransactionId ? { ...transaction, linkedTransactionId } : transaction;
       });
-    });
-    setLocalAccounts(previous => previous.map(account =>
-      pendingAccounts.some(pending => pending.id === account.id)
+      draft.accounts = draft.accounts.map(account =>
+        pendingAccounts.some(pending => pending.id === account.id)
         ? { ...account, paymentPairModelVersion: CURRENT_PAYMENT_PAIR_MODEL_VERSION }
         : account
-    ));
-  }, [userId, localAccounts, setLocalAccounts, setLocalTransactions]);
-
-  // En invitado no existe el trigger atómico de Firestore: reconciliar el campo
-  // persistido desde el historial local evita que un usedCredit inicial/mergeado
-  // quede congelado después de altas, ediciones o borrados.
-  useEffect(() => {
-    if (userId) return;
-    setLocalAccounts(previous => {
-      let changed = false;
-      const next = previous.map(account => {
-        if (account.type !== 'credit' || !account.id) return account;
-        const usedCredit = reconcileUsedCredit(getAccountReferenceIds(account), localTransactions);
-        if (account.usedCredit === usedCredit) return account;
-        changed = true;
-        return { ...account, usedCredit };
-      });
-      return changed ? next : previous;
+      );
+    }, { operationId: 'guest-migration:payment-pairs:v1' }).catch(error => {
+      logger.error('No se pudo reconciliar el modelo local de pagos de tarjeta', error);
     });
-  }, [userId, localTransactions, setLocalAccounts]);
+  }, [userId, mutateGuestLedger]);
 
   // Usar Firebase si hay usuario, localStorage si no.
   // Firestore ya viene ordenado por fecha DESC; reordenamos con el desempate por
@@ -146,7 +143,9 @@ export function useTransactions(userId: string | null) {
         id: generateId(),
         createdAt: new Date()
       };
-      setLocalTransactions(prev => [newTransaction, ...prev]);
+      await mutateGuestLedger(draft => {
+        draft.transactions.unshift(newTransaction);
+      }, { operationId: newTransaction.operationId ?? `guest-create:${newTransaction.id}` });
     }
   };
 
@@ -170,20 +169,181 @@ export function useTransactions(userId: string | null) {
       const source: Transaction = {
         ...sourceTx, id: sourceId, linkedTransactionId: creditId, createdAt: now,
       };
-      setLocalTransactions(prev => [credit, source, ...prev]);
+      await mutateGuestLedger(draft => {
+        draft.transactions.unshift(credit, source);
+      }, {
+        operationId: credit.operationId
+          ?? source.operationId
+          ?? `guest-credit-payment:${creditId}:${sourceId}`,
+      });
     }
+  };
+
+  const addRecurringTransactionAtomic = async (
+    transaction: Omit<Transaction, 'id' | 'createdAt'>
+  ) => {
+    if (userId) {
+      await firestoreAddRecurringTransactionAtomic(transaction);
+      return;
+    }
+    if (!transaction.recurringPaymentId || !transaction.recurringCycle) {
+      throw new Error('El pago periódico requiere una identidad de ciclo.');
+    }
+    const operationId = `guest-recurring:${transaction.recurringPaymentId}:${transaction.recurringCycle}`;
+    const newTransaction: Transaction = {
+      ...transaction,
+      id: operationId,
+      createdAt: new Date(),
+      operationId,
+      mutationKind: 'recurring-post',
+      mutationSource: 'recurring',
+    };
+    await mutateGuestLedger(draft => {
+      const payment = draft.recurringPayments.find(
+        candidate => candidate.id === transaction.recurringPaymentId
+      );
+      if (!payment) throw new Error('El pago periódico ya no existe. Actualiza e intenta de nuevo.');
+      if (!isRecurringCycleKeyForPayment(payment, transaction.recurringCycle!)) {
+        throw new Error('La identidad del ciclo no corresponde al pago periódico.');
+      }
+      const duplicate = draft.transactions.find(candidate => (
+        recurringTransactionSatisfiesCycleKey(
+          payment,
+          candidate,
+          transaction.recurringCycle!,
+        )
+      ));
+      const committed = duplicate ?? newTransaction;
+      if (!duplicate) draft.transactions.unshift(newTransaction);
+      draft.recurringPayments = draft.recurringPayments.map(candidate => (
+        candidate.id === payment.id
+          ? {
+              ...candidate,
+              lastPaidAmount: committed.amount,
+              lastPaidDate: committed.date,
+            }
+          : candidate
+      ));
+    }, { operationId });
+  };
+
+  const linkRecurringTransactionAtomic = async (
+    transactionId: string,
+    recurringPaymentId: string,
+    recurringCycle: string
+  ) => {
+    if (userId) {
+      await firestoreLinkRecurringTransactionAtomic(
+        transactionId,
+        recurringPaymentId,
+        recurringCycle
+      );
+      return;
+    }
+    await mutateGuestLedger(draft => {
+      const payment = draft.recurringPayments.find(candidate => candidate.id === recurringPaymentId);
+      if (!payment) throw new Error('El pago periódico ya no existe. Actualiza e intenta de nuevo.');
+      if (!isRecurringCycleKeyForPayment(payment, recurringCycle)) {
+        throw new Error('La identidad del ciclo no corresponde al pago periódico.');
+      }
+      const existing = draft.transactions.find(candidate => candidate.id === transactionId);
+      if (!existing) throw new Error('La transacción ya no existe. Actualiza e intenta de nuevo.');
+      if (existing.type !== 'expense' || existing.paid !== true) {
+        throw new Error('Solo un gasto pagado puede vincularse a un ciclo periódico.');
+      }
+      if (existing.recurringPaymentId && existing.recurringPaymentId !== recurringPaymentId) {
+        throw new Error('La transacción ya pertenece a otro pago periódico.');
+      }
+      const duplicate = draft.transactions.find(candidate => (
+        candidate.id !== transactionId
+        && recurringTransactionSatisfiesCycleKey(payment, candidate, recurringCycle)
+      ));
+      if (duplicate) throw new Error('Este ciclo ya tiene un pago registrado.');
+      const operationId = `guest-recurring:${recurringPaymentId}:${recurringCycle}`;
+      const linked: Transaction = {
+        ...existing,
+        recurringPaymentId,
+        recurringCycle,
+        operationId,
+        mutationKind: 'recurring-post',
+        mutationSource: 'recurring',
+      };
+      draft.transactions = draft.transactions.map(candidate => (
+        candidate.id === transactionId ? linked : candidate
+      ));
+      draft.recurringPayments = draft.recurringPayments.map(candidate => (
+        candidate.id === recurringPaymentId
+          ? {
+              ...candidate,
+              lastPaidAmount: linked.amount,
+              lastPaidDate: linked.date,
+            }
+          : candidate
+      ));
+    }, { operationId: `guest-recurring:${recurringPaymentId}:${recurringCycle}` });
+  };
+
+  const restoreTransaction = async (transaction: Transaction) => {
+    if (userId) {
+      await firestoreRestoreTransaction(transaction);
+      return;
+    }
+
+    const transactionId = transaction.id!;
+    await mutateGuestLedger(draft => {
+      const policy = getTransactionRestorePolicy(transaction, draft.accounts);
+      if (!policy.allowed) throw new Error(policy.reason);
+      const existing = draft.transactions.find(candidate => candidate.id === transactionId);
+      if (existing) {
+        if (transactionMatchesRestoreSnapshot(existing, transaction)) return;
+        throw new Error('La identidad original ya pertenece a otra transacción.');
+      }
+
+      const account = draft.accounts.find(candidate => (
+        getAccountReferenceIds(candidate).includes(transaction.accountId)
+      ));
+      if (!account?.id) {
+        throw new Error('No se pudo validar la cuenta de la transacción eliminada.');
+      }
+      const restored: Transaction = {
+        ...transaction,
+        id: transactionId,
+        accountId: account.id,
+        createdAt: transaction.createdAt ?? new Date(),
+        mutationKind: 'restore',
+        mutationSource: 'undo',
+      };
+      planLedgerMutation(
+        {
+          kind: 'restore',
+          before: [],
+          after: [restored],
+          metadata: { mutationSource: 'undo' },
+        },
+        [{
+          account: { id: account.id, type: account.type },
+          currentBalance: BalanceCalculator.calculateAccountBalance(account, draft.transactions),
+        }]
+      );
+      draft.transactions.unshift(restored);
+    }, { operationId: `guest-undo:${transactionId}:restore:${generateId()}` });
   };
 
   const deleteTransaction = async (id: string) => {
     if (userId) {
-      await firestoreDeleteTransaction(id);
-    } else {
-      setLocalTransactions(prev => {
-        const transaction = prev.find(t => t.id === id);
-        const ids = new Set([id, transaction?.linkedTransactionId].filter(Boolean));
-        return prev.filter(t => !t.id || !ids.has(t.id));
-      });
+      return firestoreDeleteTransaction(id);
     }
+    let deleted: Transaction | null = null;
+    await mutateGuestLedger(draft => {
+      const current = draft.transactions.find(candidate => candidate.id === id);
+      if (!current) return;
+      deleted = current;
+      const ids = new Set([id, current.linkedTransactionId].filter(Boolean));
+      draft.transactions = draft.transactions.filter(candidate => (
+        !candidate.id || !ids.has(candidate.id)
+      ));
+    }, { operationId: `guest-delete:${id}:${generateId()}` });
+    return deleted;
   };
 
   const togglePaid = async (id: string) => {
@@ -192,11 +352,15 @@ export function useTransactions(userId: string | null) {
       if (userId) {
         await firestoreUpdateTransaction(id, { paid: !transaction.paid });
       } else {
-        setLocalTransactions(prev => prev.map(t => (
-          t.id === id || t.id === transaction.linkedTransactionId
-            ? { ...t, paid: !transaction.paid }
-            : t
-        )));
+        await mutateGuestLedger(draft => {
+          const current = draft.transactions.find(candidate => candidate.id === id);
+          if (!current) return;
+          draft.transactions = draft.transactions.map(item => (
+            item.id === id || item.id === current.linkedTransactionId
+              ? { ...item, paid: !current.paid }
+              : item
+          ));
+        }, { operationId: `guest-toggle-paid:${id}:${!transaction.paid}:${generateId()}` });
       }
     }
   };
@@ -205,20 +369,21 @@ export function useTransactions(userId: string | null) {
     if (userId) {
       await firestoreUpdateTransaction(id, updates);
     } else {
-      setLocalTransactions(prev => {
-        const transaction = prev.find(t => t.id === id);
+      await mutateGuestLedger(draft => {
+        const transaction = draft.transactions.find(t => t.id === id);
         if (!transaction?.linkedTransactionId) {
-          return prev.map(t => t.id === id ? { ...t, ...updates } : t);
+          draft.transactions = draft.transactions.map(t => t.id === id ? { ...t, ...updates } : t);
+          return;
         }
 
         const safeUpdates = safePaymentUpdates(updates);
         const linkedUpdates = linkedPaymentUpdates(safeUpdates);
-        return prev.map(t => {
+        draft.transactions = draft.transactions.map(t => {
           if (t.id === id) return { ...t, ...safeUpdates };
           if (t.id === transaction.linkedTransactionId) return { ...t, ...linkedUpdates };
           return t;
         });
-      });
+      }, { operationId: `guest-update:${id}:${generateId()}` });
     }
   };
 
@@ -227,6 +392,9 @@ export function useTransactions(userId: string | null) {
     loading,
     addTransaction,
     addCreditPaymentAtomic,
+    addRecurringTransactionAtomic,
+    linkRecurringTransactionAtomic,
+    restoreTransaction,
     deleteTransaction,
     togglePaid,
     updateTransaction

@@ -14,7 +14,9 @@ import {
 } from '../config/constants';
 import { AccountStrategyFactory } from './accountStrategies';
 import { getCreditDelta } from './creditDeltas';
+import { getCreditAuthorityState } from './creditAuthority';
 import { parseCurrency, roundMoney } from './formatters';
+import { LedgerMutationValidationError, planLedgerMutation } from './ledgerMutation';
 import type {
   NewTransaction,
   NewAccount,
@@ -106,9 +108,9 @@ export class TransactionValidator {
 
     // Validar según tipo de transacción y cuenta
     if (account && transactions && !isNaN(amount)) {
-      // Al EDITAR (original definido) el saldo/cupo se valida como si la tx
-      // original no existiera: se excluye del array y, en TC, se descuenta su
-      // delta del usedCredit persistido (que ya la incluye).
+      // El formulario conserva sus errores de esquema, pero la previsualización
+      // financiera usa el mismo planner before/after que la escritura canónica.
+      // Las tarjetas conservan además la validación de cupo de producto.
       let validationAccount = account;
       let validationTxs = transactions;
       if (original?.id) {
@@ -125,23 +127,50 @@ export class TransactionValidator {
       }
 
       try {
-        // ✅ Obtener estrategia para el tipo de cuenta
         const strategy = AccountStrategyFactory.getStrategy(validationAccount.type);
 
-        // ✅ Delegar validación a la estrategia (pasando el tipo de transacción)
-        const validation = strategy.validateTransaction(
-          validationAccount,
-          amount,
-          validationTxs,
-          transaction.type
-        );
-
-        if (!validation.valid && validation.error) {
-          errors.push(validation.error);
+        if (validationAccount.type === 'credit') {
+          const authority = getCreditAuthorityState(validationAccount);
+          if (!authority.ready) {
+            errors.push('La deuda persistida de esta tarjeta requiere conciliación antes de continuar');
+          } else {
+            const validation = strategy.validateTransaction(
+              validationAccount,
+              amount,
+              validationTxs,
+              transaction.type
+            );
+            if (!validation.valid && validation.error) errors.push(validation.error);
+          }
+        } else {
+          const afterEffect = {
+            id: original?.id,
+            type: transaction.type,
+            amount,
+            date: original?.date ?? new Date(0),
+            paid: transaction.paid ?? original?.paid ?? true,
+            accountId: transaction.accountId || validationAccount.id || '',
+            toAccountId: transaction.toAccountId || undefined,
+            linkedTransactionId: original?.linkedTransactionId,
+          };
+          planLedgerMutation(
+            {
+              kind: original ? 'edit' : 'create',
+              before: original ? [original] : [],
+              after: [afterEffect],
+            },
+            [{
+              account: validationAccount,
+              currentBalance: strategy.calculateBalance(validationAccount, transactions),
+            }]
+          );
         }
-      } catch {
-        // Si no existe estrategia (tipo inválido), agregar error genérico
-        errors.push('Tipo de cuenta no válido');
+      } catch (error) {
+        errors.push(
+          error instanceof LedgerMutationValidationError
+            ? error.message
+            : 'Tipo de cuenta no válido'
+        );
       }
     }
 

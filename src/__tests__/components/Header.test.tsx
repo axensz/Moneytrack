@@ -35,6 +35,7 @@ function renderHeader(overrides: Partial<React.ComponentProps<typeof Header>> = 
     onOpenHelp: vi.fn(),
     onOpenCategories: vi.fn(),
     onOpenNotificationPreferences: vi.fn(),
+    onOpenLedgerReconciliation: vi.fn(),
     onGoToTransactions: vi.fn(),
     onLogout: vi.fn().mockResolvedValue(undefined),
     ...overrides,
@@ -127,17 +128,36 @@ describe('Header', () => {
     expect(settingsTrigger).toHaveFocus();
   });
 
+  it('abre Integridad del libro desde ajustes conservando el retorno de foco', () => {
+    let activeElementWhenOpened: Element | null = null;
+    const onOpenLedgerReconciliation = vi.fn(() => {
+      activeElementWhenOpened = document.activeElement;
+    });
+    renderHeader({ showSettingsMenu: true, onOpenLedgerReconciliation });
+    const settingsTrigger = screen.getByRole('button', { name: 'Abrir menú de ajustes' });
+    const integrityItem = screen.getByRole('menuitem', { name: 'Integridad del libro' });
+
+    expect(integrityItem).toHaveClass('control-target-44');
+
+    fireEvent.click(integrityItem);
+
+    expect(onOpenLedgerReconciliation).toHaveBeenCalledTimes(1);
+    expect(activeElementWhenOpened).toBe(settingsTrigger);
+    expect(settingsTrigger).toHaveFocus();
+  });
+
   it('skips the responsive-hidden logout action during settings keyboard navigation', () => {
     renderHeader({ showSettingsMenu: true });
     const menu = screen.getByRole('menu', { name: 'Opciones de ajustes' });
     const notifications = screen.getByRole('menuitem', { name: 'Notificaciones' });
+    const integrity = screen.getByRole('menuitem', { name: 'Integridad del libro' });
     const help = screen.getByRole('menuitem', { name: 'Ayuda' });
     const logout = screen.getByRole('menuitem', { name: 'Cerrar sesión' });
     logout.style.display = 'none';
 
     notifications.focus();
     fireEvent.keyDown(menu, { key: 'ArrowDown' });
-    expect(help).toHaveFocus();
+    expect(integrity).toHaveFocus();
 
     fireEvent.keyDown(menu, { key: 'End' });
     expect(help).toHaveFocus();
@@ -150,7 +170,7 @@ describe('Header', () => {
     );
 
     expect(utilitiesSource).toContain(
-      'button:not(.btn-type):not(.header-icon)',
+      ':where(button:not(.btn-type):not(.header-icon))',
     );
   });
 

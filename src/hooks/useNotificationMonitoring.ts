@@ -107,7 +107,7 @@ export function useNotificationMonitoring({
         monitorsRef.current.paymentMonitor = new PaymentMonitor({
             createNotification: (n) => notificationManager.createNotification(n),
             recurringPayments,
-            transactions,
+            transactions: txsForBalance,
         });
 
         monitorsRef.current.spendingAnalyzer = new SpendingAnalyzer({
@@ -159,7 +159,7 @@ export function useNotificationMonitoring({
         m.paymentMonitor!.deps = {
             ...m.paymentMonitor!.deps,
             recurringPayments,
-            transactions,
+            transactions: txsForBalance,
         };
         m.spendingAnalyzer!.deps = {
             ...m.spendingAnalyzer!.deps,
@@ -203,7 +203,7 @@ export function useNotificationMonitoring({
         };
         document.addEventListener('visibilitychange', onVisible);
         return () => document.removeEventListener('visibilitychange', onVisible);
-    }, [notificationManager, isHydrated, recurringPayments, transactions]);
+    }, [notificationManager, isHydrated, recurringPayments, txsForBalance]);
 
     // Al cambiar de usuario (guest→login o cambio de cuenta sin recargar) se
     // reinicia el set de ids previos. Sin esto, las transacciones del nuevo

@@ -20,7 +20,6 @@ import {
   onSnapshot,
   query,
   orderBy,
-  runTransaction,
   updateDoc,
   doc,
   getDocsFromServer,
@@ -31,13 +30,26 @@ import {
   deleteField,
 } from 'firebase/firestore';
 import { db } from '../lib/firebaseDb';
-import { useLocalStorage } from './useLocalStorage';
+import { useGuestLedger } from './useGuestLedger';
 import { logger } from '../utils/logger';
 import { safeFirestoreOperation, checkNetworkConnection, stripUndefined } from '../utils/firestoreHelpers';
-import { generateId } from '../utils/formatters';
+import { generateId, roundMoney } from '../utils/formatters';
+import {
+  LedgerMutationValidationError,
+  normalizeLedgerAmount,
+  planLedgerMutation,
+} from '../utils/ledgerMutation';
 import { creditDeltasByAccount } from '../utils/creditDeltas';
+import { getCreditAuthorityState } from '../utils/creditAuthority';
+import { BalanceCalculator } from '../utils/balanceCalculator';
+import { getAccountReferenceIds } from '../utils/accountTransactions';
 import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../config/constants';
-import type { Debt, Transaction, Account } from '../types/finance';
+import type {
+  Account,
+  Debt,
+  DebtPaymentOperationReceipt,
+  Transaction,
+} from '../types/finance';
 import {
   acquireAccountOperationLock,
   assertAtomicBatchCapacity,
@@ -47,14 +59,73 @@ import {
   renewAccountOperationLock,
 } from './firestore/accountOrchestration';
 import { publishTransactionCacheMutation } from './firestore/transactionPaginationCache';
+import {
+  executeAuthenticatedLedgerMutation,
+  planCreditAuthorityChanges,
+} from './firestore/ledgerMutationOrchestration';
 import { buildDebtAccountReassignmentPlan } from '../utils/debtAccountReassignment';
+import { transactionMatchesRestoreSnapshot } from '../utils/transactionRestorePolicy';
+import { requireDecodedTransaction } from '../utils/transactionDecoder';
 
 interface DebtTransactionOps {
   addTransaction?: (tx: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
-  deleteTransaction?: (id: string) => Promise<void>;
+  restoreTransaction?: (tx: Transaction) => Promise<void>;
+  deleteTransaction?: (id: string) => Promise<unknown>;
   updateTransaction?: (id: string, updates: Partial<Transaction>) => Promise<void>;
   accounts?: Account[];
 }
+
+const DEBT_PAYMENT_RECEIPT_LIMIT = 50;
+
+const readDebtPaymentReceipts = (value: unknown): DebtPaymentOperationReceipt[] => (
+  Array.isArray(value)
+    ? value.filter((item): item is DebtPaymentOperationReceipt => (
+        Boolean(item)
+        && typeof item === 'object'
+        && typeof (item as DebtPaymentOperationReceipt).operationId === 'string'
+        && typeof (item as DebtPaymentOperationReceipt).amount === 'number'
+        && Number.isFinite((item as DebtPaymentOperationReceipt).amount)
+        && (
+          (item as DebtPaymentOperationReceipt).transactionId === undefined
+          || typeof (item as DebtPaymentOperationReceipt).transactionId === 'string'
+        )
+      ))
+    : []
+);
+
+const appendDebtPaymentReceipt = (
+  receipts: readonly DebtPaymentOperationReceipt[],
+  receipt: DebtPaymentOperationReceipt,
+): DebtPaymentOperationReceipt[] => [
+  ...receipts.filter(item => item.operationId !== receipt.operationId),
+  receipt,
+].slice(-DEBT_PAYMENT_RECEIPT_LIMIT);
+
+const loadCommittedDebtTransaction = async (
+  userId: string,
+  debtId: string,
+  receipt: DebtPaymentOperationReceipt,
+): Promise<Transaction | null> => {
+  if (!receipt.transactionId) return null;
+  const snapshot = await getDocFromServer(
+    doc(db, `users/${userId}/transactions`, receipt.transactionId)
+  );
+  if (!snapshot.exists()) {
+    throw new Error('El recibo del pago existe pero su transacción no; requiere reconciliación.');
+  }
+  const transaction = requireDecodedTransaction({
+    id: receipt.transactionId,
+    data: () => snapshot.data() as Record<string, unknown>,
+  });
+  if (
+    transaction.operationId !== receipt.operationId
+    || transaction.debtId !== debtId
+    || roundMoney(transaction.amount) !== roundMoney(receipt.amount)
+  ) {
+    throw new Error('La identidad del pago confirmado no coincide; requiere reconciliación.');
+  }
+  return transaction;
+};
 
 export function useDebts(
   userId: string | null,
@@ -62,13 +133,18 @@ export function useDebts(
   externalDebts?: Debt[],
   txOps: DebtTransactionOps = {}
 ) {
-  const { addTransaction, deleteTransaction, updateTransaction, accounts: operationAccounts = [] } = txOps;
+  const {
+    restoreTransaction,
+    accounts: operationAccounts = [],
+  } = txOps;
   // Firestore state
   const [firestoreDebts, setFirestoreDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // LocalStorage for guest mode
-  const [localDebts, setLocalDebts] = useLocalStorage<Debt[]>('debts', []);
+  const {
+    debts: localDebts,
+    mutate: mutateGuestLedger,
+  } = useGuestLedger();
   const hasExternalDebts = externalDebts !== undefined;
 
   // Firestore subscription — skip if data provided externally (centralized)
@@ -113,11 +189,44 @@ export function useDebts(
 
   const debts = externalDebts ?? (userId ? firestoreDebts : localDebts);
 
+  const assertGuestLedgerMutation = useCallback((
+    transaction: Omit<Transaction, 'id' | 'createdAt'>,
+    accounts: Account[] = operationAccounts,
+    ledgerTransactions: Transaction[] = transactions,
+  ) => {
+    const account = accounts.find(candidate =>
+      getAccountReferenceIds(candidate).includes(transaction.accountId)
+    );
+    if (!account?.id) {
+      throw new LedgerMutationValidationError(
+        'INVALID_ACCOUNT_AUTHORITY',
+        'No se pudo validar la cuenta asociada',
+        transaction.accountId
+      );
+    }
+
+    const normalizedTransaction = {
+      ...transaction,
+      accountId: account.id,
+    };
+    planLedgerMutation(
+      {
+        kind: 'create',
+        before: [],
+        after: [normalizedTransaction],
+        metadata: { mutationSource: 'debt' },
+      },
+      [{
+        account: { id: account.id, type: account.type },
+        currentBalance: BalanceCalculator.calculateAccountBalance(account, ledgerTransactions),
+      }]
+    );
+
+    return normalizedTransaction;
+  }, [operationAccounts, transactions]);
+
   // CRUD Operations
   const addDebt = useCallback(async (debt: Omit<Debt, 'id' | 'createdAt'>) => {
-    // Limpiar campos undefined antes de enviar a Firestore
-    const cleanDebt = stripUndefined(debt);
-
     let debtId: string;
     if (userId) {
       if (!checkNetworkConnection()) {
@@ -127,72 +236,102 @@ export function useDebts(
       const debtRef = doc(collection(db, `users/${userId}/debts`));
       debtId = debtRef.id;
       const createdAt = new Date();
-      let createdTransaction: Transaction | null = null;
-
-      await safeFirestoreOperation(
-        () => runTransaction(db, async firestoreTransaction => {
-          const transactionData = debt.accountId
-            ? {
-                type: debt.type === 'lent' ? 'expense' as const : 'income' as const,
-                amount: debt.originalAmount,
-                category: LOAN_CATEGORY,
-                description: debt.type === 'lent'
-                  ? `Préstamo a ${debt.personName}`
-                  : `Préstamo de ${debt.personName}`,
-                date: createdAt,
-                paid: true,
-                accountId: debt.accountId,
-                debtId,
-              }
-            : null;
-          const accountRef = transactionData
-            ? doc(db, `users/${userId}/accounts`, transactionData.accountId)
-            : null;
-          const accountSnapshot = accountRef
-            ? await firestoreTransaction.get(accountRef)
-            : null;
-
-          if (accountRef && !accountSnapshot?.exists()) {
-            throw new Error('La cuenta asociada al préstamo no existe');
+      const operationId = createAccountOperationId('ledger-mutation');
+      const originalAmount = normalizeLedgerAmount(debt.originalAmount);
+      const remainingAmount = normalizeLedgerAmount(debt.remainingAmount);
+      const cleanDebt = stripUndefined({
+        ...debt,
+        originalAmount,
+        remainingAmount,
+      });
+      const transactionData = debt.accountId
+        ? {
+            type: debt.type === 'lent' ? 'expense' as const : 'income' as const,
+            amount: originalAmount,
+            category: LOAN_CATEGORY,
+            description: debt.type === 'lent'
+              ? `Préstamo a ${debt.personName}`
+              : `Préstamo de ${debt.personName}`,
+            date: createdAt,
+            paid: true,
+            accountId: debt.accountId,
+            debtId,
+            operationId,
+            mutationKind: 'create' as const,
+            mutationSource: 'debt' as const,
           }
+        : null;
+      const transactionRef = transactionData
+        ? doc(db, `users/${userId}/transactions`, operationId)
+        : null;
 
-          firestoreTransaction.set(debtRef, {
-            ...cleanDebt,
-            createdAt,
-          });
-
-          if (transactionData && accountRef && accountSnapshot) {
-            const transactionRef = doc(collection(db, `users/${userId}/transactions`));
-            const account = {
-              id: transactionData.accountId,
-              ...(accountSnapshot.data() as Omit<Account, 'id'>),
-            } as Account;
-            const deltas = creditDeltasByAccount(transactionData, [account]);
-
-            for (const [accountId, delta] of deltas) {
-              const currentUsedCredit = account.usedCredit ?? 0;
-              if (currentUsedCredit + delta < -0.01) {
-                throw new Error('El movimiento dejaría una deuda negativa en la tarjeta');
-              }
-              firestoreTransaction.update(
-                doc(db, `users/${userId}/accounts`, accountId),
-                { usedCredit: increment(delta) }
-              );
+      const createdTransaction = await safeFirestoreOperation(
+        async () => {
+          const committedDebt = await getDocFromServer(debtRef);
+          if (committedDebt.exists()) {
+            const committedData = committedDebt.data() as Record<string, unknown>;
+            if (committedData.creationOperationId !== operationId) {
+              throw new Error('La identidad de creación de la deuda no coincide; requiere reconciliación.');
             }
-
-            const transactionWithMetadata = {
-              ...transactionData,
-              createdAt,
-            };
-            firestoreTransaction.set(transactionRef, transactionWithMetadata);
-            createdTransaction = {
-              id: transactionRef.id,
-              ...transactionWithMetadata,
-            } as Transaction;
+            if (!transactionData || !transactionRef) return null;
+            return loadCommittedDebtTransaction(userId, debtId, {
+              operationId,
+              amount: originalAmount,
+              transactionId: transactionRef.id,
+            });
           }
-        }),
+
+          return executeAuthenticatedLedgerMutation(
+            userId,
+            async ({ loadContext }) => {
+          const context = await loadContext(
+            transactionData ? [transactionData.accountId] : []
+          );
+          const transactionWithMetadata = transactionData && transactionRef
+            ? {
+                id: transactionRef.id,
+                ...transactionData,
+                createdAt,
+              } as Transaction
+            : null;
+          const intent = {
+            kind: 'create' as const,
+            before: [],
+            after: transactionWithMetadata ? [transactionWithMetadata] : [],
+            metadata: { operationId, mutationSource: 'debt' as const },
+          };
+          const creditChanges = planCreditAuthorityChanges(intent, context);
+
+          return {
+            intent,
+            context,
+            writeCount: 1 + (transactionRef ? 1 : 0) + creditChanges.length,
+            stage: (batch) => {
+              batch.set(debtRef, {
+                ...cleanDebt,
+                createdAt,
+                creationOperationId: operationId,
+              });
+              if (transactionWithMetadata && transactionRef) {
+                const persistedTransaction = { ...transactionWithMetadata };
+                delete persistedTransaction.id;
+                batch.set(transactionRef, persistedTransaction);
+              }
+              creditChanges.forEach(({ accountId, delta }) => {
+                batch.update(
+                  doc(db, `users/${userId}/accounts`, accountId),
+                  { usedCredit: increment(delta) }
+                );
+              });
+            },
+            result: transactionWithMetadata,
+          };
+            },
+            { operationId },
+          );
+        },
         'addDebt',
-        { maxRetries: 2 }
+        { maxRetries: 2, retryRecoverableErrors: true }
       );
 
       if (createdTransaction) {
@@ -205,11 +344,24 @@ export function useDebts(
     } else {
       debtId = generateId();
       const createdAt = new Date();
-      if (debt.accountId && addTransaction) {
+      const originalAmount = normalizeLedgerAmount(debt.originalAmount);
+      const remainingAmount = normalizeLedgerAmount(debt.remainingAmount);
+      const newDebt: Debt = {
+        ...debt,
+        originalAmount,
+        remainingAmount,
+        id: debtId,
+        createdAt,
+      };
+      const transactionId = debt.accountId ? generateId() : null;
+      const operationId = `guest-add-debt:${debtId}`;
+      await mutateGuestLedger(draft => {
+        draft.debts.unshift(newDebt);
+        if (!debt.accountId || !transactionId) return;
         const isLent = debt.type === 'lent';
-        await addTransaction({
+        const transaction = assertGuestLedgerMutation({
           type: isLent ? 'expense' : 'income',
-          amount: debt.originalAmount,
+          amount: originalAmount,
           category: LOAN_CATEGORY,
           description: isLent
             ? `Préstamo a ${debt.personName}`
@@ -218,12 +370,18 @@ export function useDebts(
           paid: true,
           accountId: debt.accountId,
           debtId,
+          operationId,
+          mutationKind: 'create',
+          mutationSource: 'debt',
+        }, draft.accounts, draft.transactions);
+        draft.transactions.unshift({
+          ...transaction,
+          id: transactionId,
+          createdAt,
         });
-      }
-      const newDebt: Debt = { ...debt, id: debtId, createdAt };
-      setLocalDebts(prev => [newDebt, ...prev]);
+      }, { operationId });
     }
-  }, [userId, setLocalDebts, addTransaction]);
+  }, [userId, mutateGuestLedger, assertGuestLedgerMutation]);
 
   const updateDebt = useCallback(async (id: string, updates: Partial<Debt>) => {
     if (userId) {
@@ -248,9 +406,16 @@ export function useDebts(
         { maxRetries: 2 }
       );
     } else {
-      setLocalDebts(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
+      await mutateGuestLedger(draft => {
+        if (!draft.debts.some(debt => debt.id === id)) {
+          throw new Error('Préstamo no encontrado');
+        }
+        draft.debts = draft.debts.map(debt => (
+          debt.id === id ? { ...debt, ...updates } : debt
+        ));
+      }, { operationId: `guest-update-debt:${id}:${generateId()}` });
     }
-  }, [userId, setLocalDebts]);
+  }, [userId, mutateGuestLedger]);
 
   const deleteDebt = useCallback(async (id: string) => {
     if (userId) {
@@ -301,6 +466,25 @@ export function useDebts(
           const accountUpdates = Array.from(revertByAccount.entries())
             .filter(([, delta]) => delta !== 0);
 
+          accountUpdates.forEach(([accountId, delta]) => {
+            const account = serverAccounts.find(candidate => candidate.id === accountId);
+            const authority = getCreditAuthorityState(account);
+            if (!account || !authority.ready || authority.usedCredit === null) {
+              throw new Error(
+                `La tarjeta ${account?.name ?? accountId} requiere reconciliación antes de eliminar esta deuda.`
+              );
+            }
+            const resultingAuthority = getCreditAuthorityState({
+              type: 'credit',
+              usedCredit: roundMoney(authority.usedCredit - delta),
+            });
+            if (!resultingAuthority.ready) {
+              throw new Error(
+                `Eliminar esta deuda dejaría una autoridad inválida en ${account.name}; requiere reconciliación.`
+              );
+            }
+          });
+
           // tx deletes + account updates + debt delete + liberación del lease.
           assertAtomicBatchCapacity(
             'eliminar esta deuda',
@@ -347,16 +531,12 @@ export function useDebts(
         }
       }, 'deleteDebt', { maxRetries: 2 });
     } else {
-      // Modo invitado (en memoria): borrar transacciones vinculadas + la deuda.
-      if (deleteTransaction) {
-        const linkedTxIds = transactions.filter(t => t.debtId === id && t.id).map(t => t.id!);
-        for (const txId of linkedTxIds) {
-          await deleteTransaction(txId);
-        }
-      }
-      setLocalDebts(prev => prev.filter(d => d.id !== id));
+      await mutateGuestLedger(draft => {
+        draft.transactions = draft.transactions.filter(transaction => transaction.debtId !== id);
+        draft.debts = draft.debts.filter(debt => debt.id !== id);
+      }, { operationId: `guest-delete-debt:${id}` });
     }
-  }, [userId, setLocalDebts, deleteTransaction, transactions]);
+  }, [userId, mutateGuestLedger]);
 
   const reassignDebtAccount = useCallback(async (debtId: string, nextAccountId?: string) => {
     if (userId) {
@@ -465,32 +645,41 @@ export function useDebts(
       return;
     }
 
-    const debt = debts.find(candidate => candidate.id === debtId);
-    if (!debt) throw new Error('Préstamo no encontrado');
-    const linkedTransactions = transactions.filter(transaction => transaction.debtId === debtId);
-    const plan = buildDebtAccountReassignmentPlan(
-      debt,
-      linkedTransactions,
-      operationAccounts,
-      nextAccountId
-    );
-
-    if (plan.principal?.after) {
-      if (!updateTransaction) throw new Error('No se puede actualizar la operación original');
-      await updateTransaction(plan.principal.before.id!, { accountId: plan.principal.after.accountId });
-    } else if (plan.principal) {
-      if (!deleteTransaction) throw new Error('No se puede retirar la operación original');
-      await deleteTransaction(plan.principal.before.id!);
-    }
-    await updateDebt(debtId, { accountId: nextAccountId });
+    await mutateGuestLedger(draft => {
+      const debt = draft.debts.find(candidate => candidate.id === debtId);
+      if (!debt) throw new Error('Préstamo no encontrado');
+      const linkedTransactions = draft.transactions.filter(
+        transaction => transaction.debtId === debtId
+      );
+      const plan = buildDebtAccountReassignmentPlan(
+        debt,
+        linkedTransactions,
+        draft.accounts,
+        nextAccountId
+      );
+      draft.debts = draft.debts.map(candidate => (
+        candidate.id === debtId
+          ? { ...candidate, accountId: nextAccountId }
+          : candidate
+      ));
+      const principal = plan.principal;
+      if (principal?.after) {
+        draft.transactions = draft.transactions.map(transaction => (
+          transaction.id === principal.before.id
+            ? principal.after!
+            : transaction
+        ));
+      } else if (principal) {
+        draft.transactions = draft.transactions.filter(
+          transaction => transaction.id !== principal.before.id
+        );
+      }
+    }, {
+      operationId: `guest-reassign-debt:${debtId}:${nextAccountId ?? 'none'}:${generateId()}`,
+    });
   }, [
     userId,
-    debts,
-    transactions,
-    operationAccounts,
-    updateTransaction,
-    deleteTransaction,
-    updateDebt,
+    mutateGuestLedger,
   ]);
 
   // Register a payment against a debt
@@ -502,11 +691,36 @@ export function useDebts(
         throw new Error('Sin conexión a internet');
       }
 
-      let createdTransaction: Transaction | null = null;
-      await safeFirestoreOperation(
-        () => runTransaction(db, async firestoreTransaction => {
+      const requestedAmount = normalizeLedgerAmount(amount);
+      const operationId = createAccountOperationId('ledger-mutation');
+      const createdAt = new Date();
+      const transactionRef = doc(
+        db,
+        `users/${userId}/transactions`,
+        operationId,
+      );
+      const createdTransaction = await safeFirestoreOperation(
+        async () => {
+          const observedDebt = await getDocFromServer(
+            doc(db, `users/${userId}/debts`, debtId)
+          );
+          if (observedDebt.exists()) {
+            const observedReceipts = readDebtPaymentReceipts(
+              (observedDebt.data() as Record<string, unknown>).recentPaymentOperations
+            );
+            const committedReceipt = observedReceipts.find(
+              receipt => receipt.operationId === operationId
+            );
+            if (committedReceipt) {
+              return loadCommittedDebtTransaction(userId, debtId, committedReceipt);
+            }
+          }
+
+          return executeAuthenticatedLedgerMutation(
+            userId,
+            async ({ loadContext }) => {
           const debtRef = doc(db, `users/${userId}/debts`, debtId);
-          const debtSnapshot = await firestoreTransaction.get(debtRef);
+          const debtSnapshot = await getDocFromServer(debtRef);
           if (!debtSnapshot.exists()) {
             throw new Error('El préstamo cambió o ya no existe. Actualiza e intenta de nuevo.');
           }
@@ -515,12 +729,53 @@ export function useDebts(
             ...(debtSnapshot.data() as Omit<Debt, 'id'>),
             id: debtId,
           } as Debt;
-          const effectiveAmount = Math.min(amount, persistedDebt.remainingAmount);
-          if (effectiveAmount <= 0 || persistedDebt.isSettled) return;
+          const paymentReceipts = readDebtPaymentReceipts(
+            persistedDebt.recentPaymentOperations
+          );
+          const committedReceipt = paymentReceipts.find(
+            receipt => receipt.operationId === operationId
+          );
+          if (committedReceipt) {
+            const committedTransaction = await loadCommittedDebtTransaction(
+              userId,
+              debtId,
+              committedReceipt,
+            );
+            const context = await loadContext([]);
+            return {
+              intent: {
+                kind: 'create' as const,
+                before: [],
+                after: [],
+                metadata: { operationId, mutationSource: 'debt' as const },
+              },
+              context,
+              writeCount: 0,
+              stage: () => undefined,
+              result: committedTransaction,
+            };
+          }
+          if (persistedDebt.isSettled || persistedDebt.remainingAmount <= 0) {
+            const context = await loadContext([]);
+            return {
+              intent: {
+                kind: 'create' as const,
+                before: [],
+                after: [],
+                metadata: { operationId, mutationSource: 'debt' as const },
+              },
+              context,
+              writeCount: 0,
+              stage: () => undefined,
+              result: null,
+            };
+          }
 
-          const newRemaining = Math.max(0, persistedDebt.remainingAmount - effectiveAmount);
+          const persistedRemaining = normalizeLedgerAmount(persistedDebt.remainingAmount);
+          const effectiveAmount = Math.min(requestedAmount, persistedRemaining);
+
+          const newRemaining = Math.max(0, persistedRemaining - effectiveAmount);
           const isSettled = newRemaining === 0;
-          const createdAt = new Date();
           const transactionData = persistedDebt.accountId
             ? {
                 type: persistedDebt.type === 'lent' ? 'income' as const : 'expense' as const,
@@ -533,57 +788,68 @@ export function useDebts(
                 paid: true,
                 accountId: persistedDebt.accountId,
                 debtId,
+                operationId,
+                mutationKind: 'create' as const,
+                mutationSource: 'debt' as const,
               }
             : null;
-          const accountRef = transactionData
-            ? doc(db, `users/${userId}/accounts`, transactionData.accountId)
+          const context = await loadContext(
+            transactionData ? [transactionData.accountId] : []
+          );
+          const transactionWithMetadata = transactionData
+            ? {
+                id: transactionRef.id,
+                ...transactionData,
+                createdAt,
+              } as Transaction
             : null;
-          const accountSnapshot = accountRef
-            ? await firestoreTransaction.get(accountRef)
-            : null;
+          const intent = {
+            kind: 'create' as const,
+            before: [],
+            after: transactionWithMetadata ? [transactionWithMetadata] : [],
+            metadata: { operationId, mutationSource: 'debt' as const },
+          };
+          const creditChanges = planCreditAuthorityChanges(intent, context);
+          const nextPaymentReceipts = appendDebtPaymentReceipt(
+            paymentReceipts,
+            {
+              operationId,
+              amount: effectiveAmount,
+              ...(transactionWithMetadata ? { transactionId: transactionRef.id } : {}),
+            },
+          );
 
-          if (accountRef && !accountSnapshot?.exists()) {
-            throw new Error('La cuenta asociada al préstamo no existe');
-          }
-
-          firestoreTransaction.update(debtRef, {
-            remainingAmount: newRemaining,
-            isSettled,
-            ...(isSettled ? { settledAt: createdAt } : {}),
-          });
-
-          if (transactionData && accountRef && accountSnapshot) {
-            const transactionRef = doc(collection(db, `users/${userId}/transactions`));
-            const account = {
-              id: transactionData.accountId,
-              ...(accountSnapshot.data() as Omit<Account, 'id'>),
-            } as Account;
-            const deltas = creditDeltasByAccount(transactionData, [account]);
-
-            for (const [accountId, delta] of deltas) {
-              const currentUsedCredit = account.usedCredit ?? 0;
-              if (currentUsedCredit + delta < -0.01) {
-                throw new Error('El pago excede la deuda disponible en la tarjeta');
+          return {
+            intent,
+            context,
+            writeCount: 1 + (transactionWithMetadata ? 1 : 0) + creditChanges.length,
+            stage: (batch) => {
+              batch.update(debtRef, {
+                remainingAmount: newRemaining,
+                isSettled,
+                ...(isSettled ? { settledAt: createdAt } : {}),
+                recentPaymentOperations: nextPaymentReceipts,
+              });
+              if (transactionWithMetadata) {
+                const persistedTransaction = { ...transactionWithMetadata };
+                delete persistedTransaction.id;
+                batch.set(transactionRef, persistedTransaction);
               }
-              firestoreTransaction.update(
-                doc(db, `users/${userId}/accounts`, accountId),
-                { usedCredit: increment(delta) }
-              );
-            }
-
-            const transactionWithMetadata = {
-              ...transactionData,
-              createdAt,
-            };
-            firestoreTransaction.set(transactionRef, transactionWithMetadata);
-            createdTransaction = {
-              id: transactionRef.id,
-              ...transactionWithMetadata,
-            } as Transaction;
-          }
-        }),
+              creditChanges.forEach(({ accountId, delta }) => {
+                batch.update(
+                  doc(db, `users/${userId}/accounts`, accountId),
+                  { usedCredit: increment(delta) }
+                );
+              });
+            },
+            result: transactionWithMetadata,
+          };
+            },
+            { operationId },
+          );
+        },
         'registerDebtPayment',
-        { maxRetries: 2 }
+        { maxRetries: 2, retryRecoverableErrors: true }
       );
 
       if (createdTransaction) {
@@ -596,35 +862,134 @@ export function useDebts(
       return;
     }
 
-    const debt = debts.find(d => d.id === debtId);
-    if (!debt) return;
+    const requestedAmount = normalizeLedgerAmount(amount);
+    const transactionId = generateId();
+    const operationId = `guest-debt-payment:${debtId}:${transactionId}`;
+    const paidAt = new Date();
+    await mutateGuestLedger(draft => {
+      const debt = draft.debts.find(candidate => candidate.id === debtId);
+      if (!debt || debt.isSettled || debt.remainingAmount <= 0) return;
+      const remainingAmount = normalizeLedgerAmount(debt.remainingAmount);
+      const effectiveAmount = Math.min(requestedAmount, remainingAmount);
+      const newRemaining = Math.max(0, remainingAmount - effectiveAmount);
+      const isSettled = newRemaining === 0;
+      if (debt.accountId && effectiveAmount > 0) {
+        const isLent = debt.type === 'lent';
+        const transaction = assertGuestLedgerMutation({
+          type: isLent ? 'income' : 'expense',
+          amount: effectiveAmount,
+          category: LOAN_PAYMENT_CATEGORY,
+          description: isLent
+            ? `Cobro de ${debt.personName}`
+            : `Pago a ${debt.personName}`,
+          date: paidAt,
+          paid: true,
+          accountId: debt.accountId,
+          debtId,
+          operationId,
+          mutationKind: 'create',
+          mutationSource: 'debt',
+        }, draft.accounts, draft.transactions);
+        draft.transactions.unshift({
+          ...transaction,
+          id: transactionId,
+          createdAt: paidAt,
+        });
+      }
 
-    const effectiveAmount = Math.min(amount, debt.remainingAmount);
-    const newRemaining = Math.max(0, debt.remainingAmount - effectiveAmount);
-    const isSettled = newRemaining === 0;
+      draft.debts = draft.debts.map(candidate => (
+        candidate.id === debtId
+          ? {
+              ...candidate,
+              remainingAmount: newRemaining,
+              isSettled,
+              settledAt: isSettled ? paidAt : candidate.settledAt,
+            }
+          : candidate
+      ));
+    }, { operationId });
+  }, [userId, mutateGuestLedger, assertGuestLedgerMutation]);
 
-    if (debt.accountId && addTransaction && effectiveAmount > 0) {
-      const isLent = debt.type === 'lent';
-      await addTransaction({
-        type: isLent ? 'income' : 'expense',
-        amount: effectiveAmount,
-        category: LOAN_PAYMENT_CATEGORY,
-        description: isLent
-          ? `Cobro de ${debt.personName}`
-          : `Pago a ${debt.personName}`,
-        date: new Date(),
-        paid: true,
-        accountId: debt.accountId,
-        debtId,
-      });
+  const restoreDebtPayment = useCallback(async (transaction: Transaction) => {
+    if (
+      !transaction.id
+      || !transaction.debtId
+      || transaction.category !== LOAN_PAYMENT_CATEGORY
+    ) {
+      throw new Error('La transacción no es un pago de deuda restaurable.');
     }
+    if (userId) {
+      if (!restoreTransaction) {
+        throw new Error('No se puede restaurar el movimiento del pago.');
+      }
+      await restoreTransaction(transaction);
+      return;
+    }
+    await mutateGuestLedger(draft => {
+      const existing = draft.transactions.find(candidate => candidate.id === transaction.id);
+      if (existing) {
+        if (
+          existing.mutationKind === 'restore'
+          && existing.mutationSource === 'undo'
+          && transactionMatchesRestoreSnapshot(existing, transaction)
+        ) return;
+        throw new Error('La identidad original ya pertenece a otra transacción.');
+      }
 
-    await updateDebt(debtId, {
-      remainingAmount: newRemaining,
-      isSettled,
-      ...(isSettled ? { settledAt: new Date() } : {}),
-    });
-  }, [userId, debts, updateDebt, addTransaction]);
+      const debt = draft.debts.find(candidate => candidate.id === transaction.debtId);
+      const amount = normalizeLedgerAmount(transaction.amount);
+      const remainingAmount = debt ? normalizeLedgerAmount(debt.remainingAmount) : 0;
+      const expectedType = debt?.type === 'lent'
+        ? 'income'
+        : debt?.type === 'borrowed'
+          ? 'expense'
+          : null;
+      if (
+        !debt
+        || expectedType !== transaction.type
+        || debt.accountId !== transaction.accountId
+        || remainingAmount < amount
+      ) {
+        throw new Error('No se puede restaurar el pago con el saldo pendiente actual.');
+      }
+
+      const ledgerTransaction = { ...transaction };
+      delete ledgerTransaction.id;
+      delete ledgerTransaction.createdAt;
+      delete ledgerTransaction.operationId;
+      delete ledgerTransaction.mutationKind;
+      delete ledgerTransaction.mutationSource;
+      assertGuestLedgerMutation(
+        ledgerTransaction,
+        draft.accounts,
+        draft.transactions,
+      );
+
+      const restored: Transaction = {
+        ...transaction,
+        mutationKind: 'restore',
+        mutationSource: 'undo',
+      };
+      draft.transactions.unshift(restored);
+      const nextRemaining = roundMoney(remainingAmount - amount);
+      const isSettled = nextRemaining === 0;
+      draft.debts = draft.debts.map(candidate => (
+        candidate.id === debt.id
+          ? {
+              ...candidate,
+              remainingAmount: nextRemaining,
+              isSettled,
+              settledAt: isSettled ? transaction.date : undefined,
+            }
+          : candidate
+      ));
+    }, { operationId: `guest-undo:${transaction.id}:restore-debt-payment:${generateId()}` });
+  }, [
+    userId,
+    restoreTransaction,
+    mutateGuestLedger,
+    assertGuestLedgerMutation,
+  ]);
 
   // Modify debt balance (add or subtract from original amount)
   const modifyDebtBalance = useCallback(async (
@@ -632,6 +997,36 @@ export function useDebts(
     amount: number,
     operation: 'add' | 'subtract'
   ) => {
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error('El monto debe ser mayor a cero');
+    }
+
+    if (!userId) {
+      await mutateGuestLedger(draft => {
+        const debt = draft.debts.find(candidate => candidate.id === debtId);
+        if (!debt) throw new Error('Préstamo no encontrado');
+        if (debt.isSettled) throw new Error('No puedes modificar un préstamo ya saldado');
+        if (operation === 'subtract' && amount > debt.remainingAmount) {
+          throw new Error('No puedes restar más del saldo pendiente');
+        }
+
+        const direction = operation === 'add' ? 1 : -1;
+        const originalAmount = roundMoney(debt.originalAmount + direction * amount);
+        const remainingAmount = roundMoney(debt.remainingAmount + direction * amount);
+        const isSettled = remainingAmount === 0;
+        draft.debts = draft.debts.map(candidate => candidate.id === debtId
+          ? {
+              ...candidate,
+              originalAmount,
+              remainingAmount,
+              isSettled,
+              ...(isSettled ? { settledAt: new Date() } : {}),
+            }
+          : candidate);
+      }, { operationId: `guest-modify-debt:${debtId}:${generateId()}` });
+      return;
+    }
+
     const debt = debts.find(d => d.id === debtId);
     if (!debt) {
       throw new Error('Préstamo no encontrado');
@@ -644,10 +1039,6 @@ export function useDebts(
     // Invariante de dominio: la magnitud a sumar/restar debe ser positiva finita. Sin
     // este guard, un `add` con monto negativo reducía la deuda (y un `subtract` con
     // negativo la aumentaba) sin transacción compensatoria. Audit F-debt-neg.
-    if (!Number.isFinite(amount) || amount <= 0) {
-      throw new Error('El monto debe ser mayor a cero');
-    }
-
     let newOriginalAmount: number;
     let newRemainingAmount: number;
 
@@ -672,7 +1063,7 @@ export function useDebts(
       isSettled,
       ...(isSettled ? { settledAt: new Date() } : {}),
     });
-  }, [debts, updateDebt]);
+  }, [userId, mutateGuestLedger, debts, updateDebt]);
 
   // Condonar una deuda: marcarla saldada con motivo, SIN mover dinero. El dinero
   // ya se movió al prestar/recibir; condonar solo deja de esperarlo (no revierte
@@ -718,6 +1109,7 @@ export function useDebts(
     deleteDebt,
     reassignDebtAccount,
     registerDebtPayment,
+    restoreDebtPayment,
     modifyDebtBalance,
     forgiveDebt,
     getDebtTransactions,

@@ -27,7 +27,7 @@ enum class CaptureResultCode {
 }
 
 class NotificationCaptureCoordinator(
-    private val parser: StrictCopPurchaseParser = StrictCopPurchaseParser(),
+    private val parser: PurchaseParserRouter = PurchaseParserRouter(),
     private val writeCandidate: (
         NormalizedPurchaseCandidate,
         (Boolean) -> Unit,

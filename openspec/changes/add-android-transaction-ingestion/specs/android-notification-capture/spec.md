@@ -96,7 +96,7 @@ El compañero MUST derivar un `candidateId` hexadecimal de 64 caracteres a parti
 - **THEN** el compañero elimina su generación activa y cualquier snapshot ya confirmado que solo se retenía para anclar actualizaciones
 
 ### Requirement: La captura sobrevive a pérdida temporal de red
-El compañero MUST persistir un estado local por candidato antes de iniciar la escritura (`ENQUEUED`, `WRITE_FAILED` o `STORED`), MUST conservar solo el candidato normalizado y MUST reintentar estados no confirmados al reconectar el listener o abrir la Activity con sesión. La escritura puede usar la persistencia offline de Firestore, pero el compañero MUST NOT prometer que el candidato ya está en la PWA mientras no reciba `STORED`.
+El compañero MUST persistir un estado local por candidato antes de iniciar la escritura (`ENQUEUED`, `WRITE_FAILED` o `STORED`), MUST conservar solo el candidato normalizado asociado al hash del UID que lo observó y MUST reintentar estados no confirmados al reconectar el listener o abrir la Activity con esa misma sesión. MUST NOT guardar el UID crudo, mostrar a otra cuenta ese estado ni enviar su candidato a la ruta de otro usuario. La escritura puede usar la persistencia offline de Firestore, pero el compañero MUST NOT prometer que el candidato ya está en la PWA mientras no reciba `STORED`.
 
 #### Scenario: Compra observada offline
 - **WHEN** el dispositivo autenticado y autorizado recibe una compra válida sin red
@@ -109,6 +109,10 @@ El compañero MUST persistir un estado local por candidato antes de iniciar la e
 #### Scenario: Escritura sigue en curso
 - **WHEN** existe al menos un candidato `ENQUEUED` y ninguno fallido
 - **THEN** la pantalla lista muestra sincronización pendiente y cambia en vivo al resultado correspondiente mientras la Activity esté visible
+
+#### Scenario: La cuenta cambia con una compra pendiente o activa
+- **WHEN** el usuario A deja un candidato sin confirmar o una entrega aún activa y luego inicia sesión el usuario B
+- **THEN** B no ve ni reintenta el estado de A, la entrega no se reasigna y el candidato solo vuelve a sincronizarse al regresar a la sesión A
 
 ### Requirement: La pantalla Android expone estado operativo verificable
 El compañero MUST comunicar sesión, acceso a notificaciones, captura activa y fuentes seleccionadas en la etapa o resumen correspondiente, y MUST ofrecer las acciones aplicables para iniciar/cerrar sesión, abrir ajustes y abrir la PWA; MUST NOT exponer códigos técnicos ni un bloque de último resultado en la interfaz normal.

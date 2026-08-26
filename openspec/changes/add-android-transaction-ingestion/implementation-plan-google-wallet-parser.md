@@ -73,7 +73,7 @@ git commit -m "docs(openspec): specify Google Wallet capture"
 - Produces: `PurchaseParserRouter.parse(RawNotification, String, Long): PurchaseParseResult`.
 - Produces: Wallet candidates with `schemaVersion = 2`, `parserId = "google-wallet-purchase"`, `parserVersion = 1`, and optional `observedInstrumentLabel`.
 
-- [ ] **Step 1: Write failing fixture tests**
+- [x] **Step 1: Write failing fixture tests**
 
 Use hand-derived assertions:
 
@@ -96,7 +96,7 @@ assertWallet(
 
 Add separate failures for `COP 13.990,00 con Oro`, `COP2,600 with Oro`, negative/zero amounts, non-COP bodies, two distinct bodies, blank title and invalid/overlong nicknames.
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 ```powershell
 $env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
@@ -106,11 +106,11 @@ $env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
 
 Expected: compilation failure because the new parser/router and candidate v2 fields do not exist.
 
-- [ ] **Step 3: Implement the minimal strict parser**
+- [x] **Step 3: Implement the minimal strict parser**
 
 Route only `AvailableCaptureSourceCatalog.GOOGLE_WALLET_PACKAGE`. Parse complete `text`/`bigText` alternatives, deduplicate identical bodies, accept only unambiguous English/Colombian separators, normalize title and nickname with NFKC, and keep nickname only when it is 1–24 Unicode letters. Do not use `combinedText()` for Wallet.
 
-- [ ] **Step 4: Run the focused suite GREEN and commit**
+- [x] **Step 4: Run the focused suite GREEN and commit**
 
 Run the Step 2 command, then stage only the parser slice and commit `feat(android): parse Google Wallet purchases`.
 
@@ -125,21 +125,21 @@ Run the Step 2 command, then stage only the parser slice and commit `feat(androi
 - Produces: `NotificationEventMetadata.isGroupSummary: Boolean` and `CaptureResultCode.GROUP_SUMMARY_IGNORED`.
 - Produces: sync-record v3 that reads legacy v2 records and round-trips v2 candidate schema/parser/nickname.
 
-- [ ] **Step 1: Add failing coordinator and round-trip tests**
+- [x] **Step 1: Add failing coordinator and round-trip tests**
 
 Assert that a grouped event leaves `rawInspected == false`, performs zero writes and returns only `GROUP_SUMMARY_IGNORED`. Assert that encoding/reloading a Wallet candidate preserves every normalized field, while an existing legacy record fixture still decodes as a strict v1 candidate.
 
-- [ ] **Step 2: Run focused Android tests RED**
+- [x] **Step 2: Run focused Android tests RED**
 
 ```powershell
 ./android-capture/gradlew.bat -p android-capture testDebugUnitTest --tests '*NotificationCaptureCoordinatorTest' --tests '*AppThemeModeTest' --tests '*FirebaseCandidateRepositoryTest'
 ```
 
-- [ ] **Step 3: Implement summary and persistence boundaries**
+- [x] **Step 3: Implement summary and persistence boundaries**
 
 Set `isGroupSummary` from `(event.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0` without reading extras. Write sync-record v3, retain the v2 decoder, write candidate schema/parser values rather than constants, and include `observedInstrumentLabel` only when present.
 
-- [ ] **Step 4: Run focused tests GREEN and commit**
+- [x] **Step 4: Run focused tests GREEN and commit**
 
 Stage only Android main/test files and commit `fix(android): ignore Wallet notification summaries`.
 
@@ -154,25 +154,25 @@ Stage only Android main/test files and commit `fix(android): ignore Wallet notif
 - Produces: candidate parser contract v1 strict or v2 Wallet with optional observed nickname.
 - Produces: `matchPaymentInstrument({ cardLast4, observedInstrumentLabel }, instruments)` returning `matched | none | ambiguous | conflict`.
 
-- [ ] **Step 1: Write failing decoder and matcher tests**
+- [x] **Step 1: Write failing decoder and matcher tests**
 
 Cover legacy v1, valid v2 alias-only token, invalid v2 physical card without last four, Wallet candidate v2, mixed schema/parser rejection, exact normalized nickname, physical-label exclusion, duplicate nickname, consistent dual signals, conflicting dual signals and unknown nickname.
 
-- [ ] **Step 2: Verify unit tests RED**
+- [x] **Step 2: Verify unit tests RED**
 
 ```powershell
 npx.cmd vitest run src/__tests__/utils/transactionImportDecoder.test.ts src/__tests__/utils/paymentInstrumentMatching.test.ts --config vitest.config.mjs --configLoader runner
 ```
 
-- [ ] **Step 3: Implement minimal types, decoder and matcher**
+- [x] **Step 3: Implement minimal types, decoder and matcher**
 
 Normalize matching labels with NFKC, remove control/format characters, collapse whitespace and lowercase. Intersect signals when both exist; never fall back to one signal after a conflict.
 
-- [ ] **Step 4: Add and verify Firestore rule RED/GREEN**
+- [x] **Step 4: Add and verify Firestore rule RED/GREEN**
 
 Write emulator cases before changing rules, run `npm.cmd run test:rules`, implement exact v1/v2 shapes and rerun until all rule tests pass.
 
-- [ ] **Step 5: Commit web contracts**
+- [x] **Step 5: Commit web contracts**
 
 Stage only the named types/utils/rules/tests and commit `feat(web): match Wallet instruments safely`.
 
@@ -187,25 +187,25 @@ Stage only the named types/utils/rules/tests and commit `feat(web): match Wallet
 - Produces: new/updated v2 instruments; wallet last four optional, physical last four required.
 - Produces: explicit `rememberInstrument` support from nickname and/or last four without changing one-time confirmation.
 
-- [ ] **Step 1: Write failing form/list/inbox/review tests**
+- [x] **Step 1: Write failing form/list/inbox/review tests**
 
 Prove Wallet alias-only save, physical-card rejection, absent suffix rendering, alias-only unique suggestion, hidden observed nickname, conflict copy, remember checkbox for unmatched nickname and no remembered write when unchecked.
 
-- [ ] **Step 2: Run component tests RED**
+- [x] **Step 2: Run component tests RED**
 
 ```powershell
 npx.cmd vitest run src/__tests__/components/paymentInstrumentsSection.test.tsx src/__tests__/components/transactionImportInbox.test.tsx src/__tests__/components/transactionImportReviewModal.test.tsx --config vitest.config.mjs --configLoader runner
 ```
 
-- [ ] **Step 3: Write failing orchestration tests**
+- [x] **Step 3: Write failing orchestration tests**
 
 Assert alias-only remember creates exactly one schema-v2 `wallet-token` inside the existing batch, unchecked remember creates none, and a server-current selected instrument whose nickname/last-four evidence changed aborts the mutation.
 
-- [ ] **Step 4: Implement minimal UI and atomic writer changes**
+- [x] **Step 4: Implement minimal UI and atomic writer changes**
 
 Keep one modal and existing semantic styles. Use `deleteField()` when migrating an edited wallet token to v2 without last four. Show neither the observed nickname nor technical parser metadata in the inbox; only show `Android · <cuenta>` for `matched`.
 
-- [ ] **Step 5: Run focused tests GREEN and commit**
+- [x] **Step 5: Run focused tests GREEN and commit**
 
 Stage only the named web/UI/test files and commit `feat(web): support Wallet nickname associations`.
 
@@ -214,7 +214,7 @@ Stage only the named web/UI/test files and commit `feat(web): support Wallet nic
 **Files:**
 - Modify: `tasks.md` and `implementation-notes.md` only to record privacy-safe evidence.
 
-- [ ] **Step 1: Run full web verification**
+- [x] **Step 1: Run full web verification**
 
 ```powershell
 npm.cmd run test:rules
@@ -226,7 +226,7 @@ npm.cmd run build
 
 Expected: every command exits `0`; skipped tests are reported rather than counted as passed.
 
-- [ ] **Step 2: Run full Android verification**
+- [x] **Step 2: Run full Android verification**
 
 ```powershell
 $env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
@@ -237,7 +237,7 @@ $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME
 
 Expected: `BUILD SUCCESSFUL` and an APK under `android-capture/app/build/outputs/apk/debug/`.
 
-- [ ] **Step 3: Run specification, graph and diff gates**
+- [x] **Step 3: Run specification, graph and diff gates**
 
 ```powershell
 npx.cmd --yes @fission-ai/openspec@1.6.0 validate add-android-transaction-ingestion --strict
@@ -247,10 +247,10 @@ git status --short
 
 Update code-review-graph, inspect change risk and confirm tests exist for parser, persistence, matching, rules and UI paths.
 
-- [ ] **Step 4: Re-read Section 13 and record evidence**
+- [x] **Step 4: Re-read Section 13 and record evidence**
 
 Mark a checkbox complete only when its test/build output exists. Leave device/canary tasks `9.10` and `12.10` open until real-device evidence satisfies them.
 
-- [ ] **Step 5: Commit verification metadata**
+- [x] **Step 5: Commit verification metadata**
 
 Stage only the OpenSpec evidence files and commit `docs(openspec): record Wallet parser verification`.

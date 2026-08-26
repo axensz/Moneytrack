@@ -12,11 +12,19 @@ El sistema MUST mantener cada candidato fuera del libro hasta su confirmación y
 - **THEN** el flujo de importación no lo reconoce como confirmado y el candidato conserva cero efecto contable
 
 ### Requirement: La bandeja muestra un conjunto pendiente acotado y honesto
-El sistema MUST consultar como máximo los 100 candidatos pendientes más recientes y MUST mostrar monto COP, comercio, fecha observada y terminación disponible sin presentarlos como transacciones guardadas; paquete Android y confianza MUST permanecer ocultos en la interfaz normal.
+El sistema MUST consultar como máximo los 100 candidatos pendientes más recientes y MUST mostrar la bandeja solo cuando exista al menos uno. La bandeja MUST mostrar monto COP, comercio, fecha observada y terminación disponible sin presentarlos como transacciones guardadas; paquete Android y confianza MUST permanecer ocultos en la interfaz normal. Un error de carga MUST seguir visible aunque no haya candidatos renderizables.
 
 #### Scenario: Abrir la bandeja con candidatos
 - **WHEN** existen candidatos pendientes válidos
 - **THEN** la vista Transacciones muestra un contador, filas de revisión y copy que indica que aún no afectan el saldo
+
+#### Scenario: No hay compras pendientes
+- **WHEN** la consulta termina sin candidatos pendientes ni errores
+- **THEN** la vista Transacciones no muestra título, contador, contenedor ni estado vacío de compras del celular
+
+#### Scenario: Fallar la carga sin candidatos visibles
+- **WHEN** la consulta no entrega candidatos y reporta un error
+- **THEN** la vista muestra una alerta reparable independiente sin montar una bandeja vacía
 
 #### Scenario: Mostrar una relación inequívoca
 - **WHEN** la terminación del candidato coincide con un único medio activo

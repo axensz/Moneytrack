@@ -44,7 +44,7 @@ src/
     useTransactionImportCandidates.ts
   components/views/accounts/
     AccountsView.tsx
-    components/PaymentInstrumentModal.tsx
+    components/PaymentInstrumentForm.tsx
     components/PaymentInstrumentsSection.tsx
   components/views/transactions/
     TransactionsView.tsx
@@ -144,15 +144,15 @@ docs/android-capture-canary.md
 
 ## 6. Web management and review UI
 
-- [x] 6.1 Add red component tests in `src/__tests__/components/paymentInstrumentsSection.test.tsx` for empty/authenticated state, create/edit, active toggle, delete confirmation, account labels, four-digit validation, 44 px controls, keyboard dialog close and focus return.
-- [x] 6.2 Implement `PaymentInstrumentModal.tsx` and `PaymentInstrumentsSection.tsx` under `src/components/views/accounts/components/` using existing semantic classes and copy “Medios de pago del celular”; no new shared design primitive or gradient.
-- [x] 6.3 Integrate `PaymentInstrumentsSection` after the existing account list in `AccountsView.tsx`, sourcing `user.uid` through the existing auth context and all accounts through `useAccountDomain`; keep guest behavior unchanged; rerun the component test and expect green.
-- [x] 6.4 Add red tests in `src/__tests__/components/transactionImportInbox.test.tsx` for pending counter, collapsed/expanded state, truthful no-ledger copy, 100-row limit notice, dismiss, invalid-data error and focus behavior.
-- [x] 6.5 Implement `TransactionImportInbox.tsx` under `src/components/views/transactions/components/` with amount/date/source/confidence presentation and existing button/card/status styles; rerun and expect green.
+- [x] 6.1 Add red component tests in `src/__tests__/components/paymentInstrumentsSection.test.tsx` and `src/__tests__/utils/accountCardKeyboardReorder.test.tsx` for the icon-only dialog trigger, one account-scoped modal, in-modal list/form navigation, filtering and preselection, create/edit, active toggle, delete confirmation, four-digit validation, 44 px controls, keyboard close and focus return.
+- [x] 6.2 Implement `PaymentInstrumentForm.tsx` and render the contextual manager through `BaseModal` in `PaymentInstrumentsSection.tsx`; keep list and create/edit form inside one dialog using existing semantic classes, with no new shared design primitive or gradient.
+- [x] 6.3 Integrate one accessible `Smartphone` icon action per authenticated account in `AccountsView.tsx`; render at most one filtered modal outside the account list and never render a global or inline section; keep guest behavior unchanged and cover the composition in `accountsViewMerge.test.tsx`.
+- [x] 6.4 Add red tests in `src/__tests__/components/transactionImportInbox.test.tsx` for pending counter, collapsed/expanded state, complete absence at zero pending, standalone loading errors, truthful no-ledger copy, 100-row limit notice, dismiss, invalid-data error and focus behavior.
+- [x] 6.5 Implement `TransactionImportInbox.tsx` under `src/components/views/transactions/components/` with amount/date/source presentation and existing button/card/status styles; render it only with pending candidates while preserving an independent error alert; rerun and expect green.
 - [x] 6.6 Add red tests in `src/__tests__/components/transactionImportReviewModal.test.tsx` for suggested account, ambiguous/no match, required category/account, edited amount/merchant/date, credit installments/interest, remember-instrument eligibility, offline block, server error preservation and double-submit guard.
 - [x] 6.7 Implement `TransactionImportReviewModal.tsx` as a feature-local form that calls `confirmTransactionImport`; reuse validators/formatters/interest calculator already used by `useAddTransaction`, but do not route an import through plain `addTransaction` or duplicate financial authority math.
 - [x] 6.8 Integrate the inbox before transaction filters in `TransactionsView.tsx`; keep the regular `TransactionForm`, pagination, empty states and mobile journey unchanged; rerun all three new UI suites and expect green.
-- [x] 6.9 Run `npm.cmd run test:run -- src/__tests__/components/paymentInstrumentsSection.test.tsx src/__tests__/components/transactionImportInbox.test.tsx src/__tests__/components/transactionImportReviewModal.test.tsx src/__tests__/components/transactionFormCompact.test.tsx src/__tests__/components/accountsViewMerge.test.tsx` and `npm.cmd run typecheck`; expect zero regressions.
+- [x] 6.9 Run `npm.cmd run test:run -- src/__tests__/components/paymentInstrumentsSection.test.tsx src/__tests__/components/transactionImportInbox.test.tsx src/__tests__/components/transactionImportReviewModal.test.tsx src/__tests__/components/transactionFormCompact.test.tsx src/__tests__/components/accountsViewMerge.test.tsx src/__tests__/utils/accountCardKeyboardReorder.test.tsx` and `npm.cmd run typecheck`; expect zero regressions.
 - [x] 6.10 Commit only the scoped web files after inspecting the staged list: `git commit -m "feat(import): review Android purchase candidates"`.
 
 ## 7. Android project and pure capture core
@@ -207,7 +207,7 @@ docs/android-capture-canary.md
 
 - [x] 11.1 Amend the domain glossary, design and delta specs for web-managed alias/last4/account identity, hidden technical candidate metadata, strict visible amount normalization, guided Android stages, system insets and light/dark modes; validate OpenSpec strictly before production edits.
 - [x] 11.2 Add failing web component tests proving the payment-instrument form explains aliases such as `Oro`, sanitizes exactly four digits, the inbox shows `Android` plus a uniquely matched account without alias/package/confidence, and the review amount removes invalid characters while submitting the normalized visible value.
-- [x] 11.3 Implement the minimal web UI changes in `PaymentInstrumentModal.tsx`, `PaymentInstrumentsSection.tsx`, `TransactionImportInbox.tsx` and `TransactionImportReviewModal.tsx`; remove the three colored side rails/callout without changing ledger authority or persisted schemas.
+- [x] 11.3 Implement the minimal web UI changes in `PaymentInstrumentForm.tsx`, `PaymentInstrumentsSection.tsx`, `TransactionImportInbox.tsx` and `TransactionImportReviewModal.tsx`; remove the three colored side rails/callout without changing ledger authority or persisted schemas.
 - [x] 11.4 Add failing Android unit tests for a pure `CaptureSetupFlow` resolver covering `SESSION`, `NOTIFICATION_ACCESS`, `CAPTURE` and `READY`, including revoked access and source/capture prerequisites.
 - [x] 11.5 Add AppCompat 1.8.0 and Core SplashScreen 1.2.0, implement a MoneyTrack wallet splash and a persisted `Sistema / Claro / Oscuro` preference, and keep the single-Activity XML architecture.
 - [x] 11.6 Replace the long Android status document with state-driven setup/ready panels, friendly source labels, exclusive auth actions, the canonical PWA URL and edge-to-edge system-bar insets; add day/night resources with 48 dp controls and accessible Spanish copy.

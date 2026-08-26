@@ -62,6 +62,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
   const formatCurrency = useFormatCurrency();
   const [showStatements, setShowStatements] = useState(false);
   const [showOptimizer, setShowOptimizer] = useState(false);
+  const [paymentInstrumentsAccountId, setPaymentInstrumentsAccountId] = useState<string | null>(null);
   const paymentSchedule = useCardPaymentSchedule(accounts, balanceTransactions, recurringPayments);
   // Mapa memoizado del cupo usado por tarjeta para el resumen (evita llamar al
   // accesor por tarjeta en cada render). El cálculo correcto (historial
@@ -561,6 +562,9 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
                 }
                 formatCurrency={formatCurrency}
                 onEdit={() => accountForm.openEditForm(account)}
+                onManagePaymentInstruments={userId
+                  ? () => setPaymentInstrumentsAccountId(account.id!)
+                  : undefined}
                 onSetDefault={() => setDefaultAccount(account.id!)}
                 onDelete={() =>
                   setDeleteConfirm({
@@ -613,6 +617,9 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
                       }
                       formatCurrency={formatCurrency}
                       onEdit={() => accountForm.openEditForm(card)}
+                      onManagePaymentInstruments={userId
+                        ? () => setPaymentInstrumentsAccountId(card.id!)
+                        : undefined}
                       onSetDefault={() => setDefaultAccount(card.id!)}
                       onDelete={() =>
                         setDeleteConfirm({
@@ -645,7 +652,14 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
       </div>
       )}
 
-      <PaymentInstrumentsSection userId={userId} accounts={accounts} />
+      <PaymentInstrumentsSection
+        userId={userId}
+        accounts={accounts}
+        accountId={paymentInstrumentsAccountId}
+        isOpen={paymentInstrumentsAccountId !== null}
+        onClose={() => setPaymentInstrumentsAccountId(null)}
+      />
+
     </div>
   );
 };

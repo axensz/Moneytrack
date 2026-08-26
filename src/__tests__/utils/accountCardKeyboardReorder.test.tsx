@@ -79,6 +79,22 @@ describe('AccountCard alternativa de teclado (WCAG 2.1.1)', () => {
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
+  it('ofrece la gestion de medios como un boton de icono que abre un dialogo', () => {
+    const onManagePaymentInstruments = vi.fn();
+    renderCard({ onManagePaymentInstruments });
+
+    const trigger = screen.getByRole('button', {
+      name: 'Gestionar medios de pago de Cuenta Ahorros',
+    });
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(trigger).toHaveAttribute('title', 'Medios de pago');
+    expect(trigger).toHaveClass('min-h-[44px]', 'min-w-[44px]');
+    expect(trigger).not.toHaveTextContent(/medios/i);
+
+    fireEvent.click(trigger);
+    expect(onManagePaymentInstruments).toHaveBeenCalledTimes(1);
+  });
+
   it('deshabilita subir en el primer elemento y bajar en el último', () => {
     renderCard({ canMoveUp: false, canMoveDown: true });
     expect(screen.getByRole('button', { name: /hacia arriba/i })).toBeDisabled();

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { memo } from 'react';
-import { Edit2, Trash2, GripVertical, ChevronUp, ChevronDown, Wallet, CreditCard, Banknote, Combine, AlertTriangle } from 'lucide-react';
+import { Edit2, Trash2, GripVertical, ChevronUp, ChevronDown, Wallet, CreditCard, Banknote, Combine, AlertTriangle, Smartphone } from 'lucide-react';
 import type { Account } from '../../../../types/finance';
 import { getCreditAuthorityState } from '../../../../utils/creditAuthority';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
@@ -36,6 +36,7 @@ interface AccountCardProps {
   onSetDefault: () => void;
   onDelete: () => void;
   onMerge?: () => void;
+  onManagePaymentInstruments?: () => void;
   /** Alternativa de teclado a drag & drop (WCAG 2.1.1). Opcional para no romper otros usos. */
   onMoveUp?: () => void;
   onMoveDown?: () => void;
@@ -72,6 +73,7 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
   onSetDefault,
   onDelete,
   onMerge,
+  onManagePaymentInstruments,
   onMoveUp,
   onMoveDown,
   canMoveUp = false,
@@ -249,6 +251,19 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
             <Edit2 size={14} />
             Editar
           </button>
+
+          {onManagePaymentInstruments && (
+            <button
+              type="button"
+              onClick={onManagePaymentInstruments}
+              aria-label={`Gestionar medios de pago de ${account.name}`}
+              aria-haspopup="dialog"
+              title="Medios de pago"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-border p-2 text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <Smartphone size={18} aria-hidden="true" />
+            </button>
+          )}
 
           {isCredit && onMerge && (
             <button

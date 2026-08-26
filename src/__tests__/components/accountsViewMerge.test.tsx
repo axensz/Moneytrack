@@ -101,7 +101,15 @@ vi.mock('../../components/views/accounts/hooks/useAccountForm', () => ({
 }));
 
 vi.mock('../../components/views/accounts/components/AccountCard', () => ({
-  AccountCard: ({ account, onMerge }: { account: Account; onMerge?: () => void }) => (
+  AccountCard: ({
+    account,
+    onMerge,
+    onManagePaymentInstruments,
+  }: {
+    account: Account;
+    onMerge?: () => void;
+    onManagePaymentInstruments?: () => void;
+  }) => (
     <div>
       <span>{account.name}</span>
       {onMerge && (
@@ -109,8 +117,32 @@ vi.mock('../../components/views/accounts/components/AccountCard', () => ({
           merge-{account.id}
         </button>
       )}
+      {onManagePaymentInstruments && (
+        <button
+          type="button"
+          onClick={onManagePaymentInstruments}
+        >
+          mobile-media-{account.id}
+        </button>
+      )}
     </div>
   ),
+}));
+
+vi.mock('../../components/views/accounts/components/PaymentInstrumentsSection', () => ({
+  PaymentInstrumentsSection: ({
+    accountId,
+    isOpen,
+    onClose,
+  }: {
+    accountId?: string;
+    isOpen?: boolean;
+    onClose?: () => void;
+  }) => isOpen ? (
+    <div role="dialog" aria-label={`payment-manager-${accountId ?? 'global'}`}>
+      <button type="button" onClick={onClose}>close-payment-manager</button>
+    </div>
+  ) : null,
 }));
 
 vi.mock('../../components/views/accounts/components/MergeCreditCardsModal', () => ({
@@ -190,5 +222,21 @@ describe('AccountsView — fusión con deuda objetivo', () => {
       expect.objectContaining({ desiredDebt: undefined })
     ));
     expect(state.addTransaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('AccountsView — medios de pago en contexto', () => {
+  it('opens one account-scoped modal and removes it on close', () => {
+    render(<AccountsView userId="owner" />);
+
+    expect(screen.queryByRole('dialog', { name: /payment-manager-/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'mobile-media-bank' }));
+
+    expect(screen.getByRole('dialog', { name: 'payment-manager-bank' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'payment-manager-global' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'close-payment-manager' }));
+    expect(screen.queryByRole('dialog', { name: /payment-manager-/i })).not.toBeInTheDocument();
   });
 });

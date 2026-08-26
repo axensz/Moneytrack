@@ -46,6 +46,14 @@ export function TransactionImportInbox({
   const toggleRef = useRef<HTMLButtonElement>(null);
 
   if (!userId) return null;
+  if (candidates.length === 0) {
+    if (!error) return null;
+    return (
+      <p role="alert" className="mb-4 rounded-lg bg-destructive-muted px-3 py-2 text-sm font-medium text-destructive">
+        {error.message}
+      </p>
+    );
+  }
 
   const pendingLabel = `${candidates.length} ${candidates.length === 1 ? 'pendiente' : 'pendientes'}`;
   const handleDismiss = async (candidate: PendingTransactionImportCandidate) => {
@@ -121,13 +129,6 @@ export function TransactionImportInbox({
             <p role="status" className="mt-4 text-sm text-muted-foreground">
               Cargando compras pendientes…
             </p>
-          ) : candidates.length === 0 ? (
-            <div className="mt-4 rounded-lg border border-dashed border-border bg-muted/35 px-4 py-5 text-center">
-              <p className="font-semibold text-foreground">No hay compras por revisar</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Las próximas capturas válidas del celular aparecerán aquí.
-              </p>
-            </div>
           ) : (
             <div className="mt-4 divide-y divide-border rounded-xl border border-border">
               {candidates.map(candidate => {

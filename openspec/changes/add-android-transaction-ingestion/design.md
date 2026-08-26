@@ -4,6 +4,8 @@ Moneytrack es hoy una PWA Next/React con Firebase. `Account` es la autoridad con
 
 Google Wallet no expone al usuario una fuente pública de historial de compras que Moneytrack pueda consumir. Android sí ofrece `NotificationListenerService`, siempre que la persona habilite el acceso en ajustes y el servicio se declare con `BIND_NOTIFICATION_LISTENER_SERVICE` ([referencia oficial](https://developer.android.com/reference/android/service/notification/NotificationListenerService.html)). Por eso el insumo será la notificación visible de Wallet o de la aplicación financiera elegida, no el historial interno de la wallet.
 
+Google permite asignar a un medio un apodo de solo letras y menos de 25 caracteres ([ayuda oficial](https://support.google.com/wallet/answer/12059601?hl=en)); además, el pago presencial usa una tarjeta virtual cuyos últimos cuatro pueden diferir de la tarjeta física y del token de otro dispositivo ([seguridad de Wallet](https://support.google.com/wallet/answer/7643925?hl=en)). Wallet advierte que una notificación o su historial pueden omitir detalles y no reemplazan el extracto bancario ([transacciones en Wallet](https://support.google.com/wallet/answer/12059878?hl=en)). La documentación oficial no publica un contrato estable para el texto `COP… with <apodo>`: las capturas reales aprobadas son fixtures de compatibilidad y el parser debe fallar cerrado ante una variante desconocida.
+
 La PWA ya autentica con Google en Firebase. El compañero Android usará Credential Manager y `FirebaseAuth.signInWithCredential`, de modo que ambas superficies obtengan el mismo UID en el mismo proyecto ([guía oficial de Firebase](https://firebase.google.com/docs/auth/android/google-signin)). Firestore para Android mantiene persistencia local por defecto y encola escrituras cuando no hay red ([documentación oficial](https://firebase.google.com/docs/firestore/manage-data/enable-offline)); esa cola se usará solo para candidatos normalizados.
 
 Hay cambios OpenSpec activos sobre integridad del libro y entrega de notificaciones. Esta propuesta depende de la frontera contable ya presente en el código, pero no depende del backend/Web Push propuesto por `harden-notification-delivery-and-recurring-reminders`: una notificación bancaria observada es una entrada no confiable, mientras una notificación de Moneytrack es una salida posterior al commit.
@@ -48,29 +50,29 @@ La relación canónica es:
 ```text
 Account (1) <--- (N) PaymentInstrument
                          |
-                         | coincidencia opcional por últimos 4
+                         | coincidencia opcional por apodo y/o últimos 4
                          v
 TransactionImportCandidate (0..1) ---> Transaction confirmada (0..1)
 ```
 
 - `Account` conserva la autoridad financiera. Una TC sigue siendo `Account.type === 'credit'` y `bankAccountId` sigue significando cuenta bancaria de pago.
 - `PaymentInstrument` identifica un plástico o token de wallet y apunta a exactamente una cuenta existente. Una cuenta puede tener cero o más.
-- `TransactionImportCandidate` es una propuesta sin efecto contable.
+- `TransactionImportCandidate` es una propuesta sin efecto contable y puede conservar un apodo observado que todavía no identifica un medio propio.
 - `Transaction` solo aparece después de la confirmación canónica.
 
 Esta separación permite que una TC tenga plástico físico y token de Google Wallet con terminaciones distintas sin duplicar deuda ni cupo.
 
 ### 3. Contratos persistidos explícitos y pequeños
 
-`users/{uid}/paymentInstruments/{instrumentId}`:
+`users/{uid}/paymentInstruments/{instrumentId}` mantiene compatibilidad de lectura con `schemaVersion: 1` y usa `schemaVersion: 2` para escrituras nuevas:
 
 | Campo | Contrato |
 | --- | --- |
-| `schemaVersion` | entero literal `1` |
-| `label` | string de 1–80 caracteres |
+| `schemaVersion` | entero literal `1` legado o `2` actual |
+| `label` | string de 1–80 caracteres; en `wallet-token` es el apodo exacto que se desea comparar con Wallet |
 | `accountId` | ID de una cuenta existente del mismo usuario |
 | `kind` | `physical-card` o `wallet-token` |
-| `last4` | exactamente cuatro dígitos; nunca PAN completo |
+| `last4` | cuatro dígitos; obligatorio en `physical-card`, opcional en `wallet-token` v2 y obligatorio en v1 |
 | `network` | `visa`, `mastercard`, `amex`, `other` o `unknown` |
 | `active` | booleano; un instrumento inactivo no se preselecciona |
 | `createdAt`, `updatedAt` | timestamps |
@@ -79,7 +81,7 @@ Esta separación permite que una TC tenga plástico físico y token de Google Wa
 
 | Campo | Contrato |
 | --- | --- |
-| `schemaVersion` | entero literal `1` |
+| `schemaVersion` | `1` para el parser bancario existente o `2` para Google Wallet |
 | `source` | literal `android-notification` |
 | `sourcePackage` | paquete Android elegido, máximo 160 caracteres |
 | `occurredAt` | timestamp observado |
@@ -87,13 +89,14 @@ Esta separación permite que una TC tenga plástico físico y token de Google Wa
 | `currency` | literal `COP` |
 | `merchant` | descripción normalizada de 1–140 caracteres |
 | `cardLast4` | cuatro dígitos opcionales |
-| `parserId`, `parserVersion` | `strict-cop-purchase` y entero `1` |
+| `observedInstrumentLabel` | apodo de Wallet opcional, NFKC, solo letras, máximo 24 caracteres; no demuestra propiedad |
+| `parserId`, `parserVersion` | `strict-cop-purchase`/`1` para v1 o `google-wallet-purchase`/`1` para v2 |
 | `confidence` | `high` o `medium`; `low` nunca se sube |
 | `status` | `pending`, `confirmed` o `dismissed` |
 | `transactionId`, `confirmedAt` | solo para `confirmed` |
 | `dismissedAt` | solo para `dismissed` |
 
-El documento MUST rechazar cualquier clave cruda como `title`, `text`, `bigText`, `subText`, `rawPayload`, `pan`, `cvv`, `otp` o equivalentes. El decodificador web también será fail-closed: un documento que no cumpla el contrato no entra a la bandeja.
+El documento MUST rechazar cualquier clave cruda como `title`, `text`, `bigText`, `subText`, `rawPayload`, `pan`, `cvv`, `otp` o equivalentes. El decodificador web también será fail-closed: un documento que no cumpla el contrato o mezcle versiones de esquema/parser no entra a la bandeja.
 
 ### 4. Identidad determinista antes de sincronizar
 
@@ -105,7 +108,9 @@ La primera versión admite un dispositivo de captura por usuario como configurac
 
 `MoneyNotificationListenerService` descarta de inmediato eventos si falta sesión, permiso, paquete permitido o configuración activa. El allowlist empieza vacío y vive en preferencias privadas del dispositivo. Un catálogo puro incluye Google Wallet como fuente conocida y recomendada mediante el paquete exacto verificado en el dispositivo canario; esto la hace visible antes de una notificación, pero no la autoriza ni consulta aplicaciones instaladas. Para poblar opciones adicionales sin solicitar `QUERY_ALL_PACKAGES`, el listener puede guardar localmente solo `packageName` y etiqueta de aplicaciones que ya hayan emitido una notificación; antes de que el usuario permita una fuente no lee sus extras, y solo eventos futuros de una fuente elegida pasan al parser.
 
-El pipeline puro es `RawNotification` en memoria → `StrictCopPurchaseParser` → `NormalizedPurchaseCandidate` → `FirebaseCandidateRepository`. Para emitir un candidato deben cumplirse todos estos puntos:
+El pipeline puro es `RawNotification` en memoria → `PurchaseParserRouter` → parser específico → `NormalizedPurchaseCandidate` → `FirebaseCandidateRepository`. El router envía únicamente el paquete exacto `com.google.android.apps.walletnfcrel` a `GoogleWalletPurchaseParser`; las demás fuentes elegidas conservan `StrictCopPurchaseParser`.
+
+Antes de leer extras, el coordinador ignora cualquier evento con `Notification.FLAG_GROUP_SUMMARY`: Android puede actualizar un resumen que contiene fragmentos de varias notificaciones y solo los hijos representan eventos individuales ([documentación oficial](https://developer.android.com/develop/ui/views/notifications/group)). Para el parser bancario existente deben cumplirse estos puntos:
 
 - existir exactamente un monto COP inequívoco;
 - existir un marcador de compra (`compra`, `consumo`, `pagaste` o `pago realizado`);
@@ -113,13 +118,17 @@ El pipeline puro es `RawNotification` en memoria → `StrictCopPurchaseParser` �
 - normalizar comercio, últimos cuatro y fecha cuando estén disponibles;
 - clasificar `high` cuando monto, comercio y últimos cuatro sean inequívocos; en ausencia de comercio o últimos cuatro, usar `medium` y exigir revisión igualmente.
 
+`GoogleWalletPurchaseParser` usa el título individual como comercio y acepta únicamente cuerpos completos equivalentes a los fixtures aprobados `COP13,990.00 with MamáDébito` y `COP2,600.00 with Oro`, además de la variante localizada inequívoca `COP 13.990,00 con Oro`. El monto admite agrupación inglesa o colombiana solo cuando los separadores son inequívocos; valores negativos, cero, separadores ambiguos, moneda distinta de COP, múltiples cuerpos diferentes, rechazos, reversos y seguridad se descartan. El apodo se normaliza con NFKC y se persiste solo si contiene entre 1 y 24 letras Unicode; un descriptor inválido no se convierte en identidad. Todo candidato Wallet queda en confianza `medium` mientras no exista terminación inequívoca.
+
 El texto original solo existe durante la llamada. No se guarda en archivo, preferencias, Firestore, crash report ni logging. No se añadirá Crashlytics o Analytics.
 
 ### 6. La bandeja es una frontera de confianza
 
-`TransactionImportInbox` consultará como máximo los 100 candidatos `pending` más recientes y mostrará comercio, monto COP, fecha observada y terminación si existe. La fila identifica el canal funcional como `Android`; cuando la terminación resuelva un único medio activo, añade la cuenta vinculada (`Android · <cuenta>`), no el alias del medio. `sourcePackage` y `confidence` permanecen en el contrato normalizado para diagnóstico del canario, pero no se presentan como lenguaje de producto. Ningún candidato participa en saldos, cupo, estadísticas, presupuestos o conciliación.
+`TransactionImportInbox` consultará como máximo los 100 candidatos `pending` más recientes y mostrará comercio, monto COP, fecha observada y terminación si existe. La fila identifica el canal funcional como `Android`; cuando las señales disponibles resuelven un único medio activo, añade la cuenta vinculada (`Android · <cuenta>`), no el alias del medio. `sourcePackage`, `confidence` y `observedInstrumentLabel` permanecen en el contrato normalizado para diagnóstico y asociación, pero el paquete, la confianza y el apodo observado no se presentan como lenguaje de producto. Ningún candidato participa en saldos, cupo, estadísticas, presupuestos o conciliación.
 
-La revisión exige cuenta y categoría válidas. Si existe un medio activo coincidente, se preselecciona su cuenta; si no existe, la persona elige una cuenta y puede marcar “Recordar este medio de pago” cuando hay `cardLast4`. Ese instrumento se crea dentro del mismo commit de confirmación con la etiqueta inicial `Tarjeta •••• NNNN` y podrá editarse desde Cuentas. El campo monetario reutiliza la normalización visible de los demás formularios MoneyTrack: elimina caracteres ajenos al monto, conserva el formato colombiano y nunca confirma silenciosamente el texto crudo.
+La coincidencia aplica señales de forma conservadora: últimos cuatro comparan cualquier medio activo; apodo normalizado compara solo `wallet-token`; una sola coincidencia activa permite sugerir; duplicados son ambiguos; y cuando existen ambas señales deben converger en el mismo medio o se informa conflicto sin sugerir cuenta. Un apodo desconocido, una tarjeta ajena o un medio no administrado permanece sin cuenta recomendada y jamás crea una asociación automática.
+
+La revisión exige cuenta y categoría válidas. Si existe un medio activo coincidente, se preselecciona su cuenta; si no existe, la persona elige una cuenta y puede marcar “Recordar este medio de pago” cuando hay `cardLast4` o un `observedInstrumentLabel` válido. Ese instrumento v2 se crea dentro del mismo commit con el apodo observado o, en su ausencia, `Tarjeta •••• NNNN`; la acción es explícita y puede dejarse desmarcada para confirmar una compra aislada o descartar una tarjeta ajena. El campo monetario reutiliza la normalización visible de los demás formularios MoneyTrack: elimina caracteres ajenos al monto, conserva el formato colombiano y nunca confirma silenciosamente el texto crudo.
 
 La revisión de un gasto en TC permite indicar cuotas e interés; no los infiere de la notificación. La persona puede corregir monto, comercio, fecha y cuenta antes de confirmar.
 
@@ -147,8 +156,8 @@ Descartar usa la transición irreversible `pending → dismissed`, no crea trans
 
 Firestore añadirá reglas con listas exactas de claves, enums, tamaños, timestamps y referencias de cuenta. Solo el propietario podrá leer o escribir sus subcolecciones.
 
-- Instrumentos: create/update requieren cuenta existente; `last4` tiene cuatro dígitos; no se aceptan claves desconocidas.
-- Candidatos: create solo permite `pending`; update solo permite un no-op idempotente con payload determinista, `pending → dismissed` o `pending → confirmed`.
+- Instrumentos: create/update requieren cuenta existente; v1 conserva `last4` obligatorio y v2 permite omitirlo solo en `wallet-token`; no se aceptan claves desconocidas.
+- Candidatos: v1 acepta solo `strict-cop-purchase`; v2 acepta solo `google-wallet-purchase` y su apodo observado acotado; create solo permite `pending`; update solo permite un no-op idempotente con payload determinista, `pending → dismissed` o `pending → confirmed`.
 - Para `confirmed`, `existsAfter` debe encontrar `transactions/{transactionId}`, su `operationId` debe ser `ledger-mutation:android:<candidateId>` y la mutación debe ocurrir bajo el lease contable.
 - Estados terminales no pueden reabrirse ni cambiar de transacción.
 - El índice compuesto será `status ASC, occurredAt DESC` para `transactionImportCandidates`.
@@ -210,7 +219,8 @@ La adaptación usa recursos de dimensiones, no una librería nueva. Los gutters 
 
 ## Risks / Trade-offs
 
-- **[Formato de notificación cambia o no contiene monto/tarjeta]** → el parser falla cerrado, el evento no sube y el canario registra solo un código local no financiero; se añade un parser específico únicamente con ejemplos sanitizados y pruebas.
+- **[Formato de Wallet cambia o el apodo no identifica una tarjeta propia]** → el parser dedicado falla cerrado para cuerpos desconocidos; un apodo válido sigue siendo solo una pista y nunca crea ni asigna una cuenta sin acción explícita.
+- **[Wallet agrupa varias compras]** → se ignora `FLAG_GROUP_SUMMARY` antes de leer extras y se procesan solo notificaciones hijas individuales.
 - **[Notificación duplicada o actualizada]** → fingerprint determinista y confirmación idempotente; la bandeja sigue siendo obligatoria.
 - **[Notificación falsa, reversada o incompleta]** → exclusiones estrictas, confianza conservada para diagnóstico y sin contabilización autónoma.
 - **[Android mata el proceso o no concede acceso]** → pantalla de estado y enlace directo a ajustes; no se promete captura mientras el servicio esté deshabilitado.
@@ -223,10 +233,10 @@ La adaptación usa recursos de dimensiones, no una librería nueva. Los gutters 
 ## Migration Plan
 
 1. **Precondición:** confirmar verdes las pruebas de frontera contable e ingress parity del estado actual; no implementar sobre un writer financiero roto.
-2. **Contrato aditivo:** desplegar tipos, decodificadores, reglas e índice. No hay backfill y clientes actuales ignoran las nuevas colecciones.
-3. **PWA:** desplegar gestión de medios e inbox vacío. Verificar creación, transición y confirmación con emulador y proyecto de prueba.
+2. **Contrato aditivo:** desplegar primero tipos, decodificadores y reglas compatibles con candidatos/instrumentos v1 y v2. No hay backfill; los documentos v1 permanecen válidos.
+3. **PWA:** desplegar gestión de medios con terminación opcional para tokens, coincidencia por señales e inbox vacío. Verificar creación, transición y confirmación con emulador y proyecto de prueba.
 4. **Firebase Android:** registrar `com.moneytrack.capture` en el mismo proyecto, agregar SHA-1/SHA-256 de debug/canario, descargar `google-services.json` local y verificar que Google Sign-In produce el mismo UID de la PWA.
-5. **Canario privado:** construir e instalar APK debug/release interno en un solo dispositivo; habilitar una fuente a la vez y mantener confirmación manual.
+5. **Canario privado:** solo después del despliegue web/reglas compatible, construir e instalar APK con `google-wallet-purchase`; habilitar una fuente a la vez y mantener confirmación manual.
 6. **Criterio de aceptación:** revisar al menos 50 notificaciones elegibles durante un mínimo de 14 días, con cero dobles contabilizaciones, 100 % de candidatos sin texto crudo persistido, al menos 95 % de monto correcto, al menos 90 % de preselección de cuenta correcta y máximo 5 % de falsos positivos en la bandeja.
 7. **Siguiente decisión:** solo después de aceptar el canario se podrá proponer otro cambio OpenSpec para auto-confirmación por instrumento y parser confiable. No se habilita como parte de este cambio.
 
@@ -240,4 +250,4 @@ La adaptación usa recursos de dimensiones, no una librería nueva. Los gutters 
 
 ## Open Questions
 
-No hay preguntas bloqueantes para implementar el canario. Los parsers específicos por emisor y la posible auto-confirmación son decisiones posteriores que requieren evidencia sanitizada y las métricas de aceptación anteriores.
+No hay preguntas bloqueantes para implementar el parser aprobado de Google Wallet. Variantes nuevas del texto, otros emisores y la posible auto-confirmación requieren fixtures sanitizados y una nueva decisión basada en las métricas del canario; no se generalizará el regex para hacerlas pasar.

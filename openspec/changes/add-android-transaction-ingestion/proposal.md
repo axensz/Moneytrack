@@ -7,6 +7,8 @@ Registrar manualmente cada compra hecha con una tarjeta del celular genera omisi
 - Añadir un proyecto Android complementario que, con permiso explícito de acceso a notificaciones, observe solo las aplicaciones financieras elegidas, extraiga datos normalizados de compras y envíe candidatos idempotentes al mismo proyecto Firebase de Moneytrack.
 - Añadir medios de pago que relacionen un plástico o token de wallet con exactamente una `Account`; una cuenta o TC podrá tener varios medios de pago.
 - Hacer explícitos en la PWA el alias, los últimos cuatro dígitos y la cuenta/TC de cada medio para recomendar la cuenta solo ante una coincidencia activa y única.
+- Añadir un parser estricto y versionado para notificaciones individuales de Google Wallet, capaz de normalizar los formatos COP observados y conservar el apodo visible solo como pista acotada, nunca como evidencia de propiedad.
+- Permitir que un token de wallet se identifique mediante apodo, terminación o ambas; una tarjeta ajena, desconocida o ausente de Moneytrack permanecerá sin cuenta recomendada y no creará asociaciones automáticamente.
 - Añadir en la PWA una bandeja de candidatos pendientes para revisar, completar, confirmar o descartar compras capturadas.
 - Reorganizar el compañero Android como una configuración progresiva con identidad MoneyTrack, sesión, acceso a notificaciones, captura y una pantalla operativa final; respetará barras del sistema y modos claro/oscuro.
 - Refinar toda la superficie Android con el logo canónico de la PWA, una acción principal inequívoca por estado, controles nativos semánticos, respuesta visible durante la autenticación y un layout legible en anchos compactos, expandidos, orientación horizontal y texto ampliado, sin migrar a Compose ni añadir una librería visual.
@@ -19,6 +21,7 @@ Registrar manualmente cada compra hecha con una tarjeta del celular genera omisi
 
 - No leer historial interno de Google Wallet ni depender de una API de Wallet para consumidores.
 - No importar notificaciones históricas ni modificar transacciones, cuentas o saldos existentes.
+- No asumir que un apodo de Wallet identifica una tarjeta propia, ni consultar qué tarjetas existen dentro de Google Wallet.
 - No contabilizar candidatos de forma autónoma, ni implementar reversos automáticos, conciliación bancaria u Open Banking.
 - No reescribir la PWA como aplicación nativa, no crear un backend o Cloud Function y no implementar iOS.
 - No publicar en Google Play dentro de esta propuesta; la preparación técnica conservará compatibilidad con una publicación posterior.

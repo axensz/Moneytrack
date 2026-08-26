@@ -42,8 +42,8 @@ El compañero MUST autenticar con Google mediante Credential Manager y Firebase 
 - **WHEN** una persona no inicia sesión
 - **THEN** no puede activar una cola local de transacciones que luego se atribuya automáticamente a una cuenta
 
-### Requirement: El parser acepta solo compras COP inequívocas
-El parser MUST emitir un candidato únicamente cuando encuentre exactamente un monto COP positivo, un marcador de compra permitido y ningún marcador de rechazo, reverso o seguridad; toda salida `low` MUST descartarse localmente.
+### Requirement: El parser genérico acepta solo compras COP inequívocas
+El parser genérico para fuentes sin contrato específico MUST emitir un candidato únicamente cuando encuentre exactamente un monto COP positivo, un marcador de compra permitido y ningún marcador de rechazo, reverso o seguridad; toda salida `low` MUST descartarse localmente.
 
 #### Scenario: Compra completa
 - **WHEN** una notificación permitida contiene un único monto COP, comercio, marcador de compra y últimos cuatro
@@ -64,6 +64,36 @@ El parser MUST emitir un candidato únicamente cuando encuentre exactamente un m
 #### Scenario: Moneda distinta de COP
 - **WHEN** la única compra observada está expresada en USD u otra moneda
 - **THEN** el primer canario no la sube y no inventa una TRM
+
+### Requirement: Google Wallet usa un parser específico y versionado
+El compañero MUST dirigir únicamente el paquete exacto `com.google.android.apps.walletnfcrel` a `google-wallet-purchase` v1, MUST usar el título individual como comercio y MUST aceptar solo cuerpos completos con un monto COP inequívoco seguido de `with` o `con` y un descriptor acotado. El formato observado en capturas es evidencia de compatibilidad, no un contrato oficial de Google.
+
+#### Scenario: Compra Wallet con agrupación inglesa
+- **WHEN** el título es `TIENDA D1 ESTACION NIQ` y el cuerpo es `COP13,990.00 with MamáDébito`
+- **THEN** el parser produce un candidato v2 por `1.399.000` centavos, comercio `TIENDA D1 ESTACION NIQ`, apodo observado `MamáDébito`, parser `google-wallet-purchase` v1 y confianza `medium`
+
+#### Scenario: Segunda compra Wallet observada
+- **WHEN** el título es `OXXO EDS PORTAL DE NIQ` y el cuerpo es `COP2,600.00 with Oro`
+- **THEN** el parser produce `260000` centavos y conserva `Oro` únicamente como `observedInstrumentLabel`
+
+#### Scenario: Variante localizada inequívoca
+- **WHEN** el cuerpo es `COP 13.990,00 con Oro`
+- **THEN** el parser produce el mismo monto normalizado que `COP13,990.00 with Oro`
+
+#### Scenario: Separadores ambiguos o evento no financiero
+- **WHEN** el cuerpo omite decimales después de un separador ambiguo, usa otra moneda, es negativo, indica rechazo/reverso/seguridad o no coincide por completo
+- **THEN** el parser falla cerrado y no crea candidato
+
+#### Scenario: Apodo fuera del contrato
+- **WHEN** el descriptor contiene más de 24 caracteres o caracteres distintos de letras Unicode
+- **THEN** el valor no se persiste como apodo ni se usa para asociar una cuenta
+
+### Requirement: Los resúmenes agrupados no representan compras individuales
+El compañero MUST descartar `Notification.FLAG_GROUP_SUMMARY` antes de leer extras, calcular una identidad o invocar cualquier parser, y MUST procesar únicamente las notificaciones hijas individuales.
+
+#### Scenario: Wallet actualiza el resumen de dos compras
+- **WHEN** Android publica un resumen agrupado que contiene fragmentos de `MamáDébito` y `Oro`
+- **THEN** el proveedor de contenido crudo y el repositorio no se invocan, y las dos notificaciones hijas conservan identidades independientes
 
 ### Requirement: El contenido crudo nunca sale del proceso
 El compañero MUST mantener título y texto de la notificación solo en memoria durante el análisis y MUST prohibir su persistencia o logging, junto con PAN, CVV, OTP e identificadores de hardware.

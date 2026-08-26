@@ -233,3 +233,15 @@ Section 12 refines the existing single-Activity companion; it does not reopen th
 - [x] 12.9 Run focused RED/GREEN JVM/resource tests, then `testDebugUnitTest lintDebug assembleDebug` with the configured JDK; accept no introduced accessibility, security or layout error and inspect every remaining warning.
 - [ ] 12.10 Verify the implementation at 320 dp in an emulator or equivalent render, on the authorized 400 dp device, at medium/expanded width, landscape, font 1.3× and light/dark/system; capture privacy-safe evidence for launcher, splash, every guided stage, ready state, source dialog, appearance dialog and both system bars.
 - [x] 12.11 Run code-review-graph change/flow/test coverage, strict OpenSpec validation and `git diff --check`; commit only the reviewed Android UX slice and leave the OpenSpec change unarchived until the financial canary gates also pass.
+
+## 13. Approved Google Wallet parser and unknown-instrument handling
+
+Section 13 implements the approved source-specific parser from two sanitized real fixtures. It preserves manual confirmation, treats Wallet nicknames as untrusted hints and keeps v1 documents readable.
+
+- [x] 13.1 Amend `CONTEXT.md`, proposal, design and all three delta specs with the researched Wallet nickname/virtual-card constraints, v1/v2 contracts, group-summary exclusion, multi-signal matching and web-before-APK rollout; run strict OpenSpec validation before production edits.
+- [ ] 13.2 Add failing Android tests for both captured Wallet fixtures, localized grouping, invalid/ambiguous bodies, parser routing, Unicode nickname bounds and v2 candidate metadata; implement `GoogleWalletPurchaseParser` and the smallest package router; rerun green.
+- [ ] 13.3 Add failing coordinator tests proving `FLAG_GROUP_SUMMARY` never reads raw extras or writes a candidate; implement the summary metadata gate and result code; rerun green.
+- [ ] 13.4 Add failing Android persistence/repository tests for v2 schema, optional `observedInstrumentLabel`, parser identity and backward-compatible retry decoding; implement local sync-record v3 with v2 read compatibility and exact Firestore fields; rerun green.
+- [ ] 13.5 Add failing web decoder, matcher and Firestore-emulator tests for legacy v1, current v2, alias-only wallet tokens, physical-card last4, unique alias, duplicate alias, signal conflict, unknown alias and forbidden raw fields; implement fail-closed contracts and rules; rerun green.
+- [ ] 13.6 Add failing component/orchestration tests for optional wallet termination, required physical termination, alias-only account suggestion, hidden observed alias, explicit remember, one-time confirmation without association and current-server signal validation; implement the minimal responsive UI and atomic writer changes; rerun green.
+- [ ] 13.7 Run focused web/Android tests, Firestore emulator rules, full web tests, typecheck, lint, production build, Android `testDebugUnitTest lintDebug assembleDebug`, strict OpenSpec validation, graph impact/coverage and `git diff --check`; inspect the diff and preserve the release order web/rules before APK.

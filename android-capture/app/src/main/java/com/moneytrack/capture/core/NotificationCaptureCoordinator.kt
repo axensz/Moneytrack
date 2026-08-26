@@ -5,6 +5,7 @@ data class NotificationEventMetadata(
     val notificationKey: String,
     val postedAtEpochMillis: Long,
     val deliveryStartedAtEpochMillis: Long = postedAtEpochMillis,
+    val isGroupSummary: Boolean = false,
 )
 
 enum class CaptureResultCode {
@@ -13,6 +14,7 @@ enum class CaptureResultCode {
     NOTIFICATION_ACCESS_MISSING,
     ALLOWLIST_EMPTY,
     PACKAGE_NOT_ALLOWED,
+    GROUP_SUMMARY_IGNORED,
     NO_PURCHASE_MARKER,
     FORBIDDEN_MARKER,
     NO_COP_AMOUNT,
@@ -43,6 +45,10 @@ class NotificationCaptureCoordinator(
         val eligibility = CaptureEligibility.evaluate(state, event.packageName)
         if (eligibility != CaptureEligibilityResult.READY) {
             onResult(eligibility.toCaptureCode())
+            return
+        }
+        if (event.isGroupSummary) {
+            onResult(CaptureResultCode.GROUP_SUMMARY_IGNORED)
             return
         }
 

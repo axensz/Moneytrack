@@ -85,6 +85,23 @@ class FirebaseCandidateRepositoryTest {
     }
 
     @Test
+    fun `writes Wallet v2 parser metadata and bounded observed nickname`() {
+        val sink = FakeDocumentSink()
+        FirebaseCandidateRepository(USER_ID, sink).save(walletCandidate()) {}
+
+        val fields = sink.requests.single().fields
+        assertEquals(2L, fields["schemaVersion"])
+        assertEquals("google-wallet-purchase", fields["parserId"])
+        assertEquals("Oro", fields["observedInstrumentLabel"])
+        assertFalse("cardLast4" in fields)
+        assertTrue(
+            fields.keys.intersect(
+                setOf("title", "text", "bigText", "subText", "rawPayload", "pan", "cvv", "otp"),
+            ).isEmpty(),
+        )
+    }
+
+    @Test
     fun `maps all sink failures to one generic result`() {
         val sink = FakeDocumentSink()
         val repository = FirebaseCandidateRepository(USER_ID, sink)
@@ -120,6 +137,19 @@ class FirebaseCandidateRepositoryTest {
         merchant = "Café Central",
         cardLast4 = cardLast4,
         confidence = PurchaseConfidence.HIGH,
+    )
+
+    private fun walletCandidate() = NormalizedPurchaseCandidate(
+        candidateId = CANDIDATE_ID,
+        schemaVersion = 2,
+        sourcePackage = "com.google.android.apps.walletnfcrel",
+        occurredAtEpochMillis = 1_735_689_600_123L,
+        amountMinor = 260_000L,
+        merchant = "OXXO EDS PORTAL DE NIQ",
+        cardLast4 = null,
+        observedInstrumentLabel = "Oro",
+        parserId = "google-wallet-purchase",
+        confidence = PurchaseConfidence.MEDIUM,
     )
 
     private class FakeDocumentSink : CandidateDocumentSink {

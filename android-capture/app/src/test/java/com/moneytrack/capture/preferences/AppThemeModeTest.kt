@@ -125,6 +125,61 @@ class AppThemeModeTest {
     }
 
     @Test
+    fun `Wallet v2 normalized payload survives restart without raw notification text`() {
+        val storedValues = mutableMapOf<String, Any?>()
+        val preferences = capturePreferences(storedValues)
+        val walletCandidate = NormalizedPurchaseCandidate(
+            candidateId = CANDIDATE_B,
+            schemaVersion = 2,
+            sourcePackage = "com.google.android.apps.walletnfcrel",
+            occurredAtEpochMillis = 2_000L,
+            amountMinor = 260_000L,
+            merchant = "OXXO EDS PORTAL DE NIQ",
+            cardLast4 = null,
+            observedInstrumentLabel = "Oro",
+            parserId = "google-wallet-purchase",
+            confidence = PurchaseConfidence.MEDIUM,
+        )
+
+        preferences.prepareCandidateForDelivery(
+            USER_ID,
+            "com.google.android.apps.walletnfcrel",
+            "wallet-notification-key",
+            walletCandidate,
+        )
+
+        assertEquals(
+            listOf(walletCandidate),
+            capturePreferences(storedValues).candidatesNeedingRetry(USER_ID),
+        )
+        assertFalse(storedValues.toString().contains("wallet-notification-key"))
+    }
+
+    @Test
+    fun `legacy sync record v2 remains readable after local format upgrade`() {
+        val legacyRecord = listOf(
+            "2",
+            "c7185b8fa071b1d87801c001de6ed8169638f487e2852c24afb895d1165a797f",
+            CANDIDATE_A,
+            "enqueued",
+            "Y29tLmV4YW1wbGUuYmFuaw",
+            "1000",
+            "12345",
+            "Q29tZXJjaW8gaW5pY2lhbA",
+            "1234",
+            "high",
+        ).joinToString("|")
+        val preferences = capturePreferences(
+            mutableMapOf("sync_candidate_records" to setOf(legacyRecord)),
+        )
+
+        assertEquals(
+            listOf(candidate(CANDIDATE_A, occurredAt = 1_000L, amountMinor = 12_345L)),
+            preferences.candidatesNeedingRetry(USER_ID),
+        )
+    }
+
+    @Test
     fun `sync failures are candidate scoped and clear only after each candidate is stored`() {
         val preferences = capturePreferences()
         val first = candidate(CANDIDATE_A, occurredAt = 1_000L, amountMinor = 12_345L)

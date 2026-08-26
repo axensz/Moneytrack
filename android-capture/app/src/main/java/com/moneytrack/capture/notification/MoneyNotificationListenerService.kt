@@ -93,6 +93,9 @@ class MoneyNotificationListenerService : NotificationListenerService() {
                 notificationKey = event.key,
                 postedAtEpochMillis = event.postTime,
                 deliveryStartedAtEpochMillis = deliveryStartedAt,
+                isGroupSummary = (
+                    event.notification.flags and Notification.FLAG_GROUP_SUMMARY
+                    ) != 0,
             ),
             rawProvider = {
                 val extras = event.notification.extras

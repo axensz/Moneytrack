@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Pencil,
   Plus,
@@ -55,15 +55,22 @@ export function PaymentInstrumentsSection({
   >(null);
   const [deleteTarget, setDeleteTarget] = useState<PaymentInstrument | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [formSaving, setFormSaving] = useState(false);
+  const focusReturnIdRef = useRef<string | null>(null);
   const visibleInstruments = accountId
     ? instruments.filter(instrument => instrument.accountId === accountId)
     : [];
   const selectedAccount = accountId
     ? accounts.find(account => account.id === accountId)
     : undefined;
-  const modalAccounts = selectedAccount
-    ? [selectedAccount, ...accounts.filter(account => account.id !== accountId)]
-    : accounts;
+
+  useEffect(() => {
+    setEditingInstrument(null);
+    setDeleteTarget(null);
+    setActionError(null);
+    setFormSaving(false);
+    focusReturnIdRef.current = null;
+  }, [accountId, userId]);
 
   if (!userId) return null;
 
@@ -89,17 +96,24 @@ export function PaymentInstrumentsSection({
   };
 
   const handleClose = () => {
+    if (formSaving) return;
     setEditingInstrument(null);
     setDeleteTarget(null);
     setActionError(null);
+    focusReturnIdRef.current = null;
     onClose();
   };
 
-  const modalTitle = editingInstrument
-    ? editingInstrument === 'new'
-      ? 'Añadir medio de pago'
-      : 'Editar medio de pago'
-    : `Medios de pago · ${selectedAccount?.name ?? 'Cuenta'}`;
+  const leaveForm = () => {
+    const focusReturnId = focusReturnIdRef.current;
+    setEditingInstrument(null);
+    requestAnimationFrame(() => {
+      if (focusReturnId) document.getElementById(focusReturnId)?.focus();
+      focusReturnIdRef.current = null;
+    });
+  };
+
+  const modalTitle = `Medios de pago · ${selectedAccount?.name ?? 'Cuenta'}`;
 
   return (
     <>
@@ -109,14 +123,26 @@ export function PaymentInstrumentsSection({
         title={modalTitle}
         titleIcon={<Smartphone size={20} className="text-primary" aria-hidden="true" />}
         maxWidth="max-w-2xl"
+        showCloseButton={!formSaving}
+        closeOnBackdrop={!formSaving}
+        closeOnEscape={!formSaving}
       >
         {editingInstrument ? (
-          <PaymentInstrumentForm
-            instrument={editingInstrument === 'new' ? null : editingInstrument}
-            accounts={modalAccounts}
-            onCancel={() => setEditingInstrument(null)}
-            onSave={handleSave}
-          />
+          <div className="space-y-4">
+            <h4 className="text-base font-semibold text-foreground">
+              {editingInstrument === 'new'
+                ? 'Añadir medio de pago'
+                : 'Editar medio de pago'}
+            </h4>
+            <PaymentInstrumentForm
+              instrument={editingInstrument === 'new' ? null : editingInstrument}
+              accounts={accounts}
+              defaultAccountId={accountId ?? ''}
+              onCancel={leaveForm}
+              onSave={handleSave}
+              onSavingChange={setFormSaving}
+            />
+          </div>
         ) : (
           <div className="space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -124,9 +150,13 @@ export function PaymentInstrumentsSection({
                 Tarjetas y tokens que sugerirán esta cuenta al revisar una compra.
               </p>
               <button
+                id="payment-instrument-add"
                 type="button"
                 className="btn-secondary min-h-[44px]"
-                onClick={() => setEditingInstrument('new')}
+                onClick={() => {
+                  focusReturnIdRef.current = 'payment-instrument-add';
+                  setEditingInstrument('new');
+                }}
               >
                 <Plus size={18} aria-hidden="true" />
                 Añadir medio
@@ -183,10 +213,14 @@ export function PaymentInstrumentsSection({
                         <Power size={18} aria-hidden="true" />
                       </button>
                       <button
+                        id={`payment-instrument-edit-${instrument.id}`}
                         type="button"
                         className="control-target-44 min-h-[44px] min-w-[44px] rounded-lg border border-border p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
                         aria-label={`Editar ${instrument.label}`}
-                        onClick={() => setEditingInstrument(instrument)}
+                        onClick={() => {
+                          focusReturnIdRef.current = `payment-instrument-edit-${instrument.id}`;
+                          setEditingInstrument(instrument);
+                        }}
                       >
                         <Pencil size={18} aria-hidden="true" />
                       </button>

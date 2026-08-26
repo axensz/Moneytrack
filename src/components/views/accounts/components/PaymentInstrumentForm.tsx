@@ -12,8 +12,10 @@ import type { NewPaymentInstrument } from '../../../../hooks/firestore/usePaymen
 interface PaymentInstrumentFormProps {
   instrument: PaymentInstrument | null;
   accounts: readonly Account[];
+  defaultAccountId: string;
   onCancel: () => void;
   onSave: (instrument: NewPaymentInstrument) => Promise<void>;
+  onSavingChange: (saving: boolean) => void;
 }
 
 const NETWORKS: Array<{ value: PaymentInstrumentNetwork; label: string }> = [
@@ -32,28 +34,33 @@ const KINDS: Array<{ value: PaymentInstrumentKind; label: string }> = [
 export function PaymentInstrumentForm({
   instrument,
   accounts,
+  defaultAccountId,
   onCancel,
   onSave,
+  onSavingChange,
 }: PaymentInstrumentFormProps) {
-  const [label, setLabel] = useState('');
-  const [accountId, setAccountId] = useState('');
-  const [kind, setKind] = useState<PaymentInstrumentKind>('wallet-token');
-  const [last4, setLast4] = useState('');
-  const [network, setNetwork] = useState<PaymentInstrumentNetwork>('unknown');
+  const [label, setLabel] = useState(() => instrument?.label ?? '');
+  const [accountId, setAccountId] = useState(() => (
+    instrument?.accountId ?? defaultAccountId
+  ));
+  const [kind, setKind] = useState<PaymentInstrumentKind>(() => (
+    instrument?.kind ?? 'wallet-token'
+  ));
+  const [last4, setLast4] = useState(() => instrument?.last4 ?? '');
+  const [network, setNetwork] = useState<PaymentInstrumentNetwork>(() => (
+    instrument?.network ?? 'unknown'
+  ));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  const mountedRef = useRef(false);
 
   useEffect(() => {
-    setLabel(instrument?.label ?? '');
-    setAccountId(instrument?.accountId ?? accounts[0]?.id ?? '');
-    setKind(instrument?.kind ?? 'wallet-token');
-    setLast4(instrument?.last4 ?? '');
-    setNetwork(instrument?.network ?? 'unknown');
-    setError(null);
-    setSaving(false);
-    savingRef.current = false;
-  }, [accounts, instrument]);
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -75,6 +82,7 @@ export function PaymentInstrumentForm({
 
     savingRef.current = true;
     setSaving(true);
+    onSavingChange(true);
     setError(null);
     try {
       await onSave({
@@ -84,16 +92,21 @@ export function PaymentInstrumentForm({
         last4,
         network,
       });
+      if (!mountedRef.current) return;
+      savingRef.current = false;
+      setSaving(false);
+      onSavingChange(false);
       onCancel();
     } catch (saveError) {
+      if (!mountedRef.current) return;
       setError(
         saveError instanceof Error
           ? saveError.message
           : 'No se pudo guardar el medio de pago.',
       );
-    } finally {
       savingRef.current = false;
       setSaving(false);
+      onSavingChange(false);
     }
   };
 

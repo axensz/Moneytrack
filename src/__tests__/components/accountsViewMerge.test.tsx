@@ -239,4 +239,14 @@ describe('AccountsView — medios de pago en contexto', () => {
     fireEvent.click(screen.getByRole('button', { name: 'close-payment-manager' }));
     expect(screen.queryByRole('dialog', { name: /payment-manager-/i })).not.toBeInTheDocument();
   });
+
+  it('closes the selected account context when the authenticated user changes', () => {
+    const { rerender } = render(<AccountsView userId="owner" />);
+    fireEvent.click(screen.getByRole('button', { name: 'mobile-media-bank' }));
+    expect(screen.getByRole('dialog', { name: 'payment-manager-bank' })).toBeInTheDocument();
+
+    rerender(<AccountsView userId="other-owner" />);
+
+    expect(screen.queryByRole('dialog', { name: /payment-manager-/i })).not.toBeInTheDocument();
+  });
 });

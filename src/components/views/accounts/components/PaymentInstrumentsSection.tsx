@@ -88,11 +88,12 @@ export function PaymentInstrumentsSection({
   };
 
   const handleSave = async (draft: NewPaymentInstrument) => {
+    setActionError(null);
     if (editingInstrument && editingInstrument !== 'new') {
-      await runAction(() => updateInstrument(editingInstrument.id, draft));
+      await updateInstrument(editingInstrument.id, draft);
       return;
     }
-    await runAction(() => createInstrument(draft));
+    await createInstrument(draft);
   };
 
   const handleClose = () => {
@@ -108,7 +109,10 @@ export function PaymentInstrumentsSection({
     const focusReturnId = focusReturnIdRef.current;
     setEditingInstrument(null);
     requestAnimationFrame(() => {
-      if (focusReturnId) document.getElementById(focusReturnId)?.focus();
+      const preferredTarget = focusReturnId
+        ? document.getElementById(focusReturnId)
+        : null;
+      (preferredTarget ?? document.getElementById('payment-instrument-add'))?.focus();
       focusReturnIdRef.current = null;
     });
   };

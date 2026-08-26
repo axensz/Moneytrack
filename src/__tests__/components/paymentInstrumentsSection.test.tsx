@@ -332,6 +332,46 @@ describe('PaymentInstrumentsSection', () => {
     expect(screen.getByLabelText('Nombre o apodo')).toHaveValue('Medio nuevo');
   });
 
+  it('does not surface an abandoned save error in a newer account context', async () => {
+    let rejectSave!: (reason: Error) => void;
+    H.createInstrument.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => {
+      rejectSave = reject;
+    }));
+
+    function Harness() {
+      const [accountId, setAccountId] = useState('card');
+      return (
+        <>
+          <button type="button" onClick={() => setAccountId('savings')}>
+            Cambiar cuenta
+          </button>
+          <PaymentInstrumentsSection {...managerProps({ accountId })} />
+        </>
+      );
+    }
+
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir medio' }));
+    fireEvent.change(screen.getByLabelText('Nombre o apodo'), {
+      target: { value: 'Medio anterior' },
+    });
+    fireEvent.change(screen.getByLabelText('Últimos 4 dígitos'), {
+      target: { value: '1111' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar medio' }));
+    await waitFor(() => expect(H.createInstrument).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cambiar cuenta' }));
+    expect(screen.getByRole('dialog', {
+      name: 'Medios de pago · Cuenta principal',
+    })).toBeInTheDocument();
+
+    await act(async () => rejectSave(new Error('Error de la cuenta anterior')));
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText('Error de la cuenta anterior')).not.toBeInTheDocument();
+  });
+
   it('returns focus to the add action after cancelling or saving the form', async () => {
     render(<PaymentInstrumentsSection {...managerProps()} />);
     const addButton = screen.getByRole('button', { name: 'Añadir medio' });
@@ -365,6 +405,22 @@ describe('PaymentInstrumentsSection', () => {
 
     await waitFor(() => expect(
       screen.getByRole('button', { name: 'Editar Visa celular' }),
+    ).toHaveFocus());
+  });
+
+  it('returns focus to add when a saved edit leaves the selected account', async () => {
+    H.instruments = [instrument];
+    render(<PaymentInstrumentsSection {...managerProps()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Editar Visa celular' }));
+    fireEvent.change(screen.getByLabelText('Cuenta vinculada'), {
+      target: { value: 'savings' },
+    });
+    H.instruments = [{ ...instrument, accountId: 'savings' }];
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() => expect(
+      screen.getByRole('button', { name: 'Añadir medio' }),
     ).toHaveFocus());
   });
 

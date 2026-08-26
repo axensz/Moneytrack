@@ -197,9 +197,11 @@ export function PaymentInstrumentsSection({
                           {instrument.active ? 'Activo' : 'Inactivo'}
                         </span>
                       </div>
-                      <p className="mt-1 font-mono text-sm text-foreground">
-                        •••• {instrument.last4}
-                      </p>
+                      {instrument.last4 && (
+                        <p className="mt-1 font-mono text-sm text-foreground">
+                          •••• {instrument.last4}
+                        </p>
+                      )}
                       <p className="mt-1 text-xs text-muted-foreground">
                         {networkLabel(instrument.network)}
                       </p>

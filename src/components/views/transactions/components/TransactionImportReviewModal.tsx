@@ -117,7 +117,8 @@ export function TransactionImportReviewModal({
     )
     : null;
   const canRememberInstrument = Boolean(
-    candidate.cardLast4 && match.status === 'none',
+    (candidate.cardLast4 || candidate.observedInstrumentLabel)
+    && match.status === 'none',
   );
 
   const handleAccountChange = (nextAccountId: string) => {
@@ -220,7 +221,12 @@ export function TransactionImportReviewModal({
           )}
           {match.status === 'ambiguous' && (
             <p className="mt-1.5 text-xs text-warning">
-              Más de un medio activo coincide con esta terminación. Elige la cuenta.
+              Más de un medio activo coincide con los datos de Wallet. Elige la cuenta.
+            </p>
+          )}
+          {match.status === 'conflict' && (
+            <p className="mt-1.5 text-xs text-warning">
+              Los datos de Wallet no coinciden con un único medio. Elige la cuenta.
             </p>
           )}
           {match.status === 'none' && (

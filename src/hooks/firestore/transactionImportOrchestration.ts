@@ -17,6 +17,7 @@ import type {
 } from '../../types/transactionImport';
 import { calculateInterest } from '../../utils/interestCalculator';
 import { normalizeLedgerAmount } from '../../utils/ledgerMutation';
+import { matchPaymentInstrument } from '../../utils/paymentInstrumentMatching';
 import {
   decodePaymentInstrument,
   decodeTransactionImportCandidate,
@@ -94,6 +95,7 @@ const sameCandidate = (
   && current.currency === expected.currency
   && current.merchant === expected.merchant
   && current.cardLast4 === expected.cardLast4
+  && current.observedInstrumentLabel === expected.observedInstrumentLabel
   && current.parserId === expected.parserId
   && current.parserVersion === expected.parserVersion
   && current.confidence === expected.confidence
@@ -151,8 +153,12 @@ const requireReviewedExpense = (
   if (reviewedExpense.paymentInstrumentId && reviewedExpense.rememberInstrument) {
     throw new Error('Elige un medio existente o recuerda uno nuevo, no ambos.');
   }
-  if (reviewedExpense.rememberInstrument && !reviewedExpense.expectedCandidate.cardLast4) {
-    throw new Error('Solo puedes recordar un medio cuando existe una terminación válida.');
+  if (
+    reviewedExpense.rememberInstrument
+    && !reviewedExpense.expectedCandidate.cardLast4
+    && !reviewedExpense.expectedCandidate.observedInstrumentLabel
+  ) {
+    throw new Error('Solo puedes recordar un medio cuando Wallet aporta una referencia válida.');
   }
   return normalizeLedgerAmount(reviewedExpense.amount);
 };
@@ -238,9 +244,13 @@ export async function confirmTransactionImport(
         if (instrument.accountId !== accountId) {
           throw new Error('El medio de pago cambió de cuenta. Revisa la selección.');
         }
+        const currentMatch = matchPaymentInstrument({
+          cardLast4: currentCandidate.cardLast4,
+          observedInstrumentLabel: currentCandidate.observedInstrumentLabel,
+        }, [instrument]);
         if (
-          currentCandidate.cardLast4
-          && instrument.last4 !== currentCandidate.cardLast4
+          currentMatch.status !== 'matched'
+          || currentMatch.instrumentId !== instrument.id
         ) {
           throw new Error('El medio de pago ya no coincide con la candidata revisada.');
         }
@@ -323,13 +333,16 @@ export async function confirmTransactionImport(
               { usedCredit: increment(delta) },
             );
           });
-          if (rememberedInstrumentRef && currentCandidate.cardLast4) {
+          if (rememberedInstrumentRef) {
             batch.set(rememberedInstrumentRef, {
-              schemaVersion: 1,
-              label: `Tarjeta •••• ${currentCandidate.cardLast4}`,
+              schemaVersion: 2,
+              label: currentCandidate.observedInstrumentLabel
+                ?? `Tarjeta •••• ${currentCandidate.cardLast4}`,
               accountId,
               kind: 'wallet-token',
-              last4: currentCandidate.cardLast4,
+              ...(currentCandidate.cardLast4
+                ? { last4: currentCandidate.cardLast4 }
+                : {}),
               network: 'unknown',
               active: true,
               createdAt: serverTimestamp(),

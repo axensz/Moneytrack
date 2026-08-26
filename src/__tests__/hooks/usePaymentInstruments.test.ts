@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const M = vi.hoisted(() => ({
   serverTime: { __serverTimestamp: true },
+  deletedField: { __deleteField: true },
   listeners: [] as Array<{
     path: string;
     next: (snapshot: {
@@ -53,6 +54,7 @@ vi.mock('firebase/firestore', () => ({
     M.writes.push({ operation: 'delete', path: ref.path });
   },
   serverTimestamp: () => M.serverTime,
+  deleteField: () => M.deletedField,
 }));
 
 vi.mock('../../lib/firebaseDb', () => ({ db: {} }));
@@ -122,7 +124,7 @@ describe('usePaymentInstruments', () => {
     }]);
   });
 
-  it('emits exact create, update, active-state and delete writes', async () => {
+  it('writes schema v2 and can remove last4 from a Wallet instrument', async () => {
     const { result } = renderHook(() => usePaymentInstruments('user-1'));
 
     await act(async () => {
@@ -136,6 +138,7 @@ describe('usePaymentInstruments', () => {
       await result.current.updateInstrument('instrument-1', {
         label: 'Visa editada',
         accountId: 'credit-account-2',
+        last4: undefined,
         network: 'mastercard',
       });
       await result.current.setInstrumentActive('instrument-1', false);
@@ -147,7 +150,7 @@ describe('usePaymentInstruments', () => {
         operation: 'add',
         path: 'users/user-1/paymentInstruments',
         data: {
-          schemaVersion: 1,
+          schemaVersion: 2,
           label: 'Visa principal',
           accountId: 'credit-account-1',
           kind: 'physical-card',
@@ -162,8 +165,10 @@ describe('usePaymentInstruments', () => {
         operation: 'update',
         path: 'users/user-1/paymentInstruments/instrument-1',
         data: {
+          schemaVersion: 2,
           label: 'Visa editada',
           accountId: 'credit-account-2',
+          last4: M.deletedField,
           network: 'mastercard',
           updatedAt: M.serverTime,
         },
@@ -181,6 +186,34 @@ describe('usePaymentInstruments', () => {
         path: 'users/user-1/paymentInstruments/instrument-1',
       },
     ]);
+  });
+
+  it('omits last4 when creating an alias-only Wallet instrument', async () => {
+    const { result } = renderHook(() => usePaymentInstruments('user-1'));
+
+    await act(async () => {
+      await result.current.createInstrument({
+        label: 'Oro',
+        accountId: 'credit-account-1',
+        kind: 'wallet-token',
+        network: 'unknown',
+      });
+    });
+
+    expect(M.writes[0]).toEqual({
+      operation: 'add',
+      path: 'users/user-1/paymentInstruments',
+      data: {
+        schemaVersion: 2,
+        label: 'Oro',
+        accountId: 'credit-account-1',
+        kind: 'wallet-token',
+        network: 'unknown',
+        active: true,
+        createdAt: M.serverTime,
+        updatedAt: M.serverTime,
+      },
+    });
   });
 
   it('cleans up and isolates state when the authenticated user changes', () => {

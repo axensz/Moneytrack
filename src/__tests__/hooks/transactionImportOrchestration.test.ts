@@ -306,7 +306,7 @@ describe('confirmTransactionImport', () => {
     ]);
   });
 
-  it('updates persisted credit authority and remembers a card in the same commit', async () => {
+  it('updates persisted credit authority and remembers a card in schema v2', async () => {
     const credit = account({
       id: 'card',
       name: 'Visa',
@@ -331,7 +331,7 @@ describe('confirmTransactionImport', () => {
     expect(M.documents.get(
       `users/${UID}/paymentInstruments/instrument-1`,
     )).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       label: 'Tarjeta •••• 1234',
       accountId: 'card',
       kind: 'wallet-token',
@@ -342,6 +342,85 @@ describe('confirmTransactionImport', () => {
       updatedAt: M.serverTime,
     });
     expect(M.commits).toBe(1);
+  });
+
+  it('remembers an alias-only Wallet instrument only after explicit confirmation', async () => {
+    const walletCandidate = candidate({
+      schemaVersion: 2,
+      sourcePackage: 'com.google.android.apps.walletnfcrel',
+      cardLast4: undefined,
+      observedInstrumentLabel: 'MamáDébito',
+      parserId: 'google-wallet-purchase',
+      confidence: 'medium',
+    });
+    M.documents.set(candidatePath(), storedCandidate(walletCandidate));
+
+    await confirmTransactionImport(UID, CANDIDATE_ID, reviewed({
+      expectedCandidate: walletCandidate,
+      rememberInstrument: true,
+    }));
+
+    expect(M.documents.get(
+      `users/${UID}/paymentInstruments/instrument-1`,
+    )).toEqual({
+      schemaVersion: 2,
+      label: 'MamáDébito',
+      accountId: 'savings',
+      kind: 'wallet-token',
+      network: 'unknown',
+      active: true,
+      createdAt: M.serverTime,
+      updatedAt: M.serverTime,
+    });
+    expect(M.writerCalls[0].writeCount).toBe(3);
+  });
+
+  it('does not create an instrument for unknown Wallet evidence unless requested', async () => {
+    const walletCandidate = candidate({
+      schemaVersion: 2,
+      sourcePackage: 'com.google.android.apps.walletnfcrel',
+      cardLast4: undefined,
+      observedInstrumentLabel: 'Oro',
+      parserId: 'google-wallet-purchase',
+      confidence: 'medium',
+    });
+    M.documents.set(candidatePath(), storedCandidate(walletCandidate));
+
+    await confirmTransactionImport(UID, CANDIDATE_ID, reviewed({
+      expectedCandidate: walletCandidate,
+    }));
+
+    expect([...M.documents.keys()].filter(path => path.includes('/paymentInstruments/')))
+      .toEqual([]);
+    expect(M.writerCalls[0].writeCount).toBe(2);
+  });
+
+  it('rejects a selected instrument when current Wallet evidence no longer converges', async () => {
+    const walletCandidate = candidate({
+      schemaVersion: 2,
+      sourcePackage: 'com.google.android.apps.walletnfcrel',
+      observedInstrumentLabel: 'Oro',
+      parserId: 'google-wallet-purchase',
+      confidence: 'medium',
+    });
+    M.documents.set(candidatePath(), storedCandidate(walletCandidate));
+    M.documents.set(`users/${UID}/paymentInstruments/instrument-7`, {
+      schemaVersion: 2,
+      label: 'Nu',
+      accountId: 'savings',
+      kind: 'wallet-token',
+      last4: '1234',
+      network: 'mastercard',
+      active: true,
+      createdAt: new Date('2026-08-01T12:00:00.000Z'),
+      updatedAt: new Date('2026-08-01T12:00:00.000Z'),
+    });
+
+    await expect(confirmTransactionImport(UID, CANDIDATE_ID, reviewed({
+      expectedCandidate: walletCandidate,
+      paymentInstrumentId: 'instrument-7',
+    }))).rejects.toThrow(/ya no coincide/i);
+    expect(M.commits).toBe(0);
   });
 
   it('returns the committed transaction on retry without a second ledger write', async () => {
@@ -433,6 +512,34 @@ describe('confirmTransactionImport', () => {
       UID,
       CANDIDATE_ID,
       reviewed(),
+    )).rejects.toThrow(/cambió/i);
+
+    expect(M.commits).toBe(0);
+  });
+
+  it('blocks when the observed Wallet nickname changed after review opened', async () => {
+    const walletCandidate = candidate({
+      schemaVersion: 2,
+      sourcePackage: 'com.google.android.apps.walletnfcrel',
+      cardLast4: undefined,
+      observedInstrumentLabel: 'Oro',
+      parserId: 'google-wallet-purchase',
+      confidence: 'medium',
+    });
+    M.documents.set(candidatePath(), storedCandidate(walletCandidate));
+    M.beforeRead = (path, count) => {
+      if (path === candidatePath() && count === 2) {
+        M.documents.set(path, {
+          ...storedCandidate(walletCandidate),
+          observedInstrumentLabel: 'Nu',
+        });
+      }
+    };
+
+    await expect(confirmTransactionImport(
+      UID,
+      CANDIDATE_ID,
+      reviewed({ expectedCandidate: walletCandidate }),
     )).rejects.toThrow(/cambió/i);
 
     expect(M.commits).toBe(0);

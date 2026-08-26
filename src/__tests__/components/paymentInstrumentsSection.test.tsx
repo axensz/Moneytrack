@@ -102,7 +102,7 @@ describe('PaymentInstrumentsSection', () => {
     expect(screen.getByText(/esta cuenta no tiene medios vinculados/i)).toBeInTheDocument();
   });
 
-  it('validates four digits and creates an exact linked instrument', async () => {
+  it('creates an alias-only Wallet instrument without requiring last4', async () => {
     render(<PaymentInstrumentsSection {...managerProps()} />);
     const trigger = screen.getByRole('button', { name: 'Añadir medio' });
     expect(trigger).toHaveClass('min-h-[44px]');
@@ -121,20 +121,6 @@ describe('PaymentInstrumentsSection', () => {
     fireEvent.change(screen.getByLabelText('Cuenta vinculada'), {
       target: { value: 'savings' },
     });
-    fireEvent.change(screen.getByLabelText('Últimos 4 dígitos'), {
-      target: { value: '12' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar medio' }));
-    expect(screen.getByRole('alert')).toHaveTextContent('exactamente 4 dígitos');
-    expect(H.createInstrument).not.toHaveBeenCalled();
-
-    fireEvent.change(screen.getByLabelText('Últimos 4 dígitos'), {
-      target: { value: '9876' },
-    });
-    fireEvent.change(screen.getByLabelText('Últimos 4 dígitos'), {
-      target: { value: '98ab765' },
-    });
-    expect(screen.getByLabelText('Últimos 4 dígitos')).toHaveValue('9876');
     expect(screen.getByText(/mismo apodo que ves en wallet/i)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Red'), {
       target: { value: 'mastercard' },
@@ -145,9 +131,41 @@ describe('PaymentInstrumentsSection', () => {
       label: 'Oro',
       accountId: 'savings',
       kind: 'wallet-token',
-      last4: '9876',
+      last4: undefined,
       network: 'mastercard',
     }));
+  });
+
+  it('requires exactly four digits for a physical card', async () => {
+    render(<PaymentInstrumentsSection {...managerProps()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir medio' }));
+    fireEvent.change(screen.getByLabelText('Nombre o apodo'), {
+      target: { value: 'Visa física' },
+    });
+    fireEvent.change(screen.getByLabelText('Tipo'), {
+      target: { value: 'physical-card' },
+    });
+    fireEvent.change(screen.getByLabelText('Últimos 4 dígitos'), {
+      target: { value: '12' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar medio' }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent('exactamente 4 dígitos');
+    expect(H.createInstrument).not.toHaveBeenCalled();
+  });
+
+  it('does not render an empty card suffix for an alias-only Wallet instrument', () => {
+    H.instruments = [{
+      ...instrument,
+      schemaVersion: 2,
+      label: 'Oro',
+      last4: undefined,
+    }];
+    render(<PaymentInstrumentsSection {...managerProps()} />);
+
+    expect(screen.getByText('Oro')).toBeInTheDocument();
+    expect(screen.queryByText(/••••/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/undefined/i)).not.toBeInTheDocument();
   });
 
   it('shows the account label and supports edit and active-state changes', async () => {

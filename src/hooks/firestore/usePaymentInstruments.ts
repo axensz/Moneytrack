@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   addDoc,
   collection,
+  deleteField,
   deleteDoc,
   doc,
   onSnapshot,
@@ -20,7 +21,7 @@ export interface NewPaymentInstrument {
   label: string;
   accountId: string;
   kind: PaymentInstrumentKind;
-  last4: string;
+  last4?: string;
   network: PaymentInstrumentNetwork;
 }
 
@@ -102,11 +103,11 @@ export function usePaymentInstruments(
     async (instrument: NewPaymentInstrument) => {
       if (!userId) return;
       await addDoc(collection(db, 'users', userId, 'paymentInstruments'), {
-        schemaVersion: 1,
+        schemaVersion: 2,
         label: instrument.label,
         accountId: instrument.accountId,
         kind: instrument.kind,
-        last4: instrument.last4,
+        ...(instrument.last4 ? { last4: instrument.last4 } : {}),
         network: instrument.network,
         active: true,
         createdAt: serverTimestamp(),
@@ -125,12 +126,15 @@ export function usePaymentInstruments(
       await updateDoc(
         doc(db, 'users', userId, 'paymentInstruments', instrumentId),
         {
+          schemaVersion: 2,
           ...(updates.label === undefined ? {} : { label: updates.label }),
           ...(updates.accountId === undefined
             ? {}
             : { accountId: updates.accountId }),
           ...(updates.kind === undefined ? {} : { kind: updates.kind }),
-          ...(updates.last4 === undefined ? {} : { last4: updates.last4 }),
+          ...(!Object.prototype.hasOwnProperty.call(updates, 'last4')
+            ? {}
+            : { last4: updates.last4 ?? deleteField() }),
           ...(updates.network === undefined
             ? {}
             : { network: updates.network }),

@@ -58,6 +58,16 @@ class GoogleWalletPurchaseParserTest {
     }
 
     @Test
+    fun `rejects accented authentication markers`() {
+        val result = parser.parse(
+            raw(body = "COP2,600.00 with código"),
+            CANDIDATE_ID,
+        )
+
+        assertRejected(result, PurchaseParseCode.FORBIDDEN_MARKER)
+    }
+
+    @Test
     fun `rejects two different valid expanded bodies instead of guessing`() {
         val result = parser.parse(
             raw(

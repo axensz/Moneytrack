@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MoneyTrack</string>
+    <string name="notification_listener_label">Captura de compras de MoneyTrack</string>
+    <string name="screen_title">MoneyTrack móvil</string>
+    <string name="screen_intro">Tus compras seleccionadas llegan a MoneyTrack para revisarlas.</string>
+    <string name="privacy_note">El texto original se procesa en el celular y no se conserva.</string>
+    <string name="step_progress">Paso %1$d de 3</string>
+    <string name="configuration_complete">Configuración completa</string>
+    <string name="session_heading">Conecta tu cuenta</string>
+    <string name="session_explanation">Tu cuenta vincula los movimientos pendientes con el libro mayor que revisas en MoneyTrack.</string>
+    <string name="sign_in_action">Iniciar sesión con Google</string>
+    <string name="sign_out_action">Cerrar sesión</string>
+    <string name="notification_heading">Permite las notificaciones</string>
+    <string name="notification_explanation">Este acceso detecta compras futuras desde las aplicaciones que elijas, sin guardar el texto completo.</string>
+    <string name="open_notification_settings_action">Abrir acceso a notificaciones</string>
+    <string name="capture_heading">Elige qué capturar</string>
+    <string name="capture_explanation">Activa la captura y selecciona las aplicaciones que reconoces para enviar sus compras a revisión.</string>
+    <string name="capture_switch_label">Permitir captura de compras</string>
+    <string name="source_heading">Fuentes permitidas</string>
+    <string name="source_help">Las aplicaciones aparecen después de enviar una notificación. Google Wallet siempre está disponible.</string>
+    <string name="source_test">Fuente de prueba</string>
+    <string name="recommended_source_label">%1$s · Recomendada</string>
+    <string name="observed_source_label">%1$s · No verificada</string>
+    <string name="source_unnamed">Aplicación detectada</string>
+    <string name="ready_heading">Captura activa</string>
+    <string name="sync_pending_heading">Sincronización pendiente</string>
+    <string name="sync_pending_explanation">La compra se enviará a MoneyTrack cuando haya conexión.</string>
+    <string name="sync_failure_heading">No se pudo sincronizar la última compra</string>
+    <string name="sync_failure_explanation">La captura sigue habilitada, pero esa compra podría no estar disponible en MoneyTrack.</string>
+    <string name="manage_sources_action">Administrar aplicaciones</string>
+    <string name="manage_sources_title">Aplicaciones de captura</string>
+    <string name="manage_sources_explanation">Activa o desactiva las aplicaciones que quieras capturar. Una nueva aparecerá aquí después de emitir una notificación futura.</string>
+    <string name="open_pwa_action">Abrir MoneyTrack</string>
+    <string name="save_action">Guardar</string>
+    <string name="save_changes_action">Guardar cambios</string>
+    <string name="cancel_action">Cancelar</string>
+    <string name="theme_button_description">Cambiar apariencia</string>
+    <string name="theme_dialog_title">Apariencia</string>
+    <string name="theme_system">Sistema</string>
+    <string name="theme_light">Claro</string>
+    <string name="theme_dark">Oscuro</string>
+    <string name="pwa_url" translatable="false">https://axensz.github.io/Moneytrack/</string>
+    <string name="auth_signed_in">Sesión iniciada.</string>
+    <string name="auth_signed_out">Sesión cerrada.</string>
+    <string name="auth_in_progress">Iniciando sesión…</string>
+    <string name="auth_failed_actionable">No pudimos iniciar sesión. Revisa tu conexión e inténtalo de nuevo.</string>
+</resources>

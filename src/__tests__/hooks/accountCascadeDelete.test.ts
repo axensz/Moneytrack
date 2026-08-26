@@ -18,6 +18,7 @@ const M = vi.hoisted(() => ({
   txStore: new Map<string, Record<string, unknown>>(),   // id -> transacción (fuente de getDocs)
   acctStore: new Map<string, Record<string, unknown>>(), // id -> datos de cuenta (fuente de getDoc)
   userStore: new Map<string, Record<string, unknown>>(),
+  instrumentStore: new Map<string, Record<string, unknown>>(),
   log: [] as Array<{ op: string; path?: string; id?: string; data?: Record<string, unknown> }>,
   firestoreData: {} as Record<string, unknown>,
   gen: 0,
@@ -57,7 +58,9 @@ vi.mock('firebase/firestore', () => ({
         ? (M.firestoreData.recurringPayments as Record<string, unknown>[] ?? [])
         : q.__path.endsWith('/debts')
           ? (M.firestoreData.debts as Record<string, unknown>[] ?? [])
-          : [...M.txStore.values()];
+          : q.__path.endsWith('/paymentInstruments')
+            ? [...M.instrumentStore.entries()].map(([id, data]) => ({ id, ...data }))
+            : [...M.txStore.values()];
     const matched = source.filter(item => cons.every(c => item[c.field] === c.value));
     return {
       docs: matched.map(item => ({
@@ -96,6 +99,9 @@ vi.mock('firebase/firestore', () => ({
           M.log.push({ op: o.op, path: o.ref.__path, id: o.ref.__id, data: o.data });
           if (o.op === 'delete' && o.ref.__path.endsWith('/transactions')) M.txStore.delete(o.ref.__id);
           if (o.op === 'delete' && o.ref.__path.endsWith('/accounts')) M.acctStore.delete(o.ref.__id);
+          if (o.op === 'delete' && o.ref.__path.endsWith('/paymentInstruments')) {
+            M.instrumentStore.delete(o.ref.__id);
+          }
           if (o.op === 'update' && o.ref.__path.endsWith('/accounts')) {
             M.acctStore.set(o.ref.__id, { ...(M.acctStore.get(o.ref.__id) || {}), ...o.data });
           }
@@ -183,6 +189,7 @@ beforeEach(() => {
   M.txStore.clear();
   M.acctStore.clear();
   M.userStore.clear();
+  M.instrumentStore.clear();
   M.log.length = 0;
   M.gen = 0;
   M.commitError = null;
@@ -264,6 +271,55 @@ describe('useAccounts.deleteAccount — cascade + reconciliación (A2)', () => {
     );
     expect(accountUpdatesOn('cc-remote')[0]?.data?.bankAccountId)
       .toEqual({ __deleteField: true });
+  });
+
+  it('elimina medios vinculados en el mismo commit y conserva los ajenos', async () => {
+    seedFirestoreData([sav, cc]);
+    M.instrumentStore.set('linked-plastic', {
+      schemaVersion: 1,
+      label: 'Plástico ahorro',
+      accountId: 'sav',
+      kind: 'physical-card',
+      last4: '1111',
+      network: 'visa',
+      active: true,
+      createdAt: new Date('2026-08-25T12:00:00.000Z'),
+      updatedAt: new Date('2026-08-25T12:00:00.000Z'),
+    });
+    M.instrumentStore.set('linked-wallet', {
+      schemaVersion: 1,
+      label: 'Wallet ahorro',
+      accountId: 'sav',
+      kind: 'wallet-token',
+      last4: '2222',
+      network: 'mastercard',
+      active: true,
+      createdAt: new Date('2026-08-25T12:00:00.000Z'),
+      updatedAt: new Date('2026-08-25T12:00:00.000Z'),
+    });
+    M.instrumentStore.set('unrelated', {
+      schemaVersion: 1,
+      label: 'Tarjeta crédito',
+      accountId: 'cc',
+      kind: 'physical-card',
+      last4: '3333',
+      network: 'visa',
+      active: true,
+      createdAt: new Date('2026-08-25T12:00:00.000Z'),
+      updatedAt: new Date('2026-08-25T12:00:00.000Z'),
+    });
+
+    const acc = renderAccounts();
+    await acc.current.deleteAccount('sav');
+
+    expect(deletedIds()).toEqual(expect.arrayContaining([
+      'linked-plastic',
+      'linked-wallet',
+      'sav',
+    ]));
+    expect(M.instrumentStore.has('linked-plastic')).toBe(false);
+    expect(M.instrumentStore.has('linked-wallet')).toBe(false);
+    expect(M.instrumentStore.has('unrelated')).toBe(true);
   });
 
   it('no invalida el caché si el commit del cascade falla', async () => {
@@ -355,6 +411,38 @@ describe('useAccounts.deleteAccount — cascade + reconciliación (A2)', () => {
     expect(M.acctStore.has('sav')).toBe(true);
     expect(M.txStore).toHaveLength(490);
     expect(cacheMutations).toHaveLength(0);
+  });
+
+  it('cuenta los medios al validar el límite atómico del cascade', async () => {
+    seedFirestoreData([sav, cc]);
+    for (let index = 0; index < 38; index += 1) {
+      seedTx({
+        id: `boundary-${index}`,
+        type: 'expense',
+        amount: 1_000,
+        accountId: 'sav',
+        category: 'Borde',
+        paid: true,
+      });
+    }
+    M.instrumentStore.set('boundary-instrument', {
+      schemaVersion: 1,
+      label: 'Medio en borde',
+      accountId: 'sav',
+      kind: 'wallet-token',
+      last4: '4444',
+      network: 'visa',
+      active: true,
+      createdAt: new Date('2026-08-25T12:00:00.000Z'),
+      updatedAt: new Date('2026-08-25T12:00:00.000Z'),
+    });
+
+    const acc = renderAccounts();
+    await expect(acc.current.deleteAccount('sav'))
+      .rejects.toThrow(/límite atómico|forma segura/i);
+
+    expect(M.log).toHaveLength(0);
+    expect(M.instrumentStore.has('boundary-instrument')).toBe(true);
   });
 
   it('rechaza el cascade mientras otra pestaña conserva el lock de cuentas', async () => {

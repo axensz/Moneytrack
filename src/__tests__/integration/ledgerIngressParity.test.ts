@@ -33,6 +33,7 @@ const cases = [
   ['manual', 'edit'],
   ['manual', 'credit-payment'],
   ['ai', 'create'],
+  ['android', 'create'],
   ['recurring', 'recurring-post'],
   ['account', 'balance-adjustment'],
   ['debt', 'create'],

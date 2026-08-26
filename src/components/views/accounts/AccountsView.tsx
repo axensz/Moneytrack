@@ -21,6 +21,7 @@ import { useAccountForm } from './hooks/useAccountForm';
 import { CardStatementsModal } from './components/CardStatementsModal';
 import { useCardPaymentSchedule } from '../../../hooks/useCardPaymentSchedule';
 import { buildCreditCardUsagePlans } from '../../../utils/creditCardOptimizer';
+import { PaymentInstrumentsSection } from './components/PaymentInstrumentsSection';
 
 const ACCOUNT_TYPES = [
   { value: 'savings' as const, label: UI_LABELS.accountTypes.savings, icon: Wallet },
@@ -37,7 +38,11 @@ const NewIcon = ACTION_ICONS.new;
  * - Maneja drag & drop para reordenar cuentas
  * - Renderiza la lista de cuentas con sus tarjetas asociadas
  */
-export const AccountsView: React.FC = () => {
+interface AccountsViewProps {
+  userId?: string | null;
+}
+
+export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => {
   const {
     accounts,
     addAccount,
@@ -639,6 +644,8 @@ export const AccountsView: React.FC = () => {
         })}
       </div>
       )}
+
+      <PaymentInstrumentsSection userId={userId} accounts={accounts} />
     </div>
   );
 };

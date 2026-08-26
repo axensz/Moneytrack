@@ -1,0 +1,517 @@
+package com.moneytrack.capture
+
+import android.content.Intent
+import android.content.SharedPreferences
+import android.os.Bundle
+import android.provider.Settings
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.CheckBox
+import android.widget.ImageButton
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.appcompat.widget.SwitchCompat
+import androidx.core.net.toUri
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.doOnLayout
+import androidx.core.view.updatePadding
+import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
+import com.moneytrack.capture.auth.AuthenticationResult
+import com.moneytrack.capture.auth.AuthenticationUiState
+import com.moneytrack.capture.auth.GoogleSignInController
+import com.moneytrack.capture.core.AvailableCaptureSource
+import com.moneytrack.capture.core.AvailableCaptureSourceCatalog
+import com.moneytrack.capture.core.CaptureSetupFlow
+import com.moneytrack.capture.core.CaptureSetupStep
+import com.moneytrack.capture.core.CaptureSourceOrigin
+import com.moneytrack.capture.core.SourceLabelResolver
+import com.moneytrack.capture.data.CandidateSyncDispatcher
+import com.moneytrack.capture.notification.NotificationAccess
+import com.moneytrack.capture.preferences.AppThemeMode
+import com.moneytrack.capture.preferences.CandidateSyncOverview
+import com.moneytrack.capture.preferences.CapturePreferences
+
+class MainActivity : AppCompatActivity() {
+    private lateinit var preferences: CapturePreferences
+    private lateinit var signInController: GoogleSignInController
+    private lateinit var sessionStep: View
+    private lateinit var notificationStep: View
+    private lateinit var captureStep: View
+    private lateinit var readyStep: View
+    private lateinit var contentColumn: View
+    private lateinit var setupProgressPanel: View
+    private lateinit var progressTrack: View
+    private lateinit var openPwaButton: Button
+    private lateinit var stepProgress: TextView
+    private lateinit var progressOne: View
+    private lateinit var progressTwo: View
+    private lateinit var progressThree: View
+    private lateinit var sourceList: LinearLayout
+    private lateinit var readySourceList: LinearLayout
+    private lateinit var captureSwitch: SwitchCompat
+    private lateinit var signInButton: Button
+    private lateinit var signOutButton: Button
+    private lateinit var authFeedback: TextView
+    private lateinit var readyHeading: TextView
+    private lateinit var syncPendingPanel: View
+    private lateinit var syncFailurePanel: View
+    private lateinit var themeButton: ImageButton
+    private var firebaseAuth: FirebaseAuth? = null
+    private var authenticationUiState = AuthenticationUiState()
+    private var rendering = false
+    private val authStateListener = FirebaseAuth.AuthStateListener {
+        render()
+        reconcilePendingCandidates()
+    }
+    private val preferenceChangeListener =
+        SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+            runOnUiThread {
+                if (::preferences.isInitialized && !isFinishing && !isDestroyed) render()
+            }
+        }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
+        preferences = CapturePreferences.create(this)
+        applyThemeMode(preferences.appThemeMode)
+        super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        setContentView(R.layout.activity_main)
+
+        signInController = GoogleSignInController(this)
+        firebaseAuth = if (FirebaseApp.getApps(this).isEmpty()) null else FirebaseAuth.getInstance()
+        bindViews()
+        applyWindowInsets()
+        bindActions()
+        firebaseAuth?.addAuthStateListener(authStateListener)
+        render()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::preferences.isInitialized) render()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        preferences.registerOnChangeListener(preferenceChangeListener)
+        reconcilePendingCandidates()
+    }
+
+    override fun onStop() {
+        preferences.unregisterOnChangeListener(preferenceChangeListener)
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        firebaseAuth?.removeAuthStateListener(authStateListener)
+        super.onDestroy()
+    }
+
+    private fun bindViews() {
+        sessionStep = findViewById(R.id.session_step)
+        notificationStep = findViewById(R.id.notification_step)
+        captureStep = findViewById(R.id.capture_step)
+        readyStep = findViewById(R.id.ready_step)
+        contentColumn = findViewById(R.id.content_column)
+        setupProgressPanel = findViewById(R.id.setup_progress_panel)
+        progressTrack = findViewById(R.id.progress_track)
+        openPwaButton = findViewById(R.id.open_pwa_button)
+        stepProgress = findViewById(R.id.step_progress)
+        progressOne = findViewById(R.id.progress_one)
+        progressTwo = findViewById(R.id.progress_two)
+        progressThree = findViewById(R.id.progress_three)
+        sourceList = findViewById(R.id.source_list)
+        readySourceList = findViewById(R.id.ready_source_list)
+        captureSwitch = findViewById(R.id.capture_switch)
+        signInButton = findViewById(R.id.sign_in_button)
+        signOutButton = findViewById(R.id.sign_out_button)
+        authFeedback = findViewById(R.id.auth_feedback)
+        readyHeading = findViewById(R.id.ready_heading)
+        syncPendingPanel = findViewById(R.id.sync_pending_panel)
+        syncFailurePanel = findViewById(R.id.sync_failure_panel)
+        themeButton = findViewById(R.id.theme_button)
+    }
+
+    private fun applyWindowInsets() {
+        val scrollView = findViewById<ScrollView>(R.id.content_scroll)
+        val originalLeft = scrollView.paddingLeft
+        val originalTop = scrollView.paddingTop
+        val originalRight = scrollView.paddingRight
+        val originalBottom = scrollView.paddingBottom
+        scrollView.doOnLayout { updateContentWidth(scrollView) }
+        ViewCompat.setOnApplyWindowInsetsListener(scrollView) { view, insets ->
+            val systemInsets = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
+            )
+            view.updatePadding(
+                left = originalLeft + systemInsets.left,
+                top = originalTop + systemInsets.top,
+                right = originalRight + systemInsets.right,
+                bottom = originalBottom + systemInsets.bottom,
+            )
+            updateContentWidth(scrollView)
+            insets
+        }
+        ViewCompat.requestApplyInsets(scrollView)
+    }
+
+    private fun updateContentWidth(scrollView: ScrollView) {
+        val availableWidth = scrollView.width - scrollView.paddingLeft - scrollView.paddingRight
+        val targetWidth = contentColumnWidth(
+            availableWidth = availableWidth,
+            maximumWidth = resources.getDimensionPixelSize(R.dimen.content_max_width),
+        )
+        if (targetWidth > 0 && contentColumn.layoutParams.width != targetWidth) {
+            contentColumn.layoutParams = contentColumn.layoutParams.apply { width = targetWidth }
+        }
+    }
+
+    private fun bindActions() {
+        signInButton.setOnClickListener { beginGoogleSignIn() }
+        signOutButton.setOnClickListener { signInController.signOut(::showSignOutResult) }
+        findViewById<Button>(R.id.notification_settings_button).setOnClickListener {
+            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        }
+        openPwaButton.setOnClickListener {
+            startActivity(Intent(Intent.ACTION_VIEW, getString(R.string.pwa_url).toUri()))
+        }
+        findViewById<Button>(R.id.manage_sources_button).setOnClickListener {
+            showSourceManagementDialog()
+        }
+        themeButton.setOnClickListener { showThemeDialog() }
+        captureSwitch.setOnCheckedChangeListener { _, isChecked ->
+            if (rendering) return@setOnCheckedChangeListener
+            preferences.captureEnabled = isChecked
+            render()
+        }
+    }
+
+    private fun render() {
+        rendering = true
+        val signedIn = firebaseAuth?.currentUser != null
+        val accessGranted = NotificationAccess.isGranted(this)
+        val allowedPackages = AvailableCaptureSourceCatalog.productAllowedPackages(
+            preferences.allowedPackages(),
+        )
+        val step = CaptureSetupFlow.resolve(
+            signedIn = signedIn,
+            notificationAccessGranted = accessGranted,
+            captureEnabled = preferences.captureEnabled,
+            allowedPackages = allowedPackages,
+        )
+
+        renderStep(step)
+        captureSwitch.isChecked = preferences.captureEnabled
+        renderAuthentication(signedIn)
+        renderSources(allowedPackages)
+        rendering = false
+    }
+
+    private fun reconcilePendingCandidates() {
+        val user = firebaseAuth?.currentUser ?: return
+        CandidateSyncDispatcher(user.uid, preferences).reconcile()
+    }
+
+    private fun beginGoogleSignIn() {
+        val started = authenticationUiState.begin() ?: return
+        authenticationUiState = started
+        renderAuthentication(signedIn = false)
+        signInController.signIn(::showSignInResult)
+    }
+
+    private fun renderAuthentication(signedIn: Boolean) {
+        signInButton.visibility = if (signedIn) View.GONE else View.VISIBLE
+        signInButton.isEnabled = !authenticationUiState.inProgress
+        signInButton.setText(
+            if (authenticationUiState.inProgress) {
+                R.string.auth_in_progress
+            } else {
+                R.string.sign_in_action
+            },
+        )
+        signOutButton.visibility = if (signedIn) View.VISIBLE else View.GONE
+        authFeedback.visibility = if (!signedIn && authenticationUiState.failure != null) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+    }
+
+    private fun renderStep(step: CaptureSetupStep) {
+        sessionStep.visibility = if (step == CaptureSetupStep.SESSION) View.VISIBLE else View.GONE
+        notificationStep.visibility = if (step == CaptureSetupStep.NOTIFICATION_ACCESS) View.VISIBLE else View.GONE
+        captureStep.visibility = if (step == CaptureSetupStep.CAPTURE) View.VISIBLE else View.GONE
+        readyStep.visibility = if (step == CaptureSetupStep.READY) View.VISIBLE else View.GONE
+        openPwaButton.visibility = if (step == CaptureSetupStep.READY) View.VISIBLE else View.GONE
+
+        val completedSteps = when (step) {
+            CaptureSetupStep.SESSION -> 0
+            CaptureSetupStep.NOTIFICATION_ACCESS -> 1
+            CaptureSetupStep.CAPTURE -> 2
+            CaptureSetupStep.READY -> 3
+        }
+        val currentStep = when (step) {
+            CaptureSetupStep.SESSION -> 1
+            CaptureSetupStep.NOTIFICATION_ACCESS -> 2
+            CaptureSetupStep.CAPTURE -> 3
+            CaptureSetupStep.READY -> null
+        }
+        stepProgress.text = currentStep?.let { getString(R.string.step_progress, it) }
+            ?: getString(R.string.configuration_complete)
+        val ready = step == CaptureSetupStep.READY
+        val syncOverview = firebaseAuth?.currentUser?.uid
+            ?.let(preferences::candidateSyncOverview)
+            ?: CandidateSyncOverview.IDLE
+        readyHeading.visibility = if (ready && syncOverview == CandidateSyncOverview.IDLE) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        syncPendingPanel.visibility = if (ready && syncOverview == CandidateSyncOverview.PENDING) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        syncFailurePanel.visibility = if (ready && syncOverview == CandidateSyncOverview.FAILED) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        progressTrack.visibility = if (ready) View.GONE else View.VISIBLE
+        setupProgressPanel.setBackgroundResource(
+            if (ready) R.drawable.status_success_panel else R.drawable.status_panel,
+        )
+        stepProgress.setTextColor(
+            getColor(if (ready) R.color.status_success else R.color.brand_violet_dark),
+        )
+        stepProgress.setCompoundDrawablesRelativeWithIntrinsicBounds(
+            if (ready) R.drawable.ic_check_circle else 0,
+            0,
+            0,
+            0,
+        )
+        stepProgress.compoundDrawablePadding = resources.getDimensionPixelSize(R.dimen.space_small)
+        listOf(progressOne, progressTwo, progressThree).forEachIndexed { index, progress ->
+            progress.setBackgroundResource(
+                if (index < completedSteps) R.drawable.progress_complete else R.drawable.progress_pending,
+            )
+        }
+    }
+
+    private fun renderSources(allowedPackages: Set<String>) {
+        sourceList.removeAllViews()
+        readySourceList.removeAllViews()
+        val sources = availableSources(allowedPackages)
+
+        sources.forEach { source ->
+            sourceList.addView(
+                CheckBox(this).apply {
+                    text = displayLabel(source, showRecommendation = true)
+                    isChecked = source.isSelected
+                    minHeight = resources.getDimensionPixelSize(R.dimen.control_min_height)
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    )
+                    setOnCheckedChangeListener { _, selected ->
+                        if (rendering) return@setOnCheckedChangeListener
+                        val updated = preferences.allowedPackages().toMutableSet()
+                        if (selected) updated += source.packageName else updated -= source.packageName
+                        preferences.setAllowedPackages(updated)
+                        render()
+                    }
+                },
+            )
+        }
+
+        sources.filter { it.isSelected }.forEach { source ->
+            readySourceList.addView(sourceTextView(displayLabel(source)))
+        }
+    }
+
+    private fun showSourceManagementDialog() {
+        val sources = availableSources(preferences.allowedPackages())
+        val selected = sources.map { it.isSelected }.toBooleanArray()
+        val listHeight = sourceDialogListHeight(
+            sources.size,
+            resources.getDimensionPixelSize(R.dimen.source_dialog_max_list_height),
+        )
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(
+                resources.getDimensionPixelSize(R.dimen.panel_padding),
+                resources.getDimensionPixelSize(R.dimen.space_small),
+                resources.getDimensionPixelSize(R.dimen.panel_padding),
+                0,
+            )
+            addView(
+                TextView(this@MainActivity).apply {
+                    setText(R.string.manage_sources_explanation)
+                    setTextAppearance(android.R.style.TextAppearance_Material_Body1)
+                },
+            )
+            addView(
+                ScrollView(this@MainActivity).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        listHeight,
+                    )
+                    addView(
+                        LinearLayout(this@MainActivity).apply {
+                            orientation = LinearLayout.VERTICAL
+                            sources.forEachIndexed { index, source ->
+                                addView(
+                                    CheckBox(this@MainActivity).apply {
+                                        text = displayLabel(source, showRecommendation = true)
+                                        isChecked = selected[index]
+                                        minHeight = resources.getDimensionPixelSize(R.dimen.control_min_height)
+                                        layoutParams = LinearLayout.LayoutParams(
+                                            ViewGroup.LayoutParams.MATCH_PARENT,
+                                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                                        )
+                                        setOnCheckedChangeListener { _, checked -> selected[index] = checked }
+                                    },
+                                )
+                            }
+                        },
+                    )
+                },
+            )
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.manage_sources_title)
+            .setView(content)
+            .setNegativeButton(R.string.cancel_action, null)
+            .setPositiveButton(R.string.save_changes_action) { _, _ ->
+                preferences.setAllowedPackages(
+                    sources.filterIndexed { index, _ -> selected[index] }
+                        .mapTo(mutableSetOf()) { it.packageName },
+                )
+                render()
+            }
+            .create()
+            .also { dialog ->
+                dialog.show()
+                dialog.applyMoneyTrackActions()
+            }
+    }
+
+    private fun showThemeDialog() {
+        val modes = AppThemeMode.entries
+        var selectedIndex = modes.indexOf(preferences.appThemeMode)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.theme_dialog_title)
+            .setSingleChoiceItems(
+                arrayOf(
+                    getString(R.string.theme_system),
+                    getString(R.string.theme_light),
+                    getString(R.string.theme_dark),
+                ),
+                selectedIndex,
+            ) { _, which -> selectedIndex = which }
+            .setNegativeButton(R.string.cancel_action, null)
+            .setPositiveButton(R.string.save_action) { _, _ ->
+                val selectedMode = modes[selectedIndex]
+                if (preferences.appThemeMode != selectedMode) {
+                    preferences.appThemeMode = selectedMode
+                    applyThemeMode(selectedMode)
+                }
+            }
+            .create()
+            .also { dialog ->
+                dialog.show()
+                dialog.applyMoneyTrackActions()
+            }
+    }
+
+    private fun AlertDialog.applyMoneyTrackActions() {
+        listOf(AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_POSITIVE).forEach { which ->
+            getButton(which)?.apply {
+                isAllCaps = false
+                minHeight = this@MainActivity.resources.getDimensionPixelSize(
+                    R.dimen.control_min_height,
+                )
+            }
+        }
+    }
+
+    private fun sourceTextView(label: String) = TextView(this).apply {
+        text = label
+        minHeight = resources.getDimensionPixelSize(R.dimen.control_min_height)
+        gravity = android.view.Gravity.CENTER_VERTICAL
+        setTextAppearance(android.R.style.TextAppearance_Material_Body1)
+    }
+
+    private fun availableSources(allowedPackages: Set<String>): List<AvailableCaptureSource> =
+        AvailableCaptureSourceCatalog.options(preferences.discoveredSources(), allowedPackages)
+
+    private fun displayLabel(
+        source: AvailableCaptureSource,
+        showRecommendation: Boolean = false,
+    ): String {
+        val label = SourceLabelResolver.resolve(
+            packageName = source.packageName,
+            label = source.label,
+            testSourceLabel = getString(R.string.source_test),
+            fallbackLabel = getString(R.string.source_unnamed),
+            reservedLabels = if (source.origin == CaptureSourceOrigin.OBSERVED) {
+                AvailableCaptureSourceCatalog.verifiedLabels
+            } else {
+                emptySet()
+            },
+        )
+        return when {
+            showRecommendation && source.origin == CaptureSourceOrigin.KNOWN ->
+                getString(R.string.recommended_source_label, label)
+            source.origin == CaptureSourceOrigin.OBSERVED ->
+                getString(R.string.observed_source_label, label)
+            else -> label
+        }
+    }
+
+    private fun applyThemeMode(mode: AppThemeMode) {
+        val nightMode = when (mode) {
+            AppThemeMode.SYSTEM -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+            AppThemeMode.LIGHT -> AppCompatDelegate.MODE_NIGHT_NO
+            AppThemeMode.DARK -> AppCompatDelegate.MODE_NIGHT_YES
+        }
+        if (AppCompatDelegate.getDefaultNightMode() != nightMode) {
+            AppCompatDelegate.setDefaultNightMode(nightMode)
+        }
+    }
+
+    private fun showSignInResult(result: AuthenticationResult) {
+        authenticationUiState = authenticationUiState.complete(result)
+        if (result == AuthenticationResult.SIGNED_IN) {
+            Toast.makeText(this, R.string.auth_signed_in, Toast.LENGTH_SHORT).show()
+        }
+        render()
+    }
+
+    private fun showSignOutResult(result: AuthenticationResult) {
+        val message = if (result == AuthenticationResult.SIGNED_OUT) {
+            R.string.auth_signed_out
+        } else {
+            R.string.auth_failed_actionable
+        }
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        render()
+    }
+}
+
+internal fun sourceDialogListHeight(sourceCount: Int, maxListHeight: Int): Int =
+    if (sourceCount > 2) maxListHeight else ViewGroup.LayoutParams.WRAP_CONTENT
+
+internal fun contentColumnWidth(availableWidth: Int, maximumWidth: Int): Int =
+    minOf(availableWidth.coerceAtLeast(0), maximumWidth)

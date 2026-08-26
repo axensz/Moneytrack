@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="screen_padding">20dp</dimen>
+    <dimen name="control_min_height">48dp</dimen>
+    <dimen name="panel_padding">16dp</dimen>
+    <dimen name="space_tiny">4dp</dimen>
+    <dimen name="space_small">8dp</dimen>
+    <dimen name="space_medium">16dp</dimen>
+    <dimen name="space_large">24dp</dimen>
+    <dimen name="progress_height">4dp</dimen>
+    <dimen name="progress_gap">6dp</dimen>
+    <dimen name="source_dialog_max_list_height">192dp</dimen>
+    <dimen name="content_max_width">600dp</dimen>
+</resources>

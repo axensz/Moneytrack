@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/brand_violet_solid" />
+    <item android:drawable="@drawable/moneytrack_icon_maskable" />
+</layer-list>

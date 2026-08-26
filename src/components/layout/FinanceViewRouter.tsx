@@ -43,6 +43,7 @@ const ViewFallback = () => (
 
 interface FinanceViewRouterProps {
   view: ViewType;
+  userId?: string | null;
   transactionsPanel: React.ReactNode;
   pendingBudgetDraft: BudgetDraft | null;
   onBudgetDraftApplied: () => void;
@@ -75,6 +76,7 @@ function panel(view: ViewType, content: React.ReactNode) {
 
 export function FinanceViewRouter({
   view,
+  userId,
   transactionsPanel,
   pendingBudgetDraft,
   onBudgetDraftApplied,
@@ -104,7 +106,7 @@ export function FinanceViewRouter({
       return panel(
         view,
         <Suspense fallback={<ViewFallback />}>
-          <FocusedPanel view={view} onViewMounted={onViewMounted}><AccountsView /></FocusedPanel>
+          <FocusedPanel view={view} onViewMounted={onViewMounted}><AccountsView userId={userId} /></FocusedPanel>
         </Suspense>
       );
     case 'debts':

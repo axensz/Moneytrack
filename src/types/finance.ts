@@ -12,6 +12,7 @@ export type LedgerMutationKind =
 export type LedgerMutationSource =
   | 'manual'
   | 'ai'
+  | 'android'
   | 'recurring'
   | 'account'
   | 'debt'

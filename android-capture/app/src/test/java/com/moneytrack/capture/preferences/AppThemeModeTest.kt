@@ -7,6 +7,7 @@ import com.moneytrack.capture.core.PurchaseConfidence
 import java.lang.reflect.Proxy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -102,23 +103,25 @@ class AppThemeModeTest {
             merchant = "Comercio actualizado",
         )
 
-        val initialRecord = preferences.prepareCandidateForDelivery(
+        val initialRecord = checkNotNull(preferences.prepareCandidateForDelivery(
+            USER_ID,
             PACKAGE_NAME,
             NOTIFICATION_KEY,
             first,
-        )
-        val updateRecord = preferences.prepareCandidateForDelivery(
+        ))
+        val updateRecord = checkNotNull(preferences.prepareCandidateForDelivery(
+            USER_ID,
             PACKAGE_NAME,
             NOTIFICATION_KEY,
             changedUpdate,
-        )
+        ))
 
         assertEquals(first, initialRecord.candidate)
         assertEquals(first, updateRecord.candidate)
         assertEquals(CandidateSyncState.ENQUEUED, updateRecord.state)
 
         val restarted = capturePreferences(storedValues)
-        assertEquals(listOf(first), restarted.candidatesNeedingRetry())
+        assertEquals(listOf(first), restarted.candidatesNeedingRetry(USER_ID))
         assertFalse(storedValues.toString().contains(NOTIFICATION_KEY))
     }
 
@@ -127,21 +130,53 @@ class AppThemeModeTest {
         val preferences = capturePreferences()
         val first = candidate(CANDIDATE_A, occurredAt = 1_000L, amountMinor = 12_345L)
         val second = candidate(CANDIDATE_B, occurredAt = 2_000L, amountMinor = 54_321L)
-        preferences.prepareCandidateForDelivery(PACKAGE_NAME, NOTIFICATION_KEY, first)
-        preferences.prepareCandidateForDelivery(PACKAGE_NAME, "$NOTIFICATION_KEY-second", second)
+        preferences.prepareCandidateForDelivery(USER_ID, PACKAGE_NAME, NOTIFICATION_KEY, first)
+        preferences.prepareCandidateForDelivery(
+            USER_ID,
+            PACKAGE_NAME,
+            "$NOTIFICATION_KEY-second",
+            second,
+        )
 
-        preferences.recordCandidateWriteResult(first.candidateId, stored = false)
-        preferences.recordCandidateWriteResult(second.candidateId, stored = false)
+        preferences.recordCandidateWriteResult(USER_ID, first.candidateId, stored = false)
+        preferences.recordCandidateWriteResult(USER_ID, second.candidateId, stored = false)
         preferences.recordCaptureResult(CaptureResultCode.PACKAGE_NOT_ALLOWED)
-        assertEquals(CandidateSyncOverview.FAILED, preferences.candidateSyncOverview())
+        assertEquals(CandidateSyncOverview.FAILED, preferences.candidateSyncOverview(USER_ID))
 
-        preferences.recordCandidateWriteResult(first.candidateId, stored = true)
-        assertEquals(CandidateSyncOverview.FAILED, preferences.candidateSyncOverview())
-        assertEquals(listOf(second), preferences.candidatesNeedingRetry())
+        preferences.recordCandidateWriteResult(USER_ID, first.candidateId, stored = true)
+        assertEquals(CandidateSyncOverview.FAILED, preferences.candidateSyncOverview(USER_ID))
+        assertEquals(listOf(second), preferences.candidatesNeedingRetry(USER_ID))
 
-        preferences.recordCandidateWriteResult(second.candidateId, stored = true)
-        assertEquals(CandidateSyncOverview.IDLE, preferences.candidateSyncOverview())
-        assertTrue(preferences.candidatesNeedingRetry().isEmpty())
+        preferences.recordCandidateWriteResult(USER_ID, second.candidateId, stored = true)
+        assertEquals(CandidateSyncOverview.IDLE, preferences.candidateSyncOverview(USER_ID))
+        assertTrue(preferences.candidatesNeedingRetry(USER_ID).isEmpty())
+    }
+
+    @Test
+    fun `active delivery cannot move its candidate to another signed in user`() {
+        val storedValues = mutableMapOf<String, Any?>()
+        val preferences = capturePreferences(storedValues)
+        val candidate = candidate(CANDIDATE_A, occurredAt = 1_000L, amountMinor = 12_345L)
+
+        val ownerRecord = preferences.prepareCandidateForDelivery(
+            USER_ID,
+            PACKAGE_NAME,
+            NOTIFICATION_KEY,
+            candidate,
+        )
+        val otherUserRecord = preferences.prepareCandidateForDelivery(
+            OTHER_USER_ID,
+            PACKAGE_NAME,
+            NOTIFICATION_KEY,
+            candidate,
+        )
+
+        assertEquals(candidate, ownerRecord?.candidate)
+        assertNull(otherUserRecord)
+        assertEquals(listOf(candidate), preferences.candidatesNeedingRetry(USER_ID))
+        assertTrue(preferences.candidatesNeedingRetry(OTHER_USER_ID).isEmpty())
+        assertFalse(storedValues.toString().contains(USER_ID))
+        assertFalse(storedValues.toString().contains(OTHER_USER_ID))
     }
 
     private fun candidate(
@@ -207,6 +242,8 @@ class AppThemeModeTest {
     }
 
     companion object {
+        private const val USER_ID = "firebase-user"
+        private const val OTHER_USER_ID = "different-firebase-user"
         private const val PACKAGE_NAME = "com.example.bank"
         private const val NOTIFICATION_KEY = "0|com.example.bank|purchase|42"
         private const val CANDIDATE_A =

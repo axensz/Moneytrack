@@ -58,11 +58,14 @@ class MoneyNotificationListenerService : NotificationListenerService() {
                 onComplete(false)
             } else {
                 val anchored = preferences.prepareCandidateForDelivery(
+                    syncScope = user.uid,
                     packageName = sourcePackage,
                     notificationKey = event.key,
                     candidate = candidate,
                 )
-                if (anchored.state == CandidateSyncState.STORED) {
+                if (anchored == null) {
+                    onComplete(false)
+                } else if (anchored.state == CandidateSyncState.STORED) {
                     onComplete(true)
                 } else {
                     dispatcher.sync(anchored.candidate) { result ->

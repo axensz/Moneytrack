@@ -270,7 +270,9 @@ class MainActivity : AppCompatActivity() {
         stepProgress.text = currentStep?.let { getString(R.string.step_progress, it) }
             ?: getString(R.string.configuration_complete)
         val ready = step == CaptureSetupStep.READY
-        val syncOverview = preferences.candidateSyncOverview()
+        val syncOverview = firebaseAuth?.currentUser?.uid
+            ?.let(preferences::candidateSyncOverview)
+            ?: CandidateSyncOverview.IDLE
         readyHeading.visibility = if (ready && syncOverview == CandidateSyncOverview.IDLE) {
             View.VISIBLE
         } else {

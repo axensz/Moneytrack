@@ -52,6 +52,7 @@ enum class CandidateSyncOverview {
 }
 
 data class CandidateSyncRecord(
+    val syncScopeHash: String,
     val candidate: NormalizedPurchaseCandidate,
     val state: CandidateSyncState,
 )
@@ -151,15 +152,21 @@ class CapturePreferences private constructor(
     fun forgetNotificationDelivery(packageName: String, notificationKey: String) {
         if (!isValidPackageName(packageName) || notificationKey.isBlank()) return
         val deliveryHash = notificationDeliveryHash(packageName, notificationKey)
-        val candidateId = preferences.getString(notificationDeliveryCandidateKey(deliveryHash), null)
+        val candidateRecordKey = preferences.getString(
+            notificationDeliveryCandidateKey(deliveryHash),
+            null,
+        )
         val remainingHashes = activeDeliveryHashes() - deliveryHash
-        val remainingActiveCandidates = remainingHashes.mapNotNullTo(mutableSetOf()) { hash ->
+        val remainingActiveRecords = remainingHashes.mapNotNullTo(mutableSetOf()) { hash ->
             preferences.getString(notificationDeliveryCandidateKey(hash), null)
         }
-        val records = syncRecordsById().toMutableMap()
-        candidateId?.let { id ->
-            if (records[id]?.state == CandidateSyncState.STORED && id !in remainingActiveCandidates) {
-                records.remove(id)
+        val records = syncRecordsByKey().toMutableMap()
+        candidateRecordKey?.let { recordKey ->
+            if (
+                records[recordKey]?.state == CandidateSyncState.STORED &&
+                recordKey !in remainingActiveRecords
+            ) {
+                records.remove(recordKey)
             }
         }
         preferences.edit(commit = true) {
@@ -180,13 +187,13 @@ class CapturePreferences private constructor(
         val knownHashes = activeDeliveryHashes()
         val remainingHashes = knownHashes.intersect(observedHashes)
         val staleHashes = knownHashes - remainingHashes
-        val remainingActiveCandidates = remainingHashes.mapNotNullTo(mutableSetOf()) { hash ->
+        val remainingActiveRecords = remainingHashes.mapNotNullTo(mutableSetOf()) { hash ->
             preferences.getString(notificationDeliveryCandidateKey(hash), null)
         }
-        val records = syncRecordsById()
-            .filterValues { record ->
+        val records = syncRecordsByKey()
+            .filter { (recordKey, record) ->
                 record.state != CandidateSyncState.STORED ||
-                    record.candidate.candidateId in remainingActiveCandidates
+                    recordKey in remainingActiveRecords
             }
 
         preferences.edit(commit = true) {
@@ -201,34 +208,34 @@ class CapturePreferences private constructor(
 
     @Synchronized
     fun prepareCandidateForDelivery(
+        syncScope: String,
         packageName: String,
         notificationKey: String,
         candidate: NormalizedPurchaseCandidate,
-    ): CandidateSyncRecord {
+    ): CandidateSyncRecord? {
         require(isValidPackageName(packageName)) { "Invalid source package" }
         require(notificationKey.isNotBlank()) { "Missing notification identity" }
         val deliveryHash = notificationDeliveryHash(packageName, notificationKey)
-        val linkedCandidateId = preferences.getString(
+        val recordKey = candidateRecordKey(syncScope, candidate.candidateId)
+        val linkedRecordKey = preferences.getString(
             notificationDeliveryCandidateKey(deliveryHash),
             null,
         )
-        require(linkedCandidateId == null || linkedCandidateId == candidate.candidateId) {
-            "Delivery identity changed"
-        }
+        if (linkedRecordKey != null && linkedRecordKey != recordKey) return null
 
-        val records = syncRecordsById().toMutableMap()
-        val anchored = linkedCandidateId?.let(records::get)
-            ?: records[candidate.candidateId]
-            ?: CandidateSyncRecord(candidate, CandidateSyncState.ENQUEUED)
+        val records = syncRecordsByKey().toMutableMap()
+        val scopeHash = syncScopeHash(syncScope)
+        val anchored = records[recordKey]
+            ?: CandidateSyncRecord(scopeHash, candidate, CandidateSyncState.ENQUEUED)
         val nextRecord = if (anchored.state == CandidateSyncState.STORED) {
             anchored
         } else {
             anchored.copy(state = CandidateSyncState.ENQUEUED)
         }
-        records[candidate.candidateId] = nextRecord
+        records[recordKey] = nextRecord
         val deliveryHashes = activeDeliveryHashes().toMutableSet().apply { add(deliveryHash) }
         preferences.edit(commit = true) {
-            putString(notificationDeliveryCandidateKey(deliveryHash), candidate.candidateId)
+            putString(notificationDeliveryCandidateKey(deliveryHash), recordKey)
             putStringSet(KEY_NOTIFICATION_DELIVERY_HASHES, deliveryHashes)
             putStringSet(KEY_SYNC_CANDIDATE_RECORDS, encodeRecords(records.values))
         }
@@ -236,11 +243,15 @@ class CapturePreferences private constructor(
     }
 
     @Synchronized
-    fun markCandidateEnqueued(candidateId: String): NormalizedPurchaseCandidate? {
-        val records = syncRecordsById().toMutableMap()
-        val current = records[candidateId] ?: return null
+    fun markCandidateEnqueued(
+        syncScope: String,
+        candidateId: String,
+    ): NormalizedPurchaseCandidate? {
+        val recordKey = candidateRecordKey(syncScope, candidateId)
+        val records = syncRecordsByKey().toMutableMap()
+        val current = records[recordKey] ?: return null
         if (current.state == CandidateSyncState.STORED) return null
-        records[candidateId] = current.copy(state = CandidateSyncState.ENQUEUED)
+        records[recordKey] = current.copy(state = CandidateSyncState.ENQUEUED)
         preferences.edit(commit = true) {
             putStringSet(KEY_SYNC_CANDIDATE_RECORDS, encodeRecords(records.values))
         }
@@ -248,15 +259,20 @@ class CapturePreferences private constructor(
     }
 
     @Synchronized
-    fun recordCandidateWriteResult(candidateId: String, stored: Boolean) {
-        val records = syncRecordsById().toMutableMap()
-        val current = records[candidateId] ?: return
+    fun recordCandidateWriteResult(
+        syncScope: String,
+        candidateId: String,
+        stored: Boolean,
+    ) {
+        val recordKey = candidateRecordKey(syncScope, candidateId)
+        val records = syncRecordsByKey().toMutableMap()
+        val current = records[recordKey] ?: return
         if (current.state == CandidateSyncState.STORED && !stored) return
 
-        if (stored && candidateId !in activeCandidateIds()) {
-            records.remove(candidateId)
+        if (stored && recordKey !in activeRecordKeys()) {
+            records.remove(recordKey)
         } else {
-            records[candidateId] = current.copy(
+            records[recordKey] = current.copy(
                 state = if (stored) CandidateSyncState.STORED else CandidateSyncState.WRITE_FAILED,
             )
         }
@@ -265,17 +281,24 @@ class CapturePreferences private constructor(
         }
     }
 
-    fun candidatesNeedingRetry(): List<NormalizedPurchaseCandidate> = syncRecordsById()
-        .values
-        .asSequence()
-        .filter { it.state != CandidateSyncState.STORED }
-        .map(CandidateSyncRecord::candidate)
-        .sortedWith(compareBy(NormalizedPurchaseCandidate::occurredAtEpochMillis)
-            .thenBy(NormalizedPurchaseCandidate::candidateId))
-        .toList()
+    fun candidatesNeedingRetry(syncScope: String): List<NormalizedPurchaseCandidate> {
+        val scopeHash = syncScopeHash(syncScope)
+        return syncRecordsByKey()
+            .values
+            .asSequence()
+            .filter { it.syncScopeHash == scopeHash }
+            .filter { it.state != CandidateSyncState.STORED }
+            .map(CandidateSyncRecord::candidate)
+            .sortedWith(compareBy(NormalizedPurchaseCandidate::occurredAtEpochMillis)
+                .thenBy(NormalizedPurchaseCandidate::candidateId))
+            .toList()
+    }
 
-    fun candidateSyncOverview(): CandidateSyncOverview {
-        val states = syncRecordsById().values.map(CandidateSyncRecord::state)
+    fun candidateSyncOverview(syncScope: String): CandidateSyncOverview {
+        val scopeHash = syncScopeHash(syncScope)
+        val states = syncRecordsByKey().values
+            .filter { it.syncScopeHash == scopeHash }
+            .map(CandidateSyncRecord::state)
         return when {
             CandidateSyncState.WRITE_FAILED in states -> CandidateSyncOverview.FAILED
             CandidateSyncState.ENQUEUED in states -> CandidateSyncOverview.PENDING
@@ -308,15 +331,20 @@ class CapturePreferences private constructor(
         ?.filterTo(mutableSetOf()) { DELIVERY_HASH.matches(it) }
         .orEmpty()
 
-    private fun activeCandidateIds(): Set<String> = activeDeliveryHashes().mapNotNullTo(
+    private fun activeRecordKeys(): Set<String> = activeDeliveryHashes().mapNotNullTo(
         mutableSetOf(),
-    ) { hash -> preferences.getString(notificationDeliveryCandidateKey(hash), null) }
+    ) { hash ->
+        preferences.getString(notificationDeliveryCandidateKey(hash), null)
+            ?.takeIf(SYNC_RECORD_KEY::matches)
+    }
 
-    private fun syncRecordsById(): Map<String, CandidateSyncRecord> = preferences
+    private fun syncRecordsByKey(): Map<String, CandidateSyncRecord> = preferences
         .getStringSet(KEY_SYNC_CANDIDATE_RECORDS, emptySet())
         .orEmpty()
         .mapNotNull(::decodeRecord)
-        .associateBy { it.candidate.candidateId }
+        .associateBy { record ->
+            candidateRecordKeyFromHash(record.syncScopeHash, record.candidate.candidateId)
+        }
 
     companion object {
         private const val PREFERENCES_NAME = "moneytrack_capture_private"
@@ -332,11 +360,13 @@ class CapturePreferences private constructor(
         private const val NOTIFICATION_DELIVERY_PREFIX = "notification_delivery."
         private const val NOTIFICATION_DELIVERY_CANDIDATE_PREFIX =
             "notification_delivery_candidate."
-        private const val SYNC_RECORD_VERSION = "1"
+        private const val SYNC_RECORD_VERSION = "2"
+        private const val MAX_SYNC_SCOPE_LENGTH = 128
         private const val MAX_PACKAGE_LENGTH = 160
         private const val MAX_LABEL_LENGTH = 80
         private val PACKAGE_NAME = Regex("[A-Za-z0-9._]+")
         private val DELIVERY_HASH = Regex("[a-f0-9]{64}")
+        private val SYNC_RECORD_KEY = Regex("[a-f0-9]{64}:[a-f0-9]{64}")
 
         fun create(context: Context): CapturePreferences = CapturePreferences(
             context.applicationContext.getSharedPreferences(
@@ -351,9 +381,7 @@ class CapturePreferences private constructor(
         private fun sourceLabelKey(packageName: String) = "$SOURCE_LABEL_PREFIX$packageName"
 
         private fun notificationDeliveryHash(packageName: String, notificationKey: String): String =
-            MessageDigest.getInstance("SHA-256")
-                .digest("$packageName|$notificationKey".toByteArray(StandardCharsets.UTF_8))
-                .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+            sha256("$packageName|$notificationKey")
 
         private fun notificationDeliveryStartedAtKey(deliveryHash: String) =
             "$NOTIFICATION_DELIVERY_PREFIX$deliveryHash"
@@ -361,11 +389,33 @@ class CapturePreferences private constructor(
         private fun notificationDeliveryCandidateKey(deliveryHash: String) =
             "$NOTIFICATION_DELIVERY_CANDIDATE_PREFIX$deliveryHash"
 
+        private fun candidateRecordKey(syncScope: String, candidateId: String): String =
+            candidateRecordKeyFromHash(syncScopeHash(syncScope), candidateId)
+
+        private fun candidateRecordKeyFromHash(scopeHash: String, candidateId: String): String {
+            require(DELIVERY_HASH.matches(scopeHash)) { "Invalid sync scope hash" }
+            return "$scopeHash:$candidateId"
+        }
+
+        private fun syncScopeHash(syncScope: String): String {
+            require(
+                syncScope.isNotBlank() &&
+                    syncScope.length <= MAX_SYNC_SCOPE_LENGTH &&
+                    '/' !in syncScope,
+            ) { "Invalid sync scope" }
+            return sha256("sync-scope|$syncScope")
+        }
+
+        private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray(StandardCharsets.UTF_8))
+            .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+
         private fun encodeRecords(records: Collection<CandidateSyncRecord>): Set<String> =
             records.mapTo(mutableSetOf(), ::encodeRecord)
 
         private fun encodeRecord(record: CandidateSyncRecord): String = listOf(
             SYNC_RECORD_VERSION,
+            record.syncScopeHash,
             record.candidate.candidateId,
             record.state.wireValue,
             encodeText(record.candidate.sourcePackage),
@@ -379,19 +429,24 @@ class CapturePreferences private constructor(
         private fun decodeRecord(value: String): CandidateSyncRecord? {
             return try {
                 val parts = value.split('|')
-                if (parts.size != 9 || parts[0] != SYNC_RECORD_VERSION) return null
-                val state = CandidateSyncState.fromWireValue(parts[2]) ?: return null
+                if (
+                    parts.size != 10 ||
+                    parts[0] != SYNC_RECORD_VERSION ||
+                    !DELIVERY_HASH.matches(parts[1])
+                ) return null
+                val state = CandidateSyncState.fromWireValue(parts[3]) ?: return null
                 val confidence = PurchaseConfidence.entries
-                    .firstOrNull { it.wireValue == parts[8] }
+                    .firstOrNull { it.wireValue == parts[9] }
                     ?: return null
                 CandidateSyncRecord(
+                    syncScopeHash = parts[1],
                     candidate = NormalizedPurchaseCandidate(
-                        candidateId = parts[1],
-                        sourcePackage = decodeText(parts[3]),
-                        occurredAtEpochMillis = parts[4].toLong(),
-                        amountMinor = parts[5].toLong(),
-                        merchant = decodeText(parts[6]),
-                        cardLast4 = parts[7].ifEmpty { null },
+                        candidateId = parts[2],
+                        sourcePackage = decodeText(parts[4]),
+                        occurredAtEpochMillis = parts[5].toLong(),
+                        amountMinor = parts[6].toLong(),
+                        merchant = decodeText(parts[7]),
+                        cardLast4 = parts[8].ifEmpty { null },
                         confidence = confidence,
                     ),
                     state = state,

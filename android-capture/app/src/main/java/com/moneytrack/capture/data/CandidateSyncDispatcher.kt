@@ -12,7 +12,7 @@ class CandidateSyncDispatcher(
     ) -> Unit = FirebaseCandidateRepository(syncScope)::save,
 ) {
     fun reconcile() {
-        preferences.candidatesNeedingRetry().forEach(::sync)
+        preferences.candidatesNeedingRetry(syncScope).forEach(::sync)
     }
 
     fun sync(
@@ -22,7 +22,10 @@ class CandidateSyncDispatcher(
         val operationKey = "$syncScope/${candidate.candidateId}"
         if (!acquire(operationKey)) return false
 
-        val anchoredCandidate = preferences.markCandidateEnqueued(candidate.candidateId)
+        val anchoredCandidate = preferences.markCandidateEnqueued(
+            syncScope,
+            candidate.candidateId,
+        )
         if (anchoredCandidate == null) {
             release(operationKey)
             return false
@@ -31,6 +34,7 @@ class CandidateSyncDispatcher(
         try {
             saveCandidate(anchoredCandidate) { result ->
                 preferences.recordCandidateWriteResult(
+                    syncScope = syncScope,
                     candidateId = anchoredCandidate.candidateId,
                     stored = result == CandidateWriteResult.STORED,
                 )
@@ -39,6 +43,7 @@ class CandidateSyncDispatcher(
             }
         } catch (_: RuntimeException) {
             preferences.recordCandidateWriteResult(
+                syncScope = syncScope,
                 candidateId = anchoredCandidate.candidateId,
                 stored = false,
             )

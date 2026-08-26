@@ -17,7 +17,7 @@ class CandidateSyncDispatcherTest {
         val storedValues = mutableMapOf<String, Any?>()
         val preferences = capturePreferences(storedValues)
         val candidate = candidate()
-        preferences.prepareCandidateForDelivery(PACKAGE_NAME, NOTIFICATION_KEY, candidate)
+        preferences.prepareCandidateForDelivery(USER_ID, PACKAGE_NAME, NOTIFICATION_KEY, candidate)
         val writes = mutableListOf<(CandidateWriteResult) -> Unit>()
         val dispatcher = CandidateSyncDispatcher(USER_ID, preferences) { anchored, onResult ->
             assertEquals(candidate, anchored)
@@ -27,10 +27,10 @@ class CandidateSyncDispatcherTest {
         assertTrue(dispatcher.sync(candidate))
         assertFalse(dispatcher.sync(candidate))
         assertEquals(1, writes.size)
-        assertEquals(CandidateSyncOverview.PENDING, preferences.candidateSyncOverview())
+        assertEquals(CandidateSyncOverview.PENDING, preferences.candidateSyncOverview(USER_ID))
 
         writes.single()(CandidateWriteResult.WRITE_FAILED)
-        assertEquals(CandidateSyncOverview.FAILED, preferences.candidateSyncOverview())
+        assertEquals(CandidateSyncOverview.FAILED, preferences.candidateSyncOverview(USER_ID))
 
         val restartedPreferences = capturePreferences(storedValues)
         val retriedWrites = mutableListOf<(CandidateWriteResult) -> Unit>()
@@ -40,17 +40,17 @@ class CandidateSyncDispatcherTest {
         }.reconcile()
 
         assertEquals(1, retriedWrites.size)
-        assertEquals(CandidateSyncOverview.PENDING, restartedPreferences.candidateSyncOverview())
+        assertEquals(CandidateSyncOverview.PENDING, restartedPreferences.candidateSyncOverview(USER_ID))
         retriedWrites.single()(CandidateWriteResult.STORED)
-        assertEquals(CandidateSyncOverview.IDLE, restartedPreferences.candidateSyncOverview())
-        assertTrue(restartedPreferences.candidatesNeedingRetry().isEmpty())
+        assertEquals(CandidateSyncOverview.IDLE, restartedPreferences.candidateSyncOverview(USER_ID))
+        assertTrue(restartedPreferences.candidatesNeedingRetry(USER_ID).isEmpty())
     }
 
     @Test
     fun `synchronous repository failure remains retryable`() {
         val preferences = capturePreferences()
         val candidate = candidate()
-        preferences.prepareCandidateForDelivery(PACKAGE_NAME, NOTIFICATION_KEY, candidate)
+        preferences.prepareCandidateForDelivery(USER_ID, PACKAGE_NAME, NOTIFICATION_KEY, candidate)
         var result: CandidateWriteResult? = null
         val dispatcher = CandidateSyncDispatcher(USER_ID, preferences) { _, _ ->
             throw IllegalStateException("transport unavailable")
@@ -59,8 +59,40 @@ class CandidateSyncDispatcherTest {
         assertTrue(dispatcher.sync(candidate) { result = it })
 
         assertEquals(CandidateWriteResult.WRITE_FAILED, result)
-        assertEquals(CandidateSyncOverview.FAILED, preferences.candidateSyncOverview())
-        assertEquals(listOf(candidate), preferences.candidatesNeedingRetry())
+        assertEquals(CandidateSyncOverview.FAILED, preferences.candidateSyncOverview(USER_ID))
+        assertEquals(listOf(candidate), preferences.candidatesNeedingRetry(USER_ID))
+    }
+
+    @Test
+    fun `pending candidate is retried only by its owning user scope`() {
+        val storedValues = mutableMapOf<String, Any?>()
+        val preferences = capturePreferences(storedValues)
+        val candidate = candidate()
+        preferences.prepareCandidateForDelivery(
+            USER_ID,
+            PACKAGE_NAME,
+            NOTIFICATION_KEY,
+            candidate,
+        )
+        var otherUserWrites = 0
+
+        CandidateSyncDispatcher(OTHER_USER_ID, preferences) { _, _ ->
+            otherUserWrites += 1
+        }.reconcile()
+
+        assertEquals(0, otherUserWrites)
+        assertEquals(CandidateSyncOverview.IDLE, preferences.candidateSyncOverview(OTHER_USER_ID))
+        assertEquals(CandidateSyncOverview.PENDING, preferences.candidateSyncOverview(USER_ID))
+        assertFalse(storedValues.toString().contains(USER_ID))
+
+        var ownerWrites = 0
+        CandidateSyncDispatcher(USER_ID, preferences) { _, onResult ->
+            ownerWrites += 1
+            onResult(CandidateWriteResult.STORED)
+        }.reconcile()
+
+        assertEquals(1, ownerWrites)
+        assertEquals(CandidateSyncOverview.IDLE, preferences.candidateSyncOverview(USER_ID))
     }
 
     private fun candidate() = NormalizedPurchaseCandidate(
@@ -121,6 +153,7 @@ class CandidateSyncDispatcherTest {
 
     companion object {
         private const val USER_ID = "firebase-user"
+        private const val OTHER_USER_ID = "different-firebase-user"
         private const val PACKAGE_NAME = "com.example.bank"
         private const val NOTIFICATION_KEY = "0|com.example.bank|purchase|42"
         private const val CANDIDATE_ID =

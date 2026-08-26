@@ -81,26 +81,34 @@ El compañero MUST mantener título y texto de la notificación solo en memoria 
 - **THEN** usa un UUID aleatorio de instalación y nunca IMEI, número telefónico, Android ID o serial
 
 ### Requirement: Cada evento tiene identidad determinista
-El compañero MUST derivar un `candidateId` hexadecimal de 64 caracteres a partir de instalación, paquete, clave del sistema y una generación activa anclada al primer `postTime`; MUST reutilizar esa generación en actualizaciones o reintentos mientras la notificación continúe activa y MUST olvidarla cuando Android retire el evento o expire el límite defensivo de 24 horas.
+El compañero MUST derivar un `candidateId` hexadecimal de 64 caracteres a partir de instalación, paquete, clave del sistema y una generación activa anclada al primer `postTime`; MUST persistir y reutilizar tanto esa generación como el primer payload normalizado en actualizaciones o reintentos mientras la notificación continúe activa; y MUST olvidarlos cuando Android retire el evento o una reconciliación con `activeNotifications` confirme que ya no está activo. La generación MUST NOT dividirse solo por antigüedad mientras Android aún reporte la entrega activa, y la persistencia local MUST NOT contener la clave cruda ni el texto de la notificación.
 
 #### Scenario: La notificación se actualiza
-- **WHEN** Android vuelve a publicar la misma clave de una compra activa aunque cambie su `postTime`
-- **THEN** el compañero intenta el mismo documento y no crea una segunda fila candidata
+- **WHEN** Android vuelve a publicar la misma clave de una compra activa aunque cambien su `postTime` o los campos que el parser normalizaría
+- **THEN** el compañero reintenta el mismo documento con el primer payload normalizado y no crea ni modifica una segunda fila candidata
 
 #### Scenario: Dos compras diferentes
-- **WHEN** cambia la clave, Android retiró la entrega anterior o su generación superó 24 horas
+- **WHEN** cambia la clave o Android retiró la entrega anterior y luego reutiliza esa clave
 - **THEN** el hash produce identidades distintas
 
+#### Scenario: Se perdió la devolución de remoción
+- **WHEN** el listener vuelve a conectarse y la entrega conocida ya no aparece en `activeNotifications`
+- **THEN** el compañero elimina su generación activa y cualquier snapshot ya confirmado que solo se retenía para anclar actualizaciones
+
 ### Requirement: La captura sobrevive a pérdida temporal de red
-El compañero MUST usar la persistencia local de Firestore para encolar únicamente candidatos normalizados y MUST sincronizarlos al volver la red, sin prometer que ya están en la PWA mientras la escritura siga pendiente.
+El compañero MUST persistir un estado local por candidato antes de iniciar la escritura (`ENQUEUED`, `WRITE_FAILED` o `STORED`), MUST conservar solo el candidato normalizado y MUST reintentar estados no confirmados al reconectar el listener o abrir la Activity con sesión. La escritura puede usar la persistencia offline de Firestore, pero el compañero MUST NOT prometer que el candidato ya está en la PWA mientras no reciba `STORED`.
 
 #### Scenario: Compra observada offline
 - **WHEN** el dispositivo autenticado y autorizado recibe una compra válida sin red
-- **THEN** Firestore conserva la escritura normalizada local y la envía al reconectar
+- **THEN** el estado y payload normalizado quedan pendientes localmente y una nueva instancia los reintenta sin requerir otra notificación
 
 #### Scenario: Escritura rechazada al reconectar
 - **WHEN** reglas o autenticación rechazan una escritura encolada
-- **THEN** la pantalla lista oculta `Captura activa` y muestra un error genérico persistente sin datos financieros; resultados irrelevantes no lo borran y únicamente una escritura posterior `STORED` restablece el estado activo
+- **THEN** la pantalla lista observa el estado local, oculta `Captura activa` y muestra un error genérico persistente sin datos financieros; resultados irrelevantes o el éxito de otro candidato no lo borran y únicamente `STORED` para ese candidato lo limpia
+
+#### Scenario: Escritura sigue en curso
+- **WHEN** existe al menos un candidato `ENQUEUED` y ninguno fallido
+- **THEN** la pantalla lista muestra sincronización pendiente y cambia en vivo al resultado correspondiente mientras la Activity esté visible
 
 ### Requirement: La pantalla Android expone estado operativo verificable
 El compañero MUST comunicar sesión, acceso a notificaciones, captura activa y fuentes seleccionadas en la etapa o resumen correspondiente, y MUST ofrecer las acciones aplicables para iniciar/cerrar sesión, abrir ajustes y abrir la PWA; MUST NOT exponer códigos técnicos ni un bloque de último resultado en la interfaz normal.

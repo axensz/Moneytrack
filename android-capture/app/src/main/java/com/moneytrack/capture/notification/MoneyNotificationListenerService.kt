@@ -43,6 +43,10 @@ class MoneyNotificationListenerService : NotificationListenerService() {
             record(CaptureResultCode.PACKAGE_NOT_ALLOWED)
             return
         }
+        if ((event.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
+            record(CaptureResultCode.GROUP_SUMMARY_IGNORED)
+            return
+        }
 
         val user = currentUser()
         val syncDispatcher = user?.let { signedInUser ->
@@ -93,9 +97,6 @@ class MoneyNotificationListenerService : NotificationListenerService() {
                 notificationKey = event.key,
                 postedAtEpochMillis = event.postTime,
                 deliveryStartedAtEpochMillis = deliveryStartedAt,
-                isGroupSummary = (
-                    event.notification.flags and Notification.FLAG_GROUP_SUMMARY
-                    ) != 0,
             ),
             rawProvider = {
                 val extras = event.notification.extras

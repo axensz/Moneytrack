@@ -20,17 +20,13 @@ class GoogleWalletPurchaseParser {
         if (bodies.any(FORBIDDEN_MARKER::containsMatchIn)) {
             return PurchaseParseResult.Rejected(PurchaseParseCode.FORBIDDEN_MARKER)
         }
-
-        val parsedBodies = bodies.mapNotNull(::parseBody)
-        if (parsedBodies.isEmpty()) {
-            return PurchaseParseResult.Rejected(rejectionCode(bodies))
-        }
-        val distinctPurchases = parsedBodies.distinct()
-        if (distinctPurchases.size != 1) {
+        if (bodies.size != 1) {
             return PurchaseParseResult.Rejected(PurchaseParseCode.AMBIGUOUS_AMOUNT)
         }
-
-        val purchase = distinctPurchases.single()
+        val purchase = parseBody(bodies.single())
+        if (purchase == null) {
+            return PurchaseParseResult.Rejected(rejectionCode(bodies))
+        }
         return PurchaseParseResult.Accepted(
             candidate = NormalizedPurchaseCandidate(
                 candidateId = candidateId,

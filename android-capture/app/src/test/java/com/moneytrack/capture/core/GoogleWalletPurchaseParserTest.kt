@@ -81,6 +81,32 @@ class GoogleWalletPurchaseParserTest {
     }
 
     @Test
+    fun `rejects mixed valid and unsupported body alternatives`() {
+        val result = parser.parse(
+            raw(
+                body = "COP2,600.00 with Oro",
+                bigText = "Compra reciente en Google Wallet",
+            ),
+            CANDIDATE_ID,
+        )
+
+        assertRejected(result, PurchaseParseCode.AMBIGUOUS_AMOUNT)
+    }
+
+    @Test
+    fun `rejects distinct bodies even when they describe the same purchase`() {
+        val result = parser.parse(
+            raw(
+                body = "COP2,600.00 with Oro",
+                bigText = "COP 2,600.00 with Oro",
+            ),
+            CANDIDATE_ID,
+        )
+
+        assertRejected(result, PurchaseParseCode.AMBIGUOUS_AMOUNT)
+    }
+
+    @Test
     fun `requires a usable individual merchant title`() {
         val result = parser.parse(raw(title = "  ", body = "COP2,600.00 with Oro"), CANDIDATE_ID)
 

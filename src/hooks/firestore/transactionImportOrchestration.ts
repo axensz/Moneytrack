@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   getDocFromServer,
+  getDocsFromServer,
   increment,
   serverTimestamp,
 } from 'firebase/firestore';
@@ -66,20 +67,16 @@ const loadCandidate = async (
   return decoded.candidate;
 };
 
-const loadInstrument = async (
+const loadInstruments = async (
   userId: string,
-  instrumentId: string,
-): Promise<PaymentInstrument> => {
-  const snapshot = await getDocFromServer(
-    doc(db, 'users', userId, 'paymentInstruments', instrumentId),
-  ) as unknown as ServerDocumentSnapshot;
-  if (!snapshot.exists()) {
-    throw new Error('El medio de pago seleccionado ya no existe. Elige otro.');
-  }
-
-  const decoded = decodePaymentInstrument(snapshot);
-  if (!decoded.ok) throw new Error(decoded.issue.message);
-  return decoded.instrument;
+): Promise<PaymentInstrument[]> => {
+  const snapshot = await getDocsFromServer(
+    collection(db, 'users', userId, 'paymentInstruments'),
+  );
+  const decoded = snapshot.docs.map(decodePaymentInstrument);
+  const issue = decoded.find(result => !result.ok);
+  if (issue && !issue.ok) throw new Error(issue.issue.message);
+  return decoded.flatMap(result => (result.ok ? [result.instrument] : []));
 };
 
 const sameCandidate = (
@@ -234,10 +231,13 @@ export async function confirmTransactionImport(
       }
 
       if (reviewedExpense.paymentInstrumentId) {
-        const instrument = await loadInstrument(
-          userId,
-          reviewedExpense.paymentInstrumentId,
+        const currentInstruments = await loadInstruments(userId);
+        const instrument = currentInstruments.find(
+          item => item.id === reviewedExpense.paymentInstrumentId,
         );
+        if (!instrument) {
+          throw new Error('El medio de pago seleccionado ya no existe. Elige otro.');
+        }
         if (!instrument.active) {
           throw new Error('El medio de pago seleccionado está inactivo. Elige otro.');
         }
@@ -247,7 +247,7 @@ export async function confirmTransactionImport(
         const currentMatch = matchPaymentInstrument({
           cardLast4: currentCandidate.cardLast4,
           observedInstrumentLabel: currentCandidate.observedInstrumentLabel,
-        }, [instrument]);
+        }, currentInstruments);
         if (
           currentMatch.status !== 'matched'
           || currentMatch.instrumentId !== instrument.id

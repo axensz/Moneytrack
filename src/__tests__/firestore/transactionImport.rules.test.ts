@@ -307,8 +307,9 @@ describeWithFirestoreEmulator('Android transaction import rules contract', () =>
   });
 
   it('creates an exact Wallet v2 candidate without granting nickname authority', async () => {
-    await assertSucceeds(setDoc(candidateRef(), validWalletCandidate()));
-    await assertSucceeds(setDoc(candidateRef(), validWalletCandidate()));
+    const candidate = validWalletCandidate({ observedInstrumentLabel: 'MamáDébito' });
+    await assertSucceeds(setDoc(candidateRef(), candidate));
+    await assertSucceeds(setDoc(candidateRef(), candidate));
   });
 
   it.each([
@@ -323,6 +324,15 @@ describeWithFirestoreEmulator('Android transaction import rules contract', () =>
     })],
     ['overlong observed nickname', validWalletCandidate({
       observedInstrumentLabel: 'a'.repeat(25),
+    })],
+    ['punctuated observed nickname', validWalletCandidate({
+      observedInstrumentLabel: 'Oro-2',
+    })],
+    ['controlled observed nickname', validWalletCandidate({
+      observedInstrumentLabel: 'Oro\u0000',
+    })],
+    ['non-normalized observed nickname', validWalletCandidate({
+      observedInstrumentLabel: 'Mama\u0301Debito',
     })],
     ['raw notification text', validWalletCandidate({ text: 'raw' })],
   ])('rejects an invalid v1 or v2 candidate contract: %s', async (_name, data) => {

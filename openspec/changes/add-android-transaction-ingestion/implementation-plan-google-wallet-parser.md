@@ -94,7 +94,7 @@ assertWallet(
 )
 ```
 
-Add separate failures for `COP 13.990,00 con Oro`, `COP2,600 with Oro`, negative/zero amounts, non-COP bodies, two distinct bodies, blank title and invalid/overlong nicknames.
+Add an accepted case for `COP 13.990,00 con Oro`. Add separate failures for `COP2,600 with Oro`, negative/zero amounts, non-COP bodies, mixed or distinct body alternatives, blank title and invalid/overlong nicknames.
 
 - [x] **Step 2: Run tests and verify RED**
 
@@ -137,7 +137,7 @@ Assert that a grouped event leaves `rawInspected == false`, performs zero writes
 
 - [x] **Step 3: Implement summary and persistence boundaries**
 
-Set `isGroupSummary` from `(event.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0` without reading extras. Write sync-record v3, retain the v2 decoder, write candidate schema/parser values rather than constants, and include `observedInstrumentLabel` only when present.
+Return immediately in the listener when `(event.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0`, before delivery identity or extras; retain the coordinator gate as defense in depth. Write sync-record v3, retain the v2 decoder, write candidate schema/parser values rather than constants, and include `observedInstrumentLabel` only when present.
 
 - [x] **Step 4: Run focused tests GREEN and commit**
 

@@ -126,6 +126,11 @@ service cloud.firestore {
       return value is string && value.matches('[0-9]{4}');
     }
 
+    function isValidObservedInstrumentLabel(value) {
+      return isValidString(value, 1, 24)
+        && value.matches('[\\p{L}]+');
+    }
+
     function isValidPaymentInstrument(userId, data) {
       return data.keys().hasOnly([
           'schemaVersion',
@@ -240,7 +245,7 @@ service cloud.firestore {
             && data.parserId == 'google-wallet-purchase'
             && (
               !('observedInstrumentLabel' in data.keys())
-              || isValidString(data.observedInstrumentLabel, 1, 24)
+              || isValidObservedInstrumentLabel(data.observedInstrumentLabel)
             )
           )
         )

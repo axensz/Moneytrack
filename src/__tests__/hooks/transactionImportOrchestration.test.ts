@@ -84,6 +84,17 @@ vi.mock('firebase/firestore', () => ({
       data: () => data ?? {},
     };
   },
+  getDocsFromServer: async (reference: { path: string }) => ({
+    docs: [...M.documents.entries()]
+      .filter(([path]) => (
+        path.startsWith(`${reference.path}/`)
+        && !path.slice(reference.path.length + 1).includes('/')
+      ))
+      .map(([path, data]) => ({
+        id: path.slice(reference.path.length + 1),
+        data: () => data,
+      })),
+  }),
   increment: (value: number) => ({ __increment: value }),
   serverTimestamp: () => M.serverTime,
 }));
@@ -420,6 +431,34 @@ describe('confirmTransactionImport', () => {
       expectedCandidate: walletCandidate,
       paymentInstrumentId: 'instrument-7',
     }))).rejects.toThrow(/ya no coincide/i);
+    expect(M.commits).toBe(0);
+  });
+
+  it('rejects a stale suggestion when another current instrument makes it ambiguous', async () => {
+    const storedInstrument = {
+      schemaVersion: 1,
+      label: 'Visa',
+      accountId: 'savings',
+      kind: 'wallet-token',
+      last4: '1234',
+      network: 'visa',
+      active: true,
+      createdAt: new Date('2026-08-01T12:00:00.000Z'),
+      updatedAt: new Date('2026-08-01T12:00:00.000Z'),
+    };
+    M.documents.set(
+      `users/${UID}/paymentInstruments/instrument-7`,
+      storedInstrument,
+    );
+    M.documents.set(
+      `users/${UID}/paymentInstruments/instrument-8`,
+      { ...storedInstrument, label: 'Visa duplicada' },
+    );
+
+    await expect(confirmTransactionImport(UID, CANDIDATE_ID, reviewed({
+      paymentInstrumentId: 'instrument-7',
+    }))).rejects.toThrow(/ya no coincide/i);
+
     expect(M.commits).toBe(0);
   });
 

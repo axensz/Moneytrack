@@ -1,6 +1,7 @@
 package com.moneytrack.capture
 
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
@@ -34,8 +35,10 @@ import com.moneytrack.capture.core.CaptureSetupFlow
 import com.moneytrack.capture.core.CaptureSetupStep
 import com.moneytrack.capture.core.CaptureSourceOrigin
 import com.moneytrack.capture.core.SourceLabelResolver
+import com.moneytrack.capture.data.CandidateSyncDispatcher
 import com.moneytrack.capture.notification.NotificationAccess
 import com.moneytrack.capture.preferences.AppThemeMode
+import com.moneytrack.capture.preferences.CandidateSyncOverview
 import com.moneytrack.capture.preferences.CapturePreferences
 
 class MainActivity : AppCompatActivity() {
@@ -60,12 +63,22 @@ class MainActivity : AppCompatActivity() {
     private lateinit var signOutButton: Button
     private lateinit var authFeedback: TextView
     private lateinit var readyHeading: TextView
+    private lateinit var syncPendingPanel: View
     private lateinit var syncFailurePanel: View
     private lateinit var themeButton: ImageButton
     private var firebaseAuth: FirebaseAuth? = null
     private var authenticationUiState = AuthenticationUiState()
     private var rendering = false
-    private val authStateListener = FirebaseAuth.AuthStateListener { render() }
+    private val authStateListener = FirebaseAuth.AuthStateListener {
+        render()
+        reconcilePendingCandidates()
+    }
+    private val preferenceChangeListener =
+        SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+            runOnUiThread {
+                if (::preferences.isInitialized && !isFinishing && !isDestroyed) render()
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -87,6 +100,17 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (::preferences.isInitialized) render()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        preferences.registerOnChangeListener(preferenceChangeListener)
+        reconcilePendingCandidates()
+    }
+
+    override fun onStop() {
+        preferences.unregisterOnChangeListener(preferenceChangeListener)
+        super.onStop()
     }
 
     override fun onDestroy() {
@@ -114,6 +138,7 @@ class MainActivity : AppCompatActivity() {
         signOutButton = findViewById(R.id.sign_out_button)
         authFeedback = findViewById(R.id.auth_feedback)
         readyHeading = findViewById(R.id.ready_heading)
+        syncPendingPanel = findViewById(R.id.sync_pending_panel)
         syncFailurePanel = findViewById(R.id.sync_failure_panel)
         themeButton = findViewById(R.id.theme_button)
     }
@@ -193,6 +218,11 @@ class MainActivity : AppCompatActivity() {
         rendering = false
     }
 
+    private fun reconcilePendingCandidates() {
+        val user = firebaseAuth?.currentUser ?: return
+        CandidateSyncDispatcher(user.uid, preferences).reconcile()
+    }
+
     private fun beginGoogleSignIn() {
         val started = authenticationUiState.begin() ?: return
         authenticationUiState = started
@@ -240,9 +270,22 @@ class MainActivity : AppCompatActivity() {
         stepProgress.text = currentStep?.let { getString(R.string.step_progress, it) }
             ?: getString(R.string.configuration_complete)
         val ready = step == CaptureSetupStep.READY
-        val hasPendingSyncFailure = preferences.pendingSyncFailureAtEpochMillis != null
-        readyHeading.visibility = if (ready && !hasPendingSyncFailure) View.VISIBLE else View.GONE
-        syncFailurePanel.visibility = if (ready && hasPendingSyncFailure) View.VISIBLE else View.GONE
+        val syncOverview = preferences.candidateSyncOverview()
+        readyHeading.visibility = if (ready && syncOverview == CandidateSyncOverview.IDLE) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        syncPendingPanel.visibility = if (ready && syncOverview == CandidateSyncOverview.PENDING) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        syncFailurePanel.visibility = if (ready && syncOverview == CandidateSyncOverview.FAILED) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
         progressTrack.visibility = if (ready) View.GONE else View.VISIBLE
         setupProgressPanel.setBackgroundResource(
             if (ready) R.drawable.status_success_panel else R.drawable.status_panel,

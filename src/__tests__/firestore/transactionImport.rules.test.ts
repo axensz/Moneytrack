@@ -250,9 +250,16 @@ describeWithFirestoreEmulator('Android transaction import rules contract', () =>
   });
 
   it('creates an exact pending candidate and permits a deterministic no-op', async () => {
-    const payload = validPendingCandidate();
-    await assertSucceeds(setDoc(candidateRef(), payload));
-    await assertSucceeds(setDoc(candidateRef(), payload));
+    const firstPostTime = new Date('2026-08-25T13:00:00.000Z');
+    const updatedPostTime = new Date('2026-08-25T13:00:05.000Z');
+    const anchoredPayload = validPendingCandidate({ occurredAt: firstPostTime });
+
+    await assertSucceeds(setDoc(candidateRef(), anchoredPayload));
+    await assertSucceeds(setDoc(candidateRef(), anchoredPayload));
+    await assertFails(setDoc(
+      candidateRef(),
+      validPendingCandidate({ occurredAt: updatedPostTime }),
+    ));
   });
 
   it.each([

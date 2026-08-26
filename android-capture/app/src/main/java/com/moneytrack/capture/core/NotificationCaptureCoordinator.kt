@@ -68,7 +68,11 @@ class NotificationCaptureCoordinator(
                 onResult(CaptureResultCode.INSPECTION_FAILED)
                 return
             }
-            parser.parse(raw, candidateId)
+            parser.parse(
+                notification = raw,
+                candidateId = candidateId,
+                occurredAtEpochMillis = event.deliveryStartedAtEpochMillis,
+            )
         } catch (_: RuntimeException) {
             onResult(CaptureResultCode.INSPECTION_FAILED)
             return

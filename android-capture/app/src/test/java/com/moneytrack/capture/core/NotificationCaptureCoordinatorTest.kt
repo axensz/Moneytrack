@@ -113,6 +113,8 @@ class NotificationCaptureCoordinatorTest {
 
         assertEquals(2, writes.size)
         assertEquals(writes[0].candidateId, writes[1].candidateId)
+        assertEquals(writes[0], writes[1])
+        assertEquals(POSTED_AT, writes[1].occurredAtEpochMillis)
     }
 
     private fun coordinator(writes: MutableList<NormalizedPurchaseCandidate>) =

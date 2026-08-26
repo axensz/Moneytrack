@@ -24,6 +24,7 @@ class StrictCopPurchaseParser {
     fun parse(
         notification: RawNotification,
         candidateId: String,
+        occurredAtEpochMillis: Long = notification.postedAtEpochMillis,
     ): PurchaseParseResult {
         val content = notification.combinedText()
         if (!PURCHASE_MARKER.containsMatchIn(content)) {
@@ -61,7 +62,7 @@ class StrictCopPurchaseParser {
         val candidate = NormalizedPurchaseCandidate(
             candidateId = candidateId,
             sourcePackage = notification.packageName,
-            occurredAtEpochMillis = notification.postedAtEpochMillis,
+            occurredAtEpochMillis = occurredAtEpochMillis,
             amountMinor = amountMinor,
             merchant = merchant ?: UNKNOWN_MERCHANT,
             cardLast4 = cardLast4,

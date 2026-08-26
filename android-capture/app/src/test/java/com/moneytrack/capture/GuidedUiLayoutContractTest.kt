@@ -48,11 +48,15 @@ class GuidedUiLayoutContractTest {
         val strings = resource("values/strings.xml")
 
         assertTrue(layout.contains("@+id/ready_heading"))
+        assertTrue(layout.contains("@+id/sync_pending_panel"))
         assertTrue(layout.contains("@+id/sync_failure_panel"))
         assertTrue(layout.contains("android:accessibilityLiveRegion=\"polite\""))
         assertTrue(layout.contains("@drawable/status_error_panel"))
-        assertTrue(activity.contains("preferences.pendingSyncFailureAtEpochMillis"))
+        assertTrue(activity.contains("preferences.candidateSyncOverview()"))
+        assertTrue(activity.contains("preferences.registerOnChangeListener"))
+        assertTrue(activity.contains("syncPendingPanel.visibility"))
         assertTrue(activity.contains("syncFailurePanel.visibility"))
+        assertTrue(strings.contains("Sincronización pendiente"))
         assertTrue(strings.contains("No se pudo sincronizar la última compra"))
         assertTrue(strings.contains("esa compra podría no estar disponible en MoneyTrack"))
     }

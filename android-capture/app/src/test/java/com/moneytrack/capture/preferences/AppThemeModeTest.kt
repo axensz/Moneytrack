@@ -2,10 +2,12 @@ package com.moneytrack.capture.preferences
 
 import android.content.SharedPreferences
 import com.moneytrack.capture.core.CaptureResultCode
+import com.moneytrack.capture.core.NormalizedPurchaseCandidate
+import com.moneytrack.capture.core.PurchaseConfidence
 import java.lang.reflect.Proxy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AppThemeModeTest {
@@ -56,19 +58,105 @@ class AppThemeModeTest {
     }
 
     @Test
-    fun `write failure survives irrelevant results and clears only after stored`() {
+    fun `active delivery never splits by age and stale delivery is reconciled`() {
         val preferences = capturePreferences()
+        val packageName = "com.example.bank"
+        val notificationKey = "0|com.example.bank|purchase|42"
 
-        preferences.recordCaptureResult(CaptureResultCode.WRITE_FAILED, recordedAtEpochMillis = 4_000L)
-        assertEquals(4_000L, preferences.pendingSyncFailureAtEpochMillis)
+        assertEquals(
+            1_000L,
+            preferences.notificationDeliveryStartedAt(packageName, notificationKey, 1_000L),
+        )
+        assertEquals(
+            1_000L,
+            preferences.notificationDeliveryStartedAt(
+                packageName,
+                notificationKey,
+                1_000L + 48 * 60 * 60 * 1_000L,
+            ),
+        )
 
-        preferences.recordCaptureResult(CaptureResultCode.PACKAGE_NOT_ALLOWED, recordedAtEpochMillis = 5_000L)
-        assertEquals(4_000L, preferences.pendingSyncFailureAtEpochMillis)
+        preferences.reconcileActiveNotificationDeliveries(
+            listOf(ActiveNotificationDelivery(packageName, notificationKey)),
+        )
+        assertEquals(
+            1_000L,
+            preferences.notificationDeliveryStartedAt(packageName, notificationKey, 9_000L),
+        )
 
-        preferences.recordCaptureResult(CaptureResultCode.STORED, recordedAtEpochMillis = 6_000L)
-        assertNull(preferences.pendingSyncFailureAtEpochMillis)
-        assertEquals(CaptureResultCode.STORED.name, preferences.lastResultCode)
+        preferences.reconcileActiveNotificationDeliveries(emptyList())
+        assertEquals(
+            10_000L,
+            preferences.notificationDeliveryStartedAt(packageName, notificationKey, 10_000L),
+        )
     }
+
+    @Test
+    fun `first normalized payload survives restart and anchors notification updates`() {
+        val storedValues = mutableMapOf<String, Any?>()
+        val preferences = capturePreferences(storedValues)
+        val first = candidate(CANDIDATE_A, occurredAt = 1_000L, amountMinor = 12_345L)
+        val changedUpdate = first.copy(
+            occurredAtEpochMillis = 6_000L,
+            amountMinor = 99_999L,
+            merchant = "Comercio actualizado",
+        )
+
+        val initialRecord = preferences.prepareCandidateForDelivery(
+            PACKAGE_NAME,
+            NOTIFICATION_KEY,
+            first,
+        )
+        val updateRecord = preferences.prepareCandidateForDelivery(
+            PACKAGE_NAME,
+            NOTIFICATION_KEY,
+            changedUpdate,
+        )
+
+        assertEquals(first, initialRecord.candidate)
+        assertEquals(first, updateRecord.candidate)
+        assertEquals(CandidateSyncState.ENQUEUED, updateRecord.state)
+
+        val restarted = capturePreferences(storedValues)
+        assertEquals(listOf(first), restarted.candidatesNeedingRetry())
+        assertFalse(storedValues.toString().contains(NOTIFICATION_KEY))
+    }
+
+    @Test
+    fun `sync failures are candidate scoped and clear only after each candidate is stored`() {
+        val preferences = capturePreferences()
+        val first = candidate(CANDIDATE_A, occurredAt = 1_000L, amountMinor = 12_345L)
+        val second = candidate(CANDIDATE_B, occurredAt = 2_000L, amountMinor = 54_321L)
+        preferences.prepareCandidateForDelivery(PACKAGE_NAME, NOTIFICATION_KEY, first)
+        preferences.prepareCandidateForDelivery(PACKAGE_NAME, "$NOTIFICATION_KEY-second", second)
+
+        preferences.recordCandidateWriteResult(first.candidateId, stored = false)
+        preferences.recordCandidateWriteResult(second.candidateId, stored = false)
+        preferences.recordCaptureResult(CaptureResultCode.PACKAGE_NOT_ALLOWED)
+        assertEquals(CandidateSyncOverview.FAILED, preferences.candidateSyncOverview())
+
+        preferences.recordCandidateWriteResult(first.candidateId, stored = true)
+        assertEquals(CandidateSyncOverview.FAILED, preferences.candidateSyncOverview())
+        assertEquals(listOf(second), preferences.candidatesNeedingRetry())
+
+        preferences.recordCandidateWriteResult(second.candidateId, stored = true)
+        assertEquals(CandidateSyncOverview.IDLE, preferences.candidateSyncOverview())
+        assertTrue(preferences.candidatesNeedingRetry().isEmpty())
+    }
+
+    private fun candidate(
+        id: String,
+        occurredAt: Long,
+        amountMinor: Long,
+    ) = NormalizedPurchaseCandidate(
+        candidateId = id,
+        sourcePackage = PACKAGE_NAME,
+        occurredAtEpochMillis = occurredAt,
+        amountMinor = amountMinor,
+        merchant = "Comercio inicial",
+        cardLast4 = "1234",
+        confidence = PurchaseConfidence.HIGH,
+    )
 
     private fun capturePreferences(
         values: MutableMap<String, Any?> = mutableMapOf(),
@@ -116,5 +204,14 @@ class AppThemeModeTest {
             }
         } as SharedPreferences.Editor
         return editor
+    }
+
+    companion object {
+        private const val PACKAGE_NAME = "com.example.bank"
+        private const val NOTIFICATION_KEY = "0|com.example.bank|purchase|42"
+        private const val CANDIDATE_A =
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        private const val CANDIDATE_B =
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
     }
 }

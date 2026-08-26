@@ -16,7 +16,10 @@ import com.moneytrack.capture.core.NotificationCaptureCoordinator
 import com.moneytrack.capture.core.NotificationEventMetadata
 import com.moneytrack.capture.core.RawNotification
 import com.moneytrack.capture.data.CandidateWriteResult
+import com.moneytrack.capture.data.CandidateSyncDispatcher
 import com.moneytrack.capture.data.FirebaseCandidateRepository
+import com.moneytrack.capture.preferences.ActiveNotificationDelivery
+import com.moneytrack.capture.preferences.CandidateSyncState
 import com.moneytrack.capture.preferences.CapturePreferences
 
 class MoneyNotificationListenerService : NotificationListenerService() {
@@ -41,18 +44,30 @@ class MoneyNotificationListenerService : NotificationListenerService() {
             return
         }
 
-        val user = if (FirebaseApp.getApps(this).isEmpty()) {
-            null
-        } else {
-            FirebaseAuth.getInstance().currentUser
+        val user = currentUser()
+        val syncDispatcher = user?.let { signedInUser ->
+            CandidateSyncDispatcher(
+                syncScope = signedInUser.uid,
+                preferences = preferences,
+                saveCandidate = FirebaseCandidateRepository(signedInUser.uid)::save,
+            )
         }
         val coordinator = NotificationCaptureCoordinator { candidate, onComplete ->
-            val uid = user?.uid
-            if (uid == null) {
+            val dispatcher = syncDispatcher
+            if (dispatcher == null) {
                 onComplete(false)
             } else {
-                FirebaseCandidateRepository(uid).save(candidate) { result ->
-                    onComplete(result == CandidateWriteResult.STORED)
+                val anchored = preferences.prepareCandidateForDelivery(
+                    packageName = sourcePackage,
+                    notificationKey = event.key,
+                    candidate = candidate,
+                )
+                if (anchored.state == CandidateSyncState.STORED) {
+                    onComplete(true)
+                } else {
+                    dispatcher.sync(anchored.candidate) { result ->
+                        onComplete(result == CandidateWriteResult.STORED)
+                    }
                 }
             }
         }
@@ -100,9 +115,34 @@ class MoneyNotificationListenerService : NotificationListenerService() {
         )
     }
 
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        val preferences = CapturePreferences.create(this)
+        val activeDeliveries = try {
+            activeNotifications?.map { notification ->
+                ActiveNotificationDelivery(
+                    packageName = notification.packageName,
+                    notificationKey = notification.key,
+                )
+            }
+        } catch (_: SecurityException) {
+            null
+        }
+        activeDeliveries?.let(preferences::reconcileActiveNotificationDeliveries)
+        currentUser()?.let { user ->
+            CandidateSyncDispatcher(user.uid, preferences).reconcile()
+        }
+    }
+
     private fun record(preferences: CapturePreferences, result: CaptureResultCode) {
         preferences.recordCaptureResult(result)
         Log.i(LOG_TAG, result.name)
+    }
+
+    private fun currentUser() = if (FirebaseApp.getApps(this).isEmpty()) {
+        null
+    } else {
+        FirebaseAuth.getInstance().currentUser
     }
 
     private fun applicationLabel(packageName: String): String = try {

@@ -258,6 +258,31 @@
                 android:textStyle="bold" />
 
             <LinearLayout
+                android:id="@+id/sync_pending_panel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/status_pending_panel"
+                android:accessibilityLiveRegion="polite"
+                android:orientation="vertical"
+                android:padding="@dimen/space_medium"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/sync_pending_heading"
+                    android:textColor="@color/brand_violet_dark"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_tiny"
+                    android:text="@string/sync_pending_explanation"
+                    android:textColor="@color/text_primary" />
+            </LinearLayout>
+
+            <LinearLayout
                 android:id="@+id/sync_failure_panel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

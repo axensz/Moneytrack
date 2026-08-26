@@ -44,10 +44,21 @@ class GuidedUiLayoutContractTest {
     @Test
     fun `ready state exposes a polite repairable sync failure`() {
         val layout = resource("layout/activity_main.xml")
+        val document = DocumentBuilderFactory.newInstance()
+            .newDocumentBuilder()
+            .parse(resourceFile("layout/activity_main.xml"))
+        val elements = document.getElementsByTagName("*")
+        val readyHeading = (0 until elements.length)
+            .mapNotNull { elements.item(it) as? Element }
+            .single { it.getAttribute("android:id") == "@+id/ready_heading" }
         val activity = source("java/com/moneytrack/capture/MainActivity.kt")
         val strings = resource("values/strings.xml")
 
-        assertTrue(layout.contains("@+id/ready_heading"))
+        assertEquals("@string/ready_heading", readyHeading.getAttribute("android:text"))
+        assertEquals(
+            "@+id/ready_step",
+            (readyHeading.parentNode as Element).getAttribute("android:id"),
+        )
         assertTrue(layout.contains("@+id/sync_pending_panel"))
         assertTrue(layout.contains("@+id/sync_failure_panel"))
         assertTrue(layout.contains("android:accessibilityLiveRegion=\"polite\""))

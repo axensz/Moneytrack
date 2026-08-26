@@ -28,7 +28,7 @@ class MoneyNotificationListenerService : NotificationListenerService() {
         val sourcePackage = event.packageName
         val preferences = CapturePreferences.create(this)
         if (sourcePackage == AvailableCaptureSourceCatalog.DIAGNOSTIC_SHELL_PACKAGE) {
-            record(preferences, CaptureResultCode.PACKAGE_NOT_ALLOWED)
+            record(CaptureResultCode.PACKAGE_NOT_ALLOWED)
             return
         }
         val allowedPackages = AvailableCaptureSourceCatalog.productAllowedPackages(
@@ -40,7 +40,7 @@ class MoneyNotificationListenerService : NotificationListenerService() {
                 packageName = sourcePackage,
                 label = applicationLabel(sourcePackage),
             )
-            record(preferences, CaptureResultCode.PACKAGE_NOT_ALLOWED)
+            record(CaptureResultCode.PACKAGE_NOT_ALLOWED)
             return
         }
 
@@ -106,7 +106,7 @@ class MoneyNotificationListenerService : NotificationListenerService() {
                     subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString(),
                 )
             },
-            onResult = { result -> record(preferences, result) },
+            onResult = ::record,
         )
     }
 
@@ -137,8 +137,7 @@ class MoneyNotificationListenerService : NotificationListenerService() {
         }
     }
 
-    private fun record(preferences: CapturePreferences, result: CaptureResultCode) {
-        preferences.recordCaptureResult(result)
+    private fun record(result: CaptureResultCode) {
         Log.i(LOG_TAG, result.name)
     }
 

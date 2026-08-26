@@ -1,7 +1,6 @@
 package com.moneytrack.capture.preferences
 
 import android.content.SharedPreferences
-import com.moneytrack.capture.core.CaptureResultCode
 import com.moneytrack.capture.core.NormalizedPurchaseCandidate
 import com.moneytrack.capture.core.PurchaseConfidence
 import java.lang.reflect.Proxy
@@ -140,7 +139,7 @@ class AppThemeModeTest {
 
         preferences.recordCandidateWriteResult(USER_ID, first.candidateId, stored = false)
         preferences.recordCandidateWriteResult(USER_ID, second.candidateId, stored = false)
-        preferences.recordCaptureResult(CaptureResultCode.PACKAGE_NOT_ALLOWED)
+        preferences.appThemeMode = AppThemeMode.LIGHT
         assertEquals(CandidateSyncOverview.FAILED, preferences.candidateSyncOverview(USER_ID))
 
         preferences.recordCandidateWriteResult(USER_ID, first.candidateId, stored = true)

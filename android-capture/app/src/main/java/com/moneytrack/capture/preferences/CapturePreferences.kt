@@ -3,7 +3,6 @@ package com.moneytrack.capture.preferences
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
-import com.moneytrack.capture.core.CaptureResultCode
 import com.moneytrack.capture.core.NormalizedPurchaseCandidate
 import com.moneytrack.capture.core.PurchaseConfidence
 import java.nio.charset.StandardCharsets
@@ -306,18 +305,6 @@ class CapturePreferences private constructor(
         }
     }
 
-    var lastResultCode: String?
-        get() = preferences.getString(KEY_LAST_RESULT, null)
-        private set(value) {
-            preferences.edit { putString(KEY_LAST_RESULT, value) }
-        }
-
-    fun recordCaptureResult(result: CaptureResultCode) {
-        preferences.edit(commit = true) {
-            putString(KEY_LAST_RESULT, result.name)
-        }
-    }
-
     fun registerOnChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
         preferences.registerOnSharedPreferenceChangeListener(listener)
     }
@@ -353,7 +340,6 @@ class CapturePreferences private constructor(
         private const val KEY_ALLOWED_PACKAGES = "allowed_packages"
         private const val KEY_INSTALLATION_ID = "installation_id"
         private const val KEY_DISCOVERED_PACKAGES = "discovered_packages"
-        private const val KEY_LAST_RESULT = "last_result_code"
         private const val KEY_NOTIFICATION_DELIVERY_HASHES = "notification_delivery_hashes"
         private const val KEY_SYNC_CANDIDATE_RECORDS = "sync_candidate_records"
         private const val SOURCE_LABEL_PREFIX = "source_label."

@@ -499,3 +499,48 @@ approved design must amend the existing unarchived change before code work.
   edits in the shared worktree were preserved and intentionally excluded from
   these Android commits; this file records the verification without claiming
   completion of the private 14-day/50-event canary or archiving the change.
+
+## 2026-08-25 — Final notification idempotency and PR gate
+
+- The final review closed two notification-delivery defects before publication.
+  One active Android delivery now anchors both its SHA-256 candidate identity
+  and its entire first normalized payload until removal or reconciliation with
+  `activeNotifications`; it no longer starts a second generation after an
+  arbitrary age. A real Firestore emulator assertion proves that the anchored
+  no-op succeeds while the same document with a changed `occurredAt` is rejected.
+- Pending state is durable and candidate-specific. `ENQUEUED` is persisted
+  before network work, `WRITE_FAILED` survives process recreation, Activity and
+  listener lifecycle entry retry it, and only `STORED` for that same candidate
+  clears its error. The visible ready screen observes those preferences live and
+  shows mutually exclusive active, pending or failed status.
+- Every persisted candidate and delivery link is bound to a SHA-256 hash of the
+  originating Firebase UID. The raw UID is not stored; another signed-in account
+  cannot see, retry or inherit that delivery. Version-1 ownerless records are
+  ignored and therefore fail closed. Tests cover A-to-B account switching,
+  in-flight deduplication, process-style reconstruction and independent failures.
+- Independent review also found that `ready_heading` pointed to the session
+  explanation instead of the real `Captura activa` heading. A structural XML
+  regression failed first, the ID was moved to its correct ready-state child and
+  the test then passed. The unused persisted last-result code was removed so
+  rejected background notifications no longer trigger unrelated full renders;
+  only its privacy-safe enum remains in local Logcat.
+- Final Android verification completed 55 Gradle tasks. All 66 JVM tests passed
+  across 15 suites with zero failures, errors or skips; `lintDebug` and
+  `assembleDebug` passed. The seven lint items remain only version-availability
+  notices (`GradleDependency` 4, `AndroidGradlePluginVersion` 2,
+  `OldTargetApi` 1). The configured debug APK is 9,942,363 bytes with SHA-256
+  `bf745d98bc2ac97874ba66705ca08979bf2947cac5d6913734726531f51b205b`.
+- The Firestore demo emulator passed 2 files and 49/49 assertions. A detached,
+  clean worktree at code checkpoint `4dd0ed5` passed TypeScript, ESLint, the
+  production Next.js build and the complete Vitest regression: 163 files and
+  1,510 tests passed; the separately verified emulator gate accounts for the
+  expected 2 files / 49 tests skipped in that run.
+- The final full graph reviewed 114 committed files and 30 affected flows against
+  `origin/main`; the 0.85 aggregate risk reflects the size of the complete
+  additive feature. Two independent focused review passes ended with no
+  remaining Critical, Important or Minor finding. Strict OpenSpec validation,
+  committed-diff whitespace checks and changed-line secret scans passed; no
+  Firebase config, keystore, local SDK path or new secret-pattern line is tracked.
+- The OpenSpec change remains unarchived. The unavailable 320/expanded emulator
+  matrix, current-device reinstall and private 14-day/50-event financial canary
+  remain explicit external evidence gates rather than inferred completions.

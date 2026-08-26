@@ -4,6 +4,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Account } from '../../types/finance';
 import type { PaymentInstrument } from '../../types/transactionImport';
@@ -63,27 +64,48 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+interface ManagerOptions {
+  userId?: string | null;
+  accountId?: string;
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+const managerProps = ({
+  userId = 'owner',
+  accountId = 'card',
+  isOpen = true,
+  onClose = vi.fn(),
+}: ManagerOptions = {}): React.ComponentProps<typeof PaymentInstrumentsSection> => ({
+  userId,
+  accounts,
+  accountId,
+  isOpen,
+  onClose,
+});
+
 describe('PaymentInstrumentsSection', () => {
   it('keeps guest mode unchanged and guides an authenticated empty state', () => {
     const { rerender } = render(
-      <PaymentInstrumentsSection userId={null} accounts={accounts} />,
+      <PaymentInstrumentsSection {...managerProps({ userId: null })} />,
     );
-    expect(screen.queryByText('Medios de pago del celular')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
-    rerender(<PaymentInstrumentsSection userId="owner" accounts={accounts} />);
-    expect(screen.getByRole('heading', {
-      name: 'Medios de pago del celular',
+    rerender(<PaymentInstrumentsSection {...managerProps()} />);
+    expect(screen.getByRole('dialog', {
+      name: 'Medios de pago · Visa crédito',
     })).toBeInTheDocument();
-    expect(screen.getByText(/aún no has vinculado/i)).toBeInTheDocument();
+    expect(screen.getByText(/esta cuenta no tiene medios vinculados/i)).toBeInTheDocument();
   });
 
   it('validates four digits and creates an exact linked instrument', async () => {
-    render(<PaymentInstrumentsSection userId="owner" accounts={accounts} />);
+    render(<PaymentInstrumentsSection {...managerProps()} />);
     const trigger = screen.getByRole('button', { name: 'Añadir medio' });
     expect(trigger).toHaveClass('min-h-[44px]');
     fireEvent.click(trigger);
 
-    expect(screen.getByRole('dialog', {
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(screen.getByRole('heading', {
       name: 'Añadir medio de pago',
     })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Nombre o apodo'), {
@@ -123,9 +145,11 @@ describe('PaymentInstrumentsSection', () => {
 
   it('shows the account label and supports edit and active-state changes', async () => {
     H.instruments = [instrument];
-    render(<PaymentInstrumentsSection userId="owner" accounts={accounts} />);
+    render(<PaymentInstrumentsSection {...managerProps()} />);
 
-    expect(screen.getByText('Visa crédito')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', {
+      name: 'Medios de pago · Visa crédito',
+    })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Desactivar Visa celular' }));
     await waitFor(() => expect(H.setInstrumentActive).toHaveBeenCalledWith(
       'instrument-1',
@@ -149,9 +173,31 @@ describe('PaymentInstrumentsSection', () => {
     ));
   });
 
+  it('uses one modal for the selected account and for its add form', () => {
+    H.instruments = [
+      instrument,
+      {
+        ...instrument,
+        id: 'instrument-2',
+        label: 'Débito celular',
+        accountId: 'savings',
+        last4: '5678',
+      },
+    ];
+    render(<PaymentInstrumentsSection {...managerProps()} />);
+
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(screen.getByText('Visa celular')).toBeInTheDocument();
+    expect(screen.queryByText('Débito celular')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir medio' }));
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(screen.getByLabelText('Cuenta vinculada')).toHaveValue('card');
+  });
+
   it('requires an accessible confirmation before deletion', async () => {
     H.instruments = [instrument];
-    render(<PaymentInstrumentsSection userId="owner" accounts={accounts} />);
+    render(<PaymentInstrumentsSection {...managerProps()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Eliminar Visa celular' }));
     expect(screen.getByRole('dialog', {
@@ -166,12 +212,29 @@ describe('PaymentInstrumentsSection', () => {
   });
 
   it('closes by keyboard and returns focus to the opening control', async () => {
-    render(<PaymentInstrumentsSection userId="owner" accounts={accounts} />);
-    const trigger = screen.getByRole('button', { name: 'Añadir medio' });
+    function Harness() {
+      const [isOpen, setIsOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setIsOpen(true)}>Abrir medios</button>
+          <PaymentInstrumentsSection
+            {...managerProps({ isOpen, onClose: () => setIsOpen(false) })}
+          />
+        </>
+      );
+    }
+
+    render(<Harness />);
+    const trigger = screen.getByRole('button', { name: 'Abrir medios' });
     trigger.focus();
     fireEvent.click(trigger);
+    expect(screen.getByRole('dialog', { name: 'Medios de pago · Visa crédito' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cerrar' })).toHaveFocus());
 
     fireEvent.keyDown(window, { key: 'Escape' });
-    await waitFor(() => expect(trigger).toHaveFocus());
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(trigger).toHaveFocus();
+    });
   });
 });

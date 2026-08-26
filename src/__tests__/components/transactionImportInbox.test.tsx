@@ -104,6 +104,37 @@ beforeEach(() => {
 });
 
 describe('TransactionImportInbox', () => {
+  it('stays visually absent when there are no pending purchases', () => {
+    H.candidates = [];
+    render(
+      <TransactionImportInbox
+        userId="owner"
+        accounts={accounts}
+        categories={categories}
+        isOnline
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: /compras del celular/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('No hay compras por revisar')).not.toBeInTheDocument();
+  });
+
+  it('shows a standalone alert instead of an empty inbox when loading fails', () => {
+    H.candidates = [];
+    H.error = new Error('No se pudo leer la bandeja.');
+    render(
+      <TransactionImportInbox
+        userId="owner"
+        accounts={accounts}
+        categories={categories}
+        isOnline
+      />,
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent('No se pudo leer la bandeja.');
+    expect(screen.queryByRole('button', { name: /compras del celular/i })).not.toBeInTheDocument();
+  });
+
   it('shows a truthful pending counter and expands from a compact ledger toggle', () => {
     H.candidates = [
       { ...candidate('a'.repeat(64), 'Mercado Central'), cardLast4: '9876' },

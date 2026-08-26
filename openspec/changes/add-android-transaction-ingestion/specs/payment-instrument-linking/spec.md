@@ -68,7 +68,15 @@ El sistema MUST reasignar los medios de tarjetas fusionadas a la cuenta destino 
 - **THEN** la revisión resuelve de nuevo el estado actual y exige una selección válida en vez de conservar una sugerencia antigua
 
 ### Requirement: La gestión es autenticada, responsive y accesible
-El sistema MUST ofrecer la gestión de medios en Cuentas solo para usuarios autenticados, con controles utilizables a 390 px y 1440 px, foco visible, nombres accesibles y objetivos táctiles de al menos 44 px.
+El sistema MUST ofrecer la gestión de medios solo para usuarios autenticados y de forma contextual desde cada cuenta mediante un botón de icono, sin una sección global ni un panel debajo del listado. Los controles MUST ser utilizables a 390 px y 1440 px, tener foco visible, nombres accesibles y objetivos táctiles de al menos 44 px.
+
+#### Scenario: Abrir los medios de una cuenta
+- **WHEN** el usuario activa el botón con nombre accesible “Gestionar medios de pago de <cuenta>”
+- **THEN** la PWA abre un único diálogo `Medios de pago · <cuenta>`, muestra solo sus medios y preselecciona esa cuenta al crear uno nuevo
+
+#### Scenario: Añadir o editar desde el administrador
+- **WHEN** el usuario elige añadir o editar un medio dentro del diálogo de la cuenta
+- **THEN** el mismo diálogo cambia al formulario correspondiente sin abrir otro diálogo encima
 
 #### Scenario: Usuario invitado
 - **WHEN** una persona usa Moneytrack sin iniciar sesión

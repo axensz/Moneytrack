@@ -47,8 +47,11 @@ export function TransactionImportReviewModal({
   onConfirmed,
 }: TransactionImportReviewModalProps) {
   const match = useMemo(
-    () => matchPaymentInstrument(candidate.cardLast4, instruments),
-    [candidate.cardLast4, instruments],
+    () => matchPaymentInstrument({
+      cardLast4: candidate.cardLast4,
+      observedInstrumentLabel: candidate.observedInstrumentLabel,
+    }, instruments),
+    [candidate.cardLast4, candidate.observedInstrumentLabel, instruments],
   );
   const [accountId, setAccountId] = useState('');
   const [category, setCategory] = useState('');

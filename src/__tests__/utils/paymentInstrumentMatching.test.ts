@@ -2,18 +2,29 @@ import { describe, expect, it } from 'vitest';
 import type { PaymentInstrument } from '../../types/transactionImport';
 import { matchPaymentInstrument } from '../../utils/paymentInstrumentMatching';
 
-const instrument = (
-  id: string,
-  accountId: string,
-  last4: string,
-  active = true,
-): PaymentInstrument => ({
+const instrument = ({
   id,
-  schemaVersion: 1,
-  label: `Medio ${id}`,
   accountId,
-  kind: 'wallet-token',
+  label,
   last4,
+  active = true,
+  kind = 'wallet-token',
+  schemaVersion = 2,
+}: {
+  id: string;
+  accountId: string;
+  label: string;
+  last4?: string;
+  active?: boolean;
+  kind?: PaymentInstrument['kind'];
+  schemaVersion?: 1 | 2;
+}): PaymentInstrument => ({
+  id,
+  schemaVersion,
+  label,
+  accountId,
+  kind,
+  ...(last4 ? { last4 } : {}),
   network: 'visa',
   active,
   createdAt: new Date('2026-08-25T12:00:00.000Z'),
@@ -21,11 +32,27 @@ const instrument = (
 });
 
 describe('matchPaymentInstrument', () => {
-  it('suggests the account only for one active exact match', () => {
-    const result = matchPaymentInstrument('1234', [
-      instrument('wallet-1234', 'credit-account-1', '1234'),
-      instrument('wallet-5678', 'credit-account-2', '5678'),
-      instrument('old-1234', 'credit-account-old', '1234', false),
+  it('suggests one active exact last-four match', () => {
+    const result = matchPaymentInstrument({ cardLast4: '1234' }, [
+      instrument({
+        id: 'wallet-1234',
+        accountId: 'credit-account-1',
+        label: 'Oro',
+        last4: '1234',
+      }),
+      instrument({
+        id: 'wallet-5678',
+        accountId: 'credit-account-2',
+        label: 'Nu',
+        last4: '5678',
+      }),
+      instrument({
+        id: 'old-1234',
+        accountId: 'credit-account-old',
+        label: 'Anterior',
+        last4: '1234',
+        active: false,
+      }),
     ]);
 
     expect(result).toEqual({
@@ -35,27 +62,102 @@ describe('matchPaymentInstrument', () => {
     });
   });
 
-  it('does not suggest an inactive match', () => {
-    expect(matchPaymentInstrument('1234', [
-      instrument('old-1234', 'credit-account-old', '1234', false),
-    ])).toEqual({ status: 'none' });
+  it('matches a unique Wallet nickname after safe normalization', () => {
+    const result = matchPaymentInstrument(
+      { observedInstrumentLabel: '  MAMÁDÉBITO  ' },
+      [
+        instrument({
+          id: 'mama-wallet',
+          accountId: 'savings-account-1',
+          label: 'MamáDébito',
+        }),
+        instrument({
+          id: 'other-wallet',
+          accountId: 'savings-account-2',
+          label: 'Oro',
+        }),
+      ],
+    );
+
+    expect(result).toEqual({
+      status: 'matched',
+      accountId: 'savings-account-1',
+      instrumentId: 'mama-wallet',
+    });
   });
 
-  it('does not suggest when no active instrument has the observed digits', () => {
-    expect(matchPaymentInstrument('9999', [
-      instrument('wallet-1234', 'credit-account-1', '1234'),
-    ])).toEqual({ status: 'none' });
-    expect(matchPaymentInstrument(undefined, [
-      instrument('wallet-1234', 'credit-account-1', '1234'),
-    ])).toEqual({ status: 'none' });
+  it('never matches an observed Wallet nickname against a physical card', () => {
+    expect(matchPaymentInstrument(
+      { observedInstrumentLabel: 'Oro' },
+      [instrument({
+        id: 'physical',
+        accountId: 'credit-account-1',
+        label: 'Oro',
+        last4: '1234',
+        kind: 'physical-card',
+      })],
+    )).toEqual({ status: 'none' });
   });
 
-  it('reports ambiguity when two active instruments share the digits', () => {
-    const result = matchPaymentInstrument('1234', [
-      instrument('plastic', 'credit-account-1', '1234'),
-      instrument('wallet', 'credit-account-1', '1234'),
-    ]);
+  it('reports ambiguity for duplicate active nickname matches', () => {
+    expect(matchPaymentInstrument(
+      { observedInstrumentLabel: 'Oro' },
+      [
+        instrument({ id: 'one', accountId: 'account-1', label: 'Oro' }),
+        instrument({ id: 'two', accountId: 'account-2', label: 'oro' }),
+      ],
+    )).toEqual({ status: 'ambiguous' });
+  });
 
-    expect(result).toEqual({ status: 'ambiguous' });
+  it('requires nickname and last four to converge on the same instrument', () => {
+    const shared = instrument({
+      id: 'same',
+      accountId: 'account-1',
+      label: 'Oro',
+      last4: '1234',
+    });
+
+    expect(matchPaymentInstrument(
+      { observedInstrumentLabel: 'Oro', cardLast4: '1234' },
+      [shared],
+    )).toEqual({
+      status: 'matched',
+      accountId: 'account-1',
+      instrumentId: 'same',
+    });
+
+    expect(matchPaymentInstrument(
+      { observedInstrumentLabel: 'Oro', cardLast4: '9876' },
+      [
+        shared,
+        instrument({
+          id: 'other',
+          accountId: 'account-2',
+          label: 'Nu',
+          last4: '9876',
+        }),
+      ],
+    )).toEqual({ status: 'conflict' });
+  });
+
+  it('does not suggest inactive or unknown evidence', () => {
+    expect(matchPaymentInstrument(
+      { observedInstrumentLabel: 'Oro' },
+      [instrument({
+        id: 'inactive',
+        accountId: 'account-1',
+        label: 'Oro',
+        active: false,
+      })],
+    )).toEqual({ status: 'none' });
+
+    expect(matchPaymentInstrument(
+      { observedInstrumentLabel: 'Desconocida' },
+      [instrument({ id: 'known', accountId: 'account-1', label: 'Oro' })],
+    )).toEqual({ status: 'none' });
+
+    expect(matchPaymentInstrument({}, [
+      instrument({ id: 'known', accountId: 'account-1', label: 'Oro' }),
+    ])).toEqual({ status: 'none' });
   });
 });

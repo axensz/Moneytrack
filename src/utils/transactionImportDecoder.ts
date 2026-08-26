@@ -59,6 +59,7 @@ const TRANSACTION_IMPORT_CANDIDATE_FIELDS = new Set([
   'currency',
   'merchant',
   'cardLast4',
+  'observedInstrumentLabel',
   'parserId',
   'parserVersion',
   'confidence',
@@ -171,7 +172,7 @@ export function decodePaymentInstrument(
     };
   }
 
-  if (data.schemaVersion !== 1) {
+  if (data.schemaVersion !== 1 && data.schemaVersion !== 2) {
     return {
       ok: false,
       issue: invalidIssue(entity, document.id, 'invalid-field', 'schemaVersion'),
@@ -198,7 +199,11 @@ export function decodePaymentInstrument(
       issue: invalidIssue(entity, document.id, 'invalid-field', 'kind'),
     };
   }
-  if (!isLast4(data.last4)) {
+  const requiresLast4 = data.schemaVersion === 1 || data.kind === 'physical-card';
+  if (
+    (requiresLast4 && !isLast4(data.last4))
+    || (!requiresLast4 && data.last4 !== undefined && !isLast4(data.last4))
+  ) {
     return {
       ok: false,
       issue: invalidIssue(entity, document.id, 'invalid-field', 'last4'),
@@ -239,11 +244,11 @@ export function decodePaymentInstrument(
     ok: true,
     instrument: {
       id: document.id,
-      schemaVersion: 1,
+      schemaVersion: data.schemaVersion,
       label: data.label,
       accountId: data.accountId,
       kind: data.kind as PaymentInstrumentKind,
-      last4: data.last4,
+      ...(isLast4(data.last4) ? { last4: data.last4 } : {}),
       network: data.network as PaymentInstrumentNetwork,
       active: data.active,
       createdAt,
@@ -278,7 +283,7 @@ export function decodeTransactionImportCandidate(
   const extraField = unknownField(data, TRANSACTION_IMPORT_CANDIDATE_FIELDS);
   if (extraField) return invalidCandidate(document.id, 'unknown-field', extraField);
 
-  if (data.schemaVersion !== 1) {
+  if (data.schemaVersion !== 1 && data.schemaVersion !== 2) {
     return invalidCandidate(document.id, 'invalid-field', 'schemaVersion');
   }
   if (data.source !== 'android-notification') {
@@ -309,7 +314,21 @@ export function decodeTransactionImportCandidate(
   if (data.cardLast4 !== undefined && !isLast4(data.cardLast4)) {
     return invalidCandidate(document.id, 'invalid-field', 'cardLast4');
   }
-  if (data.parserId !== 'strict-cop-purchase') {
+  if (
+    data.observedInstrumentLabel !== undefined
+    && (
+      !hasBoundedText(data.observedInstrumentLabel, 24)
+      || !/^\p{L}+$/u.test(data.observedInstrumentLabel)
+    )
+  ) {
+    return invalidCandidate(document.id, 'invalid-field', 'observedInstrumentLabel');
+  }
+  const validParserContract = data.schemaVersion === 1
+    ? data.parserId === 'strict-cop-purchase'
+      && data.observedInstrumentLabel === undefined
+    : data.parserId === 'google-wallet-purchase'
+      && data.sourcePackage === 'com.google.android.apps.walletnfcrel';
+  if (!validParserContract) {
     return invalidCandidate(document.id, 'invalid-field', 'parserId');
   }
   if (data.parserVersion !== 1) {
@@ -332,7 +351,7 @@ export function decodeTransactionImportCandidate(
 
   const common = {
     id: document.id,
-    schemaVersion: 1 as const,
+    schemaVersion: data.schemaVersion as 1 | 2,
     source: 'android-notification' as const,
     sourcePackage: data.sourcePackage,
     occurredAt,
@@ -340,7 +359,10 @@ export function decodeTransactionImportCandidate(
     currency: 'COP' as const,
     merchant: data.merchant,
     ...(data.cardLast4 === undefined ? {} : { cardLast4: data.cardLast4 }),
-    parserId: 'strict-cop-purchase' as const,
+    ...(data.observedInstrumentLabel === undefined
+      ? {}
+      : { observedInstrumentLabel: data.observedInstrumentLabel }),
+    parserId: data.parserId as 'strict-cop-purchase' | 'google-wallet-purchase',
     parserVersion: 1 as const,
     confidence: data.confidence as TransactionImportConfidence,
   };

@@ -565,20 +565,27 @@ approved design must amend the existing unarchived change before code work.
   its account; an unknown instrument remains a one-time confirmation unless the
   user explicitly selects `Recordar este medio de pago`. That remembered mapping
   is created atomically with the existing authenticated ledger mutation.
-- Firestore emulator verification passed 2 files and 57/57 assertions. The
-  isolated full Vitest rerun passed 163 files and 1,541 tests; the expected
-  emulator-gated 2 files / 57 tests remained skipped there. TypeScript, ESLint
+- Firestore emulator verification passed 2 files and 60/60 assertions. The
+  isolated full Vitest rerun passed 163 files and 1,542 tests; the expected
+  emulator-gated 2 files / 60 tests remained skipped there. TypeScript, ESLint
   and the production Next.js build passed. An earlier parallel run produced four
   unrelated five-second UI timeouts under CPU contention; all passed when the
   full suite was rerun alone.
-- Android `testDebugUnitTest lintDebug assembleDebug` passed 79 tests across 17
+- Android `clean testDebugUnitTest lintDebug assembleDebug` passed 82 tests across 18
   suites with zero failures, errors or skips. Lint contains only six pinned-
   version notices (`GradleDependency` 4, `AndroidGradlePluginVersion` 1 and
   `OldTargetApi` 1). The debug APK is 9,939,327 bytes with SHA-256
-  `dc46162d9725a9a7aa4378140d18ce285daef018c08980fb542805b1579f9584`.
+  `ea29bb0ae8785b7d942ec4f0783a58723f32e834dd882c44648dcd2317d7546f`.
+- Independent review identified and verified five fail-closed refinements: load
+  the complete current instrument collection before confirmation, reject
+  multiple nonempty Wallet body alternatives, constrain observed nicknames to
+  bounded Unicode letters, discard group summaries before delivery identity or
+  extras are read, and align the localized-format plan wording. The follow-up
+  review reported no remaining Critical, Important or Minor finding.
 - Strict OpenSpec validation and `git diff --check` passed. The updated graph
-  reviewed 37 changed files at low aggregate risk (0.40); its Kotlin test-edge
-  inference reported false gaps, so the executed 79-test Gradle result is the
+  contained 4,721 code nodes and 53,115 code edges and reviewed 39 changed files
+  across 24 affected flows at medium aggregate risk (0.65); its Kotlin test-edge
+  inference reported false gaps, so the executed 82-test Gradle result is the
   authoritative parser/persistence coverage evidence.
 - The APK has only been built locally, not distributed. Compatible web code and
   Firestore rules must be deployed before this APK is offered. Device matrices,

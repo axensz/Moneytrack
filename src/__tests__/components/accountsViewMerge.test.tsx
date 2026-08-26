@@ -6,6 +6,11 @@ const state = vi.hoisted(() => ({
   mergeCreditCards: vi.fn(async () => undefined),
   addTransaction: vi.fn(async () => undefined),
   updateAccount: vi.fn(async () => undefined),
+  paymentManagerRenders: [] as Array<{
+    userId: string | null;
+    accountId?: string;
+    isOpen?: boolean;
+  }>,
 }));
 
 const accounts: Account[] = [
@@ -131,18 +136,23 @@ vi.mock('../../components/views/accounts/components/AccountCard', () => ({
 
 vi.mock('../../components/views/accounts/components/PaymentInstrumentsSection', () => ({
   PaymentInstrumentsSection: ({
+    userId,
     accountId,
     isOpen,
     onClose,
   }: {
+    userId: string | null;
     accountId?: string;
     isOpen?: boolean;
     onClose?: () => void;
-  }) => isOpen ? (
-    <div role="dialog" aria-label={`payment-manager-${accountId ?? 'global'}`}>
-      <button type="button" onClick={onClose}>close-payment-manager</button>
-    </div>
-  ) : null,
+  }) => {
+    state.paymentManagerRenders.push({ userId, accountId, isOpen });
+    return isOpen ? (
+      <div role="dialog" aria-label={`payment-manager-${accountId ?? 'global'}`}>
+        <button type="button" onClick={onClose}>close-payment-manager</button>
+      </div>
+    ) : null;
+  },
 }));
 
 vi.mock('../../components/views/accounts/components/MergeCreditCardsModal', () => ({
@@ -189,6 +199,7 @@ import { AccountsView } from '../../components/views/accounts/AccountsView';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  state.paymentManagerRenders = [];
 });
 
 describe('AccountsView — fusión con deuda objetivo', () => {
@@ -238,5 +249,20 @@ describe('AccountsView — medios de pago en contexto', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'close-payment-manager' }));
     expect(screen.queryByRole('dialog', { name: /payment-manager-/i })).not.toBeInTheDocument();
+  });
+
+  it('closes the selected account context when the authenticated user changes', () => {
+    const { rerender } = render(<AccountsView userId="owner" />);
+    fireEvent.click(screen.getByRole('button', { name: 'mobile-media-bank' }));
+    expect(screen.getByRole('dialog', { name: 'payment-manager-bank' })).toBeInTheDocument();
+
+    rerender(<AccountsView userId="other-owner" />);
+
+    expect(screen.queryByRole('dialog', { name: /payment-manager-/i })).not.toBeInTheDocument();
+    expect(state.paymentManagerRenders).not.toContainEqual({
+      userId: 'other-owner',
+      accountId: 'bank',
+      isOpen: true,
+    });
   });
 });

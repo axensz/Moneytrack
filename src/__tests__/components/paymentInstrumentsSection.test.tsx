@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -13,7 +14,7 @@ const H = vi.hoisted(() => ({
   instruments: [] as PaymentInstrument[],
   loading: false,
   error: null as Error | null,
-  createInstrument: vi.fn(async () => undefined),
+  createInstrument: vi.fn(async (): Promise<void> => undefined),
   updateInstrument: vi.fn(async () => undefined),
   setInstrumentActive: vi.fn(async () => undefined),
   deleteInstrument: vi.fn(async () => undefined),
@@ -61,7 +62,10 @@ beforeEach(() => {
   H.instruments = [];
   H.loading = false;
   H.error = null;
-  vi.clearAllMocks();
+  H.createInstrument.mockReset().mockResolvedValue(undefined);
+  H.updateInstrument.mockReset().mockResolvedValue(undefined);
+  H.setInstrumentActive.mockReset().mockResolvedValue(undefined);
+  H.deleteInstrument.mockReset().mockResolvedValue(undefined);
 });
 
 interface ManagerOptions {
@@ -105,6 +109,9 @@ describe('PaymentInstrumentsSection', () => {
     fireEvent.click(trigger);
 
     expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(screen.getByRole('dialog', {
+      name: 'Medios de pago · Visa crédito',
+    })).toBeInTheDocument();
     expect(screen.getByRole('heading', {
       name: 'Añadir medio de pago',
     })).toBeInTheDocument();
@@ -157,6 +164,12 @@ describe('PaymentInstrumentsSection', () => {
     ));
 
     fireEvent.click(screen.getByRole('button', { name: 'Editar Visa celular' }));
+    expect(screen.getByRole('dialog', {
+      name: 'Medios de pago · Visa crédito',
+    })).toBeInTheDocument();
+    expect(screen.getByRole('heading', {
+      name: 'Editar medio de pago',
+    })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Nombre o apodo'), {
       target: { value: 'Visa del teléfono' },
     });
@@ -193,6 +206,222 @@ describe('PaymentInstrumentsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Añadir medio' }));
     expect(screen.getAllByRole('dialog')).toHaveLength(1);
     expect(screen.getByLabelText('Cuenta vinculada')).toHaveValue('card');
+  });
+
+  it('preserves an in-progress draft across parent rerenders', () => {
+    const { rerender } = render(
+      <PaymentInstrumentsSection {...managerProps()} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir medio' }));
+    fireEvent.change(screen.getByLabelText('Nombre o apodo'), {
+      target: { value: 'Oro del celular' },
+    });
+    fireEvent.change(screen.getByLabelText('Últimos 4 dígitos'), {
+      target: { value: '9876' },
+    });
+
+    rerender(<PaymentInstrumentsSection {...managerProps()} />);
+
+    expect(screen.getByLabelText('Nombre o apodo')).toHaveValue('Oro del celular');
+    expect(screen.getByLabelText('Últimos 4 dígitos')).toHaveValue('9876');
+  });
+
+  it('preserves a pending save across rerenders and prevents duplicate submits', async () => {
+    let resolveSave!: () => void;
+    H.createInstrument.mockImplementationOnce(() => new Promise<void>(resolve => {
+      resolveSave = resolve;
+    }));
+    const { rerender } = render(
+      <PaymentInstrumentsSection {...managerProps()} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir medio' }));
+    fireEvent.change(screen.getByLabelText('Nombre o apodo'), {
+      target: { value: 'Oro' },
+    });
+    fireEvent.change(screen.getByLabelText('Últimos 4 dígitos'), {
+      target: { value: '9876' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar medio' }));
+    await waitFor(() => expect(H.createInstrument).toHaveBeenCalledTimes(1));
+
+    rerender(<PaymentInstrumentsSection {...managerProps()} />);
+
+    const savingButton = screen.getByRole('button', { name: 'Guardando…' });
+    expect(savingButton).toBeDisabled();
+    fireEvent.submit(savingButton.closest('form') as HTMLFormElement);
+    expect(H.createInstrument).toHaveBeenCalledTimes(1);
+
+    await act(async () => resolveSave());
+    await waitFor(() => expect(
+      screen.getByRole('button', { name: 'Añadir medio' }),
+    ).toBeInTheDocument());
+  });
+
+  it('blocks every modal close control while a save is pending', async () => {
+    let resolveSave!: () => void;
+    H.createInstrument.mockImplementationOnce(() => new Promise<void>(resolve => {
+      resolveSave = resolve;
+    }));
+    render(<PaymentInstrumentsSection {...managerProps()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir medio' }));
+    fireEvent.change(screen.getByLabelText('Nombre o apodo'), {
+      target: { value: 'Oro' },
+    });
+    fireEvent.change(screen.getByLabelText('Últimos 4 dígitos'), {
+      target: { value: '9876' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar medio' }));
+    await waitFor(() => expect(H.createInstrument).toHaveBeenCalledTimes(1));
+
+    expect(screen.queryByRole('button', { name: 'Cerrar' })).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getByLabelText('Nombre o apodo')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('dialog', {
+      name: 'Medios de pago · Visa crédito',
+    }));
+    expect(screen.getByLabelText('Nombre o apodo')).toBeInTheDocument();
+
+    await act(async () => resolveSave());
+    await waitFor(() => expect(
+      screen.getByRole('button', { name: 'Añadir medio' }),
+    ).toBeInTheDocument());
+  });
+
+  it('does not let an abandoned save clear a newer account form', async () => {
+    let resolveSave!: () => void;
+    H.createInstrument.mockImplementationOnce(() => new Promise<void>(resolve => {
+      resolveSave = resolve;
+    }));
+
+    function Harness() {
+      const [accountId, setAccountId] = useState('card');
+      return (
+        <>
+          <button type="button" onClick={() => setAccountId('savings')}>
+            Cambiar cuenta
+          </button>
+          <PaymentInstrumentsSection
+            {...managerProps({ accountId })}
+          />
+        </>
+      );
+    }
+
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir medio' }));
+    fireEvent.change(screen.getByLabelText('Nombre o apodo'), {
+      target: { value: 'Medio anterior' },
+    });
+    fireEvent.change(screen.getByLabelText('Últimos 4 dígitos'), {
+      target: { value: '1111' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar medio' }));
+    await waitFor(() => expect(H.createInstrument).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cambiar cuenta' }));
+    expect(screen.getByRole('dialog', {
+      name: 'Medios de pago · Cuenta principal',
+    })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir medio' }));
+    fireEvent.change(screen.getByLabelText('Nombre o apodo'), {
+      target: { value: 'Medio nuevo' },
+    });
+
+    await act(async () => resolveSave());
+
+    expect(screen.getByLabelText('Nombre o apodo')).toHaveValue('Medio nuevo');
+  });
+
+  it('does not surface an abandoned save error in a newer account context', async () => {
+    let rejectSave!: (reason: Error) => void;
+    H.createInstrument.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => {
+      rejectSave = reject;
+    }));
+
+    function Harness() {
+      const [accountId, setAccountId] = useState('card');
+      return (
+        <>
+          <button type="button" onClick={() => setAccountId('savings')}>
+            Cambiar cuenta
+          </button>
+          <PaymentInstrumentsSection {...managerProps({ accountId })} />
+        </>
+      );
+    }
+
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir medio' }));
+    fireEvent.change(screen.getByLabelText('Nombre o apodo'), {
+      target: { value: 'Medio anterior' },
+    });
+    fireEvent.change(screen.getByLabelText('Últimos 4 dígitos'), {
+      target: { value: '1111' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar medio' }));
+    await waitFor(() => expect(H.createInstrument).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cambiar cuenta' }));
+    expect(screen.getByRole('dialog', {
+      name: 'Medios de pago · Cuenta principal',
+    })).toBeInTheDocument();
+
+    await act(async () => rejectSave(new Error('Error de la cuenta anterior')));
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText('Error de la cuenta anterior')).not.toBeInTheDocument();
+  });
+
+  it('returns focus to the add action after cancelling or saving the form', async () => {
+    render(<PaymentInstrumentsSection {...managerProps()} />);
+    const addButton = screen.getByRole('button', { name: 'Añadir medio' });
+
+    fireEvent.click(addButton);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    await waitFor(() => expect(
+      screen.getByRole('button', { name: 'Añadir medio' }),
+    ).toHaveFocus());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir medio' }));
+    fireEvent.change(screen.getByLabelText('Nombre o apodo'), {
+      target: { value: 'Oro' },
+    });
+    fireEvent.change(screen.getByLabelText('Últimos 4 dígitos'), {
+      target: { value: '9876' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar medio' }));
+
+    await waitFor(() => expect(
+      screen.getByRole('button', { name: 'Añadir medio' }),
+    ).toHaveFocus());
+  });
+
+  it('returns focus to the edited instrument action after cancelling', async () => {
+    H.instruments = [instrument];
+    render(<PaymentInstrumentsSection {...managerProps()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Editar Visa celular' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    await waitFor(() => expect(
+      screen.getByRole('button', { name: 'Editar Visa celular' }),
+    ).toHaveFocus());
+  });
+
+  it('returns focus to add when a saved edit leaves the selected account', async () => {
+    H.instruments = [instrument];
+    render(<PaymentInstrumentsSection {...managerProps()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Editar Visa celular' }));
+    fireEvent.change(screen.getByLabelText('Cuenta vinculada'), {
+      target: { value: 'savings' },
+    });
+    H.instruments = [{ ...instrument, accountId: 'savings' }];
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() => expect(
+      screen.getByRole('button', { name: 'Añadir medio' }),
+    ).toHaveFocus());
   });
 
   it('requires an accessible confirmation before deletion', async () => {

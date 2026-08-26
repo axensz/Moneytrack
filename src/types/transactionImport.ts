@@ -9,11 +9,11 @@ export type PaymentInstrumentNetwork =
 
 export interface PaymentInstrument {
   id: string;
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   label: string;
   accountId: string;
   kind: PaymentInstrumentKind;
-  last4: string;
+  last4?: string;
   network: PaymentInstrumentNetwork;
   active: boolean;
   createdAt: Date;
@@ -25,7 +25,7 @@ export type TransactionImportStatus = 'pending' | 'confirmed' | 'dismissed';
 
 interface TransactionImportCandidateBase {
   id: string;
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   source: 'android-notification';
   sourcePackage: string;
   occurredAt: Date;
@@ -33,7 +33,8 @@ interface TransactionImportCandidateBase {
   currency: 'COP';
   merchant: string;
   cardLast4?: string;
-  parserId: 'strict-cop-purchase';
+  observedInstrumentLabel?: string;
+  parserId: 'strict-cop-purchase' | 'google-wallet-purchase';
   parserVersion: 1;
   confidence: TransactionImportConfidence;
 }

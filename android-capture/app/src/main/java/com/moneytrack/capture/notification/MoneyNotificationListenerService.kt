@@ -43,6 +43,10 @@ class MoneyNotificationListenerService : NotificationListenerService() {
             record(CaptureResultCode.PACKAGE_NOT_ALLOWED)
             return
         }
+        if ((event.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
+            record(CaptureResultCode.GROUP_SUMMARY_IGNORED)
+            return
+        }
 
         val user = currentUser()
         val syncDispatcher = user?.let { signedInUser ->

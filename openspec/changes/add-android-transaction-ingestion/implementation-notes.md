@@ -544,3 +544,50 @@ approved design must amend the existing unarchived change before code work.
 - The OpenSpec change remains unarchived. The unavailable 320/expanded emulator
   matrix, current-device reinstall and private 14-day/50-event financial canary
   remain explicit external evidence gates rather than inferred completions.
+
+## 2026-08-25 — Google Wallet parser and safe instrument matching
+
+- The official Google Wallet package now routes to a dedicated fail-closed
+  parser. Both sanitized real fixtures and the Colombian localized separator
+  variant produce schema-v2 candidates; ambiguous, malformed, non-COP,
+  nonpositive, grouped-summary and authentication/reversal inputs produce no
+  candidate. The final Android suite covered the accented `código` marker too.
+- Candidate v2 persists only normalized purchase fields and an optional bounded
+  `observedInstrumentLabel`. Sync-record v3 round-trips the same contract while
+  retaining the legacy v2 local decoder for schema-v1 candidates. Neither raw
+  title/body nor sensitive card/authentication data crosses the repository API.
+- Payment-instrument v2 permits an alias-only `wallet-token`, while a physical
+  card still requires exactly four final digits. Matching uses only active
+  managed instruments, normalizes aliases safely, intersects nickname and
+  last-four evidence when both exist, and returns no suggestion for unknown,
+  duplicate or conflicting evidence.
+- The review UI keeps the observed Wallet hint hidden. A unique match suggests
+  its account; an unknown instrument remains a one-time confirmation unless the
+  user explicitly selects `Recordar este medio de pago`. That remembered mapping
+  is created atomically with the existing authenticated ledger mutation.
+- Firestore emulator verification passed 2 files and 60/60 assertions. The
+  isolated full Vitest rerun passed 163 files and 1,542 tests; the expected
+  emulator-gated 2 files / 60 tests remained skipped there. TypeScript, ESLint
+  and the production Next.js build passed. An earlier parallel run produced four
+  unrelated five-second UI timeouts under CPU contention; all passed when the
+  full suite was rerun alone.
+- Android `clean testDebugUnitTest lintDebug assembleDebug` passed 82 tests across 18
+  suites with zero failures, errors or skips. Lint contains only six pinned-
+  version notices (`GradleDependency` 4, `AndroidGradlePluginVersion` 1 and
+  `OldTargetApi` 1). The debug APK is 9,939,327 bytes with SHA-256
+  `ea29bb0ae8785b7d942ec4f0783a58723f32e834dd882c44648dcd2317d7546f`.
+- Independent review identified and verified five fail-closed refinements: load
+  the complete current instrument collection before confirmation, reject
+  multiple nonempty Wallet body alternatives, constrain observed nicknames to
+  bounded Unicode letters, discard group summaries before delivery identity or
+  extras are read, and align the localized-format plan wording. The follow-up
+  review reported no remaining Critical, Important or Minor finding.
+- Strict OpenSpec validation and `git diff --check` passed. The updated graph
+  contained 4,721 code nodes and 53,115 code edges and reviewed 39 changed files
+  across 24 affected flows at medium aggregate risk (0.65); its Kotlin test-edge
+  inference reported false gaps, so the executed 82-test Gradle result is the
+  authoritative parser/persistence coverage evidence.
+- The APK has only been built locally, not distributed. Compatible web code and
+  Firestore rules must be deployed before this APK is offered. Device matrices,
+  current-phone installation and the private 14-day/50-event financial canary
+  remain open; this OpenSpec change therefore remains unarchived.

@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   getDocFromServer,
+  getDocsFromServer,
   increment,
   serverTimestamp,
 } from 'firebase/firestore';
@@ -17,6 +18,7 @@ import type {
 } from '../../types/transactionImport';
 import { calculateInterest } from '../../utils/interestCalculator';
 import { normalizeLedgerAmount } from '../../utils/ledgerMutation';
+import { matchPaymentInstrument } from '../../utils/paymentInstrumentMatching';
 import {
   decodePaymentInstrument,
   decodeTransactionImportCandidate,
@@ -65,20 +67,16 @@ const loadCandidate = async (
   return decoded.candidate;
 };
 
-const loadInstrument = async (
+const loadInstruments = async (
   userId: string,
-  instrumentId: string,
-): Promise<PaymentInstrument> => {
-  const snapshot = await getDocFromServer(
-    doc(db, 'users', userId, 'paymentInstruments', instrumentId),
-  ) as unknown as ServerDocumentSnapshot;
-  if (!snapshot.exists()) {
-    throw new Error('El medio de pago seleccionado ya no existe. Elige otro.');
-  }
-
-  const decoded = decodePaymentInstrument(snapshot);
-  if (!decoded.ok) throw new Error(decoded.issue.message);
-  return decoded.instrument;
+): Promise<PaymentInstrument[]> => {
+  const snapshot = await getDocsFromServer(
+    collection(db, 'users', userId, 'paymentInstruments'),
+  );
+  const decoded = snapshot.docs.map(decodePaymentInstrument);
+  const issue = decoded.find(result => !result.ok);
+  if (issue && !issue.ok) throw new Error(issue.issue.message);
+  return decoded.flatMap(result => (result.ok ? [result.instrument] : []));
 };
 
 const sameCandidate = (
@@ -94,6 +92,7 @@ const sameCandidate = (
   && current.currency === expected.currency
   && current.merchant === expected.merchant
   && current.cardLast4 === expected.cardLast4
+  && current.observedInstrumentLabel === expected.observedInstrumentLabel
   && current.parserId === expected.parserId
   && current.parserVersion === expected.parserVersion
   && current.confidence === expected.confidence
@@ -151,8 +150,12 @@ const requireReviewedExpense = (
   if (reviewedExpense.paymentInstrumentId && reviewedExpense.rememberInstrument) {
     throw new Error('Elige un medio existente o recuerda uno nuevo, no ambos.');
   }
-  if (reviewedExpense.rememberInstrument && !reviewedExpense.expectedCandidate.cardLast4) {
-    throw new Error('Solo puedes recordar un medio cuando existe una terminación válida.');
+  if (
+    reviewedExpense.rememberInstrument
+    && !reviewedExpense.expectedCandidate.cardLast4
+    && !reviewedExpense.expectedCandidate.observedInstrumentLabel
+  ) {
+    throw new Error('Solo puedes recordar un medio cuando Wallet aporta una referencia válida.');
   }
   return normalizeLedgerAmount(reviewedExpense.amount);
 };
@@ -228,19 +231,26 @@ export async function confirmTransactionImport(
       }
 
       if (reviewedExpense.paymentInstrumentId) {
-        const instrument = await loadInstrument(
-          userId,
-          reviewedExpense.paymentInstrumentId,
+        const currentInstruments = await loadInstruments(userId);
+        const instrument = currentInstruments.find(
+          item => item.id === reviewedExpense.paymentInstrumentId,
         );
+        if (!instrument) {
+          throw new Error('El medio de pago seleccionado ya no existe. Elige otro.');
+        }
         if (!instrument.active) {
           throw new Error('El medio de pago seleccionado está inactivo. Elige otro.');
         }
         if (instrument.accountId !== accountId) {
           throw new Error('El medio de pago cambió de cuenta. Revisa la selección.');
         }
+        const currentMatch = matchPaymentInstrument({
+          cardLast4: currentCandidate.cardLast4,
+          observedInstrumentLabel: currentCandidate.observedInstrumentLabel,
+        }, currentInstruments);
         if (
-          currentCandidate.cardLast4
-          && instrument.last4 !== currentCandidate.cardLast4
+          currentMatch.status !== 'matched'
+          || currentMatch.instrumentId !== instrument.id
         ) {
           throw new Error('El medio de pago ya no coincide con la candidata revisada.');
         }
@@ -323,13 +333,16 @@ export async function confirmTransactionImport(
               { usedCredit: increment(delta) },
             );
           });
-          if (rememberedInstrumentRef && currentCandidate.cardLast4) {
+          if (rememberedInstrumentRef) {
             batch.set(rememberedInstrumentRef, {
-              schemaVersion: 1,
-              label: `Tarjeta •••• ${currentCandidate.cardLast4}`,
+              schemaVersion: 2,
+              label: currentCandidate.observedInstrumentLabel
+                ?? `Tarjeta •••• ${currentCandidate.cardLast4}`,
               accountId,
               kind: 'wallet-token',
-              last4: currentCandidate.cardLast4,
+              ...(currentCandidate.cardLast4
+                ? { last4: currentCandidate.cardLast4 }
+                : {}),
               network: 'unknown',
               active: true,
               createdAt: serverTimestamp(),

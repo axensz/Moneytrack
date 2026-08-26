@@ -7,6 +7,28 @@ import org.junit.Test
 
 class NotificationCaptureCoordinatorTest {
     @Test
+    fun `group summary never inspects raw content or writes a candidate`() {
+        var rawInspected = false
+        val writes = mutableListOf<NormalizedPurchaseCandidate>()
+        val results = mutableListOf<CaptureResultCode>()
+
+        coordinator(writes).process(
+            state = readyState(),
+            installationId = INSTALLATION_ID,
+            event = metadata(isGroupSummary = true),
+            rawProvider = {
+                rawInspected = true
+                raw()
+            },
+            onResult = results::add,
+        )
+
+        assertFalse(rawInspected)
+        assertTrue(writes.isEmpty())
+        assertEquals(listOf(CaptureResultCode.GROUP_SUMMARY_IGNORED), results)
+    }
+
+    @Test
     fun `wrong package never inspects raw content or calls repository`() {
         var rawInspected = false
         val writes = mutableListOf<NormalizedPurchaseCandidate>()
@@ -137,11 +159,13 @@ class NotificationCaptureCoordinatorTest {
         packageName: String = PACKAGE_NAME,
         postedAtEpochMillis: Long = POSTED_AT,
         deliveryStartedAtEpochMillis: Long = postedAtEpochMillis,
+        isGroupSummary: Boolean = false,
     ) = NotificationEventMetadata(
         packageName = packageName,
         notificationKey = "0|$packageName|purchase|42",
         postedAtEpochMillis = postedAtEpochMillis,
         deliveryStartedAtEpochMillis = deliveryStartedAtEpochMillis,
+        isGroupSummary = isGroupSummary,
     )
 
     private fun raw(

@@ -75,7 +75,7 @@ export function PaymentInstrumentForm({
       setError('Selecciona la cuenta o tarjeta vinculada.');
       return;
     }
-    if (!/^\d{4}$/.test(last4)) {
+    if ((kind === 'physical-card' || last4.length > 0) && !/^\d{4}$/.test(last4)) {
       setError('Ingresa exactamente 4 dígitos.');
       return;
     }
@@ -89,7 +89,7 @@ export function PaymentInstrumentForm({
         label: normalizedLabel,
         accountId,
         kind,
-        last4,
+        last4: last4 || undefined,
         network,
       });
       if (!mountedRef.current) return;
@@ -184,6 +184,11 @@ export function PaymentInstrumentForm({
             )}
             placeholder="0000"
           />
+          {kind === 'wallet-token' && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Opcional si Wallet solo muestra el apodo.
+            </p>
+          )}
         </div>
       </div>
 

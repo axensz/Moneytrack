@@ -148,6 +148,54 @@ describe('TransactionImportReviewModal', () => {
     expect(screen.getByText(/elige la cuenta que realmente pagó/i)).toBeInTheDocument();
   });
 
+  it('suggests an account from a Wallet nickname without displaying that hint', () => {
+    const walletCandidate: PendingTransactionImportCandidate = {
+      ...candidate,
+      schemaVersion: 2,
+      sourcePackage: 'com.google.android.apps.walletnfcrel',
+      cardLast4: undefined,
+      observedInstrumentLabel: 'Oro',
+      parserId: 'google-wallet-purchase',
+      confidence: 'medium',
+    };
+    renderModal({
+      currentCandidate: walletCandidate,
+      instruments: [{
+        ...instrument(),
+        schemaVersion: 2,
+        label: 'oro',
+        last4: undefined,
+      }],
+    });
+
+    expect(screen.getByLabelText('Cuenta')).toHaveValue('card');
+    expect(screen.getByText('Cuenta sugerida automáticamente.')).toBeInTheDocument();
+    expect(screen.queryByText(/^Oro$/i)).not.toBeInTheDocument();
+  });
+
+  it('does not suggest or remember when Wallet evidence conflicts', () => {
+    const walletCandidate: PendingTransactionImportCandidate = {
+      ...candidate,
+      schemaVersion: 2,
+      sourcePackage: 'com.google.android.apps.walletnfcrel',
+      observedInstrumentLabel: 'Oro',
+      parserId: 'google-wallet-purchase',
+      confidence: 'medium',
+    };
+    renderModal({
+      currentCandidate: walletCandidate,
+      instruments: [
+        { ...instrument(), schemaVersion: 2, label: 'Oro', last4: '9999' },
+        { ...instrument('instrument-2', 'savings'), last4: '1234' },
+      ],
+    });
+
+    expect(screen.getByLabelText('Cuenta')).toHaveValue('');
+    expect(screen.getByText(/datos de wallet no coinciden/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Recordar este medio de pago')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Oro$/i)).not.toBeInTheDocument();
+  });
+
   it('preserves review edits while instrument suggestions refresh', () => {
     const { rerender } = renderModal();
     fireEvent.change(screen.getByLabelText('Categoría'), {
@@ -284,7 +332,7 @@ describe('TransactionImportReviewModal', () => {
     }));
   });
 
-  it('offers remembering only when last4 exists and no active instrument matches', () => {
+  it('offers remembering for unknown last4 or Wallet nickname evidence', () => {
     const { rerender } = renderModal({ instruments: [] });
     expect(screen.getByLabelText('Recordar este medio de pago')).toBeInTheDocument();
 
@@ -292,7 +340,15 @@ describe('TransactionImportReviewModal', () => {
       <TransactionImportReviewModal
         isOpen
         userId="owner"
-        candidate={{ ...candidate, cardLast4: undefined }}
+        candidate={{
+          ...candidate,
+          schemaVersion: 2,
+          sourcePackage: 'com.google.android.apps.walletnfcrel',
+          cardLast4: undefined,
+          observedInstrumentLabel: 'MamáDébito',
+          parserId: 'google-wallet-purchase',
+          confidence: 'medium',
+        }}
         accounts={accounts}
         expenseCategories={['Alimentación']}
         instruments={[]}
@@ -301,7 +357,40 @@ describe('TransactionImportReviewModal', () => {
         onConfirmed={vi.fn()}
       />,
     );
-    expect(screen.queryByLabelText('Recordar este medio de pago')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Recordar este medio de pago')).toBeInTheDocument();
+  });
+
+  it('remembers unknown Wallet evidence only when the user selects it', async () => {
+    const walletCandidate: PendingTransactionImportCandidate = {
+      ...candidate,
+      schemaVersion: 2,
+      sourcePackage: 'com.google.android.apps.walletnfcrel',
+      cardLast4: undefined,
+      observedInstrumentLabel: 'Oro',
+      parserId: 'google-wallet-purchase',
+      confidence: 'medium',
+    };
+    renderModal({ currentCandidate: walletCandidate, instruments: [] });
+    fireEvent.change(screen.getByLabelText('Cuenta'), {
+      target: { value: 'savings' },
+    });
+    fireEvent.change(screen.getByLabelText('Categoría'), {
+      target: { value: 'Alimentación' },
+    });
+    fireEvent.click(screen.getByLabelText('Recordar este medio de pago'));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar gasto' }));
+
+    await waitFor(() => expect(C.confirm).toHaveBeenCalledTimes(1));
+    const [, , expense] = C.confirm.mock.calls[0] as unknown as [
+      string,
+      string,
+      ReviewedTransactionImportExpense,
+    ];
+    expect(expense).toEqual(expect.objectContaining({
+      accountId: 'savings',
+      paymentInstrumentId: undefined,
+      rememberInstrument: true,
+    }));
   });
 
   it('blocks financial confirmation offline while preserving the reviewed form', () => {

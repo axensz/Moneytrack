@@ -20,6 +20,10 @@ _Avoid_: Cuenta, TC
 Nombre corto elegido por la persona para reconocer un medio de pago, por ejemplo `Oro` o `Nu`. Ayuda a presentar una recomendación, pero no identifica por sí solo una cuenta contable.
 _Avoid_: Nombre de cuenta, banco, identidad de tarjeta
 
+**Apodo observado en Wallet**:
+Texto acotado que Google Wallet muestra junto al monto de una compra, por ejemplo `Oro` o `MamáDébito`. Es una pista no confiable hasta que coincide de forma inequívoca con el alias de un medio `wallet-token` administrado; observarlo nunca demuestra propiedad ni crea una asociación.
+_Avoid_: Alias confirmado, cuenta sugerida, tarjeta propia
+
 **Terminación del medio de pago**:
 Últimos cuatro dígitos de un plástico o token de wallet, conservados como identificador mínimo para buscar una coincidencia inequívoca. No es el número completo de la tarjeta ni pertenece a la cuenta contable.
 _Avoid_: Número de tarjeta, últimos cuatro de la cuenta

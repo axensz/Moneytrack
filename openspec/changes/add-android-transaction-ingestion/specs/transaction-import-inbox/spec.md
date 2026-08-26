@@ -27,11 +27,11 @@ El sistema MUST consultar como máximo los 100 candidatos pendientes más recien
 - **THEN** la vista muestra una alerta reparable independiente sin montar una bandeja vacía
 
 #### Scenario: Mostrar una relación inequívoca
-- **WHEN** la terminación del candidato coincide con un único medio activo
+- **WHEN** el apodo y/o la terminación del candidato resuelven un único medio activo sin conflicto
 - **THEN** la fila muestra el canal `Android` y la cuenta vinculada en lugar del alias o metadatos técnicos del parser
 
 #### Scenario: No existe una relación inequívoca
-- **WHEN** la terminación no coincide o coincide con más de un medio activo
+- **WHEN** las señales no coinciden, coinciden con más de un medio o apuntan a medios diferentes
 - **THEN** la fila muestra solo `Android` y no inventa una cuenta recomendada
 
 #### Scenario: Documento inválido
@@ -58,8 +58,12 @@ El sistema MUST exigir una cuenta y categoría válidas, permitir corregir monto
 - **THEN** el campo elimina los caracteres ajenos, presenta el valor en formato colombiano y confirma únicamente el valor visible normalizado
 
 #### Scenario: Recordar un medio nuevo
-- **WHEN** un candidato incluye últimos cuatro sin coincidencia y el usuario selecciona una cuenta y “Recordar este medio de pago”
-- **THEN** la confirmación crea el medio mínimo y lo vincula a esa cuenta dentro de la misma operación
+- **WHEN** un candidato incluye apodo observado y/o últimos cuatro sin coincidencia, y el usuario selecciona una cuenta y “Recordar este medio de pago”
+- **THEN** la confirmación crea explícitamente un `wallet-token` v2 mínimo y lo vincula a esa cuenta dentro de la misma operación
+
+#### Scenario: Confirmar una compra de un medio desconocido sin recordarlo
+- **WHEN** el apodo corresponde a una tarjeta ajena o ausente de Moneytrack y la persona selecciona una cuenta solo para esta compra sin marcar “Recordar”
+- **THEN** el sistema puede confirmar el gasto revisado, pero no crea ni modifica un medio de pago
 
 ### Requirement: La confirmación es servidor-actual, atómica e idempotente
 El sistema MUST confirmar mediante la frontera contable autenticada con `operationId` y documento `ledger-mutation:android:<candidateId>`, MUST usar `mutationSource: android` y MUST escribir transacción, autoridad de crédito, medio recordado, estado del candidato y liberación del lease en un único batch.

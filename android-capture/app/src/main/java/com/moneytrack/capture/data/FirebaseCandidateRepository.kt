@@ -58,7 +58,7 @@ class FirebaseCandidateRepository(
         onResult: (CandidateWriteResult) -> Unit,
     ) {
         val fields = buildMap<String, Any> {
-            put("schemaVersion", 1L)
+            put("schemaVersion", candidate.schemaVersion.toLong())
             put("source", "android-notification")
             put("sourcePackage", candidate.sourcePackage)
             put("occurredAt", Timestamp(Date(candidate.occurredAtEpochMillis)))
@@ -66,6 +66,7 @@ class FirebaseCandidateRepository(
             put("currency", candidate.currency)
             put("merchant", candidate.merchant)
             candidate.cardLast4?.let { put("cardLast4", it) }
+            candidate.observedInstrumentLabel?.let { put("observedInstrumentLabel", it) }
             put("parserId", candidate.parserId)
             put("parserVersion", candidate.parserVersion.toLong())
             put("confidence", candidate.confidence.wireValue)

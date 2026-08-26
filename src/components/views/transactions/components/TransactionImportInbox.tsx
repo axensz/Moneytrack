@@ -132,7 +132,10 @@ export function TransactionImportInbox({
           ) : (
             <div className="mt-4 divide-y divide-border rounded-xl border border-border">
               {candidates.map(candidate => {
-                const match = matchPaymentInstrument(candidate.cardLast4, instruments);
+                const match = matchPaymentInstrument({
+                  cardLast4: candidate.cardLast4,
+                  observedInstrumentLabel: candidate.observedInstrumentLabel,
+                }, instruments);
                 const account = match.status === 'matched'
                   ? accounts.find(current => current.id === match.accountId)
                   : undefined;

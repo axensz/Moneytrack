@@ -75,6 +75,28 @@ const validPendingCandidate = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const withoutLast4 = (value: Record<string, unknown>) => {
+  const result = { ...value };
+  delete result.last4;
+  return result;
+};
+
+const validWalletCandidate = (overrides: Record<string, unknown> = {}) => ({
+  schemaVersion: 2,
+  source: 'android-notification',
+  sourcePackage: 'com.google.android.apps.walletnfcrel',
+  occurredAt: new Date('2026-08-25T13:00:00.000Z'),
+  amountMinor: 260_000,
+  currency: 'COP',
+  merchant: 'OXXO EDS PORTAL DE NIQ',
+  observedInstrumentLabel: 'Oro',
+  parserId: 'google-wallet-purchase',
+  parserVersion: 1,
+  confidence: 'medium',
+  status: 'pending',
+  ...overrides,
+});
+
 const seedAccount = async (
   accountId = 'account-1',
   overrides: Record<string, unknown> = {},
@@ -219,6 +241,28 @@ describeWithFirestoreEmulator('Android transaction import rules contract', () =>
     await assertSucceeds(deleteDoc(instrumentRef('instrument-1')));
   });
 
+  it('allows a v2 Wallet token identified only by its nickname', async () => {
+    await seedAccount();
+    const wallet = withoutLast4(validInstrument({
+      schemaVersion: 2,
+      label: 'Oro',
+    }));
+
+    await assertSucceeds(setDoc(instrumentRef('wallet-alias'), wallet));
+  });
+
+  it('requires last four for v1 and physical-card instruments', async () => {
+    await seedAccount();
+    const legacy = withoutLast4(validInstrument());
+    const physical = withoutLast4(validInstrument({
+      schemaVersion: 2,
+      kind: 'physical-card',
+    }));
+
+    await assertFails(setDoc(instrumentRef('legacy-no-last4'), legacy));
+    await assertFails(setDoc(instrumentRef('physical-no-last4'), physical));
+  });
+
   it.each([
     ['missing account', { accountId: 'absent' }],
     ['invalid digits', { last4: '12a4' }],
@@ -262,9 +306,42 @@ describeWithFirestoreEmulator('Android transaction import rules contract', () =>
     ));
   });
 
+  it('creates an exact Wallet v2 candidate without granting nickname authority', async () => {
+    const candidate = validWalletCandidate({ observedInstrumentLabel: 'MamáDébito' });
+    await assertSucceeds(setDoc(candidateRef(), candidate));
+    await assertSucceeds(setDoc(candidateRef(), candidate));
+  });
+
+  it.each([
+    ['legacy schema with Wallet parser', validPendingCandidate({
+      parserId: 'google-wallet-purchase',
+    })],
+    ['Wallet schema with generic parser', validWalletCandidate({
+      parserId: 'strict-cop-purchase',
+    })],
+    ['Wallet schema with another package', validWalletCandidate({
+      sourcePackage: 'com.example.wallet',
+    })],
+    ['overlong observed nickname', validWalletCandidate({
+      observedInstrumentLabel: 'a'.repeat(25),
+    })],
+    ['punctuated observed nickname', validWalletCandidate({
+      observedInstrumentLabel: 'Oro-2',
+    })],
+    ['controlled observed nickname', validWalletCandidate({
+      observedInstrumentLabel: 'Oro\u0000',
+    })],
+    ['non-normalized observed nickname', validWalletCandidate({
+      observedInstrumentLabel: 'Mama\u0301Debito',
+    })],
+    ['raw notification text', validWalletCandidate({ text: 'raw' })],
+  ])('rejects an invalid v1 or v2 candidate contract: %s', async (_name, data) => {
+    await assertFails(setDoc(candidateRef(), data));
+  });
+
   it.each([
     ['non-pending state', { status: 'confirmed' }],
-    ['unknown schema', { schemaVersion: 2 }],
+    ['unknown schema', { schemaVersion: 3 }],
     ['invalid amount', { amountMinor: 0 }],
     ['fractional amount', { amountMinor: 1.5 }],
     ['other currency', { currency: 'USD' }],

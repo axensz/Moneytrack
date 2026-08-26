@@ -346,7 +346,8 @@ class CapturePreferences private constructor(
         private const val NOTIFICATION_DELIVERY_PREFIX = "notification_delivery."
         private const val NOTIFICATION_DELIVERY_CANDIDATE_PREFIX =
             "notification_delivery_candidate."
-        private const val SYNC_RECORD_VERSION = "2"
+        private const val SYNC_RECORD_VERSION = "3"
+        private const val LEGACY_SYNC_RECORD_VERSION = "2"
         private const val MAX_SYNC_SCOPE_LENGTH = 128
         private const val MAX_PACKAGE_LENGTH = 160
         private const val MAX_LABEL_LENGTH = 80
@@ -409,37 +410,71 @@ class CapturePreferences private constructor(
             record.candidate.amountMinor.toString(),
             encodeText(record.candidate.merchant),
             record.candidate.cardLast4.orEmpty(),
+            record.candidate.observedInstrumentLabel?.let(::encodeText).orEmpty(),
+            record.candidate.schemaVersion.toString(),
+            encodeText(record.candidate.parserId),
+            record.candidate.parserVersion.toString(),
             record.candidate.confidence.wireValue,
         ).joinToString("|")
 
         private fun decodeRecord(value: String): CandidateSyncRecord? {
             return try {
                 val parts = value.split('|')
-                if (
-                    parts.size != 10 ||
-                    parts[0] != SYNC_RECORD_VERSION ||
-                    !DELIVERY_HASH.matches(parts[1])
-                ) return null
-                val state = CandidateSyncState.fromWireValue(parts[3]) ?: return null
-                val confidence = PurchaseConfidence.entries
-                    .firstOrNull { it.wireValue == parts[9] }
-                    ?: return null
-                CandidateSyncRecord(
-                    syncScopeHash = parts[1],
-                    candidate = NormalizedPurchaseCandidate(
-                        candidateId = parts[2],
-                        sourcePackage = decodeText(parts[4]),
-                        occurredAtEpochMillis = parts[5].toLong(),
-                        amountMinor = parts[6].toLong(),
-                        merchant = decodeText(parts[7]),
-                        cardLast4 = parts[8].ifEmpty { null },
-                        confidence = confidence,
-                    ),
-                    state = state,
-                )
+                when (parts.firstOrNull()) {
+                    SYNC_RECORD_VERSION -> decodeCurrentRecord(parts)
+                    LEGACY_SYNC_RECORD_VERSION -> decodeLegacyRecord(parts)
+                    else -> null
+                }
             } catch (_: IllegalArgumentException) {
                 null
             }
+        }
+
+        private fun decodeCurrentRecord(parts: List<String>): CandidateSyncRecord? {
+            if (parts.size != 14 || !DELIVERY_HASH.matches(parts[1])) return null
+            val state = CandidateSyncState.fromWireValue(parts[3]) ?: return null
+            val confidence = PurchaseConfidence.entries
+                .firstOrNull { it.wireValue == parts[13] }
+                ?: return null
+            return CandidateSyncRecord(
+                syncScopeHash = parts[1],
+                candidate = NormalizedPurchaseCandidate(
+                    candidateId = parts[2],
+                    schemaVersion = parts[10].toInt(),
+                    sourcePackage = decodeText(parts[4]),
+                    occurredAtEpochMillis = parts[5].toLong(),
+                    amountMinor = parts[6].toLong(),
+                    merchant = decodeText(parts[7]),
+                    cardLast4 = parts[8].ifEmpty { null },
+                    observedInstrumentLabel = parts[9].takeIf(String::isNotEmpty)
+                        ?.let(::decodeText),
+                    parserId = decodeText(parts[11]),
+                    parserVersion = parts[12].toInt(),
+                    confidence = confidence,
+                ),
+                state = state,
+            )
+        }
+
+        private fun decodeLegacyRecord(parts: List<String>): CandidateSyncRecord? {
+            if (parts.size != 10 || !DELIVERY_HASH.matches(parts[1])) return null
+            val state = CandidateSyncState.fromWireValue(parts[3]) ?: return null
+            val confidence = PurchaseConfidence.entries
+                .firstOrNull { it.wireValue == parts[9] }
+                ?: return null
+            return CandidateSyncRecord(
+                syncScopeHash = parts[1],
+                candidate = NormalizedPurchaseCandidate(
+                    candidateId = parts[2],
+                    sourcePackage = decodeText(parts[4]),
+                    occurredAtEpochMillis = parts[5].toLong(),
+                    amountMinor = parts[6].toLong(),
+                    merchant = decodeText(parts[7]),
+                    cardLast4 = parts[8].ifEmpty { null },
+                    confidence = confidence,
+                ),
+                state = state,
+            )
         }
 
         private fun encodeText(value: String): String = Base64.getUrlEncoder()

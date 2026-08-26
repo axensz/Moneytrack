@@ -42,6 +42,28 @@ const validPendingCandidate = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const withoutLast4 = (value: Record<string, unknown>) => {
+  const result = { ...value };
+  delete result.last4;
+  return result;
+};
+
+const validWalletCandidate = (overrides: Record<string, unknown> = {}) => ({
+  schemaVersion: 2,
+  source: 'android-notification',
+  sourcePackage: 'com.google.android.apps.walletnfcrel',
+  occurredAt: timestamp('2026-08-25T13:00:00.000Z'),
+  amountMinor: 260_000,
+  currency: 'COP',
+  merchant: 'OXXO EDS PORTAL DE NIQ',
+  observedInstrumentLabel: 'Oro',
+  parserId: 'google-wallet-purchase',
+  parserVersion: 1,
+  confidence: 'medium',
+  status: 'pending',
+  ...overrides,
+});
+
 const pendingCandidateId = 'a'.repeat(64);
 const mediumCandidateId = 'b'.repeat(64);
 const confirmedCandidateId = 'c'.repeat(64);
@@ -74,8 +96,45 @@ describe('transactionImportDecoder', () => {
       });
     });
 
+    it('decodes a v2 Wallet token identified only by its nickname', () => {
+      const data = withoutLast4(validInstrument({
+        schemaVersion: 2,
+        label: 'Oro',
+      }));
+
+      expect(decodePaymentInstrument(document('wallet-alias', data))).toEqual({
+        ok: true,
+        instrument: {
+          id: 'wallet-alias',
+          schemaVersion: 2,
+          label: 'Oro',
+          accountId: 'credit-account-1',
+          kind: 'wallet-token',
+          network: 'visa',
+          active: true,
+          createdAt: new Date('2026-08-25T12:00:00.000Z'),
+          updatedAt: new Date('2026-08-25T12:01:00.000Z'),
+        },
+      });
+    });
+
+    it('requires last four for v1 and physical-card instruments', () => {
+      const legacy = withoutLast4(validInstrument());
+      const physical = withoutLast4(validInstrument({
+        schemaVersion: 2,
+        kind: 'physical-card',
+      }));
+
+      for (const [id, data] of [['legacy', legacy], ['physical', physical]] as const) {
+        expect(decodePaymentInstrument(document(id, data))).toEqual({
+          ok: false,
+          issue: expect.objectContaining({ field: 'last4' }),
+        });
+      }
+    });
+
     it.each([
-      ['schemaVersion', { schemaVersion: 2 }],
+      ['schemaVersion', { schemaVersion: 3 }],
       ['label', { label: '' }],
       ['label', { label: 'x'.repeat(81) }],
       ['accountId', { accountId: '   ' }],
@@ -163,6 +222,51 @@ describe('transactionImportDecoder', () => {
         }),
       });
       if (result.ok) expect(result.candidate).not.toHaveProperty('cardLast4');
+    });
+
+    it('decodes a Wallet v2 candidate with an observed nickname hint', () => {
+      const result = decodeTransactionImportCandidate(
+        document(mediumCandidateId, validWalletCandidate()),
+      );
+
+      expect(result).toEqual({
+        ok: true,
+        candidate: expect.objectContaining({
+          id: mediumCandidateId,
+          schemaVersion: 2,
+          sourcePackage: 'com.google.android.apps.walletnfcrel',
+          amountMinor: 260_000,
+          observedInstrumentLabel: 'Oro',
+          parserId: 'google-wallet-purchase',
+          parserVersion: 1,
+          confidence: 'medium',
+          status: 'pending',
+        }),
+      });
+    });
+
+    it('rejects mixed candidate schema and parser contracts', () => {
+      for (const [id, data] of [
+        ['1'.repeat(64), validPendingCandidate({ parserId: 'google-wallet-purchase' })],
+        ['2'.repeat(64), validWalletCandidate({ parserId: 'strict-cop-purchase' })],
+      ] as const) {
+        expect(decodeTransactionImportCandidate(document(id, data))).toEqual({
+          ok: false,
+          issue: expect.objectContaining({ field: 'parserId' }),
+        });
+      }
+    });
+
+    it('rejects an overlong observed Wallet nickname', () => {
+      const result = decodeTransactionImportCandidate(document(
+        mediumCandidateId,
+        validWalletCandidate({ observedInstrumentLabel: 'a'.repeat(25) }),
+      ));
+
+      expect(result).toEqual({
+        ok: false,
+        issue: expect.objectContaining({ field: 'observedInstrumentLabel' }),
+      });
     });
 
     it('decodes only the fields allowed for each terminal state', () => {

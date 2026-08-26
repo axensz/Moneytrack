@@ -8,6 +8,8 @@ import { SPECIAL_CATEGORIES } from '../config/constants';
 import { formatCurrency } from '../utils/formatters';
 import type { Transaction, Budget, Notification, NotificationPreferences } from '../types/finance';
 import { viewActionUrl } from '../hooks/useViewRouting';
+import { localDateKey } from '../utils/dateUtils';
+import { buildBudgetEventKey, getCanonicalEventRevision } from '../utils/notificationEventLifecycle';
 
 export interface BudgetUtilization {
     budgetId: string;
@@ -27,6 +29,7 @@ interface BudgetMonitorDeps {
 export class BudgetMonitor {
     public deps: BudgetMonitorDeps;
     private utilizationCache: Map<string, { utilization: BudgetUtilization; timestamp: number }> = new Map();
+    private budgetEventRevisions: Map<string, number> = new Map();
     private readonly CACHE_TTL_MS = 30000; // 30 seconds
 
     constructor(deps: BudgetMonitorDeps) {
@@ -141,67 +144,49 @@ export class BudgetMonitor {
      * Check if utilization crosses any thresholds and generate alerts
      */
     private async checkThresholds(utilization: BudgetUtilization): Promise<void> {
+        if (!this.deps.preferences.enabled.budget) return;
+
         const { thresholds } = this.deps.preferences;
         const { percentage, category, budgetId, spent, limit } = utilization;
+        const stage = percentage >= thresholds.budgetExceeded
+            ? 'exceeded'
+            : percentage >= thresholds.budgetCritical
+                ? 'critical'
+                : percentage >= thresholds.budgetWarning
+                    ? 'warning'
+                    : null;
+        if (!stage) return;
 
-        // Check exceeded threshold (100% or custom)
-        if (percentage >= thresholds.budgetExceeded) {
-            await this.deps.createNotification({
-                type: 'budget',
-                title: `Presupuesto excedido: ${category}`,
-                message: `Has gastado ${formatCurrency(spent)} de ${formatCurrency(limit)} (${Math.round(percentage)}%)`,
-                severity: 'error',
-                isRead: false,
-                actionUrl: viewActionUrl('budgets'),
-                metadata: {
-                    budgetId,
-                    categoryName: category,
-                    percentage: Math.round(percentage),
-                    amount: spent,
-                    threshold: limit,
-                },
-            });
-            return;
-        }
+        const eventKey = buildBudgetEventKey(budgetId, localDateKey().slice(0, 7));
+        const revision = getCanonicalEventRevision({ eventKey, stage, stageWindow: stage });
+        if (revision === null || revision <= (this.budgetEventRevisions.get(eventKey) ?? 0)) return;
 
-        // Check critical threshold (90% or custom)
-        if (percentage >= thresholds.budgetCritical) {
-            await this.deps.createNotification({
-                type: 'budget',
-                title: `Alerta crítica: ${category}`,
-                message: `Has gastado ${formatCurrency(spent)} de ${formatCurrency(limit)} (${Math.round(percentage)}%)`,
-                severity: 'warning',
-                isRead: false,
-                actionUrl: viewActionUrl('budgets'),
-                metadata: {
-                    budgetId,
-                    categoryName: category,
-                    percentage: Math.round(percentage),
-                    amount: spent,
-                    threshold: limit,
-                },
-            });
-            return;
-        }
-
-        // Check warning threshold (80% or custom)
-        if (percentage >= thresholds.budgetWarning) {
-            await this.deps.createNotification({
-                type: 'budget',
-                title: `Advertencia: ${category}`,
-                message: `Has gastado ${formatCurrency(spent)} de ${formatCurrency(limit)} (${Math.round(percentage)}%)`,
-                severity: 'warning',
-                isRead: false,
-                actionUrl: viewActionUrl('budgets'),
-                metadata: {
-                    budgetId,
-                    categoryName: category,
-                    percentage: Math.round(percentage),
-                    amount: spent,
-                    threshold: limit,
-                },
-            });
-        }
+        await this.deps.createNotification({
+            type: 'budget',
+            title: stage === 'exceeded'
+                ? `Presupuesto excedido: ${category}`
+                : stage === 'critical'
+                    ? `Alerta crítica: ${category}`
+                    : `Advertencia: ${category}`,
+            message: `Has gastado ${formatCurrency(spent)} de ${formatCurrency(limit)} (${Math.round(percentage)}%)`,
+            severity: stage === 'exceeded' ? 'error' : 'warning',
+            isRead: false,
+            actionUrl: viewActionUrl('budgets'),
+            metadata: {
+                budgetId,
+                categoryName: category,
+                percentage: Math.round(percentage),
+                amount: spent,
+                threshold: limit,
+            },
+            schemaVersion: 2,
+            eventKey,
+            revision,
+            stage,
+            stageWindow: stage,
+            lifecycleStatus: 'active',
+        });
+        this.budgetEventRevisions.set(eventKey, revision);
     }
 
 

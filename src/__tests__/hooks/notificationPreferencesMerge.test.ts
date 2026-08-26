@@ -5,16 +5,23 @@
  * quietHours.enabled / enabled[tipo] sobre undefined → TypeError al crear
  * cualquier notificación.
  */
+import { act, renderHook } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 
 // Neutralizar las importaciones de firebase del módulo (withDefaults no las usa).
 vi.mock('../../lib/firebaseDb', () => ({ db: {} }));
 vi.mock('firebase/firestore', () => ({ doc: vi.fn(), onSnapshot: vi.fn(), setDoc: vi.fn() }));
 
-import { withDefaults } from '../../hooks/useNotificationPreferences';
+import { useNotificationPreferences, withDefaults } from '../../hooks/useNotificationPreferences';
 import type { PartialNotificationPreferences } from '../../hooks/useNotificationPreferences';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../../types/finance';
 import type { NotificationPreferences } from '../../types/finance';
+
+const invalidBudgetThresholds: Array<[Partial<NotificationPreferences['thresholds']>, string]> = [
+  [{ budgetWarning: 90, budgetCritical: 90 }, 'Budget warning threshold must be lower than critical'],
+  [{ budgetCritical: 101, budgetExceeded: 100 }, 'Budget critical threshold must be at most budget exceeded'],
+  [{ budgetExceeded: 99 }, 'Budget exceeded threshold must be at least 100'],
+];
 
 describe('useNotificationPreferences — withDefaults (#1 anti-crash)', () => {
   it('rellena los objetos anidados ausentes de un doc legacy', () => {
@@ -60,6 +67,14 @@ describe('useNotificationPreferences — withDefaults (#1 anti-crash)', () => {
     expect(merged.quietHours).toEqual({ ...DEFAULT_NOTIFICATION_PREFERENCES.quietHours, startHour: 21 });
     expect(merged.browserNotifications).toEqual({ enabled: true });
     expect(merged.dailyExpenseReminder).toEqual({ ...DEFAULT_NOTIFICATION_PREFERENCES.dailyExpenseReminder, minute: 15 });
+  });
+
+  it.each(invalidBudgetThresholds)('rechaza al persistir umbrales de presupuesto no ordenados: %o', async (thresholds, message) => {
+    const { result } = renderHook(() => useNotificationPreferences(null, DEFAULT_NOTIFICATION_PREFERENCES));
+
+    await act(async () => {
+      await expect(result.current.updatePreferences({ thresholds })).rejects.toThrow(message);
+    });
   });
 
 });

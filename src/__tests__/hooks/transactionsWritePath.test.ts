@@ -246,6 +246,16 @@ afterEach(() => {
 
 describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
   describe('addTransaction', () => {
+    it('omite toAccountId cuando no hay cuenta destino antes de escribir en Firestore', async () => {
+      seedAccount(savings);
+      const crud = renderCRUD([]);
+
+      await crud.current.addTransaction(makeTx({ type: 'expense', accountId: 'sav' }));
+
+      expect(sets()).toHaveLength(1);
+      expect(sets()[0].data).not.toHaveProperty('toAccountId');
+    });
+
     it('rejects a non-transfer with toAccountId instead of persisting half a card payment', async () => {
       seedAccount(savings);
       seedAccount(credit);

@@ -540,8 +540,7 @@ export function useTransactionsCRUD(
               context,
               writeCount: 1 + creditChanges.length,
               stage: (batch) => {
-                const persistedTransaction = { ...normalizedTransaction };
-                delete persistedTransaction.id;
+                const persistedTransaction = stripUndefined({ ...normalizedTransaction, id: undefined });
                 batch.set(transactionRef, persistedTransaction);
                 creditChanges.forEach(({ accountId, delta }) => {
                   batch.update(doc(db, `users/${userId}/accounts`, accountId), {

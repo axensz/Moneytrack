@@ -81,6 +81,21 @@ describe('BudgetMonitor — umbrales de presupuesto (A3)', () => {
     expect(createNotification).not.toHaveBeenCalled();
   });
 
+  it('no registra una etapa mientras las alertas de presupuesto están deshabilitadas', async () => {
+    const { monitor, createNotification } = setup([budget()], [tx(100_000)]);
+    monitor.updateDeps({
+      ...monitor.deps,
+      preferences: {
+        ...monitor.deps.preferences,
+        enabled: { ...monitor.deps.preferences.enabled, budget: false },
+      },
+    });
+
+    await monitor.evaluateBudgetAlerts(tx(1));
+
+    expect(createNotification).not.toHaveBeenCalled();
+  });
+
   it('invalida la cache cuando cambian las transacciones de sus dependencias', () => {
     const { monitor } = setup([budget()], [tx(79_000)]);
 
@@ -92,5 +107,44 @@ describe('BudgetMonitor — umbrales de presupuesto (A3)', () => {
     });
 
     expect(monitor.calculateBudgetUtilization('b1').spent).toBe(81_000);
+  });
+
+  it('avanza una sola vez por etapa para el mismo presupuesto/mes', async () => {
+    const { monitor, createNotification } = setup([budget()], [tx(80_000)]);
+
+    await monitor.evaluateBudgetAlerts(tx(1));
+    monitor.updateDeps({ ...monitor.deps, transactions: [tx(90_000)] });
+    await monitor.evaluateBudgetAlerts(tx(1));
+    monitor.updateDeps({ ...monitor.deps, transactions: [tx(80_000)] });
+    await monitor.evaluateBudgetAlerts(tx(1));
+    monitor.updateDeps({ ...monitor.deps, transactions: [tx(90_000)] });
+    await monitor.evaluateBudgetAlerts(tx(1));
+    monitor.updateDeps({ ...monitor.deps, transactions: [tx(100_000)] });
+    await monitor.evaluateBudgetAlerts(tx(1));
+    await monitor.evaluateBudgetAlerts(tx(1));
+
+    expect(createNotification).toHaveBeenCalledTimes(3);
+    expect(createNotification.mock.calls.map(([notification]) => notification)).toEqual([
+      expect.objectContaining({
+        schemaVersion: 2,
+        eventKey: 'budget:b1:2026-06',
+        revision: 1,
+        stage: 'warning',
+        stageWindow: 'warning',
+      }),
+      expect.objectContaining({
+        eventKey: 'budget:b1:2026-06',
+        revision: 2,
+        stage: 'critical',
+        stageWindow: 'critical',
+      }),
+      expect.objectContaining({
+        eventKey: 'budget:b1:2026-06',
+        revision: 3,
+        stage: 'exceeded',
+        stageWindow: 'exceeded',
+      }),
+    ]);
+    expect(createNotification.mock.calls[0][0].eventKey).not.toBe('daily-expense:2026-06-15');
   });
 });

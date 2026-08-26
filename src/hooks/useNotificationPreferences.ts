@@ -40,6 +40,35 @@ export function withDefaults(p?: PartialNotificationPreferences | null): Notific
     };
 }
 
+export function validateNotificationThresholds(thresholds: NotificationPreferences['thresholds']): void {
+    const { budgetWarning, budgetCritical, budgetExceeded, unusualSpending, lowBalance } = thresholds;
+
+    if (budgetWarning >= budgetCritical) {
+        throw new Error('Budget warning threshold must be lower than critical');
+    }
+    if (budgetCritical > budgetExceeded) {
+        throw new Error('Budget critical threshold must be at most budget exceeded');
+    }
+    if (budgetExceeded < 100) {
+        throw new Error('Budget exceeded threshold must be at least 100');
+    }
+    if (budgetWarning < 0 || budgetWarning > 100) {
+        throw new Error('Budget warning threshold must be between 0 and 100');
+    }
+    if (budgetCritical < 0 || budgetCritical > 100) {
+        throw new Error('Budget critical threshold must be between 0 and 100');
+    }
+    if (budgetExceeded > 200) {
+        throw new Error('Budget exceeded threshold must be between 0 and 200');
+    }
+    if (unusualSpending < 100 || unusualSpending > 1000) {
+        throw new Error('Unusual spending threshold must be between 100 and 1000');
+    }
+    if (lowBalance < 0) {
+        throw new Error('Low balance threshold must be positive');
+    }
+}
+
 export function useNotificationPreferences(userId: string | null, externalPreferences?: NotificationPreferences) {
     // Firestore state
     const [firestorePreferences, setFirestorePreferences] = useState<NotificationPreferences>(
@@ -105,26 +134,10 @@ export function useNotificationPreferences(userId: string | null, externalPrefer
 
     // Update preferences
     const updatePreferences = useCallback(
-        async (updates: Partial<NotificationPreferences>) => {
+        async (updates: PartialNotificationPreferences) => {
             // Validate thresholds
             if (updates.thresholds) {
-                const { budgetWarning, budgetCritical, budgetExceeded, unusualSpending, lowBalance } = updates.thresholds;
-
-                if (budgetWarning !== undefined && (budgetWarning < 0 || budgetWarning > 100)) {
-                    throw new Error('Budget warning threshold must be between 0 and 100');
-                }
-                if (budgetCritical !== undefined && (budgetCritical < 0 || budgetCritical > 100)) {
-                    throw new Error('Budget critical threshold must be between 0 and 100');
-                }
-                if (budgetExceeded !== undefined && (budgetExceeded < 0 || budgetExceeded > 200)) {
-                    throw new Error('Budget exceeded threshold must be between 0 and 200');
-                }
-                if (unusualSpending !== undefined && (unusualSpending < 100 || unusualSpending > 1000)) {
-                    throw new Error('Unusual spending threshold must be between 100 and 1000');
-                }
-                if (lowBalance !== undefined && lowBalance < 0) {
-                    throw new Error('Low balance threshold must be positive');
-                }
+                validateNotificationThresholds({ ...preferences.thresholds, ...updates.thresholds });
             }
 
             // Validate quiet hours

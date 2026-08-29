@@ -3,6 +3,7 @@ package com.moneytrack.capture.preferences
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import com.moneytrack.capture.core.CaptureResultCode
 import com.moneytrack.capture.core.NormalizedPurchaseCandidate
 import com.moneytrack.capture.core.PurchaseConfidence
 import java.nio.charset.StandardCharsets
@@ -305,6 +306,16 @@ class CapturePreferences private constructor(
         }
     }
 
+    fun recordLastCaptureResult(syncScope: String, result: CaptureResultCode) {
+        preferences.edit {
+            putString(lastCaptureResultKey(syncScope), result.name)
+        }
+    }
+
+    fun lastCaptureResult(syncScope: String): CaptureResultCode? = preferences
+        .getString(lastCaptureResultKey(syncScope), null)
+        ?.let { value -> CaptureResultCode.entries.firstOrNull { it.name == value } }
+
     fun registerOnChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
         preferences.registerOnSharedPreferenceChangeListener(listener)
     }
@@ -342,6 +353,7 @@ class CapturePreferences private constructor(
         private const val KEY_DISCOVERED_PACKAGES = "discovered_packages"
         private const val KEY_NOTIFICATION_DELIVERY_HASHES = "notification_delivery_hashes"
         private const val KEY_SYNC_CANDIDATE_RECORDS = "sync_candidate_records"
+        private const val LAST_CAPTURE_RESULT_PREFIX = "last_capture_result."
         private const val SOURCE_LABEL_PREFIX = "source_label."
         private const val NOTIFICATION_DELIVERY_PREFIX = "notification_delivery."
         private const val NOTIFICATION_DELIVERY_CANDIDATE_PREFIX =
@@ -378,6 +390,9 @@ class CapturePreferences private constructor(
 
         private fun candidateRecordKey(syncScope: String, candidateId: String): String =
             candidateRecordKeyFromHash(syncScopeHash(syncScope), candidateId)
+
+        private fun lastCaptureResultKey(syncScope: String): String =
+            "$LAST_CAPTURE_RESULT_PREFIX${syncScopeHash(syncScope)}"
 
         private fun candidateRecordKeyFromHash(scopeHash: String, candidateId: String): String {
             require(DELIVERY_HASH.matches(scopeHash)) { "Invalid sync scope hash" }

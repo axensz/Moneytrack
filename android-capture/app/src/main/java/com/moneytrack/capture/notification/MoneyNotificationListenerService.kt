@@ -110,7 +110,12 @@ class MoneyNotificationListenerService : NotificationListenerService() {
                     subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString(),
                 )
             },
-            onResult = ::record,
+            onResult = { result ->
+                record(result)
+                user?.uid?.let { syncScope ->
+                    preferences.recordLastCaptureResult(syncScope, result)
+                }
+            },
         )
     }
 
@@ -124,6 +129,7 @@ class MoneyNotificationListenerService : NotificationListenerService() {
 
     override fun onListenerConnected() {
         super.onListenerConnected()
+        NotificationAccess.markListenerConnected(true)
         val preferences = CapturePreferences.create(this)
         val activeDeliveries = try {
             activeNotifications?.map { notification ->
@@ -139,6 +145,17 @@ class MoneyNotificationListenerService : NotificationListenerService() {
         currentUser()?.let { user ->
             CandidateSyncDispatcher(user.uid, preferences).reconcile()
         }
+    }
+
+    override fun onListenerDisconnected() {
+        NotificationAccess.markListenerConnected(false)
+        super.onListenerDisconnected()
+        NotificationAccess.requestRebind(this)
+    }
+
+    override fun onDestroy() {
+        NotificationAccess.markListenerConnected(false)
+        super.onDestroy()
     }
 
     private fun record(result: CaptureResultCode) {

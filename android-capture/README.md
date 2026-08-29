@@ -101,9 +101,16 @@ git ls-files -- android-capture/app/google-services.json android-capture/local.p
    etiqueta; no lee el título ni el cuerpo.
 4. Regresa a la aplicación, selecciona una sola fuente confiable y activa
    **Permitir captura de compras**.
-5. Genera primero una notificación sintética válida y otra rechazada. Solo la
+5. La aplicación solo muestra **Captura activa** después de que Android enlaza
+   realmente el listener. Si aparece **Verifica la captura**, abre la ficha de
+   la aplicación, permite el inicio automático y selecciona batería **Sin
+   restricciones**; después regresa para repetir la comprobación.
+6. En Xiaomi/HyperOS también puedes abrir **Ajustes > Aplicaciones > Permisos >
+   Inicio automático en segundo plano** y habilitar MoneyTrack. Esta autorización
+   debe revisarse después de reinstalar la APK o si el sistema la revoca.
+7. Genera primero una notificación sintética válida y otra rechazada. Solo la
    válida debe aparecer como candidato pendiente en Moneytrack web.
-6. Revisa en la web el monto y la cuenta o tarjeta sugerida. La confirmación
+8. Revisa en la web el monto y la cuenta o tarjeta sugerida. La confirmación
    manual es el único paso que crea la transacción y actualiza el saldo.
 
 El botón **Abrir Moneytrack web** usa `https://moneytrack-889fe.web.app`, definido

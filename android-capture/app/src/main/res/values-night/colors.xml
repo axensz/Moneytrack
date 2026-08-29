@@ -14,6 +14,8 @@
     <color name="status_success_muted">#03291C</color>
     <color name="status_destructive">#EF4444</color>
     <color name="status_destructive_muted">#3B1212</color>
+    <color name="status_warning">#F59E0B</color>
+    <color name="status_warning_muted">#4A2308</color>
     <color name="surface_background">@color/background</color>
     <color name="surface_panel">@color/card</color>
     <color name="border_subtle">@color/border</color>

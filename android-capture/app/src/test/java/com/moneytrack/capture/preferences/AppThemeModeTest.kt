@@ -1,6 +1,7 @@
 package com.moneytrack.capture.preferences
 
 import android.content.SharedPreferences
+import com.moneytrack.capture.core.CaptureResultCode
 import com.moneytrack.capture.core.NormalizedPurchaseCandidate
 import com.moneytrack.capture.core.PurchaseConfidence
 import java.lang.reflect.Proxy
@@ -231,6 +232,26 @@ class AppThemeModeTest {
         assertTrue(preferences.candidatesNeedingRetry(OTHER_USER_ID).isEmpty())
         assertFalse(storedValues.toString().contains(USER_ID))
         assertFalse(storedValues.toString().contains(OTHER_USER_ID))
+    }
+
+    @Test
+    fun `last capture result is safe account scoped state`() {
+        val storedValues = mutableMapOf<String, Any?>()
+        val preferences = capturePreferences(storedValues)
+
+        preferences.recordLastCaptureResult(USER_ID, CaptureResultCode.STORED)
+
+        assertEquals(
+            CaptureResultCode.STORED,
+            preferences.lastCaptureResult(USER_ID),
+        )
+        assertNull(preferences.lastCaptureResult(OTHER_USER_ID))
+        assertFalse(storedValues.toString().contains(USER_ID))
+        assertFalse(storedValues.toString().contains(OTHER_USER_ID))
+
+        val resultKey = storedValues.keys.single { it.startsWith("last_capture_result.") }
+        storedValues[resultKey] = "not-a-result"
+        assertNull(preferences.lastCaptureResult(USER_ID))
     }
 
     private fun candidate(

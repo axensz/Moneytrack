@@ -5,7 +5,7 @@
     <string name="screen_title">MoneyTrack móvil</string>
     <string name="screen_intro">Tus compras seleccionadas llegan a MoneyTrack para revisarlas.</string>
     <string name="privacy_note">El texto original se procesa en el celular y no se conserva.</string>
-    <string name="step_progress">Paso %1$d de 3</string>
+    <string name="step_progress">Paso %1$d de 4</string>
     <string name="configuration_complete">Configuración completa</string>
     <string name="session_heading">Conecta tu cuenta</string>
     <string name="session_explanation">Tu cuenta vincula los movimientos pendientes con el libro mayor que revisas en MoneyTrack.</string>
@@ -23,7 +23,14 @@
     <string name="recommended_source_label">%1$s · Recomendada</string>
     <string name="observed_source_label">%1$s · No verificada</string>
     <string name="source_unnamed">Aplicación detectada</string>
+    <string name="listener_connection_heading">Verifica la captura</string>
+    <string name="listener_connection_explanation">MoneyTrack tiene acceso, pero Android no inició la captura. En la configuración de la aplicación, activa Inicio automático y usa la batería Sin restricciones; luego regresa para comprobarlo.</string>
+    <string name="open_app_settings_action">Abrir configuración de la aplicación</string>
     <string name="ready_heading">Captura activa</string>
+    <string name="last_capture_stored">Última compra enviada a MoneyTrack.</string>
+    <string name="last_capture_sending">Última compra detectada; enviando.</string>
+    <string name="last_capture_unrecognized">La última notificación no se reconoció como una compra.</string>
+    <string name="last_capture_processing_failed">No se pudo procesar la última notificación.</string>
     <string name="sync_pending_heading">Sincronización pendiente</string>
     <string name="sync_pending_explanation">La compra se enviará a MoneyTrack cuando haya conexión.</string>
     <string name="sync_failure_heading">No se pudo sincronizar la última compra</string>

@@ -110,12 +110,111 @@ class FirebaseCandidateRepositoryTest {
 
         repository.save(candidate()) { first = it }
         sink.requests.single().complete(Result.failure(IllegalStateException("private server detail")))
+        assertEquals(1, sink.readRequests.size)
+        sink.readRequests.single().complete(Result.failure(IllegalStateException("private server detail")))
         sink.requests.clear()
+        sink.readRequests.clear()
         repository.save(candidate()) { second = it }
         sink.requests.single().complete(Result.failure(SecurityException("different sensitive detail")))
+        assertEquals(1, sink.readRequests.size)
+        sink.readRequests.single().complete(Result.failure(SecurityException("different sensitive detail")))
 
         assertSame(CandidateWriteResult.WRITE_FAILED, first)
         assertSame(CandidateWriteResult.WRITE_FAILED, second)
+    }
+
+    @Test
+    fun `reconciles a failed write with a matching confirmed server document`() {
+        val sink = FakeDocumentSink()
+        var result: CandidateWriteResult? = null
+
+        FirebaseCandidateRepository(USER_ID, sink).save(candidate()) { result = it }
+        sink.requests.single().complete(Result.failure(IllegalStateException("callback lost")))
+        assertEquals(1, sink.readRequests.size)
+        val read = sink.readRequests.single()
+        assertEquals("users/$USER_ID/transactionImportCandidates", read.collectionPath)
+        assertEquals(CANDIDATE_ID, read.documentId)
+        read.complete(Result.success(serverFields(status = "confirmed")))
+
+        assertSame(CandidateWriteResult.STORED, result)
+    }
+
+    @Test
+    fun `reconciles a failed write with a matching dismissed server document`() {
+        val sink = FakeDocumentSink()
+        var result: CandidateWriteResult? = null
+
+        FirebaseCandidateRepository(USER_ID, sink).save(candidate()) { result = it }
+        sink.requests.single().complete(Result.failure(IllegalStateException("callback lost")))
+        assertEquals(1, sink.readRequests.size)
+        sink.readRequests.single().complete(Result.success(serverFields(status = "dismissed")))
+
+        assertSame(CandidateWriteResult.STORED, result)
+    }
+
+    @Test
+    fun `keeps a failed write failed when the server document differs`() {
+        val sink = FakeDocumentSink()
+        var result: CandidateWriteResult? = null
+
+        FirebaseCandidateRepository(USER_ID, sink).save(candidate()) { result = it }
+        sink.requests.single().complete(Result.failure(IllegalStateException("callback lost")))
+        assertEquals(1, sink.readRequests.size)
+        sink.readRequests.single().complete(Result.success(serverFields(amountMinor = 1L)))
+
+        assertSame(CandidateWriteResult.WRITE_FAILED, result)
+    }
+
+    @Test
+    fun `keeps a failed write failed when an optional normalized field differs`() {
+        val sink = FakeDocumentSink()
+        var result: CandidateWriteResult? = null
+
+        FirebaseCandidateRepository(USER_ID, sink).save(candidate()) { result = it }
+        sink.requests.single().complete(Result.failure(IllegalStateException("callback lost")))
+        sink.readRequests.single().complete(
+            Result.success(serverFields() + ("observedInstrumentLabel" to "Oro")),
+        )
+
+        assertSame(CandidateWriteResult.WRITE_FAILED, result)
+    }
+
+    @Test
+    fun `keeps a failed write failed when the server document is absent`() {
+        val sink = FakeDocumentSink()
+        var result: CandidateWriteResult? = null
+
+        FirebaseCandidateRepository(USER_ID, sink).save(candidate()) { result = it }
+        sink.requests.single().complete(Result.failure(IllegalStateException("callback lost")))
+        assertEquals(1, sink.readRequests.size)
+        sink.readRequests.single().complete(Result.success(null))
+
+        assertSame(CandidateWriteResult.WRITE_FAILED, result)
+    }
+
+    @Test
+    fun `keeps a failed write failed when the server read fails`() {
+        val sink = FakeDocumentSink()
+        var result: CandidateWriteResult? = null
+
+        FirebaseCandidateRepository(USER_ID, sink).save(candidate()) { result = it }
+        sink.requests.single().complete(Result.failure(IllegalStateException("callback lost")))
+        assertEquals(1, sink.readRequests.size)
+        sink.readRequests.single().complete(Result.failure(SecurityException("server unavailable")))
+
+        assertSame(CandidateWriteResult.WRITE_FAILED, result)
+    }
+
+    @Test
+    fun `keeps a failed write failed when the server read throws synchronously`() {
+        val sink = FakeDocumentSink(readError = SecurityException("server unavailable"))
+        var result: CandidateWriteResult? = null
+
+        FirebaseCandidateRepository(USER_ID, sink).save(candidate()) { result = it }
+        sink.requests.single().complete(Result.failure(IllegalStateException("callback lost")))
+
+        assertEquals(1, sink.readRequests.size)
+        assertSame(CandidateWriteResult.WRITE_FAILED, result)
     }
 
     @Test
@@ -152,8 +251,29 @@ class FirebaseCandidateRepositoryTest {
         confidence = PurchaseConfidence.MEDIUM,
     )
 
-    private class FakeDocumentSink : CandidateDocumentSink {
+    private fun serverFields(
+        status: String = "pending",
+        amountMinor: Long = 12_345_67L,
+    ): Map<String, Any> = mapOf(
+        "schemaVersion" to 1L,
+        "source" to "android-notification",
+        "sourcePackage" to "com.example.bank",
+        "occurredAt" to Timestamp(java.util.Date(1_735_689_600_123L)),
+        "amountMinor" to amountMinor,
+        "currency" to "COP",
+        "merchant" to "Café Central",
+        "cardLast4" to "4321",
+        "parserId" to "strict-cop-purchase",
+        "parserVersion" to 1L,
+        "confidence" to "high",
+        "status" to status,
+    )
+
+    private class FakeDocumentSink(
+        private val readError: RuntimeException? = null,
+    ) : CandidateDocumentSink {
         val requests = mutableListOf<WriteRequest>()
+        val readRequests = mutableListOf<ReadRequest>()
 
         override fun setDocument(
             collectionPath: String,
@@ -163,6 +283,15 @@ class FirebaseCandidateRepositoryTest {
         ) {
             requests += WriteRequest(collectionPath, documentId, fields, onComplete)
         }
+
+        override fun getDocument(
+            collectionPath: String,
+            documentId: String,
+            onComplete: (Result<Map<String, Any>?>) -> Unit,
+        ) {
+            readRequests += ReadRequest(collectionPath, documentId, onComplete)
+            readError?.let { throw it }
+        }
     }
 
     private data class WriteRequest(
@@ -170,6 +299,12 @@ class FirebaseCandidateRepositoryTest {
         val documentId: String,
         val fields: Map<String, Any>,
         val complete: (Result<Unit>) -> Unit,
+    )
+
+    private data class ReadRequest(
+        val collectionPath: String,
+        val documentId: String,
+        val complete: (Result<Map<String, Any>?>) -> Unit,
     )
 
     companion object {

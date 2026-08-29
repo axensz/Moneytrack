@@ -68,6 +68,31 @@ class GoogleWalletPurchaseParserTest {
     }
 
     @Test
+    fun `rejects a forbidden marker in every notification field`() {
+        listOf(
+            raw(title = "Compra rechazada", body = "COP2,600.00 with Oro"),
+            raw(body = "COP2,600.00 with Oro rechazada"),
+            raw(body = "COP2,600.00 with Oro", bigText = "Código requerido"),
+            raw(body = "COP2,600.00 with Oro", subText = "Operación fallida"),
+        ).forEach { notification ->
+            assertRejected(
+                parser.parse(notification, CANDIDATE_ID),
+                PurchaseParseCode.FORBIDDEN_MARKER,
+            )
+        }
+    }
+
+    @Test
+    fun `rejects multiple COP amount markers in one body instead of accepting the first`() {
+        val result = parser.parse(
+            raw(body = "COP2,600.00 with Oro COP13,990.00"),
+            CANDIDATE_ID,
+        )
+
+        assertRejected(result, PurchaseParseCode.AMBIGUOUS_AMOUNT)
+    }
+
+    @Test
     fun `rejects two different valid expanded bodies instead of guessing`() {
         val result = parser.parse(
             raw(
@@ -140,6 +165,7 @@ class GoogleWalletPurchaseParserTest {
         title: String = "OXXO EDS PORTAL DE NIQ",
         body: String,
         bigText: String? = null,
+        subText: String? = null,
     ) = RawNotification(
         packageName = AvailableCaptureSourceCatalog.GOOGLE_WALLET_PACKAGE,
         notificationKey = "wallet-purchase",
@@ -147,7 +173,7 @@ class GoogleWalletPurchaseParserTest {
         title = title,
         text = body,
         bigText = bigText,
-        subText = null,
+        subText = subText,
     )
 
     private fun assertRejected(result: PurchaseParseResult, expectedCode: PurchaseParseCode) {

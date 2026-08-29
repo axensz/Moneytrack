@@ -23,6 +23,18 @@ class NotificationListenerBoundaryContractTest {
         assertTrue(earlyReturn < rawExtras)
     }
 
+    @Test
+    fun `service destruction clears the live listener state`() {
+        val source = listenerSource()
+        val onDestroy = source.indexOf("override fun onDestroy()")
+        val clearState = source.indexOf("NotificationAccess.markListenerConnected(false)", onDestroy)
+        val superDestroy = source.indexOf("super.onDestroy()", onDestroy)
+
+        assertTrue(onDestroy >= 0)
+        assertTrue(clearState > onDestroy)
+        assertTrue(superDestroy > clearState)
+    }
+
     private fun listenerSource(): String {
         val candidates = listOf(
             File(

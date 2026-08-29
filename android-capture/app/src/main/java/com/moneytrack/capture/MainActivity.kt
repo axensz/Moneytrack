@@ -33,6 +33,7 @@ import com.moneytrack.capture.core.AvailableCaptureSource
 import com.moneytrack.capture.core.AvailableCaptureSourceCatalog
 import com.moneytrack.capture.core.CaptureSetupFlow
 import com.moneytrack.capture.core.CaptureSetupStep
+import com.moneytrack.capture.core.CaptureResultCode
 import com.moneytrack.capture.core.CaptureSourceOrigin
 import com.moneytrack.capture.core.SourceLabelResolver
 import com.moneytrack.capture.data.CandidateSyncDispatcher
@@ -47,6 +48,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sessionStep: View
     private lateinit var notificationStep: View
     private lateinit var captureStep: View
+    private lateinit var listenerConnectionStep: View
     private lateinit var readyStep: View
     private lateinit var contentColumn: View
     private lateinit var setupProgressPanel: View
@@ -56,6 +58,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progressOne: View
     private lateinit var progressTwo: View
     private lateinit var progressThree: View
+    private lateinit var progressFour: View
     private lateinit var sourceList: LinearLayout
     private lateinit var readySourceList: LinearLayout
     private lateinit var captureSwitch: SwitchCompat
@@ -65,6 +68,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var readyHeading: TextView
     private lateinit var syncPendingPanel: View
     private lateinit var syncFailurePanel: View
+    private lateinit var lastCaptureStatus: TextView
     private lateinit var themeButton: ImageButton
     private var firebaseAuth: FirebaseAuth? = null
     private var authenticationUiState = AuthenticationUiState()
@@ -79,6 +83,11 @@ class MainActivity : AppCompatActivity() {
                 if (::preferences.isInitialized && !isFinishing && !isDestroyed) render()
             }
         }
+    private val listenerConnectionObserver: (Boolean) -> Unit = {
+        runOnUiThread {
+            if (::preferences.isInitialized && !isFinishing && !isDestroyed) render()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -99,16 +108,21 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::preferences.isInitialized) render()
+        if (::preferences.isInitialized) {
+            NotificationAccess.requestRebind(this)
+            render()
+        }
     }
 
     override fun onStart() {
         super.onStart()
         preferences.registerOnChangeListener(preferenceChangeListener)
+        NotificationAccess.observeConnection(listenerConnectionObserver)
         reconcilePendingCandidates()
     }
 
     override fun onStop() {
+        NotificationAccess.observeConnection(null)
         preferences.unregisterOnChangeListener(preferenceChangeListener)
         super.onStop()
     }
@@ -122,6 +136,7 @@ class MainActivity : AppCompatActivity() {
         sessionStep = findViewById(R.id.session_step)
         notificationStep = findViewById(R.id.notification_step)
         captureStep = findViewById(R.id.capture_step)
+        listenerConnectionStep = findViewById(R.id.listener_connection_step)
         readyStep = findViewById(R.id.ready_step)
         contentColumn = findViewById(R.id.content_column)
         setupProgressPanel = findViewById(R.id.setup_progress_panel)
@@ -131,6 +146,7 @@ class MainActivity : AppCompatActivity() {
         progressOne = findViewById(R.id.progress_one)
         progressTwo = findViewById(R.id.progress_two)
         progressThree = findViewById(R.id.progress_three)
+        progressFour = findViewById(R.id.progress_four)
         sourceList = findViewById(R.id.source_list)
         readySourceList = findViewById(R.id.ready_source_list)
         captureSwitch = findViewById(R.id.capture_switch)
@@ -140,6 +156,7 @@ class MainActivity : AppCompatActivity() {
         readyHeading = findViewById(R.id.ready_heading)
         syncPendingPanel = findViewById(R.id.sync_pending_panel)
         syncFailurePanel = findViewById(R.id.sync_failure_panel)
+        lastCaptureStatus = findViewById(R.id.last_capture_status)
         themeButton = findViewById(R.id.theme_button)
     }
 
@@ -183,6 +200,14 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.notification_settings_button).setOnClickListener {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }
+        findViewById<Button>(R.id.open_app_settings_button).setOnClickListener {
+            startActivity(
+                Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    "package:$packageName".toUri(),
+                ),
+            )
+        }
         openPwaButton.setOnClickListener {
             startActivity(Intent(Intent.ACTION_VIEW, getString(R.string.pwa_url).toUri()))
         }
@@ -209,6 +234,7 @@ class MainActivity : AppCompatActivity() {
             notificationAccessGranted = accessGranted,
             captureEnabled = preferences.captureEnabled,
             allowedPackages = allowedPackages,
+            notificationListenerConnected = NotificationAccess.listenerConnected,
         )
 
         renderStep(step)
@@ -252,6 +278,11 @@ class MainActivity : AppCompatActivity() {
         sessionStep.visibility = if (step == CaptureSetupStep.SESSION) View.VISIBLE else View.GONE
         notificationStep.visibility = if (step == CaptureSetupStep.NOTIFICATION_ACCESS) View.VISIBLE else View.GONE
         captureStep.visibility = if (step == CaptureSetupStep.CAPTURE) View.VISIBLE else View.GONE
+        listenerConnectionStep.visibility = if (step == CaptureSetupStep.LISTENER_CONNECTION) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
         readyStep.visibility = if (step == CaptureSetupStep.READY) View.VISIBLE else View.GONE
         openPwaButton.visibility = if (step == CaptureSetupStep.READY) View.VISIBLE else View.GONE
 
@@ -259,12 +290,14 @@ class MainActivity : AppCompatActivity() {
             CaptureSetupStep.SESSION -> 0
             CaptureSetupStep.NOTIFICATION_ACCESS -> 1
             CaptureSetupStep.CAPTURE -> 2
-            CaptureSetupStep.READY -> 3
+            CaptureSetupStep.LISTENER_CONNECTION -> 3
+            CaptureSetupStep.READY -> 4
         }
         val currentStep = when (step) {
             CaptureSetupStep.SESSION -> 1
             CaptureSetupStep.NOTIFICATION_ACCESS -> 2
             CaptureSetupStep.CAPTURE -> 3
+            CaptureSetupStep.LISTENER_CONNECTION -> 4
             CaptureSetupStep.READY -> null
         }
         stepProgress.text = currentStep?.let { getString(R.string.step_progress, it) }
@@ -273,6 +306,9 @@ class MainActivity : AppCompatActivity() {
         val syncOverview = firebaseAuth?.currentUser?.uid
             ?.let(preferences::candidateSyncOverview)
             ?: CandidateSyncOverview.IDLE
+        val lastCaptureMessage = firebaseAuth?.currentUser?.uid
+            ?.let(preferences::lastCaptureResult)
+            ?.let(::lastCaptureMessage)
         readyHeading.visibility = if (ready && syncOverview == CandidateSyncOverview.IDLE) {
             View.VISIBLE
         } else {
@@ -288,6 +324,14 @@ class MainActivity : AppCompatActivity() {
         } else {
             View.GONE
         }
+        lastCaptureStatus.visibility = if (
+            ready && syncOverview == CandidateSyncOverview.IDLE && lastCaptureMessage != null
+        ) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        lastCaptureMessage?.let(lastCaptureStatus::setText)
         progressTrack.visibility = if (ready) View.GONE else View.VISIBLE
         setupProgressPanel.setBackgroundResource(
             if (ready) R.drawable.status_success_panel else R.drawable.status_panel,
@@ -302,11 +346,34 @@ class MainActivity : AppCompatActivity() {
             0,
         )
         stepProgress.compoundDrawablePadding = resources.getDimensionPixelSize(R.dimen.space_small)
-        listOf(progressOne, progressTwo, progressThree).forEachIndexed { index, progress ->
+        listOf(progressOne, progressTwo, progressThree, progressFour).forEachIndexed { index, progress ->
             progress.setBackgroundResource(
                 if (index < completedSteps) R.drawable.progress_complete else R.drawable.progress_pending,
             )
         }
+    }
+
+    private fun lastCaptureMessage(result: CaptureResultCode): Int? = when (result) {
+        CaptureResultCode.STORED -> R.string.last_capture_stored
+        CaptureResultCode.ACCEPTED_HIGH,
+        CaptureResultCode.ACCEPTED_MEDIUM,
+        -> R.string.last_capture_sending
+        CaptureResultCode.NO_PURCHASE_MARKER,
+        CaptureResultCode.FORBIDDEN_MARKER,
+        CaptureResultCode.NO_COP_AMOUNT,
+        CaptureResultCode.AMBIGUOUS_AMOUNT,
+        CaptureResultCode.UNSUPPORTED_CURRENCY,
+        CaptureResultCode.MALFORMED_AMOUNT,
+        -> R.string.last_capture_unrecognized
+        CaptureResultCode.INSPECTION_FAILED -> R.string.last_capture_processing_failed
+        CaptureResultCode.SIGNED_OUT,
+        CaptureResultCode.CAPTURE_DISABLED,
+        CaptureResultCode.NOTIFICATION_ACCESS_MISSING,
+        CaptureResultCode.ALLOWLIST_EMPTY,
+        CaptureResultCode.PACKAGE_NOT_ALLOWED,
+        CaptureResultCode.GROUP_SUMMARY_IGNORED,
+        CaptureResultCode.WRITE_FAILED,
+        -> null
     }
 
     private fun renderSources(allowedPackages: Set<String>) {

@@ -50,14 +50,14 @@ export function useTransactionImportCandidates(
       collection(db, 'users', userId, 'transactionImportCandidates'),
       where('status', '==', 'pending'),
       orderBy('occurredAt', 'desc'),
-      limit(CANDIDATE_PAGE_SIZE),
+      limit(CANDIDATE_PAGE_SIZE + 1),
     );
     const unsubscribe = onSnapshot(
       candidateQuery,
       snapshot => {
         if (!active) return;
 
-        const decoded = snapshot.docs.map(document => (
+        const decoded = snapshot.docs.slice(0, CANDIDATE_PAGE_SIZE).map(document => (
           decodeTransactionImportCandidate(document)
         ));
         const issue = decoded.find(result => (
@@ -77,7 +77,7 @@ export function useTransactionImportCandidates(
             )
             : null,
         );
-        setReachedLimit(snapshot.docs.length === CANDIDATE_PAGE_SIZE);
+        setReachedLimit(snapshot.docs.length > CANDIDATE_PAGE_SIZE);
         setLoading(false);
       },
       subscriptionError => {

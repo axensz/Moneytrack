@@ -29,6 +29,39 @@ class GuidedUiLayoutContractTest {
     }
 
     @Test
+    fun `listener connection is verified before capture is declared active`() {
+        val layout = resource("layout/activity_main.xml")
+        val activity = source("java/com/moneytrack/capture/MainActivity.kt")
+        val strings = resource("values/strings.xml")
+
+        assertTrue(layout.contains("@+id/progress_four"))
+        assertTrue(layout.contains("@+id/listener_connection_step"))
+        assertTrue(layout.contains("@+id/open_app_settings_button"))
+        assertTrue(layout.contains("android:accessibilityLiveRegion=\"polite\""))
+        assertTrue(activity.contains("NotificationAccess.listenerConnected"))
+        assertTrue(activity.contains("NotificationAccess.requestRebind(this)"))
+        assertTrue(activity.contains("NotificationAccess.observeConnection"))
+        assertTrue(activity.contains("NotificationAccess.observeConnection(null)"))
+        assertFalse(activity.contains("postDelayed"))
+        assertTrue(strings.contains("Verifica la captura"))
+        assertTrue(strings.contains("Inicio automático"))
+    }
+
+    @Test
+    fun `ready state exposes the last safe capture result`() {
+        val layout = resource("layout/activity_main.xml")
+        val activity = source("java/com/moneytrack/capture/MainActivity.kt")
+        val strings = resource("values/strings.xml")
+
+        assertTrue(layout.contains("@+id/last_capture_status"))
+        assertTrue(layout.contains("android:accessibilityLiveRegion=\"polite\""))
+        assertTrue(activity.contains("preferences::lastCaptureResult"))
+        assertTrue(strings.contains("Última compra enviada a MoneyTrack"))
+        assertTrue(strings.contains("Última compra detectada; enviando"))
+        assertTrue(strings.contains("La última notificación no se reconoció como una compra"))
+    }
+
+    @Test
     fun `active capture keeps the same neutral surface as the other steps`() {
         val document = DocumentBuilderFactory.newInstance()
             .newDocumentBuilder()

@@ -112,7 +112,7 @@ describe('useTransactionImportCandidates', () => {
     M.writes = [];
   });
 
-  it('subscribes to the 100 newest pending owner candidates', () => {
+  it('subscribes to the first 100 pending owner candidates plus one overflow row', () => {
     const { result } = renderHook(() => (
       useTransactionImportCandidates('user-1')
     ));
@@ -122,7 +122,7 @@ describe('useTransactionImportCandidates', () => {
       constraints: [
         { type: 'where', field: 'status', operator: '==', value: 'pending' },
         { type: 'orderBy', field: 'occurredAt', direction: 'desc' },
-        { type: 'limit', value: 100 },
+        { type: 'limit', value: 101 },
       ],
     }]);
 
@@ -141,7 +141,7 @@ describe('useTransactionImportCandidates', () => {
     expect(result.current.reachedLimit).toBe(false);
   });
 
-  it('reports when the bounded first page reaches 100 rows', () => {
+  it('does not report a limit when the first page contains exactly 100 rows', () => {
     const { result } = renderHook(() => (
       useTransactionImportCandidates('user-1')
     ));
@@ -150,6 +150,23 @@ describe('useTransactionImportCandidates', () => {
     )));
 
     expect(result.current.candidates).toHaveLength(100);
+    expect(result.current.reachedLimit).toBe(false);
+  });
+
+  it('reports an overflow at 101 rows while exposing only the first 100', () => {
+    const { result } = renderHook(() => (
+      useTransactionImportCandidates('user-1')
+    ));
+    const documents = Array.from({ length: 101 }, (_, index) => (
+      candidateDocument(index.toString(16).padStart(64, '0'))
+    ));
+
+    emit(0, documents);
+
+    expect(result.current.candidates).toHaveLength(100);
+    expect(result.current.candidates.at(-1)?.id).toBe(
+      '63'.padStart(64, '0'),
+    );
     expect(result.current.reachedLimit).toBe(true);
   });
 

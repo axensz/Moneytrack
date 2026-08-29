@@ -11,7 +11,20 @@ class CaptureSetupFlowTest {
         assertEquals(NOTIFICATION_ACCESS, resolve(signedIn = true, access = false, enabled = false, sources = emptySet()))
         assertEquals(CAPTURE, resolve(signedIn = true, access = true, enabled = false, sources = setOf("wallet")))
         assertEquals(CAPTURE, resolve(signedIn = true, access = true, enabled = true, sources = emptySet()))
-        assertEquals(READY, resolve(signedIn = true, access = true, enabled = true, sources = setOf("wallet")))
+        assertEquals(
+            LISTENER_CONNECTION,
+            resolve(signedIn = true, access = true, enabled = true, sources = setOf("wallet")),
+        )
+        assertEquals(
+            READY,
+            resolve(
+                signedIn = true,
+                access = true,
+                enabled = true,
+                sources = setOf("wallet"),
+                listenerConnected = true,
+            ),
+        )
     }
 
     private fun resolve(
@@ -19,10 +32,12 @@ class CaptureSetupFlowTest {
         access: Boolean,
         enabled: Boolean,
         sources: Set<String>,
+        listenerConnected: Boolean = false,
     ) = CaptureSetupFlow.resolve(
         signedIn = signedIn,
         notificationAccessGranted = access,
         captureEnabled = enabled,
         allowedPackages = sources,
+        notificationListenerConnected = listenerConnected,
     )
 }

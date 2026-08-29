@@ -8,6 +8,17 @@ class GoogleWalletPurchaseParser {
         candidateId: String,
         occurredAtEpochMillis: Long = notification.postedAtEpochMillis,
     ): PurchaseParseResult {
+        val notificationFields = listOfNotNull(
+            notification.title,
+            notification.text,
+            notification.bigText,
+            notification.subText,
+        )
+            .map(::normalizeText)
+            .filter(String::isNotEmpty)
+        if (notificationFields.any(FORBIDDEN_MARKER::containsMatchIn)) {
+            return PurchaseParseResult.Rejected(PurchaseParseCode.FORBIDDEN_MARKER)
+        }
         val merchant = normalizeMerchant(notification.title)
             ?: return PurchaseParseResult.Rejected(PurchaseParseCode.NO_PURCHASE_MARKER)
         val bodies = listOfNotNull(notification.text, notification.bigText)
@@ -17,10 +28,10 @@ class GoogleWalletPurchaseParser {
         if (bodies.isEmpty()) {
             return PurchaseParseResult.Rejected(PurchaseParseCode.NO_COP_AMOUNT)
         }
-        if (bodies.any(FORBIDDEN_MARKER::containsMatchIn)) {
-            return PurchaseParseResult.Rejected(PurchaseParseCode.FORBIDDEN_MARKER)
-        }
         if (bodies.size != 1) {
+            return PurchaseParseResult.Rejected(PurchaseParseCode.AMBIGUOUS_AMOUNT)
+        }
+        if (COP_AMOUNT_MARKER.findAll(bodies.single()).count() > 1) {
             return PurchaseParseResult.Rejected(PurchaseParseCode.AMBIGUOUS_AMOUNT)
         }
         val purchase = parseBody(bodies.single())
@@ -132,6 +143,7 @@ class GoogleWalletPurchaseParser {
         private val PLAIN_COMMA_DECIMAL = Regex("\\d+,\\d{2}")
         private val PLAIN_INTEGER = Regex("\\d+")
         private val COP_PREFIX = Regex("^COP\\b|^COP(?=\\d)", RegexOption.IGNORE_CASE)
+        private val COP_AMOUNT_MARKER = Regex("\\bCOP\\s*(?=\\d)", RegexOption.IGNORE_CASE)
         private val NON_COP_CURRENCY = Regex(
             "^(?:USD|EUR|GBP|CAD|AUD)\\b|^(?:USD|EUR|GBP|CAD|AUD)(?=\\d)",
             RegexOption.IGNORE_CASE,

@@ -2,6 +2,7 @@ package com.moneytrack.capture.data
 
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Source
 import com.moneytrack.capture.core.NormalizedPurchaseCandidate
 import java.util.Date
 
@@ -17,6 +18,14 @@ fun interface CandidateDocumentSink {
         fields: Map<String, Any>,
         onComplete: (Result<Unit>) -> Unit,
     )
+
+    fun getDocument(
+        collectionPath: String,
+        documentId: String,
+        onComplete: (Result<Map<String, Any>?>) -> Unit,
+    ) {
+        onComplete(Result.failure(UnsupportedOperationException("Server read unavailable")))
+    }
 }
 
 class FirestoreCandidateDocumentSink(
@@ -32,6 +41,20 @@ class FirestoreCandidateDocumentSink(
             .document(documentId)
             .set(fields)
             .addOnSuccessListener { onComplete(Result.success(Unit)) }
+            .addOnFailureListener { onComplete(Result.failure(it)) }
+    }
+
+    override fun getDocument(
+        collectionPath: String,
+        documentId: String,
+        onComplete: (Result<Map<String, Any>?>) -> Unit,
+    ) {
+        firestore.collection(collectionPath)
+            .document(documentId)
+            .get(Source.SERVER)
+            .addOnSuccessListener { document ->
+                onComplete(Result.success(if (document.exists()) document.data else null))
+            }
             .addOnFailureListener { onComplete(Result.failure(it)) }
     }
 }
@@ -75,13 +98,28 @@ class FirebaseCandidateRepository(
 
         try {
             sink.setDocument(collectionPath, candidate.candidateId, fields) { result ->
-                onResult(
-                    if (result.isSuccess) {
-                        CandidateWriteResult.STORED
-                    } else {
-                        CandidateWriteResult.WRITE_FAILED
-                    },
-                )
+                if (result.isSuccess) {
+                    onResult(CandidateWriteResult.STORED)
+                } else {
+                    reconcileFailedWrite(candidate.candidateId, fields, onResult)
+                }
+            }
+        } catch (_: RuntimeException) {
+            onResult(CandidateWriteResult.WRITE_FAILED)
+        }
+    }
+
+    private fun reconcileFailedWrite(
+        candidateId: String,
+        fields: Map<String, Any>,
+        onResult: (CandidateWriteResult) -> Unit,
+    ) {
+        try {
+            sink.getDocument(collectionPath, candidateId) { result ->
+                val isStored = result.getOrNull()?.let { serverFields ->
+                    IMMUTABLE_FIELDS.all { key -> serverFields[key] == fields[key] }
+                } == true
+                onResult(if (isStored) CandidateWriteResult.STORED else CandidateWriteResult.WRITE_FAILED)
             }
         } catch (_: RuntimeException) {
             onResult(CandidateWriteResult.WRITE_FAILED)
@@ -90,5 +128,19 @@ class FirebaseCandidateRepository(
 
     companion object {
         private const val MAX_UID_LENGTH = 128
+        private val IMMUTABLE_FIELDS = setOf(
+            "schemaVersion",
+            "source",
+            "sourcePackage",
+            "occurredAt",
+            "amountMinor",
+            "currency",
+            "merchant",
+            "cardLast4",
+            "observedInstrumentLabel",
+            "parserId",
+            "parserVersion",
+            "confidence",
+        )
     }
 }

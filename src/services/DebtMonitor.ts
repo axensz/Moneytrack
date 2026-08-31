@@ -1,170 +1,167 @@
-/**
- * DebtMonitor - Monitors unsettled debts and generates periodic reminders
- * Validates: Requirements 5.1, 5.2, 5.3, 5.4, 14.5
- */
-
 import { logger } from '../utils/logger';
 import { formatCurrency } from '../utils/formatters';
-import type { Debt, Notification } from '../types/finance';
+import {
+  addLocalCalendarDays,
+  calendarDateDifference,
+  getZonedDateTimeParts,
+  localDateKeyInTimeZone,
+} from '../utils/recurringDates';
+import { REMINDER_STAGE_LOCAL_TIME } from '../utils/recurringReminderCursor';
+import type { Debt, Notification, NotificationEventStage } from '../types/finance';
 import { viewActionUrl } from '../hooks/useViewRouting';
 
-interface DebtMonitorDeps {
-    createNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => Promise<void>;
-    debts: Debt[];
+export type DebtStageWindow =
+  | 'borrowed:30'
+  | 'borrowed:60'
+  | `borrowed:weekly:${number}`
+  | 'lent:90'
+  | `lent:weekly:${number}`;
+
+export function getDebtReminderStage({
+  debt,
+  now,
+  timeZone,
+}: {
+  debt: Debt;
+  now: Date;
+  timeZone: string;
+}): {
+  stageWindow: DebtStageWindow;
+  rank: number;
+  scheduledLocalDate: string;
+  stageValidUntilLocalDate: string;
+} | null {
+  const reference = debt.dueDate ?? debt.createdAt;
+  if (!reference) return null;
+  const anchor = localDateKeyInTimeZone(new Date(reference), timeZone);
+  const localNow = getZonedDateTimeParts(now, timeZone);
+  const today = localDateKeyInTimeZone(now, timeZone);
+  const [stageHour, stageMinute] = REMINDER_STAGE_LOCAL_TIME.split(':').map(Number);
+  const reachedStageTime = localNow.hour > stageHour
+    || (localNow.hour === stageHour && localNow.minute >= stageMinute);
+  const effectiveDay = calendarDateDifference(anchor, today) - (reachedStageTime ? 0 : 1);
+  const window = (stageWindow: DebtStageWindow, rank: number, startDay: number, endDay: number) => ({
+    stageWindow,
+    rank,
+    scheduledLocalDate: addLocalCalendarDays(anchor, startDay),
+    stageValidUntilLocalDate: addLocalCalendarDays(anchor, endDay),
+  });
+
+  if (debt.type === 'borrowed') {
+    if (effectiveDay < 30) return null;
+    if (effectiveDay < 60) return window('borrowed:30', 1, 30, 60);
+    if (effectiveDay < 67) return window('borrowed:60', 2, 60, 67);
+    const occurrence = Math.floor((effectiveDay - 67) / 7);
+    return window(`borrowed:weekly:${occurrence}`, 5 + occurrence, 67 + 7 * occurrence, 74 + 7 * occurrence);
+  }
+
+  if (effectiveDay < 90) return null;
+  if (effectiveDay < 97) return window('lent:90', 1, 90, 97);
+  const occurrence = Math.floor((effectiveDay - 97) / 7);
+  return window(`lent:weekly:${occurrence}`, 5 + occurrence, 97 + 7 * occurrence, 104 + 7 * occurrence);
 }
 
+interface DebtMonitorDeps {
+  createNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => Promise<void>;
+  debts: Debt[];
+  timeZone?: string;
+  writerPrefix?: string;
+  authorityConfigVersion?: number;
+}
+
+const lifecycleStage = (stageWindow: DebtStageWindow): {
+  stage: NotificationEventStage;
+  stageWindow: string;
+  overdueOccurrence?: number;
+} => {
+  if (stageWindow === 'borrowed:30' || stageWindow === 'lent:90') {
+    return { stage: 'due', stageWindow: 'due' };
+  }
+  if (stageWindow === 'borrowed:60') return { stage: 'warning', stageWindow: 'warning' };
+  const occurrence = Number(/:weekly:(\d+)$/.exec(stageWindow)?.[1]);
+  return { stage: 'overdue', stageWindow: `overdue:${occurrence}`, overdueOccurrence: occurrence };
+};
+
 export class DebtMonitor {
-    public deps: DebtMonitorDeps;
-    private lastCheckDate: Date | null = null;
-    private lastReminderMap: Map<string, number> = new Map(); // debtId -> timestamp
+  public deps: DebtMonitorDeps;
+  private lastCheckState: string | null = null;
 
-    constructor(deps: DebtMonitorDeps) {
-        this.deps = deps;
+  constructor(deps: DebtMonitorDeps) {
+    this.deps = deps;
+  }
+
+  async checkOverdueDebts(): Promise<void> {
+    try {
+      const now = new Date();
+      const timeZone = this.deps.timeZone
+        ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+        ?? 'America/Bogota';
+      const writerPrefix = this.deps.writerPrefix ?? 'foreground:compat';
+      const evaluations = this.deps.debts
+        .filter((debt) => !debt.isSettled && debt.id)
+        .map((debt) => ({ debt, reminder: getDebtReminderStage({ debt, now, timeZone }) }));
+      const currentState = JSON.stringify(evaluations.map(({ debt, reminder }) => [
+        debt.id, debt.remainingAmount, reminder?.stageWindow ?? null,
+      ]));
+      if (this.lastCheckState === currentState) return;
+
+      for (const { debt, reminder } of evaluations) {
+        if (!reminder) continue;
+        const debtId = debt.id!;
+        const borrowed = debt.type === 'borrowed';
+        const authority = this.deps.authorityConfigVersion === undefined
+          ? {}
+          : { authorityConfigVersion: this.deps.authorityConfigVersion };
+        await this.deps.createNotification({
+          type: 'debt',
+          title: borrowed
+            ? reminder.stageWindow === 'borrowed:30'
+              ? `Recordatorio de deuda: ${debt.personName}`
+              : `Deuda pendiente: ${debt.personName}`
+            : `Préstamo pendiente: ${debt.personName}`,
+          message: borrowed
+            ? `Debes ${formatCurrency(debt.remainingAmount)} a ${debt.personName}`
+            : `${debt.personName} te debe ${formatCurrency(debt.remainingAmount)}`,
+          severity: reminder.stageWindow === 'borrowed:60' ? 'warning' : 'info',
+          isRead: false,
+          schemaVersion: 2,
+          eventKey: `${writerPrefix}:debt:${encodeURIComponent(debtId)}`,
+          ...lifecycleStage(reminder.stageWindow),
+          lifecycleStatus: 'active',
+          actionUrl: viewActionUrl('debts'),
+          metadata: {
+            debtId,
+            amount: debt.remainingAmount,
+            reminderKey: reminder.stageWindow,
+            localDate: reminder.scheduledLocalDate,
+          },
+          ...authority,
+        });
+      }
+
+      this.lastCheckState = currentState;
+      logger.info('Debt check completed', { debtsChecked: evaluations.length });
+    } catch (error) {
+      logger.error('Debt monitor check failed', error);
     }
+  }
 
-    /**
-     * Check for overdue debts and generate reminders
-     * Should be called daily on app initialization
-     */
-    async checkOverdueDebts(): Promise<void> {
-        try {
-            // Only run once per day
-            if (this.lastCheckDate) {
-                const today = new Date();
-                const lastCheck = this.lastCheckDate;
-                if (
-                    today.getDate() === lastCheck.getDate() &&
-                    today.getMonth() === lastCheck.getMonth() &&
-                    today.getFullYear() === lastCheck.getFullYear()
-                ) {
-                    logger.info('Debt check already run today, skipping');
-                    return;
-                }
-            }
+  getDaysOutstanding(debt: Debt): number {
+    const reference = debt.dueDate ?? debt.createdAt;
+    if (!reference) return 0;
+    const timeZone = this.deps.timeZone
+      ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+      ?? 'America/Bogota';
+    return calendarDateDifference(
+      localDateKeyInTimeZone(new Date(reference), timeZone),
+      localDateKeyInTimeZone(new Date(), timeZone),
+    );
+  }
 
-            const unsettledDebts = this.deps.debts.filter((d) => !d.isSettled);
+  resetLastCheck(): void {
+    this.lastCheckState = null;
+  }
 
-            for (const debt of unsettledDebts) {
-                if (!debt.id) continue;
-
-                const daysOutstanding = this.getDaysOutstanding(debt);
-
-                // Check if we should send a reminder (avoid daily spam)
-                if (!this.shouldSendReminder(debt.id, daysOutstanding)) {
-                    continue;
-                }
-
-                // Generate reminders based on debt type and days outstanding
-                if (debt.type === 'borrowed') {
-                    // Borrowed debts: remind at 30 and 60 days
-                    if (daysOutstanding >= 60) {
-                        await this.deps.createNotification({
-                            type: 'debt',
-                            title: `Deuda pendiente: ${debt.personName}`,
-                            message: `Debes ${formatCurrency(debt.remainingAmount)} a ${debt.personName} desde hace ${daysOutstanding} días`,
-                            severity: 'warning',
-                            isRead: false,
-                            actionUrl: viewActionUrl('debts'),
-                            metadata: {
-                                debtId: debt.id,
-                                amount: debt.remainingAmount,
-                            },
-                        });
-                        this.lastReminderMap.set(debt.id, Date.now());
-                    } else if (daysOutstanding >= 30) {
-                        await this.deps.createNotification({
-                            type: 'debt',
-                            title: `Recordatorio de deuda: ${debt.personName}`,
-                            message: `Debes ${formatCurrency(debt.remainingAmount)} a ${debt.personName} desde hace ${daysOutstanding} días`,
-                            severity: 'info',
-                            isRead: false,
-                            actionUrl: viewActionUrl('debts'),
-                            metadata: {
-                                debtId: debt.id,
-                                amount: debt.remainingAmount,
-                            },
-                        });
-                        this.lastReminderMap.set(debt.id, Date.now());
-                    }
-                } else if (debt.type === 'lent') {
-                    // Lent debts: remind at 90 days
-                    if (daysOutstanding >= 90) {
-                        await this.deps.createNotification({
-                            type: 'debt',
-                            title: `Préstamo pendiente: ${debt.personName}`,
-                            message: `${debt.personName} te debe ${formatCurrency(debt.remainingAmount)} desde hace ${daysOutstanding} días`,
-                            severity: 'info',
-                            isRead: false,
-                            actionUrl: viewActionUrl('debts'),
-                            metadata: {
-                                debtId: debt.id,
-                                amount: debt.remainingAmount,
-                            },
-                        });
-                        this.lastReminderMap.set(debt.id, Date.now());
-                    }
-                }
-            }
-
-            this.lastCheckDate = new Date();
-            logger.info('Debt check completed', { debtsChecked: unsettledDebts.length });
-        } catch (error) {
-            logger.error('Debt monitor check failed', error);
-        }
-    }
-
-    /**
-     * Días "vencidos": desde la fecha de vencimiento si existe; si no, desde la
-     * creación (heurística para deudas sin fecha).
-     *
-     * Antes medía SIEMPRE desde createdAt, lo que daba dos errores (#2): una
-     * deuda con vencimiento futuro se reportaba como "vencida hace N días", y una
-     * ya vencida pero registrada hoy nunca alertaba (createdAt ≈ 0). Con dueDate
-     * la cuenta es negativa antes del vencimiento (< umbrales → no alerta) y
-     * positiva después.
-     */
-    getDaysOutstanding(debt: Debt): number {
-        const reference = debt.dueDate ?? debt.createdAt;
-        if (!reference) {
-            return 0;
-        }
-
-        const now = new Date();
-        const ref = new Date(reference);
-        const diffTime = now.getTime() - ref.getTime();
-        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-        return diffDays;
-    }
-
-    /**
-     * Check if we should send a reminder for this debt
-     * Avoid sending reminders too frequently (weekly after initial alert)
-     */
-    private shouldSendReminder(debtId: string, daysOutstanding: number): boolean {
-        const lastReminder = this.lastReminderMap.get(debtId);
-
-        // If never reminded, check if we've reached a threshold
-        if (!lastReminder) {
-            return daysOutstanding >= 30 || daysOutstanding >= 60 || daysOutstanding >= 90;
-        }
-
-        // If reminded before, wait at least 7 days before next reminder
-        const daysSinceLastReminder = Math.floor((Date.now() - lastReminder) / (1000 * 60 * 60 * 24));
-        return daysSinceLastReminder >= 7;
-    }
-
-    /**
-     * Reset last check date (useful for testing)
-     */
-    resetLastCheck(): void {
-        this.lastCheckDate = null;
-    }
-
-    /**
-     * Clear reminder history (useful for testing)
-     */
-    clearReminderHistory(): void {
-        this.lastReminderMap.clear();
-    }
+  /** Compatibility no-op: cadence is now represented by lifecycle stages. */
+  clearReminderHistory(): void {}
 }

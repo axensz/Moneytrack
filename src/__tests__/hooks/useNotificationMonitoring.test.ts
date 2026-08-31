@@ -179,10 +179,42 @@ describe('useNotificationMonitoring — guard anti-flood por paginación', () =>
     expect(debtSpy).toHaveBeenCalled();
   });
 
+  it('reevalúa recurring/debt cada cinco minutos mientras la página sigue viva', async () => {
+    const paymentSpy = vi.spyOn(PaymentMonitor.prototype, 'checkUpcomingPayments').mockResolvedValue(undefined);
+    const debtSpy = vi.spyOn(DebtMonitor.prototype, 'checkOverdueDebts').mockResolvedValue(undefined);
+    mount([], true);
+    await act(async () => { await Promise.resolve(); });
+    expect(paymentSpy).toHaveBeenCalledTimes(1);
+    expect(debtSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(5 * 60 * 1000); });
+
+    expect(paymentSpy).toHaveBeenCalledTimes(2);
+    expect(debtSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('el timer de cinco minutos no evalúa placeholders antes de hidratación', async () => {
+    const paymentSpy = vi.spyOn(PaymentMonitor.prototype, 'checkUpcomingPayments').mockResolvedValue(undefined);
+    const debtSpy = vi.spyOn(DebtMonitor.prototype, 'checkOverdueDebts').mockResolvedValue(undefined);
+    mount([], false);
+    await act(async () => { await Promise.resolve(); });
+    paymentSpy.mockClear();
+    debtSpy.mockClear();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60 * 1000); });
+
+    expect(paymentSpy).not.toHaveBeenCalled();
+    expect(debtSpy).not.toHaveBeenCalled();
+  });
+
   it('espera la primera fuente hidratada y la evalúa una sola vez', async () => {
     const paymentSpy = vi.spyOn(PaymentMonitor.prototype, 'checkUpcomingPayments').mockResolvedValue(undefined);
     const debtSpy = vi.spyOn(DebtMonitor.prototype, 'checkOverdueDebts').mockResolvedValue(undefined);
     const { rerender } = mount([], false);
+
+    await act(async () => { await Promise.resolve(); });
+    paymentSpy.mockClear();
+    debtSpy.mockClear();
 
     expect(paymentSpy).not.toHaveBeenCalled();
     expect(debtSpy).not.toHaveBeenCalled();

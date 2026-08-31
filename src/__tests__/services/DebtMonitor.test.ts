@@ -1,118 +1,116 @@
-/**
- * A3 — DebtMonitor: umbrales de recordatorio de deudas/préstamos.
- *
- * Espiamos getDaysOutstanding para aislar el despacho por umbral:
- *  - borrowed (debes): 30 días → info, 60 días → warning.
- *  - lent (te deben):  90 días → info.
- * Fixtures justo bajo/en cada umbral. Audit A3.
- */
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { DebtMonitor } from '../../services/DebtMonitor';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DebtMonitor, getDebtReminderStage } from '../../services/DebtMonitor';
 import type { Debt } from '../../types/finance';
 
-const makeDebt = (o: Partial<Debt> = {}): Debt => ({
-  id: 'd1', personName: 'Juan', type: 'borrowed', originalAmount: 1000,
-  remainingAmount: 1000, isSettled: false, createdAt: new Date('2026-01-01'),
-  ...o,
+const debt = (overrides: Partial<Debt> = {}): Debt => ({
+  id: 'debt-1', personName: 'Ana', type: 'borrowed', originalAmount: 200_000,
+  remainingAmount: 200_000, isSettled: false,
+  createdAt: new Date('2026-01-01T05:00:00.000Z'), ...overrides,
 });
+const bogotaDay = (day: number, time = '09:00:00') =>
+  new Date(Date.UTC(2026, 0, 1 + day, ...time.split(':').map(Number)) + 5 * 60 * 60 * 1000);
+const stage = (type: Debt['type'], day: number, time = '09:00:00') =>
+  getDebtReminderStage({ debt: debt({ type }), now: bogotaDay(day, time), timeZone: 'America/Bogota' });
 
-const setup = (debts: Debt[]) => {
-  const createNotification = vi.fn().mockResolvedValue(undefined);
-  const monitor = new DebtMonitor({ createNotification, debts });
-  return { monitor, createNotification };
-};
-
-afterEach(() => vi.restoreAllMocks());
-
-describe('DebtMonitor — umbrales (A3)', () => {
-  it('borrowed: NO notifica antes de 30 días (29)', async () => {
-    const { monitor, createNotification } = setup([makeDebt({ type: 'borrowed' })]);
-    vi.spyOn(monitor, 'getDaysOutstanding').mockReturnValue(29);
-    await monitor.checkOverdueDebts();
-    expect(createNotification).not.toHaveBeenCalled();
+describe('getDebtReminderStage — ventanas exactas de calendario local', () => {
+  it.each([
+    ['borrowed', 30, '08:59:00', null], ['borrowed', 30, '09:00:00', 'borrowed:30'],
+    ['borrowed', 31, '12:00:00', 'borrowed:30'], ['borrowed', 60, '08:59:00', 'borrowed:30'],
+    ['borrowed', 60, '09:00:00', 'borrowed:60'], ['borrowed', 65, '12:00:00', 'borrowed:60'],
+    ['borrowed', 67, '08:59:00', 'borrowed:60'], ['borrowed', 67, '09:00:00', 'borrowed:weekly:0'],
+    ['borrowed', 74, '09:00:00', 'borrowed:weekly:1'], ['borrowed', 242, '09:00:00', 'borrowed:weekly:25'],
+    ['lent', 90, '08:59:00', null], ['lent', 90, '09:00:00', 'lent:90'],
+    ['lent', 96, '12:00:00', 'lent:90'], ['lent', 97, '08:59:00', 'lent:90'],
+    ['lent', 97, '09:00:00', 'lent:weekly:0'], ['lent', 111, '09:00:00', 'lent:weekly:2'],
+  ] as const)('%s D%i %s => %s', (type, day, time, expected) => {
+    expect(stage(type, day, time)?.stageWindow ?? null).toBe(expected);
   });
 
-  it('borrowed: a 30 días notifica info', async () => {
-    const { monitor, createNotification } = setup([makeDebt({ type: 'borrowed' })]);
-    vi.spyOn(monitor, 'getDaysOutstanding').mockReturnValue(30);
-    await monitor.checkOverdueDebts();
-    expect(createNotification).toHaveBeenCalledTimes(1);
-    expect((createNotification.mock.calls[0][0] as { severity: string }).severity).toBe('info');
+  it('catch-up devuelve solo la ventana vigente, sin reproducir hitos vencidos', () => {
+    expect(stage('borrowed', 45, '17:00:00')?.stageWindow).toBe('borrowed:30');
+    expect(stage('borrowed', 65, '17:00:00')?.stageWindow).toBe('borrowed:60');
+    expect(stage('borrowed', 80, '17:00:00')?.stageWindow).toBe('borrowed:weekly:1');
+    expect(stage('lent', 110, '17:00:00')?.stageWindow).toBe('lent:weekly:1');
   });
 
-  it('borrowed: a 60 días escala a warning', async () => {
-    const { monitor, createNotification } = setup([makeDebt({ type: 'borrowed' })]);
-    vi.spyOn(monitor, 'getDaysOutstanding').mockReturnValue(60);
-    await monitor.checkOverdueDebts();
-    expect(createNotification).toHaveBeenCalledTimes(1);
-    expect((createNotification.mock.calls[0][0] as { severity: string }).severity).toBe('warning');
+  it('usa dueDate como ancla y no createdAt cuando existe', () => {
+    expect(getDebtReminderStage({
+      debt: debt({ dueDate: new Date('2026-08-01T05:00:00.000Z') }),
+      now: new Date('2026-06-15T17:00:00.000Z'), timeZone: 'America/Bogota',
+    })).toBeNull();
   });
 
-  it('lent: NO notifica antes de 90 días (89)', async () => {
-    const { monitor, createNotification } = setup([makeDebt({ type: 'lent' })]);
-    vi.spyOn(monitor, 'getDaysOutstanding').mockReturnValue(89);
-    await monitor.checkOverdueDebts();
-    expect(createNotification).not.toHaveBeenCalled();
-  });
-
-  it('lent: a 90 días notifica', async () => {
-    const { monitor, createNotification } = setup([makeDebt({ type: 'lent' })]);
-    vi.spyOn(monitor, 'getDaysOutstanding').mockReturnValue(90);
-    await monitor.checkOverdueDebts();
-    expect(createNotification).toHaveBeenCalledTimes(1);
-  });
-
-  it('ignora deudas saldadas', async () => {
-    const { monitor, createNotification } = setup([makeDebt({ isSettled: true })]);
-    vi.spyOn(monitor, 'getDaysOutstanding').mockReturnValue(120);
-    await monitor.checkOverdueDebts();
-    expect(createNotification).not.toHaveBeenCalled();
-  });
-
-  it('no repite el recordatorio el mismo día (dedup en memoria)', async () => {
-    const { monitor, createNotification } = setup([makeDebt({ type: 'borrowed' })]);
-    vi.spyOn(monitor, 'getDaysOutstanding').mockReturnValue(60);
-    await monitor.checkOverdueDebts();
-    monitor.resetLastCheck(); // permitir un segundo barrido el mismo día
-    await monitor.checkOverdueDebts();
-    // shouldSendReminder exige 7 días entre avisos → solo el primero.
-    expect(createNotification).toHaveBeenCalledTimes(1);
+  it('getDaysOutstanding conserva dueDate, fallback createdAt y días calendario DST', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-09T13:00:00.000Z'));
+    const monitor = new DebtMonitor({
+      createNotification: vi.fn().mockResolvedValue(undefined), debts: [], timeZone: 'America/New_York',
+    });
+    expect(monitor.getDaysOutstanding(debt({
+      createdAt: new Date('2025-01-01T12:00:00.000Z'),
+      dueDate: new Date('2026-03-08T05:30:00.000Z'),
+    }))).toBe(1);
+    expect(monitor.getDaysOutstanding(debt({
+      createdAt: new Date('2026-03-08T05:30:00.000Z'), dueDate: undefined,
+    }))).toBe(1);
+    vi.useRealTimers();
   });
 });
 
-describe('DebtMonitor — getDaysOutstanding ancla en dueDate (#2)', () => {
-  afterEach(() => vi.useRealTimers());
+describe('DebtMonitor — lifecycle canónico', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+  const setup = () => {
+    const createNotification = vi.fn().mockResolvedValue(undefined);
+    const monitor = new DebtMonitor({
+      createNotification, debts: [debt()], timeZone: 'America/Bogota', writerPrefix: 'foreground:compat',
+    });
+    return { createNotification, monitor };
+  };
 
-  it('vencimiento futuro → días negativos (no se considera vencida) aunque se creó hace meses', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-06-15T12:00:00'));
-    const { monitor } = setup([]);
-    const debt = makeDebt({ createdAt: new Date('2026-04-16'), dueDate: new Date('2026-08-01') });
-    expect(monitor.getDaysOutstanding(debt)).toBeLessThan(0);
+  it('el guard incluye stageWindow y permite la transición 08:59 → 09:00', async () => {
+    vi.setSystemTime(bogotaDay(30, '08:59:00'));
+    const { createNotification, monitor } = setup();
+    await monitor.checkOverdueDebts();
+    vi.setSystemTime(bogotaDay(30, '09:00:00'));
+    await monitor.checkOverdueDebts();
+    expect(createNotification).toHaveBeenCalledTimes(1);
+    expect(createNotification.mock.calls[0][0]).toMatchObject({
+      type: 'debt', schemaVersion: 2, eventKey: 'foreground:compat:debt:debt-1',
+      stage: 'due', stageWindow: 'due', lifecycleStatus: 'active',
+      metadata: { debtId: 'debt-1', localDate: '2026-01-31' },
+    });
   });
 
-  it('ya vencida → días positivos aunque se registró hoy', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-06-15T12:00:00'));
-    const { monitor } = setup([]);
-    const debt = makeDebt({ createdAt: new Date('2026-06-15'), dueDate: new Date('2026-05-01') });
-    expect(monitor.getDaysOutstanding(debt)).toBeGreaterThanOrEqual(40);
+  it('usa eventKey estable, no mensual, y candidatos sin revision/deliverySource', async () => {
+    vi.setSystemTime(bogotaDay(74));
+    const { createNotification, monitor } = setup();
+    await monitor.checkOverdueDebts();
+    const candidate = createNotification.mock.calls[0][0];
+    expect(candidate.eventKey).toBe('foreground:compat:debt:debt-1');
+    expect(candidate).not.toHaveProperty('revision');
+    expect(candidate).not.toHaveProperty('deliverySource');
+    expect(candidate).toMatchObject({
+      stage: 'overdue', stageWindow: 'overdue:1', overdueOccurrence: 1,
+      metadata: { reminderKey: 'borrowed:weekly:1' },
+    });
   });
 
-  it('sin dueDate cae a createdAt (comportamiento previo)', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-06-15T12:00:00'));
-    const { monitor } = setup([]);
-    const debt = makeDebt({ createdAt: new Date('2026-05-16') }); // ~30 días
-    expect(monitor.getDaysOutstanding(debt)).toBeGreaterThanOrEqual(29);
+  it('no repite la misma ventana ni depende de cadencia elapsed', async () => {
+    vi.setSystemTime(bogotaDay(65));
+    const { createNotification, monitor } = setup();
+    await monitor.checkOverdueDebts();
+    await monitor.checkOverdueDebts();
+    expect(createNotification).toHaveBeenCalledTimes(1);
   });
 
-  it('borrowed con vencimiento futuro creada hace 60 días NO notifica (antes sí, por usar createdAt)', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-06-15T12:00:00'));
-    const { monitor, createNotification } = setup([
-      makeDebt({ type: 'borrowed', createdAt: new Date('2026-04-16'), dueDate: new Date('2026-08-01') }),
-    ]);
+  it('deuda saldada no crea evento', async () => {
+    vi.setSystemTime(bogotaDay(120));
+    const createNotification = vi.fn().mockResolvedValue(undefined);
+    const monitor = new DebtMonitor({
+      createNotification, debts: [debt({ isSettled: true })],
+      timeZone: 'America/Bogota', writerPrefix: 'foreground:compat',
+    });
     await monitor.checkOverdueDebts();
     expect(createNotification).not.toHaveBeenCalled();
   });

@@ -9,6 +9,17 @@ import { useNotificationStore } from './useNotificationStore';
 import { useNotificationPreferences } from './useNotificationPreferences';
 import { useFirestoreData } from '../contexts/FirestoreContext';
 import { NotificationManager } from '../services/NotificationManager';
+import { buildRecurringReminderCandidate } from '../services/PaymentMonitor';
+import {
+  createAuthenticatedRecurringReminderCursorStore,
+  createGuestRecurringReminderCursorStore,
+  findAuthenticatedRecurringReminderLifecycle,
+  setForegroundReminderContext,
+  type RecurringReminderCursorStore,
+} from '../lib/recurringReminderCursorStore';
+import { evaluateRecurringReminderCursor } from '../utils/recurringReminderCursor';
+import { recurringTransactionSatisfiesCycleKey } from '../utils/recurringPayments';
+import { logger } from '../utils/logger';
 import type { Notification, NotificationFilter } from '../types/finance';
 
 export function useNotifications(userId: string | null) {
@@ -66,6 +77,103 @@ export function useNotifications(userId: string | null) {
   }, [addNotification, updateNotification, deleteNotification, storeClearAll, storeMarkAllAsRead, notifications, preferences]);
 
   const notificationManager = notificationManagerRef.current;
+
+  const writerPrefix = userId ? 'foreground:compat' : 'foreground:guest';
+  const cursorStore = useMemo<RecurringReminderCursorStore>(() => {
+    if (userId) {
+      return createAuthenticatedRecurringReminderCursorStore({
+        sourceNotifications: firestoreData.notifications,
+        writerPrefix,
+      });
+    }
+    if (typeof window === 'undefined') return { read: () => undefined };
+    return createGuestRecurringReminderCursorStore({
+      storage: window.localStorage,
+      accountScope: 'guest',
+      writerPrefix,
+    });
+  }, [userId, firestoreData.notifications, writerPrefix]);
+  const timeZone = preferences.timeZone
+    ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+    ?? 'America/Bogota';
+
+  setForegroundReminderContext(notificationManager, {
+    cursorStore,
+    sourceNotifications: userId ? firestoreData.notifications : notifications,
+    timeZone,
+    writerPrefix,
+  });
+
+  // Financial writers remain authoritative. This observer only reacts after the
+  // central Firestore snapshot exposes the persisted link/unlink/delete result.
+  useEffect(() => {
+    if (!userId || firestoreData.loading) return;
+    let cancelled = false;
+
+    const recompute = async () => {
+      const now = new Date();
+      for (const payment of firestoreData.recurringPayments) {
+        if (cancelled || !payment.id || !payment.isActive) continue;
+        const lifecycle = findAuthenticatedRecurringReminderLifecycle({
+          sourceNotifications: firestoreData.notifications,
+          paymentId: payment.id,
+          writerPrefix,
+        });
+        const cursor = cursorStore.read(payment.id);
+        if (!lifecycle || !cursor) continue;
+
+        try {
+          const evaluation = evaluateRecurringReminderCursor({
+            payment,
+            now,
+            timeZone,
+            cursor,
+            isPaid: (targetCycle) => firestoreData.transactions.some((transaction) =>
+              recurringTransactionSatisfiesCycleKey(payment, transaction, targetCycle)),
+          });
+          if (evaluation.resolvedCycleKey && lifecycle.lifecycleStatus === 'active' && lifecycle.id) {
+            await updateNotification(lifecycle.id, {
+              lifecycleStatus: 'resolved',
+              isRead: true,
+              readRevision: lifecycle.revision,
+              resolvedRevision: lifecycle.revision,
+              resolvedAt: now,
+              updatedAt: now,
+            });
+          }
+
+          const advancesResolvedCycle = evaluation.activeStageWindow
+            && evaluation.nextCursor.cycleKey !== cursor.cycleKey;
+          const reactivatesCurrentCycle = evaluation.activeStageWindow
+            && lifecycle.lifecycleStatus === 'resolved'
+            && !evaluation.resolvedCycleKey;
+          if (advancesResolvedCycle || reactivatesCurrentCycle) {
+            await notificationManager.createNotification(buildRecurringReminderCandidate({
+              payment,
+              cursor: evaluation.nextCursor,
+              writerPrefix,
+            }));
+          }
+        } catch (error) {
+          logger.error('Recurring notification recompute failed', error);
+        }
+      }
+    };
+
+    void recompute();
+    return () => { cancelled = true; };
+  }, [
+    userId,
+    firestoreData.loading,
+    firestoreData.notifications,
+    firestoreData.recurringPayments,
+    firestoreData.transactions,
+    cursorStore,
+    timeZone,
+    writerPrefix,
+    notificationManager,
+    updateNotification,
+  ]);
 
   // Get unread count
   const unreadCount = useMemo(() => {

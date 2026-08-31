@@ -13,6 +13,94 @@
 
 import type { RecurringPayment } from '../types/finance';
 
+export interface ZonedDateTimeParts {
+  year: number;
+  /** Zero-based, like Date#getMonth and the persisted cycleKey contract. */
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+}
+
+/** Calendar fields of an instant in an explicit IANA zone. */
+export const getZonedDateTimeParts = (
+  date: Date,
+  timeZone: string
+): ZonedDateTimeParts => {
+  const values = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date).reduce<Record<string, string>>((parts, part) => {
+    parts[part.type] = part.value;
+    return parts;
+  }, {});
+
+  return {
+    year: Number(values.year),
+    month: Number(values.month) - 1,
+    day: Number(values.day),
+    hour: Number(values.hour),
+    minute: Number(values.minute),
+  };
+};
+
+export const localDateKeyFromParts = (
+  parts: Pick<ZonedDateTimeParts, 'year' | 'month' | 'day'>
+): string => `${parts.year}-${String(parts.month + 1).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
+
+export const localDateKeyInTimeZone = (date: Date, timeZone: string): string =>
+  localDateKeyFromParts(getZonedDateTimeParts(date, timeZone));
+
+const calendarOrdinal = (
+  parts: Pick<ZonedDateTimeParts, 'year' | 'month' | 'day'>
+): number => Date.UTC(parts.year, parts.month, parts.day) / 86_400_000;
+
+/** Calendar-day difference in the requested zone; elapsed milliseconds are irrelevant. */
+export const calendarDayDifferenceInTimeZone = (
+  from: Date,
+  to: Date,
+  timeZone: string
+): number => calendarOrdinal(getZonedDateTimeParts(to, timeZone))
+  - calendarOrdinal(getZonedDateTimeParts(from, timeZone));
+
+export const calendarDateDifference = (fromLocalDate: string, toLocalDate: string): number => {
+  const parse = (value: string): ZonedDateTimeParts => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) throw new Error(`Invalid local date: ${value}`);
+    const parts = {
+      year: Number(match[1]), month: Number(match[2]) - 1, day: Number(match[3]), hour: 0, minute: 0,
+    };
+    const date = new Date(Date.UTC(parts.year, parts.month, parts.day));
+    if (
+      date.getUTCFullYear() !== parts.year
+      || date.getUTCMonth() !== parts.month
+      || date.getUTCDate() !== parts.day
+    ) throw new Error(`Invalid local date: ${value}`);
+    return parts;
+  };
+  return calendarOrdinal(parse(toLocalDate)) - calendarOrdinal(parse(fromLocalDate));
+};
+
+export const addLocalCalendarDays = (localDate: string, days: number): string => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(localDate);
+  if (!match) throw new Error(`Invalid local date: ${localDate}`);
+  const source = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  if (
+    source.getUTCFullYear() !== Number(match[1])
+    || source.getUTCMonth() !== Number(match[2]) - 1
+    || source.getUTCDate() !== Number(match[3])
+  ) throw new Error(`Invalid local date: ${localDate}`);
+  const date = new Date(Date.UTC(source.getUTCFullYear(), source.getUTCMonth(), source.getUTCDate() + days));
+  return localDateKeyFromParts({
+    year: date.getUTCFullYear(), month: date.getUTCMonth(), day: date.getUTCDate(),
+  });
+};
+
 /**
  * Centinela para "último día del mes". Se guarda como dueDay y, al acotarse con
  * `effectiveDueDay` (Math.min con el último día real), siempre resuelve al último

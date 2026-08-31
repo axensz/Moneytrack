@@ -6,6 +6,8 @@ import {
   getNextDueDate,
   getCycleWindow,
   cycleKey,
+  getZonedDateTimeParts,
+  calendarDayDifferenceInTimeZone,
 } from '../../utils/recurringDates';
 import type { RecurringPayment } from '../../types/finance';
 
@@ -211,5 +213,40 @@ describe('recurringDates — cycleKey', () => {
 
   it('es la clave del inicio de la ventana (vencimiento que abrió el ciclo)', () => {
     expect(cycleKey(p, new Date(2025, 1, 15))).toBe('2025-1-5'); // 5 feb
+  });
+});
+
+describe('recurringDates — calendario IANA', () => {
+  it('salta el hueco DST sin inventar una hora local intermedia', () => {
+    expect(getZonedDateTimeParts(
+      new Date('2026-03-08T06:59:00.000Z'),
+      'America/New_York',
+    )).toMatchObject({ year: 2026, month: 2, day: 8, hour: 1, minute: 59 });
+    expect(getZonedDateTimeParts(
+      new Date('2026-03-08T07:00:00.000Z'),
+      'America/New_York',
+    )).toMatchObject({ year: 2026, month: 2, day: 8, hour: 3, minute: 0 });
+  });
+
+  it('las dos ocurrencias DST repetidas conservan la misma fecha y hora local', () => {
+    const first = getZonedDateTimeParts(
+      new Date('2026-11-01T05:30:00.000Z'),
+      'America/New_York',
+    );
+    const second = getZonedDateTimeParts(
+      new Date('2026-11-01T06:30:00.000Z'),
+      'America/New_York',
+    );
+
+    expect(first).toMatchObject({ year: 2026, month: 10, day: 1, hour: 1, minute: 30 });
+    expect(second).toMatchObject(first);
+  });
+
+  it('cuenta fechas de calendario de la zona, no bloques transcurridos de 24 horas', () => {
+    expect(calendarDayDifferenceInTimeZone(
+      new Date('2026-03-08T05:30:00.000Z'),
+      new Date('2026-03-09T04:00:00.000Z'),
+      'America/New_York',
+    )).toBe(1);
   });
 });

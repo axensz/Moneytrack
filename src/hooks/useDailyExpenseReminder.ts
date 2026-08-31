@@ -1,85 +1,65 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { logger } from '../utils/logger';
+import { getDailyReminderCatchUp } from '../utils/notificationEventLifecycle';
+import { getForegroundReminderContext } from '../lib/recurringReminderCursorStore';
 import type { NotificationManager } from '../services/NotificationManager';
 import type { NotificationPreferences } from '../types/finance';
 
-const MAX_TIMEOUT_MS = 2_147_483_647;
-const DAILY_REMINDER_METADATA = { reminderKey: 'daily-expense-reminder' };
-
-function getNextReminderDate(hour: number, minute: number): Date {
-    const next = new Date();
-    next.setHours(hour, minute, 0, 0);
-
-    if (next.getTime() <= Date.now()) {
-        next.setDate(next.getDate() + 1);
-    }
-
-    return next;
-}
+const EVALUATION_INTERVAL_MS = 5 * 60 * 1000;
 
 export function useDailyExpenseReminder(
-    notificationManager: NotificationManager,
-    preferences: NotificationPreferences
+  notificationManager: NotificationManager,
+  preferences: NotificationPreferences
 ) {
-    const timeoutRef = useRef<number | null>(null);
-    const {
-        enabled,
-        hour,
-        minute,
-    } = preferences.dailyExpenseReminder;
+  const { enabled, hour, minute } = preferences.dailyExpenseReminder;
 
-    useEffect(() => {
-        if (!enabled || typeof window === 'undefined') {
-            return;
-        }
+  useEffect(() => {
+    if (!enabled || typeof window === 'undefined') return;
+    let cancelled = false;
+    let lastReminderLocalDate: string | undefined;
 
-        let cancelled = false;
+    const evaluate = async () => {
+      if (cancelled) return;
+      const context = getForegroundReminderContext(notificationManager);
+      const timeZone = context?.timeZone
+        ?? preferences.timeZone
+        ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+        ?? 'America/Bogota';
+      const disposition = getDailyReminderCatchUp({
+        now: new Date(), timeZone, hour, minute, lastReminderLocalDate,
+      });
+      if (!disposition.shouldSend) return;
 
-        const clearScheduledReminder = () => {
-            if (timeoutRef.current !== null) {
-                window.clearTimeout(timeoutRef.current);
-                timeoutRef.current = null;
-            }
-        };
+      lastReminderLocalDate = disposition.localDate;
+      try {
+        await notificationManager.createNotification({
+          type: 'info',
+          title: 'Registra tus gastos',
+          message: 'No se te olvide agregar tus gastos de hoy.',
+          severity: 'info',
+          isRead: false,
+          schemaVersion: 2,
+          eventKey: `${context?.writerPrefix ?? 'foreground:compat'}:daily-expense:${disposition.localDate}`,
+          stage: 'daily',
+          stageWindow: 'daily',
+          lifecycleStatus: 'active',
+          actionUrl: '/?view=transactions',
+          metadata: { reminderKey: 'daily-expense-reminder', localDate: disposition.localDate },
+          ...(context?.authorityConfigVersion === undefined
+            ? {}
+            : { authorityConfigVersion: context.authorityConfigVersion }),
+        });
+      } catch (error) {
+        lastReminderLocalDate = undefined;
+        logger.error('Daily expense reminder failed', error);
+      }
+    };
 
-        const scheduleNextReminder = () => {
-            clearScheduledReminder();
-            const nextReminder = getNextReminderDate(hour, minute);
-            const delay = Math.min(nextReminder.getTime() - Date.now(), MAX_TIMEOUT_MS);
-
-            timeoutRef.current = window.setTimeout(async () => {
-                if (cancelled) return;
-
-                try {
-                    await notificationManager.createNotification({
-                        type: 'info',
-                        title: 'Registra tus gastos',
-                        message: 'No se te olvide agregar tus gastos de hoy.',
-                        severity: 'info',
-                        isRead: false,
-                        actionUrl: '/?view=transactions',
-                        metadata: DAILY_REMINDER_METADATA,
-                    });
-                } catch (error) {
-                    logger.error('Daily expense reminder failed', error);
-                } finally {
-                    if (!cancelled) {
-                        scheduleNextReminder();
-                    }
-                }
-            }, delay);
-        };
-
-        scheduleNextReminder();
-
-        return () => {
-            cancelled = true;
-            clearScheduledReminder();
-        };
-    }, [
-        notificationManager,
-        enabled,
-        hour,
-        minute,
-    ]);
+    void evaluate();
+    const interval = window.setInterval(() => { void evaluate(); }, EVALUATION_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [notificationManager, preferences.timeZone, enabled, hour, minute]);
 }

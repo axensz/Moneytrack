@@ -420,6 +420,33 @@ describe('useNotificationStore - actualizacion optimista con datos externos', ()
     }]);
   });
 
+  it('oculta lifecycle source resuelto/superseded sin mutar su metadata de cursor', () => {
+    const resolved = makeVersionedNotification(4, {
+      lifecycleStatus: 'resolved',
+      resolvedRevision: 4,
+      metadata: {
+        recurringPaymentId: 'rent',
+        recurringCycle: '2026-5-15',
+        localDate: '2026-06-15',
+      },
+    });
+    const superseded = makeVersionedNotification(5, {
+      id: 'superseded-source',
+      authoritySupersededAt: new Date('2026-06-20T12:00:00.000Z'),
+      authoritySupersededByVersion: 3,
+    });
+    const source = [resolved, superseded];
+
+    const { result } = renderHook(() => useNotificationStore('user-1', source));
+
+    expect(result.current.notifications).toEqual([]);
+    expect(source[0].metadata).toEqual({
+      recurringPaymentId: 'rent',
+      recurringCycle: '2026-5-15',
+      localDate: '2026-06-15',
+    });
+  });
+
   it('mantiene eventos superseded para el lifecycle fuente, los oculta del centro y reactiva solo el coincidente', async () => {
     const supersededAt = new Date('2026-08-05T14:00:00.000Z');
     const current = makeVersionedNotification(8, {

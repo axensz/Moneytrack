@@ -1,186 +1,162 @@
-/**
- * A3 — PaymentMonitor: umbrales de recordatorio de pagos recurrentes.
- *
- * Aislamos el DESPACHO por umbral (la lógica con riesgo de off-by-one) espiando
- * getDaysUntilDue / isAlreadyPaid, para no depender del cálculo de fechas. Pinea
- * el comportamiento actual: recordatorios DISCRETOS en 0, 1 y 3 días — el día 2
- * NO recibe aviso (schedule deliberado, no escalado <=3). Audit A3.
- */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PaymentMonitor } from '../../services/PaymentMonitor';
-import type { RecurringPayment } from '../../types/finance';
+import type { RecurringPayment, Transaction } from '../../types/finance';
+import type { RecurringReminderCursor } from '../../utils/recurringReminderCursor';
 
-const makePayment = (o: Partial<RecurringPayment> = {}): RecurringPayment => ({
-  id: 'p1', name: 'Netflix', amount: 30000, category: 'Suscripciones',
-  frequency: 'monthly', dueDay: 15, isActive: true, accountId: 'acc1',
-  createdAt: new Date('2026-01-01'),
-  ...o,
-} as RecurringPayment);
+const payment = (overrides: Partial<RecurringPayment> = {}): RecurringPayment => ({
+  id: 'rent', name: 'Arriendo', amount: 1_500_000, category: 'Vivienda',
+  frequency: 'monthly', dueDay: 15, isActive: true, accountId: 'checking',
+  createdAt: new Date('2026-01-01T12:00:00.000Z'), ...overrides,
+});
 
-const setup = (payments: RecurringPayment[] = [makePayment()]) => {
+const cursorStore = (cursor?: RecurringReminderCursor) => ({
+  read: vi.fn<(paymentId: string) => RecurringReminderCursor | undefined>(() => cursor),
+  persistGuest: vi.fn<(paymentId: string, value: RecurringReminderCursor) => void>(),
+  removeGuest: vi.fn<(paymentId: string) => void>(),
+});
+
+const setup = ({ cursor, transactions = [], writerPrefix = 'foreground:compat' }: {
+  cursor?: RecurringReminderCursor; transactions?: Transaction[]; writerPrefix?: string;
+} = {}) => {
   const createNotification = vi.fn().mockResolvedValue(undefined);
-  const monitor = new PaymentMonitor({ createNotification, recurringPayments: payments, transactions: [] });
-  vi.spyOn(monitor, 'isAlreadyPaid').mockReturnValue(false);
-  return { monitor, createNotification };
+  const store = cursorStore(cursor);
+  const monitor = new PaymentMonitor({
+    createNotification, recurringPayments: [payment()], transactions, cursorStore: store,
+    timeZone: 'America/Bogota', writerPrefix,
+  });
+  return { createNotification, monitor, store };
 };
 
-describe('PaymentMonitor — umbrales de recordatorio (A3)', () => {
-  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-06-15T12:00:00')); });
+describe('PaymentMonitor — cursor de calendario local', () => {
+  beforeEach(() => vi.useFakeTimers());
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
-  it.each([
-    [0, /vence hoy/i],
-    [1, /vence mañana/i],
-    [3, /vence en 3 días/i],
-  ])('notifica cuando faltan %i días', async (days, re) => {
+  it('antes de D-3 09:00 no crea lifecycle ni persiste cursor guest', async () => {
+    vi.setSystemTime(new Date('2026-06-12T13:59:00.000Z'));
+    const { monitor, createNotification, store } = setup();
+    await monitor.checkUpcomingPayments();
+    expect(createNotification).not.toHaveBeenCalled();
+    expect(store.persistGuest).not.toHaveBeenCalled();
+  });
+
+  it('el guard incluye stageWindow: 08:59 no bloquea la transición de 09:00', async () => {
+    vi.setSystemTime(new Date('2026-06-12T13:59:00.000Z'));
     const { monitor, createNotification } = setup();
-    vi.spyOn(monitor, 'getDaysUntilDue').mockReturnValue(days as number);
+    await monitor.checkUpcomingPayments();
+    vi.setSystemTime(new Date('2026-06-12T14:00:00.000Z'));
     await monitor.checkUpcomingPayments();
     expect(createNotification).toHaveBeenCalledTimes(1);
-    expect((createNotification.mock.calls[0][0] as { message: string }).message).toMatch(re as RegExp);
+    expect(createNotification.mock.calls[0][0]).toMatchObject({
+      type: 'recurring', schemaVersion: 2,
+      eventKey: 'foreground:compat:recurring:rent:2026-5-15',
+      stage: 'd3', stageWindow: 'd3', lifecycleStatus: 'active',
+      metadata: { recurringPaymentId: 'rent', recurringCycle: '2026-5-15', localDate: '2026-06-15' },
+    });
   });
 
-  it.each([2, 4, 5, 7])('NO notifica cuando faltan %i días (día 2 queda sin aviso por el schedule discreto)', async (days) => {
+  it('persiste guest solo después de que el primer stage se creó correctamente', async () => {
+    vi.setSystemTime(new Date('2026-06-13T17:00:00.000Z'));
+    const { monitor, createNotification, store } = setup({ writerPrefix: 'foreground:guest' });
+    await monitor.checkUpcomingPayments();
+    expect(createNotification).toHaveBeenCalledTimes(1);
+    expect(store.persistGuest).toHaveBeenCalledWith('rent', {
+      cycleKey: '2026-5-15', dueLocalDate: '2026-06-15', stageWindow: 'd3',
+    });
+  });
+
+  it('los candidatos nunca adjudican revision ni deliverySource al foreground', async () => {
+    vi.setSystemTime(new Date('2026-06-16T14:00:00.000Z'));
     const { monitor, createNotification } = setup();
-    vi.spyOn(monitor, 'getDaysUntilDue').mockReturnValue(days);
+    await monitor.checkUpcomingPayments();
+    const candidate = createNotification.mock.calls[0][0];
+    expect(candidate).not.toHaveProperty('revision');
+    expect(candidate).not.toHaveProperty('deliverySource');
+    expect(candidate).toMatchObject({ stage: 'overdue', stageWindow: 'overdue:0', overdueOccurrence: 0 });
+  });
+
+  it.each([
+    ['2026-06-12T14:00:00.000Z', 'd3', /vence en 3 días/i],
+    ['2026-06-14T14:00:00.000Z', 'd1', /vence mañana/i],
+    ['2026-06-15T14:00:00.000Z', 'due', /vence hoy/i],
+    ['2026-06-16T14:00:00.000Z', 'overdue:0', /hace 1 día/i],
+    ['2026-06-23T14:00:00.000Z', 'overdue:1', /hace 8 días/i],
+    ['2026-06-30T14:00:00.000Z', 'overdue:2', /hace 15 días/i],
+  ])('conserva copy/cadencia para %s (%s)', async (now, expectedStage, expectedCopy) => {
+    vi.setSystemTime(new Date(now));
+    const persisted = expectedStage.startsWith('overdue:')
+      ? { cycleKey: '2026-5-15', dueLocalDate: '2026-06-15', stageWindow: 'due' as const }
+      : undefined;
+    const { monitor, createNotification } = setup({ cursor: persisted });
+    await monitor.checkUpcomingPayments();
+    expect(createNotification.mock.calls[0][0]).toMatchObject({
+      stageWindow: expectedStage,
+      message: expect.stringMatching(expectedCopy),
+    });
+  });
+
+  it('usa el prefijo/version de autoridad cuando el runtime ya está disponible', async () => {
+    vi.setSystemTime(new Date('2026-06-15T14:00:00.000Z'));
+    const createNotification = vi.fn().mockResolvedValue(undefined);
+    const monitor = new PaymentMonitor({
+      createNotification, recurringPayments: [payment()], transactions: [], cursorStore: cursorStore(),
+      timeZone: 'America/Bogota', writerPrefix: 'foreground:v7', authorityConfigVersion: 7,
+    });
+    await monitor.checkUpcomingPayments();
+    expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
+      eventKey: 'foreground:v7:recurring:rent:2026-5-15', authorityConfigVersion: 7,
+    }));
+  });
+
+  it('evalúa pago contra el cycleKey persistido aunque now esté dos meses después', async () => {
+    vi.setSystemTime(new Date('2026-08-02T14:00:00.000Z'));
+    const cursor: RecurringReminderCursor = {
+      cycleKey: '2026-5-15', dueLocalDate: '2026-06-15', stageWindow: 'overdue:2',
+    };
+    const paidJune: Transaction = {
+      id: 'paid-june', type: 'expense', amount: 1_500_000, category: 'Vivienda',
+      description: 'Arriendo', date: new Date('2026-08-01T12:00:00.000Z'), paid: true,
+      accountId: 'checking', recurringPaymentId: 'rent', recurringCycle: '2026-5-15',
+    };
+    const { monitor, createNotification } = setup({ cursor, transactions: [paidJune] });
+    expect(monitor.isAlreadyPaid(payment(), cursor.cycleKey)).toBe(true);
     await monitor.checkUpcomingPayments();
     expect(createNotification).not.toHaveBeenCalled();
   });
 
-  it('no notifica si el pago ya está pagado en el ciclo', async () => {
-    const { monitor, createNotification } = setup();
-    vi.spyOn(monitor, 'getDaysUntilDue').mockReturnValue(0);
-    (monitor.isAlreadyPaid as ReturnType<typeof vi.fn>).mockReturnValue(true);
+  it('un pending en el cycleKey exacto no resuelve ni suprime el reminder', async () => {
+    vi.setSystemTime(new Date('2026-06-16T14:00:00.000Z'));
+    const cursor: RecurringReminderCursor = {
+      cycleKey: '2026-5-15', dueLocalDate: '2026-06-15', stageWindow: 'due',
+    };
+    const pending = {
+      id: 'pending', type: 'expense', amount: 1, category: 'Vivienda', description: 'x',
+      date: new Date(), paid: false, accountId: 'checking', recurringPaymentId: 'rent',
+      recurringCycle: cursor.cycleKey,
+    } as Transaction;
+    const { monitor, createNotification } = setup({ cursor, transactions: [pending] });
     await monitor.checkUpcomingPayments();
-    expect(createNotification).not.toHaveBeenCalled();
+    expect(createNotification).toHaveBeenCalledTimes(1);
+    expect(createNotification.mock.calls[0][0]).toMatchObject({ stageWindow: 'overdue:0' });
+  });
+
+  it('reintenta la misma ventana tras rechazo y no persiste un guard falso', async () => {
+    vi.setSystemTime(new Date('2026-06-15T14:00:00.000Z'));
+    const { monitor, createNotification, store } = setup();
+    createNotification.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(undefined);
+    await monitor.checkUpcomingPayments();
+    await monitor.checkUpcomingPayments();
+    expect(createNotification).toHaveBeenCalledTimes(2);
+    expect(store.persistGuest).toHaveBeenCalledTimes(1);
   });
 
   it('ignora pagos inactivos', async () => {
-    const { monitor, createNotification } = setup([makePayment({ isActive: false })]);
-    vi.spyOn(monitor, 'getDaysUntilDue').mockReturnValue(0);
+    vi.setSystemTime(new Date('2026-06-15T14:00:00.000Z'));
+    const createNotification = vi.fn().mockResolvedValue(undefined);
+    const monitor = new PaymentMonitor({
+      createNotification, recurringPayments: [payment({ isActive: false })], transactions: [],
+      cursorStore: cursorStore(), timeZone: 'America/Bogota', writerPrefix: 'foreground:compat',
+    });
     await monitor.checkUpcomingPayments();
     expect(createNotification).not.toHaveBeenCalled();
-  });
-
-  it('corre solo una vez por día (guard lastCheckDate)', async () => {
-    const { monitor, createNotification } = setup();
-    vi.spyOn(monitor, 'getDaysUntilDue').mockReturnValue(0);
-    await monitor.checkUpcomingPayments();
-    await monitor.checkUpcomingPayments(); // mismo día → debe saltarse
-    expect(createNotification).toHaveBeenCalledTimes(1);
-  });
-
-  it.each([
-    [12, /vence en 3 días/i],
-    [14, /vence mañana/i],
-    [15, /vence hoy/i],
-    [16, /venció hace 1 día/i],
-    [23, /venció hace 8 días/i],
-    [30, /venció hace 15 días/i],
-  ])('evalúa la cadencia D%s con fechas locales normalizadas', async (day, message) => {
-    vi.setSystemTime(new Date(2026, 5, day as number, 12, 0, 0));
-    const createNotification = vi.fn().mockResolvedValue(undefined);
-    const monitor = new PaymentMonitor({
-      createNotification,
-      recurringPayments: [makePayment({ dueDay: 15 })],
-      transactions: [],
-    });
-
-    await monitor.checkUpcomingPayments();
-
-    expect(createNotification).toHaveBeenCalledTimes(1);
-    expect((createNotification.mock.calls[0][0] as { message: string }).message).toMatch(message as RegExp);
-    expect((createNotification.mock.calls[0][0] as { metadata: { recurringPaymentId: string } }).metadata.recurringPaymentId).toBe('p1');
-  });
-
-  it('respeta recurringCycle aunque la fecha persistida esté fuera de la ventana', () => {
-    const payment = makePayment({ dueDay: 15 });
-    const monitor = new PaymentMonitor({
-      createNotification: vi.fn().mockResolvedValue(undefined),
-      recurringPayments: [payment],
-      transactions: [{
-        id: 'tx-pagada', type: 'expense', amount: payment.amount, category: payment.category,
-        description: payment.name, date: new Date(2026, 0, 1), paid: true, accountId: 'acc1',
-        recurringPaymentId: payment.id, recurringCycle: '2026-5-15',
-      }],
-    });
-
-    expect(monitor.isAlreadyPaid(payment)).toBe(true);
-  });
-
-  it('does not suppress a reminder for a pending transaction in the matching cycle', () => {
-    const payment = makePayment({ dueDay: 15 });
-    const monitor = new PaymentMonitor({
-      createNotification: vi.fn().mockResolvedValue(undefined),
-      recurringPayments: [payment],
-      transactions: [{
-        id: 'tx-pendiente', type: 'expense', amount: payment.amount, category: payment.category,
-        description: payment.name, date: new Date(2026, 5, 15), paid: false, accountId: 'acc1',
-        recurringPaymentId: payment.id, recurringCycle: '2026-5-15',
-      }],
-    });
-
-    expect(monitor.isAlreadyPaid(payment)).toBe(false);
-  });
-
-  it('recalcula el ciclo el mismo día después de desvincular un pago persistido', async () => {
-    const createNotification = vi.fn().mockResolvedValue(undefined);
-    const payment = makePayment({ dueDay: 15 });
-    const monitor = new PaymentMonitor({
-      createNotification,
-      recurringPayments: [payment],
-      transactions: [],
-    });
-
-    await monitor.checkUpcomingPayments();
-    monitor.deps.transactions = [{
-      id: 'tx-vinculada', type: 'expense', amount: payment.amount, category: payment.category,
-      description: payment.name, date: new Date(2026, 5, 15), paid: true, accountId: 'acc1',
-      recurringPaymentId: payment.id, recurringCycle: '2026-5-15',
-    }];
-    await monitor.checkUpcomingPayments();
-    monitor.deps.transactions = [];
-    await monitor.checkUpcomingPayments();
-
-    expect(createNotification).toHaveBeenCalledTimes(2);
-  });
-
-  it('no conserva el estado de un pago eliminado cuando se recrea y reactiva', async () => {
-    const createNotification = vi.fn().mockResolvedValue(undefined);
-    const original = makePayment({ id: 'p-original', dueDay: 15 });
-    const recreated = makePayment({ id: 'p-recreado', dueDay: 15, isActive: false });
-    const monitor = new PaymentMonitor({
-      createNotification,
-      recurringPayments: [original],
-      transactions: [],
-    });
-
-    await monitor.checkUpcomingPayments();
-    monitor.deps.recurringPayments = [];
-    await monitor.checkUpcomingPayments();
-    monitor.deps.recurringPayments = [recreated];
-    await monitor.checkUpcomingPayments();
-    monitor.deps.recurringPayments = [{ ...recreated, isActive: true }];
-    await monitor.checkUpcomingPayments();
-
-    expect(createNotification).toHaveBeenCalledTimes(2);
-    expect((createNotification.mock.calls[0][0] as { metadata: { recurringPaymentId: string } }).metadata.recurringPaymentId).toBe('p-original');
-    expect((createNotification.mock.calls[1][0] as { metadata: { recurringPaymentId: string } }).metadata.recurringPaymentId).toBe('p-recreado');
-  });
-
-  it('reintenta después de un rechazo sin persistir el guard diario', async () => {
-    const createNotification = vi.fn()
-      .mockRejectedValueOnce(new Error('notificación no disponible'))
-      .mockResolvedValueOnce(undefined);
-    const monitor = new PaymentMonitor({
-      createNotification,
-      recurringPayments: [makePayment({ dueDay: 15 })],
-      transactions: [],
-    });
-
-    await monitor.checkUpcomingPayments();
-    await monitor.checkUpcomingPayments();
-
-    expect(createNotification).toHaveBeenCalledTimes(2);
   });
 });

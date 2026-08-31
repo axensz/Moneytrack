@@ -9,7 +9,7 @@ import { formatCurrency } from '../utils/formatters';
 import type { Transaction, Budget, Notification, NotificationPreferences } from '../types/finance';
 import { viewActionUrl } from '../hooks/useViewRouting';
 import { localDateKey } from '../utils/dateUtils';
-import { buildBudgetEventKey, getCanonicalEventRevision } from '../utils/notificationEventLifecycle';
+import { buildBudgetEventKey, getEventStageRank } from '../utils/notificationEventLifecycle';
 
 export interface BudgetUtilization {
     budgetId: string;
@@ -29,7 +29,7 @@ interface BudgetMonitorDeps {
 export class BudgetMonitor {
     public deps: BudgetMonitorDeps;
     private utilizationCache: Map<string, { utilization: BudgetUtilization; timestamp: number }> = new Map();
-    private budgetEventRevisions: Map<string, number> = new Map();
+    private budgetEventStageRanks: Map<string, number> = new Map();
     private readonly CACHE_TTL_MS = 30000; // 30 seconds
 
     constructor(deps: BudgetMonitorDeps) {
@@ -158,8 +158,8 @@ export class BudgetMonitor {
         if (!stage) return;
 
         const eventKey = buildBudgetEventKey(budgetId, localDateKey().slice(0, 7));
-        const revision = getCanonicalEventRevision({ eventKey, stage, stageWindow: stage });
-        if (revision === null || revision <= (this.budgetEventRevisions.get(eventKey) ?? 0)) return;
+        const stageRank = getEventStageRank({ type: 'budget', stage, stageWindow: stage });
+        if (stageRank === null || stageRank <= (this.budgetEventStageRanks.get(eventKey) ?? 0)) return;
 
         await this.deps.createNotification({
             type: 'budget',
@@ -181,12 +181,11 @@ export class BudgetMonitor {
             },
             schemaVersion: 2,
             eventKey,
-            revision,
             stage,
             stageWindow: stage,
             lifecycleStatus: 'active',
         });
-        this.budgetEventRevisions.set(eventKey, revision);
+        this.budgetEventStageRanks.set(eventKey, stageRank);
     }
 
 

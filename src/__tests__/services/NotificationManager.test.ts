@@ -9,8 +9,13 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 vi.mock('react-hot-toast', () => ({
   default: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }),
 }));
+vi.mock('../../lib/browserNotifications', () => ({
+  appNotificationToBrowserPayload: vi.fn((notification) => notification),
+  showBrowserNotification: vi.fn().mockResolvedValue(undefined),
+}));
 
 import toast from 'react-hot-toast';
+import { showBrowserNotification } from '../../lib/browserNotifications';
 import { NotificationManager } from '../../services/NotificationManager';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../../types/finance';
 import type { Notification, NotificationPreferences } from '../../types/finance';
@@ -64,7 +69,7 @@ describe('NotificationManager (A3)', () => {
     expect(addNotification).toHaveBeenCalledTimes(2);
   });
 
-  it('no bloquea una revisión superior del mismo evento durante el debounce', async () => {
+  it('no aplica debounce a candidatos v2 y deja la revisión al store transaccional', async () => {
     const { mgr, addNotification } = setup();
     const event = {
       schemaVersion: 2 as const,
@@ -74,13 +79,15 @@ describe('NotificationManager (A3)', () => {
       lifecycleStatus: 'active' as const,
     };
 
-    await mgr.createNotification(notif({ ...event, revision: 1 }));
-    await mgr.createNotification(notif({ ...event, revision: 2, stage: 'critical', stageWindow: 'critical' }));
+    await mgr.createNotification(notif(event));
+    await mgr.createNotification(notif({ ...event, stage: 'critical', stageWindow: 'critical' }));
 
     expect(addNotification).toHaveBeenCalledTimes(2);
+    expect(addNotification.mock.calls[0][0]).not.toHaveProperty('revision');
+    expect(addNotification.mock.calls[1][0]).not.toHaveProperty('revision');
   });
 
-  it('normalizes a manual v2 revision to the canonical stage revision before delegating', async () => {
+  it('descarta una revisión v2 suministrada por el candidato antes de delegar', async () => {
     const { mgr, addNotification } = setup();
     await mgr.createNotification(notif({
       schemaVersion: 2,
@@ -91,7 +98,8 @@ describe('NotificationManager (A3)', () => {
       lifecycleStatus: 'active',
     }));
 
-    expect(addNotification).toHaveBeenCalledWith(expect.objectContaining({ revision: 1 }));
+    expect(addNotification).toHaveBeenCalledTimes(1);
+    expect(addNotification.mock.calls[0][0]).not.toHaveProperty('revision');
   });
 
   it('shouldShowToast: solo para severidad warning/error', () => {
@@ -131,6 +139,20 @@ describe('NotificationManager (A3)', () => {
     await mgr.createNotification(notif({ severity: 'error' }));
     expect(addNotification).toHaveBeenCalledTimes(1);
     expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('publica feedback solo después de que la mutación del store tiene éxito', async () => {
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(showBrowserNotification).mockClear();
+    const { mgr, addNotification } = setup({
+      browserNotifications: { enabled: true },
+    });
+    addNotification.mockRejectedValue(new Error('offline'));
+
+    await expect(mgr.createNotification(notif({ severity: 'error' }))).rejects.toThrow('offline');
+
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(showBrowserNotification).not.toHaveBeenCalled();
   });
 
   it('muestra toast cuando addNotification SÍ crea la notificación', async () => {

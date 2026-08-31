@@ -9,7 +9,6 @@ import { localDateKey } from '../utils/dateUtils';
 import { appNotificationToBrowserPayload, showBrowserNotification } from '../lib/browserNotifications';
 import type { Notification, NotificationFilter, NotificationPreferences } from '../types/finance';
 import {
-    getCanonicalEventRevision,
     isVersionedEventCandidate,
     isVersionedNotification,
 } from '../utils/notificationEventLifecycle';
@@ -42,16 +41,11 @@ export class NotificationManager {
      * La deduplicación ahora se maneja en addNotification con docId determinístico
      */
     async createNotification(notification: Omit<Notification, 'id' | 'createdAt'>): Promise<void> {
-        const canonicalRevision = isVersionedEventCandidate(notification as Notification)
-            ? getCanonicalEventRevision(notification as Notification)
-            : undefined;
-        if (canonicalRevision === null) {
-            logger.warn('Invalid versioned notification stage, skipping', { notification });
-            return;
+        const candidate = { ...notification };
+        const isVersioned = isVersionedEventCandidate(candidate as Notification);
+        if (isVersioned) {
+            delete candidate.revision;
         }
-        const candidate = canonicalRevision === undefined
-            ? notification
-            : { ...notification, revision: canonicalRevision };
         // Check if notification type is enabled
         if (!this.isNotificationTypeEnabled(candidate.type)) {
             logger.info(`Notification type ${candidate.type} is disabled, skipping`);
@@ -59,7 +53,7 @@ export class NotificationManager {
         }
 
         // Check for duplicate (debouncing en memoria - previene llamadas rápidas)
-        if (this.isDuplicate(candidate)) {
+        if (!isVersioned && this.isDuplicate(candidate)) {
             logger.info('Duplicate notification detected (debounce), skipping', { notification: candidate });
             return;
         }
@@ -77,8 +71,10 @@ export class NotificationManager {
             }
 
             // Update debounce map
-            const dedupeKey = this.getDebounceKey(candidate);
-            this.debounceMap.set(dedupeKey, Date.now());
+            if (!isVersioned) {
+                const dedupeKey = this.getDebounceKey(candidate);
+                this.debounceMap.set(dedupeKey, Date.now());
+            }
 
             // Show toast if appropriate
             if (this.shouldShowToast(candidate)) {
@@ -277,9 +273,6 @@ export class NotificationManager {
      * ✅ FIX #3: Generate a unique key for debouncing (incluye fecha para deduplicación diaria)
      */
     private getDebounceKey(notification: Omit<Notification, 'id' | 'createdAt'>): string {
-        if (isVersionedEventCandidate(notification as Notification)) {
-            return `${notification.eventKey}:${notification.revision ?? 1}`;
-        }
         const parts = [notification.type, notification.title];
 
         // Fecha LOCAL para deduplicación diaria (no UTC: en UTC-5 el corte caía a

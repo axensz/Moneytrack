@@ -62,6 +62,7 @@ const makeVersionedNotification = (
   overrides: Partial<Notification> = {}
 ): Notification => ({
   ...makeNotification('event-recurring-rent-2026-08', revision === 1),
+  type: 'recurring',
   schemaVersion: 2,
   eventKey: 'recurring:rent:2026-08',
   revision,
@@ -292,7 +293,7 @@ describe('useNotificationStore - actualizacion optimista con datos externos', ()
     await expect(advancing).resolves.toBe(true);
 
     expect(writes).toHaveLength(1);
-    expect(writes[0]).toMatchObject({ revision: 4, stageWindow: 'overdue:0' });
+    expect(writes[0]).toMatchObject({ revision: 3, stageWindow: 'overdue:0' });
   });
 
   it.each([
@@ -352,7 +353,7 @@ describe('useNotificationStore - actualizacion optimista con datos externos', ()
     await expect(retryR4).resolves.toBe(true);
 
     expect(writes).toHaveLength(1);
-    expect(writes[0]).toMatchObject({ revision: 4, stageWindow: 'overdue:0' });
+    expect(writes[0]).toMatchObject({ revision: 3, stageWindow: 'overdue:0' });
   });
 
   it('keeps the confirmed higher revision when r5 succeeds and the pending r4 write fails', async () => {
@@ -397,7 +398,7 @@ describe('useNotificationStore - actualizacion optimista con datos externos', ()
     await expect(result.current.addNotification(r4)).resolves.toBe(false);
 
     expect(writes).toHaveLength(1);
-    expect(writes[0]).toMatchObject({ revision: 5, stageWindow: 'overdue:1' });
+    expect(writes[0]).toMatchObject({ revision: 3, stageWindow: 'overdue:1' });
   });
 
   it('normaliza el candidato v2 inicial a revisión 1 en vez de tratarlo como legacy', async () => {
@@ -416,6 +417,80 @@ describe('useNotificationStore - actualizacion optimista con datos externos', ()
       id: 'event:recurring%3Arent%3A2026-08',
       schemaVersion: 2,
       revision: 1,
+    }]);
+  });
+
+  it('mantiene eventos superseded para el lifecycle fuente, los oculta del centro y reactiva solo el coincidente', async () => {
+    const supersededAt = new Date('2026-08-05T14:00:00.000Z');
+    const current = makeVersionedNotification(8, {
+      stage: 'due',
+      stageWindow: 'due',
+      lifecycleStatus: 'resolved',
+      authorityConfigVersion: 2,
+      authoritySupersededAt: supersededAt,
+      authoritySupersededByVersion: 3,
+    });
+    const unrelated = makeVersionedNotification(4, {
+      id: 'event-recurring-other-2026-08',
+      eventKey: 'recurring:other:2026-08',
+      authoritySupersededAt: supersededAt,
+      authoritySupersededByVersion: 3,
+    });
+    const resolvedOnly = makeVersionedNotification(5, {
+      id: 'event-recurring-resolved-2026-08',
+      eventKey: 'recurring:resolved:2026-08',
+      lifecycleStatus: 'resolved',
+    });
+    M.getDoc.mockResolvedValue({ exists: () => true, data: () => current });
+    const { result, rerender } = renderHook(
+      ({ notifications }) => useNotificationStore('user-1', notifications),
+      { initialProps: { notifications: [current, unrelated, resolvedOnly] } }
+    );
+
+    expect(result.current.notifications).toEqual([]);
+    const { id: _id, createdAt: _createdAt, ...candidate } = current;
+    await act(async () => {
+      await expect(result.current.addNotification({
+        ...candidate,
+        revision: 99,
+        lifecycleStatus: 'active',
+        authorityConfigVersion: 4,
+        authoritySupersededAt: undefined,
+        authoritySupersededByVersion: undefined,
+      })).resolves.toBe(true);
+    });
+
+    const written = M.setDoc.mock.calls.at(-1)?.[1] as Notification;
+    expect(written).toMatchObject({ revision: 9, lifecycleStatus: 'active', authorityConfigVersion: 4 });
+    expect(written.authoritySupersededAt).toBeUndefined();
+    expect(written.authoritySupersededByVersion).toBeUndefined();
+    rerender({ notifications: [{ ...written, id: current.id }, unrelated, resolvedOnly] });
+    expect(result.current.notifications).toHaveLength(1);
+    expect(result.current.notifications[0].eventKey).toBe(current.eventKey);
+  });
+
+  it('actualiza el estado autoritativo guest antes del siguiente avance', async () => {
+    localStorage.setItem('notifications', '[]');
+    const { result } = renderHook(() => useNotificationStore(null));
+    const base = makeVersionedNotification(99, {
+      id: undefined,
+      eventKey: 'budget:b1:2026-08',
+      type: 'budget',
+      stage: 'warning',
+      stageWindow: 'warning',
+    });
+
+    await act(async () => {
+      await Promise.all([
+        result.current.addNotification(base),
+        result.current.addNotification({ ...base, stage: 'critical', stageWindow: 'critical' }),
+      ]);
+    });
+
+    expect(result.current.notifications).toMatchObject([{
+      eventKey: 'budget:b1:2026-08',
+      revision: 2,
+      stage: 'critical',
     }]);
   });
 

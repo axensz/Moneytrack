@@ -292,6 +292,10 @@ export interface Notification {
   stageWindow?: string;
   overdueOccurrence?: number;
   lifecycleStatus?: NotificationLifecycleStatus;
+  deliverySource?: 'backend';
+  authorityConfigVersion?: number;
+  authoritySupersededAt?: Date;
+  authoritySupersededByVersion?: number;
   /** La revisión previa resuelta cuando el documento canónico avanza. */
   resolvedRevision?: number;
   readRevision?: number;
@@ -299,6 +303,7 @@ export interface Notification {
   scheduledAt?: Date;
   resolvedAt?: Date;
   dismissedAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface NotificationMetadata {

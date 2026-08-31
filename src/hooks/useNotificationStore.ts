@@ -31,7 +31,7 @@ import { RULE_SAFE_SIMPLE_WRITE_LIMIT } from '../config/firestoreLimits';
 import {
     advanceVersionedNotification,
     eventDocumentId,
-    getCanonicalEventRevision,
+    getEventStageRank,
     isNotificationDismissed,
     isNotificationRead,
     isVersionedEventCandidate,
@@ -74,34 +74,34 @@ type StoredNotificationDocument = {
     readRevision?: number;
 };
 
-type EventRevisionState = {
+type EventStageState = {
     confirmed: number;
     pending: Map<symbol, number>;
 };
 
-const effectiveEventRevision = (state: EventRevisionState): number => {
-    let revision = state.confirmed;
-    state.pending.forEach((pendingRevision) => {
-        revision = Math.max(revision, pendingRevision);
+const effectiveEventStageRank = (state: EventStageState): number => {
+    let stageRank = state.confirmed;
+    state.pending.forEach((pendingStageRank) => {
+        stageRank = Math.max(stageRank, pendingStageRank);
     });
-    return revision;
+    return stageRank;
 };
 
-const releaseEventRevisionReservation = (
-    states: Map<string, EventRevisionState>,
+const releaseEventStageReservation = (
+    states: Map<string, EventStageState>,
     eventKey: string,
-    state: EventRevisionState,
+    state: EventStageState,
     reservation: symbol,
-    rawRevision: number,
-    confirmedRevision?: number,
+    rawStageRank: number,
+    confirmedStageRank?: number,
 ): void => {
     state.pending.delete(reservation);
-    if (confirmedRevision !== undefined) {
-        state.confirmed = Math.max(state.confirmed, confirmedRevision);
+    if (confirmedStageRank !== undefined) {
+        state.confirmed = Math.max(state.confirmed, confirmedStageRank);
     }
     if (
         state.pending.size === 0
-        && state.confirmed === rawRevision
+        && state.confirmed === rawStageRank
         && states.get(eventKey) === state
     ) {
         states.delete(eventKey);
@@ -125,7 +125,7 @@ export function useNotificationStore(userId: string | null, externalNotification
     // Ref to avoid recreating addNotification on every snapshot update
     const firestoreNotificationsRef = useRef<Notification[]>([]);
     const visibleNotificationsRef = useRef<Notification[]>([]);
-    const eventRevisionStatesRef = useRef<Map<string, EventRevisionState>>(new Map());
+    const eventStageStatesRef = useRef<Map<string, EventStageState>>(new Map());
 
     // LocalStorage for guest mode
     const [localNotifications, setLocalNotifications] = useLocalStorage<Notification[]>('notifications', []);
@@ -154,11 +154,21 @@ export function useNotificationStore(userId: string | null, externalNotification
         const unsubscribe = onSnapshot(
             notificationsQuery,
             (snapshot) => {
-                const data = snapshot.docs.map((doc) => ({
-                    id: doc.id,
-                    ...doc.data(),
-                    createdAt: doc.data().createdAt?.toDate() || new Date(),
-                })) as Notification[];
+                const data = snapshot.docs.map((snapshotDoc) => {
+                    const stored = snapshotDoc.data();
+                    return {
+                        id: snapshotDoc.id,
+                        ...stored,
+                        createdAt: stored.createdAt ? ensureDate(stored.createdAt) : new Date(),
+                        updatedAt: stored.updatedAt ? ensureDate(stored.updatedAt) : undefined,
+                        scheduledAt: stored.scheduledAt ? ensureDate(stored.scheduledAt) : undefined,
+                        resolvedAt: stored.resolvedAt ? ensureDate(stored.resolvedAt) : undefined,
+                        dismissedAt: stored.dismissedAt ? ensureDate(stored.dismissedAt) : undefined,
+                        authoritySupersededAt: stored.authoritySupersededAt
+                            ? ensureDate(stored.authoritySupersededAt)
+                            : undefined,
+                    } as Notification;
+                });
                 setFirestoreNotifications(data);
                 setLoading(false);
             },
@@ -175,12 +185,14 @@ export function useNotificationStore(userId: string | null, externalNotification
 
     sourceNotifications.forEach((notification) => {
         if (!isVersionedNotification(notification)) return;
-        const state = eventRevisionStatesRef.current.get(notification.eventKey);
+        const stageRank = getEventStageRank(notification);
+        if (stageRank === null) return;
+        const state = eventStageStatesRef.current.get(notification.eventKey);
         if (!state) return;
 
-        state.confirmed = Math.max(state.confirmed, notification.revision);
-        if (state.pending.size === 0 && state.confirmed === notification.revision) {
-            eventRevisionStatesRef.current.delete(notification.eventKey);
+        state.confirmed = Math.max(state.confirmed, stageRank);
+        if (state.pending.size === 0 && state.confirmed === stageRank) {
+            eventStageStatesRef.current.delete(notification.eventKey);
         }
     });
 
@@ -188,6 +200,8 @@ export function useNotificationStore(userId: string | null, externalNotification
     const notifications = useMemo(
         () => sourceNotifications
             .filter((n) => !n.id || !optimisticDeletedIds.has(n.id))
+            .filter((n) => !n.authoritySupersededAt)
+            .filter((n) => n.lifecycleStatus !== 'resolved')
             .filter((n) => !isNotificationDismissed(n))
             .filter((n) => !(
                 n.id
@@ -321,32 +335,40 @@ export function useNotificationStore(userId: string | null, externalNotification
                 const candidate = {
                     ...notification,
                     createdAt: now,
+                    updatedAt: now,
                 } as Notification;
-                const candidateRevision = getCanonicalEventRevision(candidate);
-                if (candidateRevision === null) return false;
-                candidate.revision = candidateRevision;
+                delete candidate.revision;
+                const candidateStageRank = getEventStageRank(candidate);
+                if (candidateStageRank === null) return false;
                 const eventKey = candidate.eventKey!;
-                const rawRevision = current?.revision ?? 0;
-                let revisionState = eventRevisionStatesRef.current.get(eventKey);
-                if (!revisionState) {
-                    revisionState = { confirmed: rawRevision, pending: new Map() };
-                    eventRevisionStatesRef.current.set(eventKey, revisionState);
+                const rawStageRank = current ? getEventStageRank(current) ?? 0 : 0;
+                let stageState = eventStageStatesRef.current.get(eventKey);
+                if (!stageState) {
+                    stageState = { confirmed: rawStageRank, pending: new Map() };
+                    eventStageStatesRef.current.set(eventKey, stageState);
                 } else {
-                    revisionState.confirmed = Math.max(revisionState.confirmed, rawRevision);
+                    stageState.confirmed = Math.max(stageState.confirmed, rawStageRank);
                 }
-                if (candidateRevision <= effectiveEventRevision(revisionState)) return false;
+                const reactivatesCurrent = current?.lifecycleStatus === 'resolved'
+                    && candidate.lifecycleStatus !== 'resolved'
+                    && candidateStageRank === rawStageRank;
+                if (
+                    reactivatesCurrent
+                        ? stageState.pending.size > 0 || stageState.confirmed > rawStageRank
+                        : candidateStageRank <= effectiveEventStageRank(stageState)
+                ) return false;
 
                 // Cada intento conserva su propia reserva hasta que persiste o falla.
                 const reservation = Symbol(eventKey);
-                revisionState.pending.set(reservation, candidateRevision);
+                stageState.pending.set(reservation, candidateStageRank);
                 const next = advanceVersionedNotification(current, candidate);
                 if (next === current) {
-                    releaseEventRevisionReservation(
-                        eventRevisionStatesRef.current,
+                    releaseEventStageReservation(
+                        eventStageStatesRef.current,
                         eventKey,
-                        revisionState,
+                        stageState,
                         reservation,
-                        rawRevision,
+                        rawStageRank,
                     );
                     return false;
                 }
@@ -358,35 +380,58 @@ export function useNotificationStore(userId: string | null, externalNotification
                         const result = await runTransaction(db, async (transaction) => {
                             const ref = doc(db, `users/${userId}/notifications`, id);
                             const snapshot = await transaction.get(ref);
-                            const persisted = snapshot.exists()
-                                ? { ...snapshot.data(), id } as Notification
-                                : undefined;
+                            const persistedData = snapshot.exists() ? snapshot.data() : undefined;
+                            const persisted = persistedData ? {
+                                ...persistedData,
+                                id,
+                                createdAt: persistedData.createdAt
+                                    ? ensureDate(persistedData.createdAt)
+                                    : new Date(),
+                                updatedAt: persistedData.updatedAt
+                                    ? ensureDate(persistedData.updatedAt)
+                                    : undefined,
+                                scheduledAt: persistedData.scheduledAt
+                                    ? ensureDate(persistedData.scheduledAt)
+                                    : undefined,
+                                resolvedAt: persistedData.resolvedAt
+                                    ? ensureDate(persistedData.resolvedAt)
+                                    : undefined,
+                                dismissedAt: persistedData.dismissedAt
+                                    ? ensureDate(persistedData.dismissedAt)
+                                    : undefined,
+                                authoritySupersededAt: persistedData.authoritySupersededAt
+                                    ? ensureDate(persistedData.authoritySupersededAt)
+                                    : undefined,
+                            } as Notification : undefined;
                             const nextPersisted = advanceVersionedNotification(persisted, candidate);
                             if (nextPersisted === persisted) {
-                                return { written: false, revision: persisted?.revision ?? 0 };
+                                return {
+                                    written: false,
+                                    stageRank: persisted ? getEventStageRank(persisted) ?? 0 : 0,
+                                };
                             }
 
                             const data = { ...nextPersisted };
                             delete data.id;
                             transaction.set(ref, data);
-                            return { written: true, revision: nextPersisted.revision ?? candidateRevision };
+                            return { written: true, stageRank: candidateStageRank };
                         });
-                        releaseEventRevisionReservation(
-                            eventRevisionStatesRef.current,
+                        releaseEventStageReservation(
+                            eventStageStatesRef.current,
                             eventKey,
-                            revisionState,
+                            stageState,
                             reservation,
-                            rawRevision,
-                            result.revision,
+                            rawStageRank,
+                            result.stageRank,
                         );
                         return result.written;
                     } catch (error) {
-                        releaseEventRevisionReservation(
-                            eventRevisionStatesRef.current,
+                        releaseEventStageReservation(
+                            eventStageStatesRef.current,
                             eventKey,
-                            revisionState,
+                            stageState,
                             reservation,
-                            rawRevision,
+                            rawStageRank,
                         );
                         throw error;
                     }
@@ -394,14 +439,15 @@ export function useNotificationStore(userId: string | null, externalNotification
                     const stored: Notification = { ...next, id };
                     const updated = [stored, ...localNotificationsRef.current.filter((existing) => existing.id !== id)]
                         .slice(0, MAX_NOTIFICATIONS);
+                    localNotificationsRef.current = updated;
                     setLocalNotifications(updated);
-                    releaseEventRevisionReservation(
-                        eventRevisionStatesRef.current,
+                    releaseEventStageReservation(
+                        eventStageStatesRef.current,
                         eventKey,
-                        revisionState,
+                        stageState,
                         reservation,
-                        rawRevision,
-                        next.revision ?? candidateRevision,
+                        rawStageRank,
+                        candidateStageRank,
                     );
                 }
                 return true;

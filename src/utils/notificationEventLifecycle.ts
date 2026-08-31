@@ -175,7 +175,9 @@ export function advanceVersionedNotification(
     && current.eventKey === candidate.eventKey
     && current.lifecycleStatus === 'resolved'
     && lifecycleStatus === 'active'
-    && candidateRank === currentRank;
+    && candidateRank !== null
+    && currentRank !== null
+    && candidateRank >= currentRank;
   const advancesCurrent = isVersionedNotification(current)
     && current.eventKey === candidate.eventKey
     && currentRank !== null

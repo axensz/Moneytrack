@@ -469,6 +469,110 @@ describe('useNotificationStore - actualizacion optimista con datos externos', ()
     expect(result.current.notifications[0].eventKey).toBe(current.eventKey);
   });
 
+  it('reactiva un evento resuelto en una etapa superior sin revelar otro namespace superseded', async () => {
+    const supersededAt = new Date('2026-08-05T14:00:00.000Z');
+    const current = makeVersionedNotification(8, {
+      stage: 'due',
+      stageWindow: 'due',
+      lifecycleStatus: 'resolved',
+      authorityConfigVersion: 2,
+      authoritySupersededAt: supersededAt,
+      authoritySupersededByVersion: 3,
+    });
+    const unrelated = makeVersionedNotification(4, {
+      id: 'event-recurring-other-2026-08',
+      eventKey: 'recurring:other:2026-08',
+      stage: 'due',
+      stageWindow: 'due',
+      lifecycleStatus: 'resolved',
+      authoritySupersededAt: supersededAt,
+      authoritySupersededByVersion: 3,
+    });
+    M.getDoc.mockResolvedValue({ exists: () => true, data: () => current });
+    const { result, rerender } = renderHook(
+      ({ notifications }) => useNotificationStore('user-1', notifications),
+      { initialProps: { notifications: [current, unrelated] } }
+    );
+    const { id: _id, createdAt: _createdAt, ...candidate } = current;
+
+    await act(async () => {
+      await expect(result.current.addNotification({
+        ...candidate,
+        revision: 99,
+        stage: 'overdue',
+        stageWindow: 'overdue:0',
+        lifecycleStatus: 'active',
+        authorityConfigVersion: 4,
+        authoritySupersededAt: undefined,
+        authoritySupersededByVersion: undefined,
+      })).resolves.toBe(true);
+    });
+
+    const [writtenRef, written] = M.setDoc.mock.calls.at(-1) as [
+      { __path: string },
+      Notification,
+    ];
+    expect(writtenRef.__path).toBe(`users/user-1/notifications/${current.id}`);
+    expect(written).toMatchObject({
+      revision: 9,
+      stageWindow: 'overdue:0',
+      lifecycleStatus: 'active',
+      authorityConfigVersion: 4,
+    });
+    expect(written.authoritySupersededAt).toBeUndefined();
+    expect(written.authoritySupersededByVersion).toBeUndefined();
+    rerender({ notifications: [{ ...written, id: current.id }, unrelated] });
+    expect(result.current.notifications.map((notification) => notification.eventKey))
+      .toEqual([current.eventKey]);
+    expect(unrelated.authoritySupersededAt).toBe(supersededAt);
+    expect(unrelated.authoritySupersededByVersion).toBe(3);
+  });
+
+  it('omite campos lifecycle undefined del reemplazo completo persistido', async () => {
+    const supersededAt = new Date('2026-08-05T14:00:00.000Z');
+    const current = makeVersionedNotification(8, {
+      stage: 'due',
+      stageWindow: 'due',
+      lifecycleStatus: 'resolved',
+      isRead: true,
+      readRevision: 8,
+      dismissedRevision: 8,
+      dismissedAt: supersededAt,
+      authoritySupersededAt: supersededAt,
+      authoritySupersededByVersion: 3,
+    });
+    M.getDoc.mockResolvedValue({ exists: () => true, data: () => current });
+    const { result } = renderHook(() => useNotificationStore('user-1', [current]));
+    const { id: _id, createdAt: _createdAt, ...candidate } = current;
+
+    await act(async () => {
+      await expect(result.current.addNotification({
+        ...candidate,
+        revision: 99,
+        stage: 'overdue',
+        stageWindow: 'overdue:0',
+        lifecycleStatus: 'active',
+        authoritySupersededAt: undefined,
+        authoritySupersededByVersion: undefined,
+      })).resolves.toBe(true);
+    });
+
+    const persisted = M.setDoc.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    expect(Object.entries(persisted).filter(([, value]) => value === undefined)).toEqual([]);
+    expect(persisted).not.toHaveProperty('authoritySupersededAt');
+    expect(persisted).not.toHaveProperty('authoritySupersededByVersion');
+    expect(persisted).not.toHaveProperty('readRevision');
+    expect(persisted).not.toHaveProperty('dismissedRevision');
+    expect(persisted).not.toHaveProperty('dismissedAt');
+    expect(persisted).not.toHaveProperty('scheduledAt');
+    expect(persisted).toMatchObject({
+      revision: 9,
+      stageWindow: 'overdue:0',
+      lifecycleStatus: 'active',
+      isRead: false,
+    });
+  });
+
   it('actualiza el estado autoritativo guest antes del siguiente avance', async () => {
     localStorage.setItem('notifications', '[]');
     const { result } = renderHook(() => useNotificationStore(null));

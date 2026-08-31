@@ -217,4 +217,60 @@ describe('notificationEventLifecycle', () => {
     expect(reactivated.authoritySupersededAt).toBeUndefined();
     expect(reactivated.authoritySupersededByVersion).toBeUndefined();
   });
+
+  it('clears supersession when a resolved matching namespace reactivates at a higher stage', () => {
+    const supersededAt = new Date('2026-08-05T14:00:00.000Z');
+    const reactivatedAt = new Date('2026-08-06T14:00:00.000Z');
+    const resolved = versioned(8, {
+      stage: 'due',
+      stageWindow: 'due',
+      lifecycleStatus: 'resolved',
+      authoritySupersededAt: supersededAt,
+      authoritySupersededByVersion: 3,
+    });
+
+    const reactivated = advanceVersionedNotification(resolved, versioned(99, {
+      stage: 'overdue',
+      stageWindow: 'overdue:0',
+      lifecycleStatus: 'active',
+      createdAt: reactivatedAt,
+      authorityConfigVersion: 4,
+    }));
+
+    expect(reactivated).toMatchObject({
+      revision: 9,
+      stage: 'overdue',
+      stageWindow: 'overdue:0',
+      lifecycleStatus: 'active',
+      updatedAt: reactivatedAt,
+      authorityConfigVersion: 4,
+    });
+    expect(reactivated.authoritySupersededAt).toBeUndefined();
+    expect(reactivated.authoritySupersededByVersion).toBeUndefined();
+  });
+
+  it('does not clear supersession for lower stages or another event namespace', () => {
+    const supersededAt = new Date('2026-08-05T14:00:00.000Z');
+    const resolved = versioned(8, {
+      stage: 'due',
+      stageWindow: 'due',
+      lifecycleStatus: 'resolved',
+      authoritySupersededAt: supersededAt,
+      authoritySupersededByVersion: 3,
+    });
+
+    expect(advanceVersionedNotification(resolved, versioned(99, {
+      stage: 'd1',
+      stageWindow: 'd1',
+      lifecycleStatus: 'active',
+    }))).toBe(resolved);
+    expect(advanceVersionedNotification(resolved, versioned(99, {
+      eventKey: 'recurring:other:2026-08',
+      stage: 'overdue',
+      stageWindow: 'overdue:0',
+      lifecycleStatus: 'active',
+    }))).toBe(resolved);
+    expect(resolved.authoritySupersededAt).toBe(supersededAt);
+    expect(resolved.authoritySupersededByVersion).toBe(3);
+  });
 });

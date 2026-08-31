@@ -23,6 +23,7 @@ import {
 } from 'firebase/firestore';
 import type { DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
 import { ensureDate, localDateKey } from '../utils/dateUtils';
+import { stripUndefined } from '../utils/firestoreHelpers';
 import { db } from '../lib/firebaseDb';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
@@ -411,9 +412,7 @@ export function useNotificationStore(userId: string | null, externalNotification
                                 };
                             }
 
-                            const data = { ...nextPersisted };
-                            delete data.id;
-                            transaction.set(ref, data);
+                            transaction.set(ref, stripUndefined({ ...nextPersisted, id: undefined }));
                             return { written: true, stageRank: candidateStageRank };
                         });
                         releaseEventStageReservation(

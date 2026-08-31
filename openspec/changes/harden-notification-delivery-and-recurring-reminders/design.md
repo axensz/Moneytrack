@@ -167,8 +167,10 @@ Immediately before external I/O, one transaction persists `sending`,
 `dispatchStartedAt`, and `possibleAcceptanceExpiresAt` as the earlier of event
 expiry and one hour after dispatch start. That evidence is never cleared by a
 stale result or authority cutover. The result-commit transaction re-reads the
-same lease owner/expiry and exact active durable authority/generation. A stale
-lease or generation cannot apply the adapter result; it suppresses stale
+same lease owner/expiry before the exact active durable authority/generation.
+A lease mismatch aborts without mutation, even if a newer same-generation
+worker reclaimed the delivery. With the lease still matching, a generation
+mismatch cannot apply the adapter result and may suppress old-generation
 nonterminal work while retaining `dispatchStartedAt` and
 `possibleAcceptanceExpiresAt`. Only terminal deliveries set
 `retentionExpiresAt` to 30 days after their terminal timestamp; pending,
@@ -399,7 +401,8 @@ time-event shapes without that generation once a runtime document exists. The
 backend rereads the active `durable` authority and matching generation before
 every schedule/event transaction, delivery lease commit, external dispatch,
 and result commit. Result commits also require the same delivery lease
-owner/expiry; a stale lease or generation suppresses nonterminal work without
+owner/expiry first: a mismatch aborts without mutation. Only a matching-lease
+generation mismatch may suppress old-generation nonterminal work without
 clearing dispatch-started possible-acceptance evidence.
 This closes stale-client and stale-worker races, including a later rollback to
 `foreground`. A transition back therefore leaves backend history intact and

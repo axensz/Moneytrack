@@ -254,7 +254,7 @@ recurring, or debt inbox events.
 
 #### Scenario: A stale worker races an authority transition
 - **WHEN** a schedule/event transaction, delivery lease claim/recovery/release, external dispatch, or result commit observes a missing, fenced, non-durable, or different runtime generation, or a delivery has a missing or mismatched `authorityConfigVersion`
-- **THEN** the backend MUST stop before committing or calling the push service; a result commit MUST also match the same lease owner/expiry and MUST suppress stale nonterminal work without clearing `dispatchStartedAt` or `possibleAcceptanceExpiresAt` rather than applying or presenting its stale adapter result
+- **THEN** the backend MUST stop before committing or calling the push service; a result commit MUST compare its lease owner/expiry first and any mismatch MUST abort without mutation, including when a newer same-generation worker reclaimed the delivery; only when the lease still matches, a generation mismatch MUST reject the adapter result and MAY suppress old-generation nonterminal work without clearing `dispatchStartedAt` or `possibleAcceptanceExpiresAt`
 
 #### Scenario: Stale Admin enable races an emergency kill switch
 - **WHEN** an Admin control command's expected `controlVersion` no longer matches because another operator disabled delivery

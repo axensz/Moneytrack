@@ -23,6 +23,7 @@ vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, path: string): FakeSource => ({ path, kind: 'document' }),
   query: (source: FakeSource): FakeSource => source,
   orderBy: vi.fn(),
+  where: vi.fn(),
   limit: vi.fn(),
   startAfter: vi.fn(),
   onSnapshot: (

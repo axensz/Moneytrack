@@ -15,6 +15,7 @@ import {
   onSnapshot,
   query,
   orderBy,
+  where,
   limit,
   doc as firestoreDoc,
   startAfter,
@@ -75,6 +76,34 @@ const replaceTransactionDecodeIssues = (
   ));
 };
 
+const firestoreDate = (value: unknown): Date | undefined => {
+  if (value instanceof Date) return value;
+  if (!value || typeof value !== 'object' || !('toDate' in value)) return undefined;
+  const toDate = (value as { toDate?: unknown }).toDate;
+  if (typeof toDate !== 'function') return undefined;
+  const date = toDate.call(value) as Date;
+  return date instanceof Date && Number.isFinite(date.getTime()) ? date : undefined;
+};
+
+const decodeNotification = (
+  document: QueryDocumentSnapshot<DocumentData>,
+): Notification => {
+  const data = document.data();
+  const dates: Record<string, Date> = {};
+  for (const field of [
+    'updatedAt', 'authoritySupersededAt', 'resolvedAt', 'dismissedAt', 'scheduledAt',
+  ]) {
+    const date = firestoreDate(data[field]);
+    if (date) dates[field] = date;
+  }
+  return {
+    id: document.id,
+    ...data,
+    ...dates,
+    createdAt: firestoreDate(data.createdAt) ?? new Date(),
+  } as Notification;
+};
+
 export interface FirestoreData {
   transactions: Transaction[];
   transactionDecodeIssues: TransactionDecodeIssue[];
@@ -86,6 +115,7 @@ export interface FirestoreData {
   budgets: Budget[];
   savingsGoals: SavingsGoal[];
   notifications: Notification[];
+  recurringNotificationLifecycles: Notification[];
   notificationPreferences: NotificationPreferences;
   loading: boolean;
   error: Error | null;
@@ -112,6 +142,10 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [recurringNotificationLifecycleState, setRecurringNotificationLifecycleState] = useState<{
+    userId: string;
+    notifications: Notification[];
+  } | null>(null);
   const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
 
   const [loadedForUserId, setLoadedForUserId] = useState<string | null>(null);
@@ -151,6 +185,11 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
   const transactionsRetrying = userId !== null
     && transactionsReadiness.userId === userId
     && transactionsReadiness.retrying;
+  const recurringNotificationLifecycles = useMemo(() => (
+    userId && recurringNotificationLifecycleState?.userId === userId
+      ? recurringNotificationLifecycleState.notifications
+      : []
+  ), [userId, recurringNotificationLifecycleState]);
 
   const retryLoad = useCallback(() => {
     setError(null);
@@ -222,6 +261,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
       setBudgets([]);
       setSavingsGoals([]);
       setNotifications([]);
+      setRecurringNotificationLifecycleState(null);
       setNotificationPreferences(DEFAULT_NOTIFICATION_PREFERENCES);
       setLoadedForUserId(null);
       loadedCollections.current = Object.fromEntries(COLLECTION_NAMES.map(n => [n, false]));
@@ -438,12 +478,22 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
       query(collection(db, `${base}/notifications`), orderBy('createdAt', 'desc'), limit(MAX_NOTIFICATIONS)),
       'notificaciones',
       (snap) => {
-        setNotifications(snap.docs.map(d => ({
-          id: d.id, ...d.data(),
-          createdAt: d.data().createdAt?.toDate() || new Date(),
-        })) as Notification[]);
+        setNotifications(snap.docs.map(decodeNotification));
         loadedCollections.current.notifications = true;
         checkAllLoaded();
+      }
+    );
+
+    // Durable recurring lifecycle source. It is bounded by domain semantics,
+    // not by the presentation center's newest-100 window.
+    subscribeQuery(
+      query(collection(db, `${base}/notifications`), where('type', '==', 'recurring')),
+      'lifecycles de pagos recurrentes',
+      (snap) => {
+        setRecurringNotificationLifecycleState({
+          userId,
+          notifications: snap.docs.map(decodeNotification),
+        });
       }
     );
 
@@ -612,6 +662,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     budgets,
     savingsGoals,
     notifications,
+    recurringNotificationLifecycles,
     notificationPreferences,
     loading,
     error,

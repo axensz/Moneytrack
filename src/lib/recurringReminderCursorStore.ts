@@ -59,30 +59,41 @@ export function findAuthenticatedRecurringReminderLifecycle({
         && notification.metadata?.recurringPaymentId === paymentId
         && notification.eventKey === expectedEventKey
         && configMatches
-        && (notification.lifecycleStatus === 'active' || notification.lifecycleStatus === 'resolved')
+        && (
+          notification.lifecycleStatus === 'scheduled'
+          || notification.lifecycleStatus === 'active'
+          || notification.lifecycleStatus === 'resolved'
+        )
         && !notification.authoritySupersededAt
       );
     })
     .sort((left, right) => {
       const leftCursor = cursorFromNotification(left)!;
       const rightCursor = cursorFromNotification(right)!;
-      const dueOrder = rightCursor.dueLocalDate.localeCompare(leftCursor.dueLocalDate);
+      const leftUnpaid = left.lifecycleStatus !== 'resolved';
+      const rightUnpaid = right.lifecycleStatus !== 'resolved';
+      const lifecycleOrder = Number(rightUnpaid) - Number(leftUnpaid);
+      if (lifecycleOrder !== 0) return lifecycleOrder;
+      const dueOrder = leftUnpaid
+        ? leftCursor.dueLocalDate.localeCompare(rightCursor.dueLocalDate)
+        : rightCursor.dueLocalDate.localeCompare(leftCursor.dueLocalDate);
       if (dueOrder !== 0) return dueOrder;
       const revisionOrder = (right.revision ?? 0) - (left.revision ?? 0);
       if (revisionOrder !== 0) return revisionOrder;
-      const activeOrder = Number(right.lifecycleStatus === 'active') - Number(left.lifecycleStatus === 'active');
-      if (activeOrder !== 0) return activeOrder;
-      return 0;
+      const updatedOrder = (right.updatedAt?.getTime() ?? 0) - (left.updatedAt?.getTime() ?? 0);
+      if (updatedOrder !== 0) return updatedOrder;
+      return (left.id ?? '').localeCompare(right.id ?? '');
     })[0];
 }
 
-const cursorFromNotification = (notification: Notification): RecurringReminderCursor | undefined => {
-  const cycleKey = notification.metadata?.recurringCycle;
-  const dueLocalDate = notification.metadata?.localDate;
-  const cycle = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(cycleKey ?? '');
-  const due = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dueLocalDate ?? '');
+const validateCursor = (value: unknown): RecurringReminderCursor | undefined => {
+  if (!value || typeof value !== 'object') return undefined;
+  const cursor = value as Partial<RecurringReminderCursor>;
+  const cycle = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(cursor.cycleKey ?? '');
+  const due = /^(\d{4})-(\d{2})-(\d{2})$/.exec(cursor.dueLocalDate ?? '');
   if (!cycle || !due) return undefined;
-  const dueDate = new Date(Date.UTC(Number(due[1]), Number(due[2]) - 1, Number(due[3])));
+  const dueDate = new Date(0);
+  dueDate.setUTCFullYear(Number(due[1]), Number(due[2]) - 1, Number(due[3]));
   if (
     dueDate.getUTCFullYear() !== Number(due[1])
     || dueDate.getUTCMonth() !== Number(due[2]) - 1
@@ -91,8 +102,20 @@ const cursorFromNotification = (notification: Notification): RecurringReminderCu
     || Number(cycle[2]) !== Number(due[2]) - 1
     || Number(cycle[3]) !== Number(due[3])
   ) return undefined;
-  if (!isRecurringReminderStageWindow(notification.stageWindow)) return undefined;
-  return { cycleKey: cycleKey!, dueLocalDate: dueLocalDate!, stageWindow: notification.stageWindow };
+  if (!isRecurringReminderStageWindow(cursor.stageWindow)) return undefined;
+  return {
+    cycleKey: cursor.cycleKey!,
+    dueLocalDate: cursor.dueLocalDate!,
+    stageWindow: cursor.stageWindow,
+  };
+};
+
+const cursorFromNotification = (notification: Notification): RecurringReminderCursor | undefined => {
+  return validateCursor({
+    cycleKey: notification.metadata?.recurringCycle,
+    dueLocalDate: notification.metadata?.localDate,
+    stageWindow: notification.stageWindow,
+  });
 };
 
 export function createAuthenticatedRecurringReminderCursorStore({
@@ -121,14 +144,6 @@ type StoredGuestCursors = {
   cursors: Record<string, RecurringReminderCursor>;
 };
 
-const isCursor = (value: unknown): value is RecurringReminderCursor => {
-  if (!value || typeof value !== 'object') return false;
-  const cursor = value as Partial<RecurringReminderCursor>;
-  return /^\d{4}-\d{1,2}-\d{1,2}$/.test(cursor.cycleKey ?? '')
-    && /^\d{4}-\d{2}-\d{2}$/.test(cursor.dueLocalDate ?? '')
-    && (cursor.stageWindow === null || isRecurringReminderStageWindow(cursor.stageWindow));
-};
-
 export function createGuestRecurringReminderCursorStore({
   storage,
   accountScope,
@@ -147,7 +162,10 @@ export function createGuestRecurringReminderCursorStore({
       }
       return {
         version: STORAGE_VERSION,
-        cursors: Object.fromEntries(Object.entries(parsed.cursors).filter((entry) => isCursor(entry[1]))),
+        cursors: Object.fromEntries(Object.entries(parsed.cursors).flatMap(([paymentId, value]) => {
+          const cursor = validateCursor(value);
+          return cursor ? [[paymentId, cursor]] : [];
+        })),
       };
     } catch {
       return { version: STORAGE_VERSION, cursors: {} };
@@ -160,9 +178,10 @@ export function createGuestRecurringReminderCursorStore({
       return load().cursors[paymentId];
     },
     persistGuest(paymentId, cursor) {
-      if (cursor.stageWindow === null) return;
+      const validCursor = validateCursor(cursor);
+      if (!validCursor) return;
       const state = load();
-      state.cursors[paymentId] = cursor;
+      state.cursors[paymentId] = validCursor;
       save(state);
     },
     removeGuest(paymentId) {

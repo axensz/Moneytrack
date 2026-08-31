@@ -16,7 +16,7 @@ import { useNotificationMonitoring } from '../../hooks/useNotificationMonitoring
 import type { NotificationManager } from '../../services/NotificationManager';
 import { PaymentMonitor } from '../../services/PaymentMonitor';
 import { DebtMonitor } from '../../services/DebtMonitor';
-import type { Transaction } from '../../types/finance';
+import type { Account, Budget, Debt, RecurringPayment, Transaction } from '../../types/finance';
 
 const notificationManager = {
   deps: {
@@ -224,6 +224,32 @@ describe('useNotificationMonitoring — guard anti-flood por paginación', () =>
     });
 
     expect(paymentSpy).toHaveBeenCalledTimes(1);
+    expect(debtSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('evalúa inmediatamente cuando llega el primer snapshot real de deudas', async () => {
+    const debtSpy = vi.spyOn(DebtMonitor.prototype, 'checkOverdueDebts').mockResolvedValue(undefined);
+    const transactions: Transaction[] = [];
+    const budgets: Budget[] = [];
+    const recurringPayments: RecurringPayment[] = [];
+    const accounts: Account[] = [];
+    const initialDebts: Debt[] = [];
+    const hydratedDebt: Debt = {
+      id: 'debt-1', personName: 'Ana', originalAmount: 100_000, remainingAmount: 100_000,
+      type: 'lent', dueDate: new Date(2026, 5, 8), isSettled: false,
+    };
+    const { rerender } = renderHook(
+      ({ debts }: { debts: Debt[] }) => useNotificationMonitoring({
+        userId: 'user1', transactions, budgets, recurringPayments, accounts,
+        debts, notificationManager, isHydrated: true,
+      }),
+      { initialProps: { debts: initialDebts } },
+    );
+    await act(async () => { await Promise.resolve(); });
+    debtSpy.mockClear();
+
+    await act(async () => { rerender({ debts: [hydratedDebt] }); });
+
     expect(debtSpy).toHaveBeenCalledTimes(1);
   });
 

@@ -15,7 +15,7 @@ export function useFirestore(userId: string | null) {
   const {
     transactions, accounts, categories, transactionBeneficiaries,
     recurringPayments, debts, budgets, savingsGoals,
-    notifications, notificationPreferences,
+    notifications, recurringNotificationLifecycles, notificationPreferences,
     loading, error,
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
     transactionsServerSettled, transactionsHeadExhaustive, transactionsUnresolvedReason, transactionsRetrying,
@@ -41,7 +41,7 @@ export function useFirestore(userId: string | null) {
     // Data (all 7 collections + notifications)
     transactions, accounts, categories, transactionBeneficiaries,
     recurringPayments, debts, budgets, savingsGoals,
-    notifications, notificationPreferences,
+    notifications, recurringNotificationLifecycles, notificationPreferences,
     loading, error,
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
     transactionsServerSettled, transactionsHeadExhaustive, transactionsUnresolvedReason, transactionsRetrying,

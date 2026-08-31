@@ -15,6 +15,8 @@ const M = vi.hoisted(() => ({
   clearAll: vi.fn(async () => undefined),
   markAllAsRead: vi.fn(async () => undefined),
   loggerError: vi.fn(),
+  preferences: {} as NotificationPreferences,
+  transactionDomain: {} as Record<string, unknown>,
 }));
 
 const prefs: NotificationPreferences = {
@@ -46,10 +48,13 @@ vi.mock('../../hooks/useNotificationStore', () => ({
 }));
 vi.mock('../../hooks/useNotificationPreferences', () => ({
   useNotificationPreferences: () => ({
-    preferences: prefs,
+    preferences: M.preferences,
     loading: false,
     updatePreferences: vi.fn(),
   }),
+}));
+vi.mock('../../hooks/useFinanceSelectors', () => ({
+  useTransactionDomain: () => M.transactionDomain,
 }));
 vi.mock('../../utils/logger', () => ({
   logger: { error: M.loggerError, warn: vi.fn(), info: vi.fn(), debug: vi.fn(), log: vi.fn() },
@@ -92,6 +97,7 @@ const snapshot = ({
   loading?: boolean;
 } = {}) => ({
   notifications: [notification],
+  recurringNotificationLifecycles: [notification],
   recurringPayments: [recurringPayment],
   transactions,
   notificationPreferences: prefs,
@@ -105,6 +111,14 @@ describe('useNotifications — recompute tras snapshot financiero persistido', (
     M.addNotification.mockReset().mockResolvedValue(true);
     M.updateNotification.mockReset().mockResolvedValue(undefined);
     M.loggerError.mockReset();
+    M.preferences = prefs;
+    M.transactionDomain = {
+      balanceTransactions: [linked()],
+      balancesReady: true,
+      transactionsServerSettled: true,
+      transactionsHeadExhaustive: true,
+      transactionsUnresolvedReason: null,
+    };
   });
   afterEach(() => vi.useRealTimers());
 
@@ -125,6 +139,26 @@ describe('useNotifications — recompute tras snapshot financiero persistido', (
     ));
   });
 
+  it('usa la fuente lifecycle dedicada aunque el centro de presentación solo tenga 100 filas más nuevas', async () => {
+    const active = lifecycle('active');
+    M.firestoreData = {
+      ...snapshot({ notification: active }),
+      notifications: Array.from({ length: 100 }, (_, index): Notification => ({
+        id: `presentation-${index}`,
+        type: 'info', title: 'Nueva', message: 'Nueva', severity: 'info', isRead: false,
+        createdAt: new Date('2026-07-01T12:00:00.000Z'),
+      })),
+      recurringNotificationLifecycles: [active],
+    };
+
+    renderHook(() => useNotifications('user-1'));
+
+    await waitFor(() => expect(M.updateNotification).toHaveBeenCalledWith(
+      'event-rent-june',
+      expect.objectContaining({ lifecycleStatus: 'resolved' }),
+    ));
+  });
+
   it('unlink reactiva el ciclo actual desde el lifecycle raw resuelto', async () => {
     M.firestoreData = snapshot();
     const { rerender } = renderHook(() => useNotifications('user-1'));
@@ -132,6 +166,10 @@ describe('useNotifications — recompute tras snapshot financiero persistido', (
     M.addNotification.mockClear();
 
     M.firestoreData = snapshot({ transactions: [{ ...linked(), recurringPaymentId: undefined, recurringCycle: undefined }] });
+    M.transactionDomain = {
+      ...M.transactionDomain,
+      balanceTransactions: [{ ...linked(), recurringPaymentId: undefined, recurringCycle: undefined }],
+    };
     rerender();
 
     await waitFor(() => expect(M.addNotification).toHaveBeenCalledWith(expect.objectContaining({
@@ -151,6 +189,7 @@ describe('useNotifications — recompute tras snapshot financiero persistido', (
     M.addNotification.mockClear();
 
     M.firestoreData = snapshot({ transactions: [] });
+    M.transactionDomain = { ...M.transactionDomain, balanceTransactions: [] };
     rerender();
 
     await waitFor(() => expect(M.addNotification).toHaveBeenCalledWith(expect.objectContaining({
@@ -170,5 +209,97 @@ describe('useNotifications — recompute tras snapshot financiero persistido', (
       expect.any(Error),
     ));
     expect((M.firestoreData.transactions as Transaction[])[0].recurringPaymentId).toBe('rent');
+  });
+
+  it('usa preferences.timeZone para resolver una transacción legacy en el borde local', async () => {
+    M.preferences = { ...prefs, timeZone: 'Pacific/Kiritimati' };
+    M.firestoreData = snapshot({
+      notification: lifecycle('active'),
+      transactions: [{
+        ...linked(), recurringCycle: undefined,
+        date: new Date('2026-06-14T10:00:00.000Z'),
+      }],
+    });
+    M.transactionDomain = {
+      ...M.transactionDomain,
+      balanceTransactions: [{
+        ...linked(), recurringCycle: undefined,
+        date: new Date('2026-06-14T10:00:00.000Z'),
+      }],
+    };
+
+    renderHook(() => useNotifications('user-1'));
+
+    await waitFor(() => expect(M.updateNotification).toHaveBeenCalledWith(
+      'event-rent-june',
+      expect.objectContaining({ lifecycleStatus: 'resolved' }),
+    ));
+  });
+
+  it('no resuelve desde un snapshot fromCache aunque contenga un vínculo local', async () => {
+    M.transactionDomain = {
+      ...M.transactionDomain,
+      transactionsServerSettled: false,
+      transactionsUnresolvedReason: 'cache',
+    };
+    M.firestoreData = snapshot({ notification: lifecycle('active') });
+
+    renderHook(() => useNotifications('user-1'));
+    await act(async () => { await Promise.resolve(); });
+
+    expect(M.updateNotification).not.toHaveBeenCalled();
+  });
+
+  it('no reactiva desde pending writes aunque la vista local ya no muestre el vínculo', async () => {
+    M.transactionDomain = {
+      ...M.transactionDomain,
+      balanceTransactions: [],
+      transactionsServerSettled: false,
+      transactionsUnresolvedReason: 'pending-writes',
+    };
+    M.firestoreData = snapshot({ notification: lifecycle('resolved'), transactions: [] });
+
+    renderHook(() => useNotifications('user-1'));
+    await act(async () => { await Promise.resolve(); });
+
+    expect(M.addNotification).not.toHaveBeenCalled();
+  });
+
+  it('usa la prueba server-confirmed completa cuando el match exacto queda detrás de la fila 500', async () => {
+    const head = Array.from({ length: 500 }, (_, index): Transaction => ({
+      ...linked(), id: `head-${index}`, recurringPaymentId: undefined, recurringCycle: undefined,
+    }));
+    const behindHead = linked();
+    M.transactionDomain = {
+      ...M.transactionDomain,
+      balanceTransactions: [...head, behindHead],
+      balancesReady: true,
+      transactionsServerSettled: true,
+      transactionsHeadExhaustive: false,
+    };
+    M.firestoreData = snapshot({ notification: lifecycle('active'), transactions: head });
+
+    renderHook(() => useNotifications('user-1'));
+
+    await waitFor(() => expect(M.updateNotification).toHaveBeenCalledWith(
+      'event-rent-june',
+      expect.objectContaining({ lifecycleStatus: 'resolved' }),
+    ));
+  });
+
+  it('difiere cuando el head está saturado y el historial completo aún no está listo', async () => {
+    M.transactionDomain = {
+      ...M.transactionDomain,
+      balanceTransactions: [],
+      balancesReady: false,
+      transactionsServerSettled: true,
+      transactionsHeadExhaustive: false,
+    };
+    M.firestoreData = snapshot({ notification: lifecycle('resolved'), transactions: [] });
+
+    renderHook(() => useNotifications('user-1'));
+    await act(async () => { await Promise.resolve(); });
+
+    expect(M.addNotification).not.toHaveBeenCalled();
   });
 });

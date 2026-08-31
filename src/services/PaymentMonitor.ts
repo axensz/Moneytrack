@@ -143,8 +143,11 @@ export class PaymentMonitor {
 
   isAlreadyPaid(payment: RecurringPayment, targetCycle = cycleKey(payment, new Date())): boolean {
     if (!payment.id) return false;
+    const timeZone = this.deps.timeZone
+      ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+      ?? 'America/Bogota';
     return this.deps.transactions.some((transaction) =>
-      recurringTransactionSatisfiesCycleKey(payment, transaction, targetCycle));
+      recurringTransactionSatisfiesCycleKey(payment, transaction, targetCycle, timeZone));
   }
 
   resetLastCheck(): void {

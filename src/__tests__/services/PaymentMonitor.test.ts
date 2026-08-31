@@ -15,14 +15,14 @@ const cursorStore = (cursor?: RecurringReminderCursor) => ({
   removeGuest: vi.fn<(paymentId: string) => void>(),
 });
 
-const setup = ({ cursor, transactions = [], writerPrefix = 'foreground:compat' }: {
-  cursor?: RecurringReminderCursor; transactions?: Transaction[]; writerPrefix?: string;
+const setup = ({ cursor, transactions = [], writerPrefix = 'foreground:compat', timeZone = 'America/Bogota' }: {
+  cursor?: RecurringReminderCursor; transactions?: Transaction[]; writerPrefix?: string; timeZone?: string;
 } = {}) => {
   const createNotification = vi.fn().mockResolvedValue(undefined);
   const store = cursorStore(cursor);
   const monitor = new PaymentMonitor({
     createNotification, recurringPayments: [payment()], transactions, cursorStore: store,
-    timeZone: 'America/Bogota', writerPrefix,
+    timeZone, writerPrefix,
   });
   return { createNotification, monitor, store };
 };
@@ -123,6 +123,19 @@ describe('PaymentMonitor — cursor de calendario local', () => {
     expect(createNotification).not.toHaveBeenCalled();
   });
 
+  it('usa el IANA timeZone configurado para pagos legacy en el borde del ciclo', () => {
+    const legacyAtKiritimatiMidnight: Transaction = {
+      ...linkedLegacyTransaction(),
+      date: new Date('2026-06-14T10:00:00.000Z'),
+    };
+    const { monitor } = setup({
+      transactions: [legacyAtKiritimatiMidnight],
+      timeZone: 'Pacific/Kiritimati',
+    });
+
+    expect(monitor.isAlreadyPaid(payment(), '2026-5-15')).toBe(true);
+  });
+
   it('un pending en el cycleKey exacto no resuelve ni suprime el reminder', async () => {
     vi.setSystemTime(new Date('2026-06-16T14:00:00.000Z'));
     const cursor: RecurringReminderCursor = {
@@ -160,3 +173,11 @@ describe('PaymentMonitor — cursor de calendario local', () => {
     expect(createNotification).not.toHaveBeenCalled();
   });
 });
+
+function linkedLegacyTransaction(): Transaction {
+  return {
+    id: 'legacy-rent', type: 'expense', amount: 1_500_000, category: 'Vivienda',
+    description: 'Arriendo', date: new Date(), paid: true, accountId: 'checking',
+    recurringPaymentId: 'rent', recurringCycle: undefined,
+  };
+}

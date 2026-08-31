@@ -3,6 +3,7 @@ import type { Notification } from '../../types/finance';
 import {
   createAuthenticatedRecurringReminderCursorStore,
   createGuestRecurringReminderCursorStore,
+  findAuthenticatedRecurringReminderLifecycle,
 } from '../../lib/recurringReminderCursorStore';
 
 const sourceLifecycle = (
@@ -99,7 +100,9 @@ describe('authenticated recurring cursor store', () => {
   });
 
   it('elige semánticamente el lifecycle actual, no el primer find', () => {
-    const old = sourceLifecycle({ revision: 1, stage: 'd3', stageWindow: 'd3' });
+    const old = sourceLifecycle({
+      revision: 1, stage: 'd3', stageWindow: 'd3', lifecycleStatus: 'resolved',
+    });
     const advanced = sourceLifecycle({
       id: 'advanced',
       revision: 5,
@@ -115,6 +118,105 @@ describe('authenticated recurring cursor store', () => {
     });
 
     expect(store.read('rent')?.stageWindow).toBe('overdue:2');
+  });
+
+  it('entre múltiples lifecycles activos conserva el impago más antiguo', () => {
+    const oldestUnpaid = sourceLifecycle({ id: 'oldest-active', revision: 2 });
+    const newerUnpaid = sourceLifecycle({
+      id: 'newer-active',
+      eventKey: 'foreground:v4:recurring:rent:2026-6-15',
+      revision: 20,
+      stage: 'd3',
+      stageWindow: 'd3',
+      metadata: {
+        recurringPaymentId: 'rent', recurringCycle: '2026-6-15', localDate: '2026-07-15',
+      },
+    });
+
+    const selected = findAuthenticatedRecurringReminderLifecycle({
+      sourceNotifications: [newerUnpaid, oldestUnpaid],
+      paymentId: 'rent', writerPrefix: 'foreground:v4', authorityConfigVersion: 4,
+    });
+
+    expect(selected?.id).toBe('oldest-active');
+  });
+
+  it('un lifecycle activo vence a uno resuelto aunque el resuelto sea más nuevo', () => {
+    const active = sourceLifecycle({ id: 'active-oldest', revision: 1 });
+    const resolved = sourceLifecycle({
+      id: 'resolved-newer',
+      eventKey: 'foreground:v4:recurring:rent:2026-7-15',
+      lifecycleStatus: 'resolved',
+      revision: 99,
+      metadata: {
+        recurringPaymentId: 'rent', recurringCycle: '2026-7-15', localDate: '2026-08-15',
+      },
+    });
+
+    const selected = findAuthenticatedRecurringReminderLifecycle({
+      sourceNotifications: [resolved, active],
+      paymentId: 'rent', writerPrefix: 'foreground:v4', authorityConfigVersion: 4,
+    });
+
+    expect(selected?.id).toBe('active-oldest');
+  });
+
+  it('cuando todos están resueltos elige el dueLocalDate más nuevo', () => {
+    const oldResolved = sourceLifecycle({
+      id: 'old-resolved', lifecycleStatus: 'resolved', revision: 99,
+    });
+    const newResolved = sourceLifecycle({
+      id: 'new-resolved',
+      eventKey: 'foreground:v4:recurring:rent:2026-6-15',
+      lifecycleStatus: 'resolved',
+      revision: 1,
+      metadata: {
+        recurringPaymentId: 'rent', recurringCycle: '2026-6-15', localDate: '2026-07-15',
+      },
+    });
+
+    const selected = findAuthenticatedRecurringReminderLifecycle({
+      sourceNotifications: [oldResolved, newResolved],
+      paymentId: 'rent', writerPrefix: 'foreground:v4', authorityConfigVersion: 4,
+    });
+
+    expect(selected?.id).toBe('new-resolved');
+  });
+
+  it('desempata por revision, updatedAt y por último id de documento', () => {
+    const base = sourceLifecycle({
+      lifecycleStatus: 'active', revision: 7, updatedAt: new Date('2026-06-16T14:00:00.000Z'),
+    });
+    const lowerRevision = sourceLifecycle({ id: 'revision-loser', revision: 6 });
+    const olderUpdate = sourceLifecycle({
+      ...base, id: 'update-loser', updatedAt: new Date('2026-06-16T13:00:00.000Z'),
+    });
+    const idLoser = sourceLifecycle({ ...base, id: 'z-document' });
+    const idWinner = sourceLifecycle({ ...base, id: 'a-document' });
+
+    const selected = findAuthenticatedRecurringReminderLifecycle({
+      sourceNotifications: [lowerRevision, olderUpdate, idLoser, idWinner],
+      paymentId: 'rent', writerPrefix: 'foreground:v4', authorityConfigVersion: 4,
+    });
+
+    expect(selected?.id).toBe('a-document');
+  });
+
+  it('un lifecycle superseded no desplaza al lifecycle admitido', () => {
+    const admitted = sourceLifecycle({ id: 'admitted', revision: 1 });
+    const superseded = sourceLifecycle({
+      id: 'superseded-oldest',
+      revision: 100,
+      authoritySupersededAt: new Date('2026-06-16T15:00:00.000Z'),
+      authoritySupersededByVersion: 5,
+    });
+
+    const selected = findAuthenticatedRecurringReminderLifecycle({
+      sourceNotifications: [superseded, admitted],
+      paymentId: 'rent', writerPrefix: 'foreground:v4', authorityConfigVersion: 4,
+    });
+
+    expect(selected?.id).toBe('admitted');
   });
 
   it('descarta metadata cuyo cycleKey no representa exactamente dueLocalDate', () => {
@@ -133,6 +235,36 @@ describe('authenticated recurring cursor store', () => {
 
 describe('guest recurring cursor store', () => {
   beforeEach(() => localStorage.clear());
+
+  it.each([
+    ['fuera de rango', '2026-98-99', '2026-99-99'],
+    ['día calendario imposible', '2026-1-31', '2026-02-31'],
+    ['cycleKey inconsistente', '2026-1-28', '2026-02-27'],
+  ])('descarta un cursor corrupto (%s) sin bloquear otro pago válido', (
+    _case,
+    cycleKey,
+    dueLocalDate,
+  ) => {
+    const key = 'moneytrack:recurring-reminder-cursors:v1:guest-a:foreground%3Aguest';
+    const valid = {
+      cycleKey: '2026-5-15', dueLocalDate: '2026-06-15', stageWindow: 'due',
+    };
+    localStorage.setItem(key, JSON.stringify({
+      version: 1,
+      cursors: {
+        corrupt: { cycleKey, dueLocalDate, stageWindow: 'due' },
+        phone: valid,
+      },
+    }));
+    const store = createGuestRecurringReminderCursorStore({
+      storage: localStorage,
+      accountScope: 'guest-a',
+      writerPrefix: 'foreground:guest',
+    });
+
+    expect(store.read('corrupt')).toBeUndefined();
+    expect(store.read('phone')).toEqual(valid);
+  });
 
   it('persiste solo el cursor bajo versión + cuenta + writer y no copia datos financieros', () => {
     const guestA = createGuestRecurringReminderCursorStore({

@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Transaction } from '../../types/finance';
+import type { Notification, Transaction } from '../../types/finance';
 
 type FakeDocument = {
   id: string;
@@ -37,6 +37,7 @@ vi.mock('firebase/firestore', () => ({
     constraints,
   }),
   orderBy: (field: string, direction: string) => ({ type: 'orderBy', field, direction }),
+  where: (field: string, operator: string, value: unknown) => ({ type: 'where', field, operator, value }),
   limit: (size: number) => ({ type: 'limit', size }),
   startAfter: (cursor: FakeDocument) => ({ type: 'startAfter', cursor }),
   onSnapshot: (
@@ -55,6 +56,7 @@ vi.mock('firebase/firestore', () => ({
 
 import { useFirestoreSubscriptions } from '../../hooks/firestore/useFirestoreSubscriptions';
 import { publishTransactionCacheMutation } from '../../hooks/firestore/transactionPaginationCache';
+import { createAuthenticatedRecurringReminderCursorStore } from '../../lib/recurringReminderCursorStore';
 
 const transactionDocument = (id: string, offsetDays: number): FakeDocument => ({
   id,
@@ -94,6 +96,36 @@ const findLatestListener = (suffix: string) => {
   return listener;
 };
 
+const findRecurringLifecycleListener = (latest = false) => {
+  const listeners = latest ? [...firestoreState.listeners].reverse() : firestoreState.listeners;
+  const listener = listeners.find(item => (
+    item.source.path.endsWith('/notifications')
+    && item.source.constraints?.some(constraint => (
+      constraint.type === 'where'
+      && constraint.field === 'type'
+      && constraint.value === 'recurring'
+    ))
+  ));
+  if (!listener) throw new Error('No se registró listener lifecycle recurrente');
+  return listener;
+};
+
+const notificationDocument = (
+  id: string,
+  overrides: Record<string, unknown> = {},
+): FakeDocument => ({
+  id,
+  data: () => ({
+    type: 'info',
+    title: id,
+    message: id,
+    severity: 'info',
+    isRead: false,
+    createdAt: { toDate: () => new Date('2026-07-01T12:00:00.000Z') },
+    ...overrides,
+  }),
+});
+
 const emitCoreSnapshots = (transactionDocs: FakeDocument[]) => {
   findListener('/transactions').next(transactionSnapshot(transactionDocs));
   findListener('/accounts').next(transactionSnapshot([{
@@ -112,6 +144,77 @@ beforeEach(() => {
 });
 
 describe('useFirestoreSubscriptions — paginación', () => {
+  it('mantiene el centro en 100 pero expone el lifecycle recurrente detrás de 101 filas para reload/device', () => {
+    const newerPresentation = Array.from({ length: 101 }, (_, index) => (
+      notificationDocument(`newer-${index}`)
+    ));
+    const durableRecurring = notificationDocument('old-recurring-source', {
+      type: 'recurring',
+      schemaVersion: 2,
+      eventKey: 'foreground:v4:recurring:rent:2026-5-15',
+      revision: 4,
+      stage: 'overdue',
+      stageWindow: 'overdue:0',
+      lifecycleStatus: 'active',
+      authorityConfigVersion: 4,
+      metadata: {
+        recurringPaymentId: 'rent', recurringCycle: '2026-5-15', localDate: '2026-06-15',
+      },
+    });
+    const { result } = renderHook(() => useFirestoreSubscriptions('user-1'));
+    const presentationListener = firestoreState.listeners.find(item => (
+      item.source.path.endsWith('/notifications')
+      && item.source.constraints?.some(constraint => constraint.type === 'limit' && constraint.size === 100)
+    ));
+
+    act(() => {
+      presentationListener?.next(transactionSnapshot(newerPresentation.slice(0, 100)));
+      findRecurringLifecycleListener().next(transactionSnapshot([durableRecurring]));
+    });
+
+    const source = (result.current as typeof result.current & {
+      recurringNotificationLifecycles?: Notification[];
+    }).recurringNotificationLifecycles ?? [];
+    expect(result.current.notifications).toHaveLength(100);
+    expect(source.map(notification => notification.id)).toEqual(['old-recurring-source']);
+
+    const firstDevice = createAuthenticatedRecurringReminderCursorStore({
+      sourceNotifications: source, writerPrefix: 'foreground:v4', authorityConfigVersion: 4,
+    });
+    const reloadedDevice = createAuthenticatedRecurringReminderCursorStore({
+      sourceNotifications: source.map(notification => ({ ...notification })),
+      writerPrefix: 'foreground:v4', authorityConfigVersion: 4,
+    });
+    expect(reloadedDevice.read('rent')).toEqual(firstDevice.read('rent'));
+  });
+
+  it('no filtra lifecycle de la cuenta anterior durante switch ni acepta su callback tardío', () => {
+    const { result, rerender } = renderHook(
+      ({ userId }) => useFirestoreSubscriptions(userId),
+      { initialProps: { userId: 'user-1' as string | null } },
+    );
+    const staleListener = findRecurringLifecycleListener();
+    const firstUser = notificationDocument('user-1-recurring', { type: 'recurring' });
+    act(() => staleListener.next(transactionSnapshot([firstUser])));
+    expect((result.current as typeof result.current & {
+      recurringNotificationLifecycles?: Notification[];
+    }).recurringNotificationLifecycles?.map(notification => notification.id)).toEqual(['user-1-recurring']);
+
+    rerender({ userId: 'user-2' });
+    const currentSource = () => (result.current as typeof result.current & {
+      recurringNotificationLifecycles?: Notification[];
+    }).recurringNotificationLifecycles ?? [];
+    expect(currentSource()).toEqual([]);
+
+    act(() => staleListener.next(transactionSnapshot([notificationDocument('stale', { type: 'recurring' })])));
+    expect(currentSource()).toEqual([]);
+
+    act(() => findRecurringLifecycleListener(true).next(transactionSnapshot([
+      notificationDocument('user-2-recurring', { type: 'recurring' }),
+    ])));
+    expect(currentSource().map(notification => notification.id)).toEqual(['user-2-recurring']);
+  });
+
   it('reporta filas inválidas del head sin mezclarlas con el ledger', () => {
     const invalid = transactionDocument('invalid', 1);
     const invalidData = invalid.data();

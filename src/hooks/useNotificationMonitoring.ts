@@ -243,7 +243,7 @@ export function useNotificationMonitoring({
             window.clearInterval(evaluationInterval);
             document.removeEventListener('visibilitychange', onVisible);
         };
-    }, [notificationManager, isHydrated, recurringPayments, txsForBalance]);
+    }, [notificationManager, isHydrated, recurringPayments, debts, txsForBalance]);
 
     // Al cambiar de usuario (guest→login o cambio de cuenta sin recargar) se
     // reinicia el set de ids previos. Sin esto, las transacciones del nuevo

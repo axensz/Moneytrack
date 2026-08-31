@@ -7,6 +7,7 @@
 import { useMemo, useCallback, useRef, useEffect } from 'react';
 import { useNotificationStore } from './useNotificationStore';
 import { useNotificationPreferences } from './useNotificationPreferences';
+import { useTransactionDomain } from './useFinanceSelectors';
 import { useFirestoreData } from '../contexts/FirestoreContext';
 import { NotificationManager } from '../services/NotificationManager';
 import { buildRecurringReminderCandidate } from '../services/PaymentMonitor';
@@ -25,6 +26,12 @@ import type { Notification, NotificationFilter } from '../types/finance';
 export function useNotifications(userId: string | null) {
   // Get centralized Firestore data to avoid separate listeners
   const firestoreData = useFirestoreData();
+  const {
+    balanceTransactions,
+    balancesReady,
+    transactionsServerSettled,
+    transactionsHeadExhaustive,
+  } = useTransactionDomain();
 
   // Get store and preferences — pass centralized data when authenticated
   const {
@@ -82,7 +89,7 @@ export function useNotifications(userId: string | null) {
   const cursorStore = useMemo<RecurringReminderCursorStore>(() => {
     if (userId) {
       return createAuthenticatedRecurringReminderCursorStore({
-        sourceNotifications: firestoreData.notifications,
+        sourceNotifications: firestoreData.recurringNotificationLifecycles,
         writerPrefix,
       });
     }
@@ -92,14 +99,14 @@ export function useNotifications(userId: string | null) {
       accountScope: 'guest',
       writerPrefix,
     });
-  }, [userId, firestoreData.notifications, writerPrefix]);
+  }, [userId, firestoreData.recurringNotificationLifecycles, writerPrefix]);
   const timeZone = preferences.timeZone
     ?? Intl.DateTimeFormat().resolvedOptions().timeZone
     ?? 'America/Bogota';
 
   setForegroundReminderContext(notificationManager, {
     cursorStore,
-    sourceNotifications: userId ? firestoreData.notifications : notifications,
+    sourceNotifications: userId ? firestoreData.recurringNotificationLifecycles : notifications,
     timeZone,
     writerPrefix,
   });
@@ -107,7 +114,9 @@ export function useNotifications(userId: string | null) {
   // Financial writers remain authoritative. This observer only reacts after the
   // central Firestore snapshot exposes the persisted link/unlink/delete result.
   useEffect(() => {
-    if (!userId || firestoreData.loading) return;
+    const financialProofReady = transactionsServerSettled
+      && (transactionsHeadExhaustive || balancesReady);
+    if (!userId || firestoreData.loading || !financialProofReady) return;
     let cancelled = false;
 
     const recompute = async () => {
@@ -115,7 +124,7 @@ export function useNotifications(userId: string | null) {
       for (const payment of firestoreData.recurringPayments) {
         if (cancelled || !payment.id || !payment.isActive) continue;
         const lifecycle = findAuthenticatedRecurringReminderLifecycle({
-          sourceNotifications: firestoreData.notifications,
+          sourceNotifications: firestoreData.recurringNotificationLifecycles,
           paymentId: payment.id,
           writerPrefix,
         });
@@ -128,8 +137,8 @@ export function useNotifications(userId: string | null) {
             now,
             timeZone,
             cursor,
-            isPaid: (targetCycle) => firestoreData.transactions.some((transaction) =>
-              recurringTransactionSatisfiesCycleKey(payment, transaction, targetCycle)),
+            isPaid: (targetCycle) => balanceTransactions.some((transaction) =>
+              recurringTransactionSatisfiesCycleKey(payment, transaction, targetCycle, timeZone)),
           });
           if (evaluation.resolvedCycleKey && lifecycle.lifecycleStatus === 'active' && lifecycle.id) {
             await updateNotification(lifecycle.id, {
@@ -165,9 +174,12 @@ export function useNotifications(userId: string | null) {
   }, [
     userId,
     firestoreData.loading,
-    firestoreData.notifications,
+    firestoreData.recurringNotificationLifecycles,
     firestoreData.recurringPayments,
-    firestoreData.transactions,
+    balanceTransactions,
+    balancesReady,
+    transactionsServerSettled,
+    transactionsHeadExhaustive,
     cursorStore,
     timeZone,
     writerPrefix,

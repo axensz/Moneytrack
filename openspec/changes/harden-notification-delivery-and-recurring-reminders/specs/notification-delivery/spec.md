@@ -86,7 +86,10 @@ and denied to direct client Firestore reads or writes.
 The system MUST keep one canonical inbox event lifecycle and one deterministic
 logical delivery record per event revision and enabled device without claiming
 exactly-once acceptance from the external push service. Delivery IDs and worker
-deduplication MUST include an opaque account scope.
+deduplication MUST include an opaque account scope. Every delivery MUST store
+the exact `authorityConfigVersion` that admitted it; every delivery lease
+claim, recovery, release, pre-dispatch commit, and result commit MUST compare
+that field with the exact active durable runtime generation.
 
 #### Scenario: Two devices receive one event
 - **WHEN** one active event revision targets a user with two enabled devices
@@ -250,8 +253,8 @@ recurring, or debt inbox events.
 - **THEN** Firestore rules MUST reject the write while continuing to allow client-authored budget, low-balance, and unusual-spending events
 
 #### Scenario: A stale worker races an authority transition
-- **WHEN** a schedule transaction, delivery lease, or external dispatch observes a missing, fenced, non-durable, or different runtime generation
-- **THEN** the backend MUST stop before committing or calling the push service and MUST suppress stale nonterminal work rather than presenting it
+- **WHEN** a schedule/event transaction, delivery lease claim/recovery/release, external dispatch, or result commit observes a missing, fenced, non-durable, or different runtime generation, or a delivery has a missing or mismatched `authorityConfigVersion`
+- **THEN** the backend MUST stop before committing or calling the push service; a result commit MUST also match the same lease owner/expiry and MUST suppress stale nonterminal work without clearing `dispatchStartedAt` or `possibleAcceptanceExpiresAt` rather than applying or presenting its stale adapter result
 
 #### Scenario: Stale Admin enable races an emergency kill switch
 - **WHEN** an Admin control command's expected `controlVersion` no longer matches because another operator disabled delivery

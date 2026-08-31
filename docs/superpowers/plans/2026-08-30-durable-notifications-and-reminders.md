@@ -156,7 +156,7 @@ git diff --check
 
 Expected: `Change 'harden-notification-delivery-and-recurring-reminders' is valid` and no whitespace errors.
 
-- [ ] **Step 4: Commit the approved specification after execution mode is chosen**
+- [x] **Step 4: Commit the approved specification after execution mode is chosen**
 
 ```powershell
 git add openspec/changes/harden-notification-delivery-and-recurring-reminders/proposal.md openspec/changes/harden-notification-delivery-and-recurring-reminders/design.md openspec/changes/harden-notification-delivery-and-recurring-reminders/tasks.md openspec/changes/harden-notification-delivery-and-recurring-reminders/specs/notification-delivery/spec.md openspec/changes/harden-notification-delivery-and-recurring-reminders/specs/recurring-reminder-reliability/spec.md docs/superpowers/plans/2026-08-30-durable-notifications-and-reminders.md
@@ -1477,6 +1477,7 @@ Prove:
 - Durable activation's final compare-and-set transaction rereads authoritative preferences, recurring/debt sources, target schedules, and their digests; it fails unless outgoing work is drained and the expected active ID/digest map exactly matches active target-generation schedules with no staged/mismatched entry. Foreground activation fails unless zero schedules are active/leased. Durable → foreground also waits for `maxPossibleAcceptanceExpiresAt` from every dispatch-started outgoing delivery.
 - Activation uses a final compare-and-set that also rereads exact disabled control/version, then clears the pending journal.
 - Foreground → durable → foreground gives generations 1 → 2 → 3; a generation-1 client and generation-2 worker remain rejected after generation 3.
+- Transactional emulator tests interleave every pair of runtime-private writers—account-scope creation, schedule provisioning/consumption, transition-journal prepare/rebase/final cleanup, and registration/test/dispatch quota reservation—in both orders. After each write, `accountScope`, `scheduleProvisioning`, `pendingAuthorityTransition`, and every unrelated quota array remain byte-for-byte unchanged unless that writer owns the field.
 - Both CLIs reject unknown flags, missing required values, invalid booleans/`number|null`, more than 100 or duplicate UIDs, and simultaneous `--dry-run`/`--apply`. Authority read-only `inspect`/`verify`/`status` and control `status`/`fingerprint` reject mutation-mode flags; every mutating command defaults to dry-run.
 
 - [ ] **Step 2: Verify RED**
@@ -1611,6 +1612,7 @@ Prove:
 - Two devices produce two deterministic delivery IDs for one event/revision.
 - A higher revision transactionally suppresses every nonterminal lower-revision delivery.
 - Runtime missing/foreground/fenced/wrong generation aborts before event write.
+- Every created delivery stores the exact active `authorityConfigVersion`; its fan-out transaction and every delivery lease fixture reject a missing or mismatched delivery generation without mutation.
 - Client-authored or missing `deliverySource: 'backend'` is never fanned out.
 - Account A event cannot target account B device even if IDs collide.
 - No active device still creates the canonical authenticated inbox event but zero delivery records.
@@ -1632,7 +1634,7 @@ npm.cmd run test:notifications:emulator
 - Hash event key and delivery identities with Task 9 contracts.
 - Read at most five active devices and prior nonterminal deliveries before writes.
 - Write/update the canonical notification with immutable `deliverySource: 'backend'`, `authorityConfigVersion`, current lifecycle revision, and constant kind metadata.
-- Suppress lower revision records and create current deterministic deliveries in the same transaction.
+- Suppress lower revision records and create current deterministic deliveries with the exact active `authorityConfigVersion` in the same transaction.
 - Build the full authenticated inbox projection from the authoritative source union above, but store only event identity/kind in delivery; never duplicate financial metadata into delivery or push payload.
 - Advance `nextAt`/stage/outcome and clear the exact schedule lease in the same event/fan-out transaction.
 
@@ -1687,7 +1689,7 @@ One `onSchedule` function uses the exact Scheduler contract `schedule: '*/5 * * 
 
 Prove:
 
-- A worker first queries `sending` deliveries whose `leaseExpiresAt <= now` and transactionally transitions matching stale claims to `ambiguous` while releasing the lease; it then claims only due `pending|retrying|ambiguous` work with matching active durable generation.
+- A worker first queries `sending` deliveries whose `leaseExpiresAt <= now` and transactionally transitions matching stale claims to `ambiguous` while releasing the lease; it then claims only due `pending|retrying|ambiguous` work whose delivery `authorityConfigVersion` matches the exact active durable generation.
 - Expired `sending` lease recovery preserves dispatch-started possible-acceptance evidence and records ambiguous prior ownership; an active lease is not stolen.
 - Every lease/event/runtime/control check is repeated immediately before the external request.
 - `DELIVERY_ENABLED` false, malformed control/digest, UID absent from the canonical allowlist, wrong generation, superseded event, lower revision, disabled device, `notBefore` future, or expired event stops before the network. Control failures are external-I/O gates only: release the lease, leave the delivery pending with a bounded retry time, and increment no dispatch attempt; they do not undo the canonical inbox event or deterministic fan-out.
@@ -1696,7 +1698,7 @@ Prove:
 - `attempts` increments only immediately before a request; retries use 1 minute, 5 minutes, 30 minutes, then 2 hours; maximum five attempts/24 hours and never after `expiresAt`.
 - Before any network I/O, one transaction sets `status: 'sending'`, `dispatchStartedAt`, and `possibleAcceptanceExpiresAt = min(eventExpiresAt, dispatchStartedAt + 3600 seconds)`. That evidence is never cleared by a cutover or stale result.
 - 201/202 → `accepted`; 404/410 → expire only current device/binding; 429/5xx/network-before-response → `retrying`; timeout/reset after possible write → `ambiguous`; 401/403 → configuration failure without expiring device; every other 4xx (including 400/413) → terminal `failed` with sanitized `http-4xx` while the device remains active.
-- Result commit rechecks the same lease and authority generation; stale result cannot overwrite a newer transition.
+- Result commit rechecks the same lease owner/expiry and the delivery's exact `authorityConfigVersion` against an active durable runtime; a missing/mismatched generation or changed lease cannot apply the adapter result, suppresses stale nonterminal work, and retains `dispatchStartedAt`/`possibleAcceptanceExpiresAt`.
 - If a cutover lands after the final preflight check but before/during I/O, result handling sets the old delivery to `suppressed` and retains its possible-acceptance expiry so rollback remains fenced long enough; deliveries have no separate superseded status.
 - Instrumented tests prove at most five external sends run concurrently, no invocation starts more than 100 schedules or 100 deliveries, the internal deadline stops new claims, and remaining documents stay pending/due. A pure/exported option fixture asserts `maxInstances: 1`, function `concurrency: 1`, `timeoutSeconds: 240`, and internal deadline 210 seconds.
 - Race tests change quiet-hour enable/start/end/timezone between fan-out and send. They prove a newly restrictive current preference defers before I/O, while a relaxation leaves a future persisted `notBefore` untouched and sends only when that prior boundary becomes due.

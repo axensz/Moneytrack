@@ -143,7 +143,7 @@ deterministic digest of opaque `accountScope`, `eventId`, `revision`, and
 two accounts using one browser cannot suppress or replace each other's alerts.
 Each delivery stores:
 
-- `eventId`, `eventRevision`, and `deviceId`
+- `eventId`, `eventRevision`, `deviceId`, and the exact `authorityConfigVersion`
 - `status: 'pending' | 'sending' | 'accepted' | 'ambiguous' | 'retrying' | 'failed' | 'expired' | 'suppressed'`
 - `notBefore`, `expiresAt`, `attempts`, `lastAttemptAt`, and optional `acceptedAt`
 - `dispatchStartedAt` and `possibleAcceptanceExpiresAt` once external I/O may begin
@@ -166,7 +166,11 @@ acceptance. A different device always has its own logical delivery.
 Immediately before external I/O, one transaction persists `sending`,
 `dispatchStartedAt`, and `possibleAcceptanceExpiresAt` as the earlier of event
 expiry and one hour after dispatch start. That evidence is never cleared by a
-stale result or authority cutover. Only terminal deliveries set
+stale result or authority cutover. The result-commit transaction re-reads the
+same lease owner/expiry and exact active durable authority/generation. A stale
+lease or generation cannot apply the adapter result; it suppresses stale
+nonterminal work while retaining `dispatchStartedAt` and
+`possibleAcceptanceExpiresAt`. Only terminal deliveries set
 `retentionExpiresAt` to 30 days after their terminal timestamp; pending,
 sending, retrying, and ambiguous work omit diagnostic TTL.
 
@@ -393,7 +397,10 @@ Firestore rules permit client-authored time-event writes only for an active
 `foreground` runtime whose version exactly matches the event, and reject legacy
 time-event shapes without that generation once a runtime document exists. The
 backend rereads the active `durable` authority and matching generation before
-every schedule/event transaction, delivery lease commit, and external dispatch.
+every schedule/event transaction, delivery lease commit, external dispatch,
+and result commit. Result commits also require the same delivery lease
+owner/expiry; a stale lease or generation suppresses nonterminal work without
+clearing dispatch-started possible-acceptance evidence.
 This closes stale-client and stale-worker races, including a later rollback to
 `foreground`. A transition back therefore leaves backend history intact and
 lets the complete fallback create or reactivate only its separate foreground

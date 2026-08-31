@@ -221,8 +221,8 @@ const makeTx = (o: Partial<Transaction>): Omit<Transaction, 'id' | 'createdAt'> 
   ...o,
 }) as Omit<Transaction, 'id' | 'createdAt'>;
 
-const renderCRUD = (accounts: Account[]) =>
-  renderHook(() => useTransactionsCRUD(UID, accounts)).result;
+const renderCRUD = (accounts: Account[], timeZone = 'America/Bogota') =>
+  renderHook(() => useTransactionsCRUD(UID, accounts, timeZone)).result;
 
 beforeEach(() => {
   mockState.store.clear();
@@ -598,6 +598,31 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
         lastPaidDate: new Date('2026-06-06T08:00:00'),
       });
     });
+
+    it.each(['UTC', 'Pacific/Kiritimati', 'America/Bogota'])(
+      'aplica la zona configurada al matcher auth aunque el host reporte %s',
+      async (hostTimeZone) => {
+        vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockReturnValue({
+          locale: 'en-US', calendar: 'gregory', numberingSystem: 'latn',
+          timeZone: hostTimeZone,
+        });
+        seedAccount(savings);
+        seedRecurring();
+        seedTx('legacy-edge', {
+          amount: 1_150,
+          date: new Date('2026-06-05T02:00:00.000Z'),
+          recurringPaymentId: 'rent',
+          recurringCycle: undefined,
+        });
+        const crud = renderCRUD([], 'America/Bogota');
+
+        await crud.current.addRecurringTransactionAtomic(recurringDraft());
+
+        expect(mockState.store.has(
+          txKey('ledger-mutation:recurring:rent:2026-5-5'),
+        )).toBe(true);
+      },
+    );
 
     it('rejects a pending link target with zero writes', async () => {
       seedAccount(savings);

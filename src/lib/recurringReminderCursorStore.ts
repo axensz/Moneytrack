@@ -78,8 +78,6 @@ export function findAuthenticatedRecurringReminderLifecycle({
         ? leftCursor.dueLocalDate.localeCompare(rightCursor.dueLocalDate)
         : rightCursor.dueLocalDate.localeCompare(leftCursor.dueLocalDate);
       if (dueOrder !== 0) return dueOrder;
-      const revisionOrder = (right.revision ?? 0) - (left.revision ?? 0);
-      if (revisionOrder !== 0) return revisionOrder;
       const updatedOrder = (right.updatedAt?.getTime() ?? 0) - (left.updatedAt?.getTime() ?? 0);
       if (updatedOrder !== 0) return updatedOrder;
       return (left.id ?? '').localeCompare(right.id ?? '');

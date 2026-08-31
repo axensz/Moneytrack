@@ -138,6 +138,18 @@ const emitCoreSnapshots = (transactionDocs: FakeDocument[]) => {
   }]));
 };
 
+const emitLatestCoreSnapshots = (transactionDocs: FakeDocument[]) => {
+  findLatestListener('/transactions').next(transactionSnapshot(transactionDocs));
+  findLatestListener('/accounts').next(transactionSnapshot([{
+    id: 'account-1',
+    data: () => ({ name: 'Cuenta', type: 'savings', initialBalance: 0 }),
+  }]));
+  findLatestListener('/categories').next(transactionSnapshot([{
+    id: 'category-1',
+    data: () => ({ name: 'Otros', type: 'expense' }),
+  }]));
+};
+
 beforeEach(() => {
   firestoreState.listeners.length = 0;
   firestoreState.getDocs.mockReset();
@@ -213,6 +225,42 @@ describe('useFirestoreSubscriptions — paginación', () => {
       notificationDocument('user-2-recurring', { type: 'recurring' }),
     ])));
     expect(currentSource().map(notification => notification.id)).toEqual(['user-2-recurring']);
+  });
+
+  it('invalida lifecycle en error/retry y espera su callback fresco sin alterar loading core', () => {
+    const { result } = renderHook(() => useFirestoreSubscriptions('user-1'));
+    const staleListener = findRecurringLifecycleListener();
+    const initial = notificationDocument('initial-recurring', { type: 'recurring' });
+
+    act(() => staleListener.next(transactionSnapshot([initial])));
+    expect(result.current.recurringNotificationLifecyclesReady).toBe(true);
+    expect(result.current.loading).toBe(true);
+
+    act(() => staleListener.error(new Error('lifecycle offline')));
+    expect(result.current.recurringNotificationLifecycles).toEqual([]);
+    expect(result.current.recurringNotificationLifecyclesReady).toBe(false);
+    expect(result.current.loading).toBe(true);
+
+    act(() => result.current.retryLoad());
+    expect(result.current.recurringNotificationLifecycles).toEqual([]);
+    expect(result.current.recurringNotificationLifecyclesReady).toBe(false);
+
+    act(() => staleListener.next(transactionSnapshot([
+      notificationDocument('stale-after-retry', { type: 'recurring' }),
+    ])));
+    expect(result.current.recurringNotificationLifecycles).toEqual([]);
+
+    act(() => emitLatestCoreSnapshots([transactionDocument('server', 0)]));
+    expect(result.current.transactionsServerSettled).toBe(true);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.recurringNotificationLifecyclesReady).toBe(false);
+
+    act(() => findRecurringLifecycleListener(true).next(transactionSnapshot([
+      notificationDocument('fresh-recurring', { type: 'recurring' }),
+    ])));
+    expect(result.current.recurringNotificationLifecyclesReady).toBe(true);
+    expect(result.current.recurringNotificationLifecycles.map(item => item.id))
+      .toEqual(['fresh-recurring']);
   });
 
   it('reporta filas inválidas del head sin mezclarlas con el ledger', () => {

@@ -6,12 +6,13 @@
  * de éxito, pero NO se escribía nada y la deuda no bajaba (pérdida silenciosa).
  * Ahora crea ambas transacciones del par atómico en localStorage.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import type { Account, Transaction } from '../../types/finance';
+import type { Account, RecurringPayment, Transaction } from '../../types/finance';
 
 const M = vi.hoisted(() => ({
   restoreTransaction: vi.fn(),
+  timeZone: 'America/Bogota',
 }));
 
 vi.mock('../../contexts/FirestoreContext', () => ({
@@ -21,6 +22,7 @@ vi.mock('../../contexts/FirestoreContext', () => ({
     addRecurringTransactionAtomic: vi.fn(), linkRecurringTransactionAtomic: vi.fn(),
     restoreTransaction: M.restoreTransaction,
     deleteTransaction: vi.fn(), updateTransaction: vi.fn(),
+    notificationPreferences: { timeZone: M.timeZone },
   }),
 }));
 
@@ -41,6 +43,49 @@ const paymentAccounts: Account[] = [
 beforeEach(() => {
   localStorage.clear();
   M.restoreTransaction.mockReset().mockResolvedValue(undefined);
+  M.timeZone = 'America/Bogota';
+});
+
+afterEach(() => vi.restoreAllMocks());
+
+describe('useTransactions — ciclos recurrentes con zona configurada', () => {
+  const recurring: RecurringPayment = {
+    id: 'rent', name: 'Arriendo', amount: 1_200, category: 'Vivienda',
+    dueDay: 5, frequency: 'monthly', isActive: true, accountId: 'sav',
+    createdAt: new Date('2026-01-01T12:00:00.000Z'),
+  };
+
+  it.each(['UTC', 'Pacific/Kiritimati', 'America/Bogota'])(
+    'aplica America/Bogota al ledger invitado aunque el host reporte %s',
+    async (hostTimeZone) => {
+      vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockReturnValue({
+        locale: 'en-US', calendar: 'gregory', numberingSystem: 'latn',
+        timeZone: hostTimeZone,
+      });
+      localStorage.setItem('accounts', JSON.stringify([{
+        id: 'sav', name: 'Ahorros', type: 'savings', isDefault: true, initialBalance: 10_000,
+      }] as Account[]));
+      localStorage.setItem('recurringPayments', JSON.stringify([recurring]));
+      localStorage.setItem('transactions', JSON.stringify([{
+        id: 'legacy-edge', type: 'expense', amount: 1_100, category: 'Vivienda',
+        description: 'Legacy', date: new Date('2026-06-05T02:00:00.000Z'),
+        paid: true, accountId: 'sav', recurringPaymentId: 'rent',
+      }] as Transaction[]));
+      const { result } = renderHook(() => useTransactions(null));
+
+      await act(async () => {
+        await result.current.addRecurringTransactionAtomic({
+          type: 'expense', amount: 1_200, category: 'Vivienda', description: 'Arriendo',
+          date: new Date('2026-06-06T12:00:00.000Z'), paid: true, accountId: 'sav',
+          recurringPaymentId: 'rent', recurringCycle: '2026-5-5',
+        });
+      });
+
+      expect(readGuestLedgerEnvelope().data.transactions.map(item => item.id)).toContain(
+        'guest-recurring:rent:2026-5-5',
+      );
+    },
+  );
 });
 
 describe('useTransactions.addCreditPaymentAtomic — modo invitado (#tx-1)', () => {

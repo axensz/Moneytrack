@@ -5,6 +5,7 @@ import type { Transaction } from '../types/finance';
 export interface BalanceTransactionsResult {
   transactions: Transaction[];
   ready: boolean;
+  currentServerSettled: boolean;
 }
 
 export function useBalanceTransactions(
@@ -16,7 +17,7 @@ export function useBalanceTransactions(
   const requiresFullHistory = !!userId
     && transactionsServerSettled
     && !transactionsHeadExhaustive;
-  const { transactions, settled } = useAllTransactionsWithStatus(
+  const { transactions, settled, currentServerSettled } = useAllTransactionsWithStatus(
     requiresFullHistory ? userId : null,
     liveTransactions,
   );
@@ -24,5 +25,10 @@ export function useBalanceTransactions(
   return {
     transactions,
     ready: !userId || transactionsHeadExhaustive || (requiresFullHistory && settled),
+    currentServerSettled: !userId || (
+      transactionsHeadExhaustive
+        ? transactionsServerSettled
+        : requiresFullHistory && currentServerSettled
+    ),
   };
 }

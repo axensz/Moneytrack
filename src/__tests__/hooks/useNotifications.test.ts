@@ -98,6 +98,7 @@ const snapshot = ({
 } = {}) => ({
   notifications: [notification],
   recurringNotificationLifecycles: [notification],
+  recurringNotificationLifecyclesReady: true,
   recurringPayments: [recurringPayment],
   transactions,
   notificationPreferences: prefs,
@@ -114,6 +115,7 @@ describe('useNotifications — recompute tras snapshot financiero persistido', (
     M.preferences = prefs;
     M.transactionDomain = {
       balanceTransactions: [linked()],
+      balanceTransactionsServerSettled: true,
       balancesReady: true,
       transactionsServerSettled: true,
       transactionsHeadExhaustive: true,
@@ -136,6 +138,29 @@ describe('useNotifications — recompute tras snapshot financiero persistido', (
       expect.objectContaining({
         lifecycleStatus: 'resolved', isRead: true, readRevision: 3, resolvedRevision: 3,
       }),
+    ));
+  });
+
+  it('espera el callback fresco del lifecycle tras retry aunque finanzas ya estén asentadas', async () => {
+    const active = lifecycle('active');
+    M.firestoreData = {
+      ...snapshot({ notification: active }),
+      recurringNotificationLifecycles: [active],
+      recurringNotificationLifecyclesReady: false,
+    };
+    const { rerender } = renderHook(() => useNotifications('user-1'));
+    await act(async () => { await Promise.resolve(); });
+    expect(M.updateNotification).not.toHaveBeenCalled();
+
+    M.firestoreData = {
+      ...M.firestoreData,
+      recurringNotificationLifecyclesReady: true,
+    };
+    rerender();
+
+    await waitFor(() => expect(M.updateNotification).toHaveBeenCalledWith(
+      'event-rent-june',
+      expect.objectContaining({ lifecycleStatus: 'resolved' }),
     ));
   });
 
@@ -285,6 +310,43 @@ describe('useNotifications — recompute tras snapshot financiero persistido', (
       'event-rent-june',
       expect.objectContaining({ lifecycleStatus: 'resolved' }),
     ));
+  });
+
+  it('difiere un cambio pending de la fila 501 hasta el snapshot full server-confirmed', async () => {
+    const head = Array.from({ length: 500 }, (_, index): Transaction => ({
+      ...linked(), id: `head-${index}`, recurringPaymentId: undefined, recurringCycle: undefined,
+    }));
+    M.transactionDomain = {
+      ...M.transactionDomain,
+      balanceTransactions: [...head, linked()],
+      balanceTransactionsServerSettled: true,
+      balancesReady: true,
+      transactionsServerSettled: true,
+      transactionsHeadExhaustive: false,
+    };
+    M.firestoreData = snapshot({ notification: lifecycle('resolved'), transactions: head });
+    const { rerender } = renderHook(() => useNotifications('user-1'));
+    await act(async () => { await Promise.resolve(); });
+    M.addNotification.mockClear();
+
+    M.transactionDomain = {
+      ...M.transactionDomain,
+      balanceTransactions: head,
+      balanceTransactionsServerSettled: false,
+    };
+    rerender();
+    await act(async () => { await Promise.resolve(); });
+    expect(M.addNotification).not.toHaveBeenCalled();
+
+    M.transactionDomain = {
+      ...M.transactionDomain,
+      balanceTransactionsServerSettled: true,
+    };
+    rerender();
+    await waitFor(() => expect(M.addNotification).toHaveBeenCalledWith(expect.objectContaining({
+      eventKey: 'foreground:compat:recurring:rent:2026-5-15',
+      lifecycleStatus: 'active',
+    })));
   });
 
   it('difiere cuando el head está saturado y el historial completo aún no está listo', async () => {

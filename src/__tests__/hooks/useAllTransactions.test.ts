@@ -257,6 +257,44 @@ describe('useAllTransactions — historial realtime completo', () => {
     }
   });
 
+  it('revoca la autoridad actual ante cache o pending writes sin olvidar el primer settle', () => {
+    const recent = tx({ id: 'recent', date: new Date('2026-06-01') });
+    const historical = tx({ id: 'row-501', date: new Date('2024-01-01') });
+    const { result } = renderHook(() => (
+      useAllTransactionsWithStatus('user1', [recent])
+    ));
+
+    emitSnapshot([recent, historical]);
+    expect(result.current.settled).toBe(true);
+    expect(result.current.currentServerSettled).toBe(true);
+
+    emitSnapshot([recent], [changeFor('removed', historical, 1, -1)], {
+      hasPendingWrites: true,
+    });
+    expect(result.current.settled).toBe(true);
+    expect(result.current.currentServerSettled).toBe(false);
+
+    emitSnapshot([recent], [], { fromCache: true });
+    expect(result.current.currentServerSettled).toBe(false);
+
+    emitSnapshot([recent], []);
+    expect(result.current.currentServerSettled).toBe(true);
+  });
+
+  it('revoca la autoridad actual si falla el listener completo ya asentado', () => {
+    const recent = tx({ id: 'recent' });
+    const { result } = renderHook(() => (
+      useAllTransactionsWithStatus('user1', [recent])
+    ));
+    emitSnapshot([recent]);
+    expect(result.current.currentServerSettled).toBe(true);
+
+    act(() => listeners[0].error(new Error('offline')));
+
+    expect(result.current.settled).toBe(true);
+    expect(result.current.currentServerSettled).toBe(false);
+  });
+
   it('aplica una edición remota de una transacción histórica', async () => {
     const recent = tx({ id: 'recent', date: new Date('2026-06-01') });
     const old = tx({ id: 'old', amount: 5000, date: new Date('2024-01-01') });

@@ -31,6 +31,7 @@ interface FullHistoryState {
   transactions: Transaction[];
   issues: TransactionDecodeIssue[];
   settled: boolean;
+  currentServerSettled: boolean;
 }
 
 /**
@@ -63,6 +64,7 @@ export function useAllTransactionsWithStatus(
   transactions: Transaction[];
   issues: TransactionDecodeIssue[];
   settled: boolean;
+  currentServerSettled: boolean;
 } {
   const [fullHistory, setFullHistory] = useState<FullHistoryState | null>(null);
 
@@ -88,6 +90,8 @@ export function useAllTransactionsWithStatus(
         if (!active) return;
 
         const settledFromServer = !snapshot.metadata.fromCache;
+        const currentServerSettled = settledFromServer
+          && !snapshot.metadata.hasPendingWrites;
         const decodedSnapshot = collectDecodedTransactions(snapshot.docs);
 
         if (!initialized) {
@@ -96,6 +100,7 @@ export function useAllTransactionsWithStatus(
             userId,
             ...decodedSnapshot,
             settled: settledFromServer,
+            currentServerSettled,
           });
           return;
         }
@@ -141,20 +146,29 @@ export function useAllTransactionsWithStatus(
               userId,
               ...decodedSnapshot,
               settled: settledFromServer,
+              currentServerSettled,
             };
           }
 
           const settled = current.settled || settledFromServer;
           if (changes.length === 0) {
-            return settled === current.settled ? current : { ...current, settled };
+            return settled === current.settled
+              && currentServerSettled === current.currentServerSettled
+              ? current
+              : { ...current, settled, currentServerSettled };
           }
 
-          return { userId, ...decodedSnapshot, settled };
+          return { userId, ...decodedSnapshot, settled, currentServerSettled };
         });
       },
       (err) => {
         if (!active) return;
         logger.error('Error cargando el historial completo de transacciones', err);
+        setFullHistory((current) => (
+          current?.userId === userId
+            ? { ...current, currentServerSettled: false }
+            : current
+        ));
         // Sin primer snapshot de servidor no se asienta: el gate de saldos sigue
         // en "Calculando…" en vez de usar una ventana potencialmente incompleta.
       },
@@ -191,6 +205,10 @@ export function useAllTransactionsWithStatus(
     settled: !userId || (
       fullHistory?.userId === userId
       && fullHistory.settled
+    ),
+    currentServerSettled: !userId || (
+      fullHistory?.userId === userId
+      && fullHistory.currentServerSettled
     ),
   };
 }

@@ -183,19 +183,31 @@ describe('authenticated recurring cursor store', () => {
     expect(selected?.id).toBe('new-resolved');
   });
 
-  it('desempata por revision, updatedAt y por último id de documento', () => {
-    const base = sourceLifecycle({
-      lifecycleStatus: 'active', revision: 7, updatedAt: new Date('2026-06-16T14:00:00.000Z'),
+  it('desempata por updatedAt aunque el más reciente tenga menor revision', () => {
+    const highRevisionOldUpdate = sourceLifecycle({
+      id: 'high-revision-old-update', revision: 99,
+      updatedAt: new Date('2026-06-16T13:00:00.000Z'),
     });
-    const lowerRevision = sourceLifecycle({ id: 'revision-loser', revision: 6 });
-    const olderUpdate = sourceLifecycle({
-      ...base, id: 'update-loser', updatedAt: new Date('2026-06-16T13:00:00.000Z'),
+    const lowRevisionNewUpdate = sourceLifecycle({
+      id: 'low-revision-new-update', revision: 1,
+      updatedAt: new Date('2026-06-16T14:00:00.000Z'),
     });
-    const idLoser = sourceLifecycle({ ...base, id: 'z-document' });
-    const idWinner = sourceLifecycle({ ...base, id: 'a-document' });
 
     const selected = findAuthenticatedRecurringReminderLifecycle({
-      sourceNotifications: [lowerRevision, olderUpdate, idLoser, idWinner],
+      sourceNotifications: [highRevisionOldUpdate, lowRevisionNewUpdate],
+      paymentId: 'rent', writerPrefix: 'foreground:v4', authorityConfigVersion: 4,
+    });
+
+    expect(selected?.id).toBe('low-revision-new-update');
+  });
+
+  it('usa id lexical como desempate final sin precedencia de revision', () => {
+    const updatedAt = new Date('2026-06-16T14:00:00.000Z');
+    const idLoser = sourceLifecycle({ id: 'z-document', revision: 99, updatedAt });
+    const idWinner = sourceLifecycle({ id: 'a-document', revision: 1, updatedAt });
+
+    const selected = findAuthenticatedRecurringReminderLifecycle({
+      sourceNotifications: [idLoser, idWinner],
       paymentId: 'rent', writerPrefix: 'foreground:v4', authorityConfigVersion: 4,
     });
 

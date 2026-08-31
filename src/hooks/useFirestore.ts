@@ -10,12 +10,14 @@ import {
   useAccountsCRUD,
   useCategoriesCRUD,
 } from './firestore';
+import { DEFAULT_RECURRING_TIME_ZONE } from '../utils/recurringPayments';
 
 export function useFirestore(userId: string | null) {
   const {
     transactions, accounts, categories, transactionBeneficiaries,
     recurringPayments, debts, budgets, savingsGoals,
-    notifications, recurringNotificationLifecycles, notificationPreferences,
+    notifications, recurringNotificationLifecycles, recurringNotificationLifecyclesReady,
+    notificationPreferences,
     loading, error,
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
     transactionsServerSettled, transactionsHeadExhaustive, transactionsUnresolvedReason, transactionsRetrying,
@@ -31,7 +33,11 @@ export function useFirestore(userId: string | null) {
     deleteTransaction,
     updateTransaction,
   } =
-    useTransactionsCRUD(userId, accounts);
+    useTransactionsCRUD(
+      userId,
+      accounts,
+      notificationPreferences.timeZone ?? DEFAULT_RECURRING_TIME_ZONE,
+    );
 
   const { addAccount, deleteAccount, updateAccount } = useAccountsCRUD(userId);
 
@@ -41,7 +47,8 @@ export function useFirestore(userId: string | null) {
     // Data (all 7 collections + notifications)
     transactions, accounts, categories, transactionBeneficiaries,
     recurringPayments, debts, budgets, savingsGoals,
-    notifications, recurringNotificationLifecycles, notificationPreferences,
+    notifications, recurringNotificationLifecycles, recurringNotificationLifecyclesReady,
+    notificationPreferences,
     loading, error,
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
     transactionsServerSettled, transactionsHeadExhaustive, transactionsUnresolvedReason, transactionsRetrying,

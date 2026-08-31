@@ -1,7 +1,11 @@
 import { logger } from '../utils/logger';
 import { formatCurrency } from '../utils/formatters';
-import { calendarDayDifference, cycleKey, getScheduledDueDate } from '../utils/recurringDates';
-import { recurringTransactionSatisfiesCycleKey } from '../utils/recurringPayments';
+import { calendarDayDifference, getScheduledDueDate } from '../utils/recurringDates';
+import {
+  DEFAULT_RECURRING_TIME_ZONE,
+  recurringTransactionSatisfiesCycle,
+  recurringTransactionSatisfiesCycleKey,
+} from '../utils/recurringPayments';
 import {
   evaluateRecurringReminderCursor,
   type RecurringReminderCursor,
@@ -90,8 +94,7 @@ export class PaymentMonitor {
     try {
       const now = new Date();
       const timeZone = this.deps.timeZone
-        ?? Intl.DateTimeFormat().resolvedOptions().timeZone
-        ?? 'America/Bogota';
+        ?? DEFAULT_RECURRING_TIME_ZONE;
       const cursorStore = this.deps.cursorStore ?? emptyCursorStore;
       const writerPrefix = this.deps.writerPrefix ?? 'foreground:compat';
       const evaluations = this.deps.recurringPayments
@@ -141,13 +144,14 @@ export class PaymentMonitor {
     return calendarDayDifference(today, getScheduledDueDate(payment, today));
   }
 
-  isAlreadyPaid(payment: RecurringPayment, targetCycle = cycleKey(payment, new Date())): boolean {
+  isAlreadyPaid(payment: RecurringPayment, targetCycle?: string): boolean {
     if (!payment.id) return false;
     const timeZone = this.deps.timeZone
-      ?? Intl.DateTimeFormat().resolvedOptions().timeZone
-      ?? 'America/Bogota';
+      ?? DEFAULT_RECURRING_TIME_ZONE;
     return this.deps.transactions.some((transaction) =>
-      recurringTransactionSatisfiesCycleKey(payment, transaction, targetCycle, timeZone));
+      targetCycle
+        ? recurringTransactionSatisfiesCycleKey(payment, transaction, targetCycle, timeZone)
+        : recurringTransactionSatisfiesCycle(payment, transaction, new Date(), timeZone));
   }
 
   resetLastCheck(): void {

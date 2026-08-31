@@ -22,8 +22,33 @@ const recurringCycleStart = (key: string): RecurringCycleDate | null => {
   return { year, month, day };
 };
 
-const resolvedTimeZone = (): string =>
-  Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'America/Bogota';
+export const DEFAULT_RECURRING_TIME_ZONE = 'America/Bogota';
+
+const cycleKeyInTimeZone = (
+  payment: RecurringPayment,
+  reference: Date,
+  timeZone: string,
+): string => {
+  const local = getZonedDateTimeParts(reference, timeZone);
+  if (payment.frequency === 'yearly') {
+    const month = yearlyAnchorMonth(payment, local.month, timeZone);
+    const dueDay = effectiveDueDay(payment.dueDay, local.year, month);
+    const year = local.month > month || (local.month === month && local.day >= dueDay)
+      ? local.year
+      : local.year - 1;
+    return `${year}-${month}-${effectiveDueDay(payment.dueDay, year, month)}`;
+  }
+
+  let { year, month } = local;
+  if (local.day < effectiveDueDay(payment.dueDay, year, month)) {
+    month -= 1;
+    if (month < 0) {
+      month = 11;
+      year -= 1;
+    }
+  }
+  return `${year}-${month}-${effectiveDueDay(payment.dueDay, year, month)}`;
+};
 
 const calendarOrdinal = ({ year, month, day }: RecurringCycleDate): number =>
   Date.UTC(year, month, day);
@@ -43,7 +68,7 @@ const yearlyAnchorMonth = (
 export const isRecurringCycleKeyForPayment = (
   payment: RecurringPayment,
   targetCycle: string,
-  timeZone: string = resolvedTimeZone(),
+  timeZone: string = DEFAULT_RECURRING_TIME_ZONE,
 ): boolean => {
   const start = recurringCycleStart(targetCycle);
   if (!start) return false;
@@ -58,7 +83,7 @@ export const recurringTransactionSatisfiesCycle = (
   payment: RecurringPayment,
   transaction: Transaction,
   reference: Date = new Date(),
-  timeZone: string = resolvedTimeZone(),
+  timeZone: string = DEFAULT_RECURRING_TIME_ZONE,
 ): boolean => {
   if (
     !payment.id
@@ -71,7 +96,7 @@ export const recurringTransactionSatisfiesCycle = (
   return recurringTransactionSatisfiesCycleKey(
     payment,
     transaction,
-    cycleKey(payment, reference),
+    cycleKeyInTimeZone(payment, reference, timeZone),
     timeZone,
   );
 };
@@ -80,7 +105,7 @@ export const recurringTransactionSatisfiesCycleKey = (
   payment: RecurringPayment,
   transaction: Transaction,
   targetCycle: string,
-  timeZone: string = resolvedTimeZone(),
+  timeZone: string = DEFAULT_RECURRING_TIME_ZONE,
 ): boolean => {
   if (
     !payment.id

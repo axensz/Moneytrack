@@ -116,6 +116,7 @@ export interface FirestoreData {
   savingsGoals: SavingsGoal[];
   notifications: Notification[];
   recurringNotificationLifecycles: Notification[];
+  recurringNotificationLifecyclesReady: boolean;
   notificationPreferences: NotificationPreferences;
   loading: boolean;
   error: Error | null;
@@ -190,12 +191,15 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
       ? recurringNotificationLifecycleState.notifications
       : []
   ), [userId, recurringNotificationLifecycleState]);
+  const recurringNotificationLifecyclesReady = !userId
+    || recurringNotificationLifecycleState?.userId === userId;
 
   const retryLoad = useCallback(() => {
     setError(null);
     setLoadedForUserId(null);
     setTransactionsServerSettledForUserId(null);
     setTransactionsHeadExhaustiveForUserId(null);
+    setRecurringNotificationLifecycleState(null);
     setTransactionsReadiness({ userId, reason: 'cache', retrying: true });
     setRetryTrigger(prev => prev + 1);
   }, [userId]);
@@ -212,6 +216,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     realtimeTransactionsRef.current = [];
     realtimeTransactionDocumentIdsRef.current.clear();
     setTransactionDecodeIssues([]);
+    setRecurringNotificationLifecycleState(null);
     nextPageCursorRef.current = null;
     paginationStartedRef.current = false;
     loadingMoreRef.current = false;
@@ -486,16 +491,22 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
 
     // Durable recurring lifecycle source. It is bounded by domain semantics,
     // not by the presentation center's newest-100 window.
-    subscribeQuery(
+    unsubscribes.push(onSnapshot(
       query(collection(db, `${base}/notifications`), where('type', '==', 'recurring')),
-      'lifecycles de pagos recurrentes',
       (snap) => {
+        if (!isActive()) return;
         setRecurringNotificationLifecycleState({
           userId,
           notifications: snap.docs.map(decodeNotification),
         });
+      },
+      (err) => {
+        logger.error('Error en lifecycles de pagos recurrentes', err);
+        if (!isActive()) return;
+        setError(new Error(`Error al cargar lifecycles de pagos recurrentes: ${err.message}`));
+        setRecurringNotificationLifecycleState(null);
       }
-    );
+    ));
 
     // 9. Notification Preferences (single document)
     subscribeDocument(
@@ -663,6 +674,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     savingsGoals,
     notifications,
     recurringNotificationLifecycles,
+    recurringNotificationLifecyclesReady,
     notificationPreferences,
     loading,
     error,

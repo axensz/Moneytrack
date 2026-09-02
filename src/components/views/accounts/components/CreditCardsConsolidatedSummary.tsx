@@ -81,14 +81,14 @@ export const CreditCardsConsolidatedSummary: React.FC<CreditCardsConsolidatedSum
       <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryMetric label="Cupo total" value={displayAmount(totalLimit)} tone="primary" />
         <SummaryMetric label="Cupo utilizado" value={displayAmount(totalUsed)} tone={isHighUsage ? 'warning' : 'foreground'} />
-        <SummaryMetric label="Disponible total" value={displayAmount(totalAvailable)} tone="success" />
+        <SummaryMetric label="Disponible total" value={displayAmount(totalAvailable)} tone={totalAvailable > 0 ? 'success' : 'warning'} />
         <SummaryMetric label="Tarjetas con deuda" value={hideBalances ? '••••••' : `${cardsWithUsage}/${cards.length}`} tone="foreground" />
       </div>
 
       <div className="mt-5">
         <div className="mb-1.5 flex justify-between text-sm">
           <span className="text-muted-foreground">Uso consolidado</span>
-          <span className="font-semibold text-foreground">
+          <span className="font-semibold font-mono text-foreground">
             {totalLimit > 0 ? displayPercent(usagePercentage) : 'Sin cupo definido'}
           </span>
         </div>
@@ -105,7 +105,10 @@ export const CreditCardsConsolidatedSummary: React.FC<CreditCardsConsolidatedSum
           <Info size={17} className="mt-0.5 flex-shrink-0 text-primary" />
           <span>
             Mayor uso relativo: <strong>{highestUsageCard.name}</strong> con{' '}
-            {highestUsageCard.usagePercentage.toFixed(1).replace('.', ',')}% de su cupo.
+            <span className="font-mono font-semibold">
+              {highestUsageCard.usagePercentage.toFixed(1).replace('.', ',')}%
+            </span>{' '}
+            de su cupo.
           </span>
         </div>
       )}
@@ -133,7 +136,7 @@ const SummaryMetric: React.FC<SummaryMetricProps> = ({ label, value, tone }) => 
     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
       {label}
     </p>
-    <p className={`mt-1 text-lg font-bold ${toneClasses[tone]}`}>
+    <p className={`mt-1 text-lg font-bold font-mono ${toneClasses[tone]}`}>
       {value}
     </p>
   </div>

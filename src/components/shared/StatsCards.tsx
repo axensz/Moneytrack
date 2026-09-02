@@ -61,7 +61,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
           <div className="mb-1.5 sm:mb-2">
             <span className="text-xs sm:text-sm font-medium text-balance-foreground">Saldo actual</span>
           </div>
-          <div className="text-lg sm:text-xl lg:text-2xl font-bold text-balance-value break-words">
+          <div className="text-lg sm:text-xl lg:text-2xl font-bold font-mono text-balance-value break-words">
             {balanceSettling ? (
               <BalanceSettling className="text-balance-accent-foreground" />
             ) : (
@@ -78,7 +78,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
               <TrendingUp size={16} className="sm:w-[18px] sm:h-[18px] text-emerald-600 dark:text-emerald-400" />
             </div>
           </div>
-          <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-gray-100 break-words">
+          <div className="text-lg sm:text-xl lg:text-2xl font-bold font-mono text-gray-900 dark:text-gray-100 break-words">
             {animatedValue(totalIncome)}
           </div>
         </div>
@@ -91,7 +91,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
               <TrendingDown size={16} className="sm:w-[18px] sm:h-[18px] text-rose-600 dark:text-rose-400" />
             </div>
           </div>
-          <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-gray-100 break-words">
+          <div className="text-lg sm:text-xl lg:text-2xl font-bold font-mono text-gray-900 dark:text-gray-100 break-words">
             {animatedValue(totalExpenses)}
           </div>
         </div>
@@ -110,7 +110,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
               <Calendar size={16} className="sm:w-[18px] sm:h-[18px] text-amber-600 dark:text-amber-400" />
             </div>
           </div>
-          <div className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 dark:text-gray-100 break-words">
+          <div className="text-lg sm:text-xl lg:text-2xl font-bold font-mono text-gray-900 dark:text-gray-100 break-words">
             {animatedValue(pendingExpenses)}
           </div>
         </div>

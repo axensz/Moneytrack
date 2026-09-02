@@ -1,9 +1,9 @@
 # Spec — Modelo de Presentación de Montos en Cards de Cuenta (The Confident Ledger)
 
-**Fecha:** 2026-09-02  
-**Estado:** Propuesta de diseño y especificación (Ready for Review)  
-**Contexto:** MoneyTrack — `AccountsView`, `AccountCard`, `CreditCardsConsolidatedSummary`  
-**North Star:** *"The Confident Ledger"* (PRODUCT.md) / *"Sistema Visual"* (DESIGN.md)  
+- **Fecha:** 2026-09-02
+- **Estado:** Propuesta de diseño y especificación (Ready for Review)
+- **Contexto:** MoneyTrack — `AccountsView`, `AccountCard`, `CreditCardsConsolidatedSummary`
+- **North Star:** *"The Confident Ledger"* (PRODUCT.md) / *"Sistema Visual"* (DESIGN.md)
 
 ---
 

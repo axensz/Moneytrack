@@ -1,3 +1,5 @@
+import { DEFAULT_TIME_ZONE } from '../config/constants';
+
 export type LedgerMutationKind =
   | 'create'
   | 'edit'
@@ -363,7 +365,7 @@ export interface NotificationFilter {
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   schemaVersion: 2,
-  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Bogota',
+  timeZone: DEFAULT_TIME_ZONE,
   enabled: {
     budget: true,
     recurring: true,

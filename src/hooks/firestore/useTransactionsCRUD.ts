@@ -321,7 +321,7 @@ interface UseTransactionsCRUDReturn {
 export function useTransactionsCRUD(
   userId: string | null,
   _accounts: Account[] = [],
-  timeZone = DEFAULT_RECURRING_TIME_ZONE,
+  timeZone: string = DEFAULT_RECURRING_TIME_ZONE,
 ): UseTransactionsCRUDReturn {
   // Conserva la firma pública; la autoridad financiera siempre se recarga del servidor.
   void _accounts;

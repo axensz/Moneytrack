@@ -34,6 +34,11 @@ interface FullHistoryState {
   currentServerSettled: boolean;
 }
 
+interface FullHistoryErrorState {
+  userId: string;
+  error: Error;
+}
+
 /**
  * Devuelve TODAS las transacciones del usuario. Hasta confirmar el servidor
  * fusiona el head visible con la caché; después usa el snapshot completo como
@@ -60,23 +65,32 @@ export function useAllTransactions(
 export function useAllTransactionsWithStatus(
   userId: string | null,
   liveTransactions: Transaction[],
+  retryGeneration = 0,
 ): {
   transactions: Transaction[];
   issues: TransactionDecodeIssue[];
   settled: boolean;
   currentServerSettled: boolean;
+  error: Error | null;
 } {
   const [fullHistory, setFullHistory] = useState<FullHistoryState | null>(null);
+  const [fullHistoryError, setFullHistoryError] = useState<FullHistoryErrorState | null>(null);
 
   useEffect(() => {
     if (!userId) {
       setFullHistory(null);
+      setFullHistoryError(null);
       return;
     }
 
     let active = true;
     let initialized = false;
-    setFullHistory(null);
+    setFullHistory((current) => (
+      current?.userId === userId
+        ? { ...current, currentServerSettled: false }
+        : null
+    ));
+    setFullHistoryError(null);
 
     const fullHistoryQuery = query(
       collection(db, `users/${userId}/transactions`),
@@ -88,6 +102,7 @@ export function useAllTransactionsWithStatus(
       { includeMetadataChanges: true },
       (snapshot) => {
         if (!active) return;
+        setFullHistoryError(null);
 
         const settledFromServer = !snapshot.metadata.fromCache;
         const currentServerSettled = settledFromServer
@@ -164,6 +179,7 @@ export function useAllTransactionsWithStatus(
       (err) => {
         if (!active) return;
         logger.error('Error cargando el historial completo de transacciones', err);
+        setFullHistoryError({ userId, error: err });
         setFullHistory((current) => (
           current?.userId === userId
             ? { ...current, currentServerSettled: false }
@@ -178,7 +194,7 @@ export function useAllTransactionsWithStatus(
       active = false;
       unsubscribe();
     };
-  }, [userId]);
+  }, [userId, retryGeneration]);
 
   // La clave de usuario en el estado impide exponer el historial de la sesión
   // anterior durante el render previo al cleanup/primer snapshot del nuevo user.
@@ -210,5 +226,6 @@ export function useAllTransactionsWithStatus(
       fullHistory?.userId === userId
       && fullHistory.currentServerSettled
     ),
+    error: fullHistoryError?.userId === userId ? fullHistoryError.error : null,
   };
 }

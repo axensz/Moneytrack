@@ -220,8 +220,9 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     transactionsHeadExhaustive,
     transactionsUnresolvedReason,
     transactionsRetrying,
+    retryGeneration,
     retryLoad,
-    error: firestoreError,
+    error: subscriptionError,
   } = firestoreData;
 
   // 1. Transacciones (base de todo)
@@ -246,8 +247,16 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     transactions: balanceTransactions,
     ready: balancesReady,
     currentServerSettled: balanceTransactionsServerSettled,
+    error: balanceTransactionsError,
   } =
-    useBalanceTransactions(userId, transactions, transactionsServerSettled, transactionsHeadExhaustive);
+    useBalanceTransactions(
+      userId,
+      transactions,
+      transactionsServerSettled,
+      transactionsHeadExhaustive,
+      retryGeneration,
+    );
+  const firestoreError = subscriptionError ?? balanceTransactionsError;
 
   // 2. Cuentas (depende de balanceTransactions + deleteTransaction)
   const {

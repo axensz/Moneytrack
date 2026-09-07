@@ -118,6 +118,7 @@ export interface FirestoreData {
   recurringNotificationLifecycles: Notification[];
   recurringNotificationLifecyclesReady: boolean;
   notificationPreferences: NotificationPreferences;
+  notificationPreferencesReady: boolean;
   loading: boolean;
   error: Error | null;
   hasMoreTransactions: boolean;
@@ -127,6 +128,7 @@ export interface FirestoreData {
   transactionsHeadExhaustive: boolean;
   transactionsUnresolvedReason: 'cache' | 'pending-writes' | 'error' | null;
   transactionsRetrying: boolean;
+  retryGeneration: number;
   retryLoad: () => void;
 }
 
@@ -147,7 +149,10 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     userId: string;
     notifications: Notification[];
   } | null>(null);
-  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
+  const [notificationPreferencesState, setNotificationPreferencesState] = useState<{
+    userId: string;
+    preferences: NotificationPreferences;
+  } | null>(null);
 
   const [loadedForUserId, setLoadedForUserId] = useState<string | null>(null);
   const [error, setError] = useState<Error | null>(null);
@@ -193,6 +198,12 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
   ), [userId, recurringNotificationLifecycleState]);
   const recurringNotificationLifecyclesReady = !userId
     || recurringNotificationLifecycleState?.userId === userId;
+  const notificationPreferences = userId
+    && notificationPreferencesState?.userId === userId
+    ? notificationPreferencesState.preferences
+    : DEFAULT_NOTIFICATION_PREFERENCES;
+  const notificationPreferencesReady = !userId
+    || notificationPreferencesState?.userId === userId;
 
   const retryLoad = useCallback(() => {
     setError(null);
@@ -217,6 +228,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     realtimeTransactionDocumentIdsRef.current.clear();
     setTransactionDecodeIssues([]);
     setRecurringNotificationLifecycleState(null);
+    setNotificationPreferencesState(null);
     nextPageCursorRef.current = null;
     paginationStartedRef.current = false;
     loadingMoreRef.current = false;
@@ -267,7 +279,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
       setSavingsGoals([]);
       setNotifications([]);
       setRecurringNotificationLifecycleState(null);
-      setNotificationPreferences(DEFAULT_NOTIFICATION_PREFERENCES);
+      setNotificationPreferencesState(null);
       setLoadedForUserId(null);
       loadedCollections.current = Object.fromEntries(COLLECTION_NAMES.map(n => [n, false]));
       return;
@@ -513,9 +525,12 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
       firestoreDoc(db, `${base}/notificationPreferences/settings`),
       'preferencias de notificaciones',
       (snap) => {
-        if (snap.exists()) {
-          setNotificationPreferences(snap.data() as NotificationPreferences);
-        }
+        setNotificationPreferencesState({
+          userId,
+          preferences: snap.exists()
+            ? snap.data() as NotificationPreferences
+            : DEFAULT_NOTIFICATION_PREFERENCES,
+        });
         loadedCollections.current.notificationPreferences = true;
         checkAllLoaded();
       }
@@ -676,6 +691,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     recurringNotificationLifecycles,
     recurringNotificationLifecyclesReady,
     notificationPreferences,
+    notificationPreferencesReady,
     loading,
     error,
     hasMoreTransactions,
@@ -685,6 +701,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     transactionsHeadExhaustive,
     transactionsUnresolvedReason,
     transactionsRetrying,
+    retryGeneration: retryTrigger,
     retryLoad,
   };
 }

@@ -110,6 +110,27 @@ const findRecurringLifecycleListener = (latest = false) => {
   return listener;
 };
 
+const findNotificationPreferencesListener = (latest = false) => (
+  latest
+    ? findLatestListener('/notificationPreferences/settings')
+    : findListener('/notificationPreferences/settings')
+);
+
+const notificationPreferencesSnapshot = (
+  timeZone: string,
+  exists = true,
+) => ({
+  docs: [],
+  metadata: { fromCache: false, hasPendingWrites: false },
+  exists: () => exists,
+  data: () => ({
+    schemaVersion: 2,
+    timeZone,
+    enabled: {},
+    leadTimes: {},
+  }),
+});
+
 const notificationDocument = (
   id: string,
   overrides: Record<string, unknown> = {},
@@ -379,6 +400,41 @@ describe('useFirestoreSubscriptions — paginación', () => {
     rerender({ userId: 'user-2' });
     expect(result.current.transactionsServerSettled).toBe(false);
     expect(result.current.transactionsUnresolvedReason).toBe('cache');
+  });
+
+  it('cerca preferencias por cuenta y usa Bogotá hasta el snapshot fresco del nuevo usuario', () => {
+    const { result, rerender } = renderHook(
+      ({ userId }) => useFirestoreSubscriptions(userId),
+      { initialProps: { userId: 'user-a' as string | null } },
+    );
+    const staleUserAListener = findNotificationPreferencesListener();
+
+    expect(result.current.notificationPreferencesReady).toBe(false);
+    expect(result.current.notificationPreferences.timeZone).toBe('America/Bogota');
+
+    act(() => staleUserAListener.next(
+      notificationPreferencesSnapshot('Pacific/Kiritimati', false),
+    ));
+    expect(result.current.notificationPreferencesReady).toBe(true);
+    expect(result.current.notificationPreferences.timeZone).toBe('America/Bogota');
+
+    act(() => staleUserAListener.next(notificationPreferencesSnapshot('Pacific/Kiritimati')));
+    expect(result.current.notificationPreferencesReady).toBe(true);
+    expect(result.current.notificationPreferences.timeZone).toBe('Pacific/Kiritimati');
+
+    rerender({ userId: 'user-b' });
+    expect(result.current.notificationPreferencesReady).toBe(false);
+    expect(result.current.notificationPreferences.timeZone).toBe('America/Bogota');
+
+    act(() => staleUserAListener.next(notificationPreferencesSnapshot('UTC')));
+    expect(result.current.notificationPreferencesReady).toBe(false);
+    expect(result.current.notificationPreferences.timeZone).toBe('America/Bogota');
+
+    act(() => findNotificationPreferencesListener(true).next(
+      notificationPreferencesSnapshot('America/Los_Angeles'),
+    ));
+    expect(result.current.notificationPreferencesReady).toBe(true);
+    expect(result.current.notificationPreferences.timeZone).toBe('America/Los_Angeles');
   });
 
   it('actualiza y elimina elementos antiguos cargados sin que reaparezcan con el snapshot realtime', async () => {

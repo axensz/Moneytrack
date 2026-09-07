@@ -1,4 +1,5 @@
 import type { RecurringPayment, Transaction } from '../types/finance';
+import { DEFAULT_TIME_ZONE } from '../config/constants';
 import {
   cycleKey,
   effectiveDueDay,
@@ -22,7 +23,7 @@ const recurringCycleStart = (key: string): RecurringCycleDate | null => {
   return { year, month, day };
 };
 
-export const DEFAULT_RECURRING_TIME_ZONE = 'America/Bogota';
+export const DEFAULT_RECURRING_TIME_ZONE = DEFAULT_TIME_ZONE;
 
 const cycleKeyInTimeZone = (
   payment: RecurringPayment,

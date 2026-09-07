@@ -17,11 +17,11 @@ export function useFirestore(userId: string | null) {
     transactions, accounts, categories, transactionBeneficiaries,
     recurringPayments, debts, budgets, savingsGoals,
     notifications, recurringNotificationLifecycles, recurringNotificationLifecyclesReady,
-    notificationPreferences,
+    notificationPreferences, notificationPreferencesReady,
     loading, error,
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
     transactionsServerSettled, transactionsHeadExhaustive, transactionsUnresolvedReason, transactionsRetrying,
-    retryLoad,
+    retryGeneration, retryLoad,
   } = useFirestoreSubscriptions(userId);
 
   const {
@@ -36,7 +36,9 @@ export function useFirestore(userId: string | null) {
     useTransactionsCRUD(
       userId,
       accounts,
-      notificationPreferences.timeZone ?? DEFAULT_RECURRING_TIME_ZONE,
+      notificationPreferencesReady
+        ? notificationPreferences.timeZone ?? DEFAULT_RECURRING_TIME_ZONE
+        : DEFAULT_RECURRING_TIME_ZONE,
     );
 
   const { addAccount, deleteAccount, updateAccount } = useAccountsCRUD(userId);
@@ -48,11 +50,11 @@ export function useFirestore(userId: string | null) {
     transactions, accounts, categories, transactionBeneficiaries,
     recurringPayments, debts, budgets, savingsGoals,
     notifications, recurringNotificationLifecycles, recurringNotificationLifecyclesReady,
-    notificationPreferences,
+    notificationPreferences, notificationPreferencesReady,
     loading, error,
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
     transactionsServerSettled, transactionsHeadExhaustive, transactionsUnresolvedReason, transactionsRetrying,
-    retryLoad,
+    retryGeneration, retryLoad,
     // Transactions CRUD
     addTransaction,
     addCreditPaymentAtomic,

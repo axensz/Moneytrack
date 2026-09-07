@@ -67,6 +67,13 @@ export interface FinanceContextValue {
    * debe mostrar "calculando" y bloquear el ajuste de saldo hasta que sea true.
    */
   balancesReady: boolean;
+  /**
+   * Task 3: true solo cuando las tres fuentes de notificación (transacciones,
+   * pagos recurrentes, deudas) recibieron su primer snapshot para ESTA cuenta
+   * y el historial de saldos está listo. El bridge lo usa para no evaluar
+   * recordatorios sobre placeholders ni sobre una hidratación parcial.
+   */
+  notificationSourcesHydrated: boolean;
   balanceTransactionsServerSettled: boolean;
   transactionsServerSettled: boolean;
   transactionsHeadExhaustive: boolean;
@@ -222,6 +229,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     transactionsRetrying,
     retryGeneration,
     retryLoad,
+    notificationSourcesHydrated: notificationSourceSnapshotsReady,
     error: subscriptionError,
   } = firestoreData;
 
@@ -257,6 +265,10 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
       retryGeneration,
     );
   const firestoreError = subscriptionError ?? balanceTransactionsError;
+  // Task 3: la hidratación de fuentes de notificación exige el primer snapshot
+  // de las tres fuentes MÁS el historial de saldos listo (balancesReady). Un
+  // parcial (p.ej. saldos listos pero recurring pendiente) permanece false.
+  const notificationSourcesHydrated = notificationSourceSnapshotsReady && balancesReady;
 
   // 2. Cuentas (depende de balanceTransactions + deleteTransaction)
   const {
@@ -391,6 +403,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     transactions,
     balanceTransactions,
     balancesReady,
+    notificationSourcesHydrated,
     balanceTransactionsServerSettled,
     transactionsServerSettled,
     transactionsHeadExhaustive,
@@ -485,7 +498,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     // Utilidades
     formatCurrency,
   }), [
-    transactions, balanceTransactions, balancesReady, balanceTransactionsServerSettled, transactionsServerSettled, transactionsHeadExhaustive, transactionsUnresolvedReason, transactionsRetrying, accounts, categories, transactionBeneficiaries, recurringPayments, defaultAccount, totalBalance,
+    transactions, balanceTransactions, balancesReady, notificationSourcesHydrated, balanceTransactionsServerSettled, transactionsServerSettled, transactionsHeadExhaustive, transactionsUnresolvedReason, transactionsRetrying, accounts, categories, transactionBeneficiaries, recurringPayments, defaultAccount, totalBalance,
     transactionsLoading, accountsLoading,
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
     firestoreError, retryLoad,

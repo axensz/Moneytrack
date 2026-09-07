@@ -119,6 +119,7 @@ export interface FirestoreData {
   recurringNotificationLifecyclesReady: boolean;
   notificationPreferences: NotificationPreferences;
   notificationPreferencesReady: boolean;
+  notificationSourcesHydrated: boolean;
   loading: boolean;
   error: Error | null;
   hasMoreTransactions: boolean;
@@ -152,6 +153,15 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
   const [notificationPreferencesState, setNotificationPreferencesState] = useState<{
     userId: string;
     preferences: NotificationPreferences;
+  } | null>(null);
+  // Primer snapshot recibido de cada fuente de notificación, keyed por cuenta.
+  // Los arrays vacíos DESPUÉS del snapshot son datos válidos; los placeholders
+  // ANTES del snapshot no. Un snapshot tardío de la cuenta previa no cuenta.
+  const [notificationSourceSnapshots, setNotificationSourceSnapshots] = useState<{
+    userId: string;
+    transactions: boolean;
+    recurringPayments: boolean;
+    debts: boolean;
   } | null>(null);
 
   const [loadedForUserId, setLoadedForUserId] = useState<string | null>(null);
@@ -204,6 +214,26 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     : DEFAULT_NOTIFICATION_PREFERENCES;
   const notificationPreferencesReady = !userId
     || notificationPreferencesState?.userId === userId;
+  const notificationSourcesHydrated = !userId
+    ? false
+    : Boolean(
+        notificationSourceSnapshots?.userId === userId
+        && notificationSourceSnapshots.transactions
+        && notificationSourceSnapshots.recurringPayments
+        && notificationSourceSnapshots.debts,
+      );
+  const markNotificationSource = useCallback(
+    (source: 'transactions' | 'recurringPayments' | 'debts', forUserId: string) => {
+      setNotificationSourceSnapshots((current) => {
+        const base = current?.userId === forUserId
+          ? current
+          : { userId: forUserId, transactions: false, recurringPayments: false, debts: false };
+        if (base[source]) return base;
+        return { ...base, [source]: true };
+      });
+    },
+    [],
+  );
 
   const retryLoad = useCallback(() => {
     setError(null);
@@ -229,6 +259,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     setTransactionDecodeIssues([]);
     setRecurringNotificationLifecycleState(null);
     setNotificationPreferencesState(null);
+    setNotificationSourceSnapshots(null);
     nextPageCursorRef.current = null;
     paginationStartedRef.current = false;
     loadingMoreRef.current = false;
@@ -280,6 +311,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
       setNotifications([]);
       setRecurringNotificationLifecycleState(null);
       setNotificationPreferencesState(null);
+      setNotificationSourceSnapshots(null);
       setLoadedForUserId(null);
       loadedCollections.current = Object.fromEntries(COLLECTION_NAMES.map(n => [n, false]));
       return;
@@ -384,6 +416,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
           setHasMoreTransactions(hasMore);
         }
         loadedCollections.current.transactions = true;
+        markNotificationSource('transactions', userId);
         checkAllLoaded();
       },
       handleError('transacciones')
@@ -438,6 +471,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
           createdAt: d.data().createdAt?.toDate() || new Date(),
         })) as RecurringPayment[]);
         loadedCollections.current.recurringPayments = true;
+        markNotificationSource('recurringPayments', userId);
         checkAllLoaded();
       }
     );
@@ -456,6 +490,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
           nextPaymentDate: d.data().nextPaymentDate?.toDate() || undefined,
         })) as Debt[]);
         loadedCollections.current.debts = true;
+        markNotificationSource('debts', userId);
         checkAllLoaded();
       }
     );
@@ -692,6 +727,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
     recurringNotificationLifecyclesReady,
     notificationPreferences,
     notificationPreferencesReady,
+    notificationSourcesHydrated,
     loading,
     error,
     hasMoreTransactions,

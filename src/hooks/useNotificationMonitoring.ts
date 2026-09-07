@@ -31,6 +31,7 @@ import { getForegroundReminderContext } from '../lib/recurringReminderCursorStor
 // ponytail: ceiling = un reloj > 30 min desfasado aún pierde la alerta; si pasa,
 // la señal robusta sería marcar el origen del id (alta vs page-in), no el reloj.
 const FRESH_CREATION_MS = 30 * 60 * 1000;
+import type { NotificationAuthorityState } from '../utils/notificationAuthority';
 import type {
     Transaction,
     Budget,
@@ -56,6 +57,14 @@ interface UseNotificationMonitoringProps {
     notificationManager: NotificationManager;
     /** No evalúa placeholders mientras las fuentes autenticadas se hidratan. */
     isHydrated?: boolean;
+    /**
+     * Task 3: recurring/debt son time-events foreground. Solo un escritor
+     * foreground admitido puede evaluarlos; durable/cutover (writer null) los
+     * fencea. Presupuesto/gasto/saldo por transacción NO se gatean aquí.
+     */
+    foregroundWriterActive?: boolean;
+    /** Token de autoridad para revalidar la generación al mutar (writerPrefix/version). */
+    authority?: NotificationAuthorityState;
 }
 
 export function useNotificationMonitoring({
@@ -68,6 +77,8 @@ export function useNotificationMonitoring({
     debts,
     notificationManager,
     isHydrated = true,
+    foregroundWriterActive = true,
+    authority,
 }: UseNotificationMonitoringProps) {
     const txsForBalance = balanceTransactions ?? transactions;
     const prevTransactionIdsRef = useRef<Set<string>>(new Set());
@@ -203,6 +214,10 @@ export function useNotificationMonitoring({
     useEffect(() => {
         const runDailyChecks = async () => {
             if (!isHydrated) return;
+            // Task 3: recurring/debt son time-events foreground. En durable/cutover
+            // (writer null) no se evalúan ni escriben; solo un snapshot fresco que
+            // devuelva autoridad foreground los reactiva (dep abajo).
+            if (!foregroundWriterActive) return;
             if (!monitorsRef.current.paymentMonitor || !monitorsRef.current.debtMonitor) return;
             try {
                 const context = getForegroundReminderContext(notificationManager);
@@ -243,7 +258,7 @@ export function useNotificationMonitoring({
             window.clearInterval(evaluationInterval);
             document.removeEventListener('visibilitychange', onVisible);
         };
-    }, [notificationManager, isHydrated, recurringPayments, debts, txsForBalance]);
+    }, [notificationManager, isHydrated, foregroundWriterActive, authority, recurringPayments, debts, txsForBalance]);
 
     // Al cambiar de usuario (guest→login o cambio de cuenta sin recargar) se
     // reinicia el set de ids previos. Sin esto, las transacciones del nuevo

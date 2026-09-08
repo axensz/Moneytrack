@@ -221,3 +221,139 @@ describe('NotificationManager (A3)', () => {
     expect(deleteNotification).not.toHaveBeenCalled();
   });
 });
+
+describe('NotificationManager — canShowBrowserNotification gate (Task 7)', () => {
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  it('cuando se inyecta canShowBrowserNotification, ESE gate gobierna la presentación OS', async () => {
+    vi.mocked(showBrowserNotification).mockClear();
+    const canShow = vi.fn(() => true);
+    // browserNotifications.enabled = false, pero el gate inyectado dice true → presenta
+    const addNotification = vi.fn().mockResolvedValue(true);
+    const mgr = new NotificationManager({
+      addNotification,
+      updateNotification: vi.fn().mockResolvedValue(undefined),
+      deleteNotification: vi.fn().mockResolvedValue(undefined),
+      clearAll: vi.fn().mockResolvedValue(undefined),
+      markAllAsRead: vi.fn().mockResolvedValue(undefined),
+      notifications: [],
+      preferences: { ...DEFAULT_NOTIFICATION_PREFERENCES, browserNotifications: { enabled: false } },
+      canShowBrowserNotification: canShow,
+    });
+
+    await mgr.createNotification(notif({ severity: 'error' }));
+    expect(canShow).toHaveBeenCalled();
+    expect(showBrowserNotification).toHaveBeenCalledTimes(1);
+  });
+
+  it('gate inyectado false suprime la presentación OS aunque browserNotifications.enabled sea true', async () => {
+    vi.mocked(showBrowserNotification).mockClear();
+    const mgr = new NotificationManager({
+      addNotification: vi.fn().mockResolvedValue(true),
+      updateNotification: vi.fn().mockResolvedValue(undefined),
+      deleteNotification: vi.fn().mockResolvedValue(undefined),
+      clearAll: vi.fn().mockResolvedValue(undefined),
+      markAllAsRead: vi.fn().mockResolvedValue(undefined),
+      notifications: [],
+      preferences: { ...DEFAULT_NOTIFICATION_PREFERENCES, browserNotifications: { enabled: true } },
+      canShowBrowserNotification: () => false,
+    });
+
+    await mgr.createNotification(notif({ severity: 'error' }));
+    expect(showBrowserNotification).not.toHaveBeenCalled();
+  });
+});
+
+describe('NotificationManager — deferred quiet-hours OS presentation (Task 7)', () => {
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  const makeQuietSetup = (over: Record<string, unknown> = {}) => {
+    const addNotification = vi.fn().mockResolvedValue(true);
+    const timers: { cb: () => void; ms: number; handle: number }[] = [];
+    let handleSeq = 0;
+    let nowMs = new Date('2026-06-15T23:00:00').getTime(); // dentro de [22,8)
+    const clearCalls: number[] = [];
+
+    const mgr = new NotificationManager({
+      addNotification,
+      updateNotification: vi.fn().mockResolvedValue(undefined),
+      deleteNotification: vi.fn().mockResolvedValue(undefined),
+      clearAll: vi.fn().mockResolvedValue(undefined),
+      markAllAsRead: vi.fn().mockResolvedValue(undefined),
+      notifications: [],
+      preferences: {
+        ...DEFAULT_NOTIFICATION_PREFERENCES,
+        quietHours: { enabled: true, startHour: 22, endHour: 8 },
+        browserNotifications: { enabled: true },
+      },
+      canShowBrowserNotification: () => true,
+      now: () => nowMs,
+      setDeferTimer: (cb: () => void, ms: number) => {
+        const handle = ++handleSeq;
+        timers.push({ cb, ms, handle });
+        return handle;
+      },
+      clearDeferTimer: (handle: number) => { clearCalls.push(handle); },
+      ...over,
+    });
+
+    return {
+      mgr, addNotification, timers, clearCalls,
+      advanceTo: (iso: string) => { nowMs = new Date(iso).getTime(); },
+      fireAll: () => timers.forEach((t) => t.cb()),
+    };
+  };
+
+  it('un evento creado en quiet hours aparece en el inbox inmediatamente y difiere UNA presentación OS', async () => {
+    vi.mocked(showBrowserNotification).mockClear();
+    const { mgr, addNotification, timers } = makeQuietSetup();
+
+    await mgr.createNotification(notif({ severity: 'error' }));
+
+    // inbox: persistencia inmediata
+    expect(addNotification).toHaveBeenCalledTimes(1);
+    // OS presentation diferida (no inmediata) → un timer
+    expect(showBrowserNotification).not.toHaveBeenCalled();
+    expect(timers.length).toBe(1);
+  });
+
+  it('al quiet-end re-chequea el gate y presenta UNA vez', async () => {
+    vi.mocked(showBrowserNotification).mockClear();
+    const { mgr, advanceTo, fireAll } = makeQuietSetup();
+    await mgr.createNotification(notif({ severity: 'error' }));
+
+    advanceTo('2026-06-16T08:00:00'); // quiet-end
+    fireAll();
+
+    expect(showBrowserNotification).toHaveBeenCalledTimes(1);
+  });
+
+  it('si el gate ya no permite al quiet-end, NO presenta', async () => {
+    vi.mocked(showBrowserNotification).mockClear();
+    let allowed = true;
+    const { mgr, advanceTo, fireAll } = makeQuietSetup({ canShowBrowserNotification: () => allowed });
+    await mgr.createNotification(notif({ severity: 'error' }));
+
+    allowed = false;
+    advanceTo('2026-06-16T08:00:00');
+    fireAll();
+
+    expect(showBrowserNotification).not.toHaveBeenCalled();
+  });
+
+  it('cancela el timer diferido en logout/account-switch (cancelDeferredPresentations)', async () => {
+    const { mgr, clearCalls } = makeQuietSetup();
+    await mgr.createNotification(notif({ severity: 'error' }));
+    mgr.cancelDeferredPresentations();
+    expect(clearCalls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('los toasts y el inbox no cambian por el diferido (persistencia intacta)', async () => {
+    vi.mocked(toast.error).mockClear();
+    const { mgr, addNotification } = makeQuietSetup();
+    // quiet hours suprime toasts (comportamiento existente), inbox sí persiste
+    await mgr.createNotification(notif({ severity: 'error' }));
+    expect(addNotification).toHaveBeenCalledTimes(1);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+});

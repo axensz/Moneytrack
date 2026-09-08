@@ -40,6 +40,31 @@ export function withDefaults(p?: PartialNotificationPreferences | null): Notific
     };
 }
 
+/** Zona horaria por defecto cuando el navegador no expone una IANA válida. */
+export const FALLBACK_TIME_ZONE = 'America/Bogota';
+
+/**
+ * Valida un identificador IANA de zona horaria. Un valor vacío o desconocido
+ * (p. ej. 'Etc/Unknown') hace que `Intl.DateTimeFormat` lance RangeError.
+ */
+export function isValidIanaTimeZone(zone: string | undefined | null): zone is string {
+    if (!zone || zone.trim().length === 0) return false;
+    try {
+        new Intl.DateTimeFormat('en-US', { timeZone: zone });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Normaliza una zona candidata: devuelve la zona si es IANA válida, o la
+ * `FALLBACK_TIME_ZONE` (America/Bogota) en caso contrario.
+ */
+export function normalizeTimeZone(candidate: string | undefined | null): string {
+    return isValidIanaTimeZone(candidate) ? candidate : FALLBACK_TIME_ZONE;
+}
+
 export function validateNotificationThresholds(thresholds: NotificationPreferences['thresholds']): void {
     const { budgetWarning, budgetCritical, budgetExceeded, unusualSpending, lowBalance } = thresholds;
 

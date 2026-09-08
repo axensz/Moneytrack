@@ -1,0 +1,36 @@
+{
+  "name": "moneytrack-functions",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Isolated Node.js 22 Firebase Functions package for durable MoneyTrack notifications.",
+  "engines": {
+    "node": "22"
+  },
+  "main": "lib/src/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint src test",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run test:unit",
+    "test:unit": "vitest run test/unit --no-file-parallelism --passWithNoTests",
+    "test:integration": "vitest run test/integration --no-file-parallelism --passWithNoTests",
+    "notifications:prepare-emulator": "node lib/scripts/prepare-emulator-notification-config.js"
+  },
+  "dependencies": {
+    "firebase-admin": "14.3.0",
+    "firebase-functions": "7.3.2",
+    "web-push": "3.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.4",
+    "@types/node": "22.20.1",
+    "@types/web-push": "3.6.4",
+    "eslint": "9.39.4",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.68.0",
+    "vitest": "4.1.8"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
+  }
+}

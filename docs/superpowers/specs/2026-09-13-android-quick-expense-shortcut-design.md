@@ -15,11 +15,11 @@ La persona completará:
 2. Fecha, con hoy como valor inicial.
 3. Monto en COP.
 4. Categoría de gasto.
-5. Método de pago, entendido como la **cuenta o tarjeta de MoneyTrack** que conserva la autoridad financiera.
+5. Cuenta usada, que responde a “¿con qué pagaste?” y conserva la **cuenta, efectivo o tarjeta de MoneyTrack** como autoridad financiera.
 
 La acción **Continuar a MoneyTrack** guardará un borrador privado sin efecto contable y abrirá la PWA directamente en la revisión de ese borrador. Solo **Confirmar gasto** en MoneyTrack creará la transacción y afectará saldo, cupo, estadísticas o presupuesto.
 
-La APK incorporará además una actualización OTA privada: detectará una versión posterior, descargará el APK publicado, verificará integridad y firma, y entregará la instalación al instalador oficial de Android. Android seguirá exigiendo confirmación visible del usuario; no se intentará una instalación silenciosa.
+La APK incorporará además una actualización OTA privada: detectará una versión posterior, descargará el APK publicado, verificará integridad y firma, y entregará la instalación al instalador oficial de Android. Como la versión `0.1.0` todavía no contiene ese código, `0.2.0` será una actualización de arranque descargada por HTTPS e instalada sobre la APK actual; desde `0.2.0`, las versiones siguientes sí usarán el actualizador interno. Android seguirá exigiendo confirmación visible del usuario; no se intentará una instalación silenciosa.
 
 ## 2. Contexto actual verificado
 
@@ -70,7 +70,7 @@ La APK incorporará además una actualización OTA privada: detectará una versi
 - Si la sesión Firebase sigue activa, la pantalla cargará cuentas y categorías de gasto.
 - Si no hay sesión, mostrará una explicación breve y la acción de inicio de sesión existente. No exigirá acceso a notificaciones para registrar un gasto manual.
 - **Fecha** inicia en hoy.
-- **Método de pago** muestra el nombre de las cuentas y tarjetas actuales. Se preselecciona únicamente la cuenta marcada como predeterminada; si no existe una opción inequívoca, queda sin selección.
+- **Cuenta usada** muestra el nombre de las cuentas, efectivo y tarjetas actuales. Se preselecciona únicamente la cuenta marcada como predeterminada; si no existe una opción inequívoca, queda sin selección.
 - **Categoría** muestra solo categorías `expense` y queda sin selección para evitar clasificaciones silenciosas.
 - **Monto** usa teclado numérico, formato colombiano visible y la misma normalización a centavos usada por los candidatos actuales.
 - Todos los campos tienen etiqueta persistente, mensaje de error junto al control y objetivos táctiles de al menos 48 dp.
@@ -147,14 +147,20 @@ La variante manual no incluye `sourcePackage`, `parserId`, `confidence`, último
 
 ## 8. Actualización OTA privada
 
-### 8.1 Canal
+### 8.1 Actualización de arranque
+
+- La APK `0.1.0` no puede iniciar una actualización interna que todavía no sabe ejecutar.
+- MoneyTrack publicará un enlace HTTPS verificado al APK `0.2.0`. La persona lo abrirá en Android y el instalador del sistema lo aplicará sobre `0.1.0`, sin ADB, desinstalación ni limpieza de datos.
+- El APK `0.2.0` contendrá el actualizador interno. La primera prueba OTA iniciada dentro de la propia aplicación se hará contra una compilación canaria posterior con `versionCode 3` y la misma firma.
+
+### 8.2 Canal permanente
 
 - GitHub Releases alojará un único APK canario por versión.
 - La PWA publicará `public/android/update.json` con `versionCode`, `versionName`, `apkUrl`, `sha256`, `sizeBytes` y notas breves.
 - La APK comprobará ese manifiesto al entrar en primer plano, con una ventana de 24 horas guardada localmente. **Buscar actualización** permitirá omitir esa ventana desde la pantalla principal.
 - Una versión disponible se muestra como aviso secundario y no bloquea la captura rápida ni la confirmación en la PWA.
 
-### 8.2 Descarga e instalación
+### 8.3 Descarga e instalación
 
 1. La persona pulsa **Actualizar MoneyTrack**.
 2. Android descarga por HTTPS a un directorio específico de la app, sin permiso de almacenamiento general.
@@ -166,9 +172,10 @@ La variante manual no incluye `sourcePackage`, `parserId`, `confidence`, último
 
 Un hash o certificado incorrecto elimina el archivo descargado y muestra un error accionable. No existe una opción para omitir esas verificaciones.
 
-### 8.3 Firma y versión
+### 8.4 Firma y versión
 
-- El siguiente APK será `versionCode 2`, `versionName 0.2.0` y conservará `applicationId com.moneytrack.capture`.
+- El APK de arranque será `versionCode 2`, `versionName 0.2.0` y conservará `applicationId com.moneytrack.capture`.
+- La primera actualización iniciada desde la aplicación tendrá `versionCode 3`; su `versionName` conservará la secuencia semántica de la versión aprobada en el release.
 - Para actualizar sin reinstalar el canario ya instalado, el APK debe usar el certificado actual. La clave y contraseñas permanecen fuera del repositorio y se inyectan al build mediante configuración local o secretos de publicación.
 - Antes de publicar se comparará la firma de la APK instalada en el dispositivo canario con la huella auditada del release actual. Si no coincide, se detiene la entrega y se diagnostica; no se sugiere desinstalar como primer paso.
 - Esta continuidad de firma es apropiada para el canario privado. Antes de distribución pública se diseñará una migración separada a Play App Signing o a una clave de producción; no se rotará dentro de este cambio.
@@ -213,7 +220,8 @@ Un hash o certificado incorrecto elimina el archivo descargado y muestra un erro
 - Crear un gasto con cuenta de ahorro, efectivo y tarjeta de crédito.
 - Confirmar que antes del toque web no cambian saldo, cupo, estadísticas ni presupuesto.
 - Probar doble toque, offline, rotación, tema, fuente 1,3×, vuelta atrás e inicio con otra cuenta.
-- Instalar `0.2.0` sobre el canario actual desde el aviso OTA, sin desinstalar, y comprobar que sesión, preferencias, permiso de notificaciones y shortcut sobreviven.
+- Instalar `0.2.0` sobre el canario actual desde el enlace HTTPS de arranque, sin ADB ni desinstalación, y comprobar que sesión, preferencias y permiso de notificaciones sobreviven.
+- Publicar una compilación canaria con `versionCode 3`, instalarla desde el actualizador interno de `0.2.0` y comprobar que sesión, preferencias, permiso de notificaciones y shortcut sobreviven.
 - Descargar nuevamente el asset publicado y comparar tamaño, SHA-256, certificado y commit de origen.
 
 ## 12. Orden de entrega
@@ -223,8 +231,9 @@ Un hash o certificado incorrecto elimina el archivo descargado y muestra un erro
 3. Verificar que la PWA desplegada abre y confirma un fixture v3 sin afectar v1/v2.
 4. Implementar y verificar el shortcut, captura nativa y actualizador.
 5. Construir `0.2.0` limpio y firmado con el certificado compatible.
-6. Publicar el APK en GitHub Releases, verificar asset y después publicar `update.json`.
-7. Actualizar el canario desde la propia APK y ejecutar la matriz física.
+6. Publicar el APK en GitHub Releases, verificar el asset y entregar su enlace HTTPS como actualización de arranque sobre `0.1.0`.
+7. Construir y publicar una compilación canaria posterior con `versionCode 3`; verificar el asset y después publicar `update.json`.
+8. Actualizar el canario desde el actualizador interno de `0.2.0` y ejecutar la matriz física.
 
 Este orden garantiza que una APK nueva nunca emita un borrador que la versión web publicada todavía no pueda interpretar.
 
@@ -247,7 +256,8 @@ El cambio se considera listo únicamente cuando:
 - ninguna ruta nativa puede afectar el libro antes de confirmación;
 - un reintento produce como máximo una transacción;
 - v1/v2 siguen funcionando;
-- la actualización `0.2.0` se instala sobre la APK canaria mediante el flujo OTA con hash y firma válidos;
+- `0.2.0` se instala sobre la APK canaria desde el enlace HTTPS de arranque, sin ADB, desinstalación ni pérdida de datos;
+- una compilación posterior con `versionCode 3` se instala desde el actualizador interno con hash y firma válidos;
 - todas las verificaciones automáticas y la matriz física requerida quedan documentadas con evidencia.
 
 No quedan decisiones funcionales abiertas para iniciar el plan de implementación después de aprobar este documento.

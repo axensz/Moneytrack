@@ -67,6 +67,8 @@ class AndroidUpdateManifestDecoderTest {
             validManifest.replace("\"versionCode\": 3", "\"versionCode\": 0"),
             validManifest.replace("\"versionCode\": 3", "\"versionCode\": -1"),
             validManifest.replace("\"versionName\": \"0.2.1\"", "\"versionName\": \"   \""),
+            validManifest.replace("\"versionName\": \"0.2.1\"", "\"versionName\": \"../0.2.1\""),
+            validManifest.replace("\"versionName\": \"0.2.1\"", "\"versionName\": \"${"a".repeat(33)}\""),
         ).forEach { assertNull(it, decoder.decode(it)) }
     }
 

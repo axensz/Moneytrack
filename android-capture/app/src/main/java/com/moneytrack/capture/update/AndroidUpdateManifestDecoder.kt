@@ -32,8 +32,8 @@ class AndroidUpdateManifestDecoder {
 
         if (schemaVersion != SUPPORTED_SCHEMA.toLong()) invalidManifest()
         if (channel != SUPPORTED_CHANNEL) invalidManifest()
-        if (versionCode <= 0L || versionName.isBlank()) invalidManifest()
-        if (!isAllowedApkUrl(apkUrl)) invalidManifest()
+        if (versionCode <= 0L || !UPDATE_VERSION_NAME_PATTERN.matches(versionName)) invalidManifest()
+        if (!isAllowedUpdateApkUrl(apkUrl)) invalidManifest()
         if (!SHA_256_PATTERN.matches(sha256)) invalidManifest()
         if (sizeBytes <= 0L) invalidManifest()
 
@@ -70,19 +70,6 @@ class AndroidUpdateManifestDecoder {
             }
             note
         }
-    }
-
-    private fun isAllowedApkUrl(value: String): Boolean {
-        if (!value.startsWith(ALLOWED_APK_PREFIX)) return false
-
-        val uri = runCatching { URI(value) }.getOrNull() ?: return false
-        return uri.scheme == "https" &&
-            uri.host == "github.com" &&
-            uri.port == -1 &&
-            uri.rawUserInfo == null &&
-            uri.rawQuery == null &&
-            uri.rawFragment == null &&
-            uri.rawPath.startsWith(ALLOWED_APK_PATH_PREFIX)
     }
 
     private fun scanTopLevelKeys(source: String): List<String>? {
@@ -212,8 +199,6 @@ class AndroidUpdateManifestDecoder {
         const val MAX_RELEASE_NOTE_LENGTH = 160
         const val SUPPORTED_SCHEMA = 1
         const val SUPPORTED_CHANNEL = "canary"
-        const val ALLOWED_APK_PREFIX = "https://github.com/axensz/Moneytrack/releases/download/"
-        const val ALLOWED_APK_PATH_PREFIX = "/axensz/Moneytrack/releases/download/"
         val SHA_256_PATTERN = Regex("[A-Fa-f0-9]{64}")
         val EXPECTED_KEYS = setOf(
             "schemaVersion",
@@ -227,5 +212,23 @@ class AndroidUpdateManifestDecoder {
         )
     }
 }
+
+internal val UPDATE_VERSION_NAME_PATTERN = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,31}")
+
+internal fun isAllowedUpdateApkUrl(value: String): Boolean {
+    if (!value.startsWith(ALLOWED_APK_PREFIX)) return false
+
+    val uri = runCatching { URI(value) }.getOrNull() ?: return false
+    return uri.scheme == "https" &&
+        uri.host == "github.com" &&
+        uri.port == -1 &&
+        uri.rawUserInfo == null &&
+        uri.rawQuery == null &&
+        uri.rawFragment == null &&
+        uri.rawPath.startsWith(ALLOWED_APK_PATH_PREFIX)
+}
+
+private const val ALLOWED_APK_PREFIX = "https://github.com/axensz/Moneytrack/releases/download/"
+private const val ALLOWED_APK_PATH_PREFIX = "/axensz/Moneytrack/releases/download/"
 
 private fun invalidManifest(): Nothing = throw IllegalArgumentException("Invalid update manifest")

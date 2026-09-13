@@ -6,6 +6,11 @@ import androidx.core.content.edit
 import org.json.JSONArray
 import org.json.JSONObject
 
+data class PendingUpdateDownload(
+    val downloadId: Long,
+    val versionCode: Long,
+)
+
 class UpdatePreferences internal constructor(
     private val preferences: SharedPreferences,
     private val decoder: AndroidUpdateManifestDecoder = AndroidUpdateManifestDecoder(),
@@ -42,6 +47,31 @@ class UpdatePreferences internal constructor(
         .getString(KEY_AVAILABLE_MANIFEST, null)
         ?.let(decoder::decode)
 
+    fun recordDownload(downloadId: Long, versionCode: Long) {
+        if (downloadId < 0L || versionCode <= 0L) return
+        preferences.edit {
+            putLong(KEY_DOWNLOAD_ID, downloadId)
+            putLong(KEY_DOWNLOAD_VERSION_CODE, versionCode)
+        }
+    }
+
+    fun pendingDownload(): PendingUpdateDownload? {
+        val downloadId = preferences.getLong(KEY_DOWNLOAD_ID, -1L)
+        val versionCode = preferences.getLong(KEY_DOWNLOAD_VERSION_CODE, -1L)
+        return if (downloadId >= 0L && versionCode > 0L) {
+            PendingUpdateDownload(downloadId, versionCode)
+        } else {
+            null
+        }
+    }
+
+    fun clearDownload() {
+        preferences.edit {
+            remove(KEY_DOWNLOAD_ID)
+            remove(KEY_DOWNLOAD_VERSION_CODE)
+        }
+    }
+
     private fun encodeManifest(manifest: AndroidUpdateManifest): String {
         val notes = JSONArray()
         manifest.releaseNotes.forEach(notes::put)
@@ -62,6 +92,8 @@ class UpdatePreferences internal constructor(
         private const val PREFERENCES_NAME = "moneytrack_android_updates"
         private const val KEY_LAST_SUCCESSFUL_CHECK = "last_successful_check"
         private const val KEY_AVAILABLE_MANIFEST = "available_manifest"
+        private const val KEY_DOWNLOAD_ID = "download_id"
+        private const val KEY_DOWNLOAD_VERSION_CODE = "download_version_code"
 
         fun create(context: Context): UpdatePreferences = UpdatePreferences(
             context.applicationContext.getSharedPreferences(

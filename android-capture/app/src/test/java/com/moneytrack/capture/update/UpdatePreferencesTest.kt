@@ -68,6 +68,18 @@ class UpdatePreferencesTest {
         assertNull(preferences.cachedAvailableManifest())
     }
 
+    @Test
+    fun `stores only the download identity and version and clears them together`() {
+        preferences.recordDownload(downloadId = 41L, versionCode = 3L)
+
+        assertEquals(PendingUpdateDownload(downloadId = 41L, versionCode = 3L), preferences.pendingDownload())
+        assertEquals(setOf("download_id", "download_version_code"), values.keys)
+
+        preferences.clearDownload()
+        assertNull(preferences.pendingDownload())
+        assertTrue(values.isEmpty())
+    }
+
     private fun inMemoryPreferences(values: MutableMap<String, Any?>): SharedPreferences =
         Proxy.newProxyInstance(
             SharedPreferences::class.java.classLoader,

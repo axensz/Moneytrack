@@ -191,7 +191,14 @@ class UpdateUiController private constructor(
             return
         }
         if (cachedManifest != null && pending != null) {
-            refreshDownload(cachedManifest)
+            if (pendingDownloadMatchesVersion(pending, cachedManifest.versionCode)) {
+                refreshDownload(cachedManifest)
+            } else {
+                discardPendingAndResume(
+                    expectedPending = pending,
+                    resumeManifest = cachedManifest,
+                )
+            }
         } else if (pending != null) {
             discardPendingAndResume(expectedPending = pending)
         } else {
@@ -228,13 +235,14 @@ class UpdateUiController private constructor(
     private fun discardPendingAndResume(
         manifest: AndroidUpdateManifest? = null,
         expectedPending: PendingUpdateDownload? = null,
+        resumeManifest: AndroidUpdateManifest? = null,
     ) {
         val operation = operations.begin() ?: return
         render()
         executor.execute {
             manifest?.let(downloader::discard)
             expectedPending?.let(downloader::discardPending)
-            postToUi(operation) { resumeWithoutPending(null) }
+            postToUi(operation) { resumeWithoutPending(resumeManifest) }
         }
     }
 

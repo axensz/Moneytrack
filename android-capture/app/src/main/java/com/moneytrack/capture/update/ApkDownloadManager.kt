@@ -28,6 +28,9 @@ class ApkDownloadManager(
     private val downloadManager = appContext.getSystemService(DownloadManager::class.java)
 
     fun enqueue(manifest: AndroidUpdateManifest): DownloadState = synchronized(DOWNLOAD_COORDINATION_LOCK) {
+        if (!canEnqueueUpdateDownload(preferences.pendingDownload())) {
+            return@synchronized DownloadState.Failed
+        }
         val fileName = updateApkFileName(manifest.versionName) ?: return@synchronized DownloadState.Failed
         if (!isAllowedUpdateApkUrl(manifest.apkUrl)) return@synchronized DownloadState.Failed
         val destination = managedUpdateFile(appContext, fileName) ?: return@synchronized DownloadState.Failed
@@ -134,6 +137,8 @@ internal fun pendingDownloadMatchesVersion(
     pending: PendingUpdateDownload?,
     versionCode: Long,
 ): Boolean = pending?.versionCode == versionCode
+
+internal fun canEnqueueUpdateDownload(pending: PendingUpdateDownload?): Boolean = pending == null
 
 internal const val UPDATE_DIRECTORY = "android-updates"
 

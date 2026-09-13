@@ -27,5 +27,7 @@ class ApkDownloadManagerTest {
         assertTrue(pendingDownloadMatchesVersion(pending, 3))
         assertFalse(pendingDownloadMatchesVersion(pending, 4))
         assertFalse(pendingDownloadMatchesVersion(null, 3))
+        assertFalse(canEnqueueUpdateDownload(pending))
+        assertTrue(canEnqueueUpdateDownload(null))
     }
 }

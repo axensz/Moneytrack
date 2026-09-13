@@ -258,3 +258,16 @@ Section 14 adds a manual native entry point while preserving `Account` as financ
 - [x] 14.6 Add failing Android JVM/repository tests for validation, COP/date normalization, account/category loading, random opaque IDs and online idempotent v3 creation; implement pure helpers and the smallest Firestore repository.
 - [x] 14.7 Add failing Android resource/Activity tests for the static shortcut, `QuickExpenseActivity`, session recovery, accessible five-field form, retained error state and opaque PWA intent; implement with AppCompat XML and no navigation dependency.
 - [ ] 14.8 Run focused and full web/Android/rules verification, typecheck, lint, production build, strict OpenSpec, graph impact/tests and `git diff --check`; deploy compatible rules/PWA before building and validating the signed canary APK on device.
+
+## 15. Approved private Android OTA
+
+Section 15 adds a private update channel to the existing Android companion. The bootstrap remains explicit, every later APK fails closed on origin, integrity, package and signer, and Android retains final installation authority.
+
+- [x] 15.1 Amend proposal and design, add the `android-private-update` delta and record bootstrap, manifest, verification, UI, signing and release-order requirements; validate OpenSpec strictly before production edits.
+- [ ] 15.2 Add a non-promotional initial `public/android/update.json`, failing JVM tests for exact manifest decoding and version decisions, and the smallest strict model/decoder; rerun green.
+- [ ] 15.3 Add failing checker, transport and throttle tests for fixed HTTPS origin, no redirects, timeouts, 32 KiB limit, 24-hour automatic cadence and manual bypass; implement the background query without blocking either Activity.
+- [ ] 15.4 Add failing integrity, signer and installation-contract tests; implement scoped download, exact size/SHA-256 verification, package/signer continuity, `FileProvider` and official Package Installer handoff.
+- [ ] 15.5 Add failing shared-state and resource tests for hidden, available, downloading, ready, permission and error states; integrate a secondary accessible updater in `MainActivity` and `QuickExpenseActivity` without disabling their primary actions.
+- [ ] 15.6 Add a failing deterministic manifest-generator test; configure bootstrap `0.2.0` code 2 and external-only release signing; document clean build, `apksigner`, hash, bootstrap and first code-3 OTA procedures.
+- [ ] 15.7 Run focused and full web/Android/rules verification, strict OpenSpec, graph impact/tests and `git diff --check`; keep the manifest on code 1 and stop before GitHub Releases or Pages unless compatible web/rules and external publication are explicitly cleared.
+- [ ] 15.8 Build and audit the same-signer bootstrap, verify every remote asset before announcing it, then validate bootstrap and first internal OTA on the authorized physical device; record actual evidence and leave this task open while any external or device gate remains pending.

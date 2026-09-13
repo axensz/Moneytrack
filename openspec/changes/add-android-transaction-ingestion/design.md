@@ -248,6 +248,22 @@ Después de que el servidor confirma el borrador, Android abre `https://axensz.g
 
 La confirmación sigue usando `confirmTransactionImport` con `ledger-mutation:android:<candidateId>` y la frontera contable servidor-actual. Hasta ese commit, el borrador no afecta saldos, cupos, estadísticas, presupuestos ni conciliación.
 
+### 15. Actualizaciones privadas verificadas y confirmadas por Android
+
+La instalación actual `0.1.0` no contiene un actualizador y no puede actualizarse por sí misma. Por eso existirá un único bootstrap explícito: la persona descargará `0.2.0` (`versionCode 2`) desde un enlace HTTPS verificado y Android lo instalará sobre el mismo `applicationId com.moneytrack.capture`, sin desinstalar ni borrar datos. Esa versión incluirá el actualizador; la primera actualización iniciada dentro de MoneyTrack será una compilación posterior con `versionCode 3` o mayor y el mismo certificado.
+
+La PWA publicará `https://axensz.github.io/Moneytrack/android/update.json`. El manifiesto tendrá exactamente `schemaVersion`, `channel`, `versionCode`, `versionName`, `apkUrl`, `sha256`, `sizeBytes` y `releaseNotes`: esquema `1`, canal `canary`, código positivo, nombre no vacío, URL bajo `https://github.com/axensz/Moneytrack/releases/download/`, SHA-256 hexadecimal de 64 caracteres, tamaño positivo y hasta cinco notas de 160 caracteres. Se rechazan claves adicionales, tipos distintos, redirecciones del manifiesto, cuerpos mayores de 32 KiB y una versión que no sea posterior a la instalada.
+
+La consulta automática se ejecutará fuera del hilo principal al entrar en primer plano y como máximo una vez cada 24 horas después de una respuesta válida. `Buscar actualización` permite una consulta manual sin ese límite. Un timeout, error HTTP, manifiesto inválido o falta de red se comunica sin texto remoto ni detalles técnicos y nunca bloquea el inicio de sesión, la captura de notificaciones, el gasto rápido ni la apertura web.
+
+Una actualización disponible se presenta como acción secundaria. Solo después de que la persona pulse `Actualizar MoneyTrack`, Android descarga el APK a `getExternalFilesDir("android-updates")` mediante `DownloadManager`, sin permiso de almacenamiento general. Antes de abrir el instalador, MoneyTrack exige tamaño y SHA-256 exactos, nombre de paquete idéntico y coincidencia entre al menos un certificado SHA-256 del APK instalado y del archivo descargado. La comparación del hash usa bytes en tiempo constante. Un archivo ausente, incompleto, alterado, con paquete distinto o firmado por otra clave se elimina únicamente del directorio acotado y no produce intent de instalación.
+
+El archivo verificado se comparte mediante un `FileProvider` no exportado y permiso de lectura temporal. Si la fuente todavía no puede instalar paquetes, MoneyTrack abre el ajuste específico `ACTION_MANAGE_UNKNOWN_APP_SOURCES` para `package:com.moneytrack.capture`; después entrega el APK con `ACTION_INSTALL_PACKAGE`. El instalador oficial mantiene la decisión final de la persona. El updater nunca usa ADB, permisos de almacenamiento amplios ni una ruta de instalación silenciosa.
+
+Un controlador compartido en `MainActivity` y `QuickExpenseActivity` expondrá los estados `HIDDEN`, `AVAILABLE`, `DOWNLOADING`, `READY_TO_INSTALL`, `PERMISSION_REQUIRED` y `ERROR`. Sin actualización, la superficie no ocupa espacio; disponible muestra versión y notas; descarga anuncia progreso; un fallo ofrece reintento con lenguaje reparable. El receptor de descarga vive solo durante el ciclo visible y los ejecutores se liberan al destruir la Activity. Ningún estado OTA deshabilita la acción principal de la pantalla.
+
+La firma de release se configura únicamente con `MONEYTRACK_ANDROID_KEYSTORE_PATH`, `MONEYTRACK_ANDROID_KEY_ALIAS`, `MONEYTRACK_ANDROID_KEYSTORE_PASSWORD` y `MONEYTRACK_ANDROID_KEY_PASSWORD`; ni la clave ni secretos se escriben en el repositorio. Antes de anunciar un APK se construye limpio, se verifica con `apksigner`, se descarga nuevamente desde GitHub Releases y se comparan tamaño, hash y certificado. `update.json` seguirá anunciando el canario `versionCode 1` hasta que un asset posterior al bootstrap exista y esa verificación haya terminado; así no publica una actualización falsa o todavía incompatible.
+
 ## Risks / Trade-offs
 
 - **[Formato de Wallet cambia o el apodo no identifica una tarjeta propia]** → el parser dedicado falla cerrado para cuerpos desconocidos; un apodo válido sigue siendo solo una pista y nunca crea ni asigna una cuenta sin acción explícita.
@@ -257,6 +273,9 @@ La confirmación sigue usando `confirmTransactionImport` con `ledger-mutation:an
 - **[Android mata el proceso o no concede acceso]** → pantalla de estado y enlace directo a ajustes; no se promete captura mientras el servicio esté deshabilitado.
 - **[Sin red]** → Firestore encola el candidato normalizado; la PWA bloquea la confirmación financiera offline y conserva el formulario para reintentar.
 - **[Sin red durante un gasto rápido]** → la creación manual exige respuesta del servidor, conserva el formulario y no abre la PWA; no confunde una escritura cacheada con un handoff disponible.
+- **[Manifiesto o APK alterado]** → allowlist HTTPS, contrato exacto, tamaño, SHA-256, paquete y certificado; cualquier discrepancia falla cerrada antes del instalador.
+- **[Se pierde o cambia la clave del canario]** → el release se detiene; no se recomienda desinstalar ni se publica un APK incapaz de actualizar la instalación existente.
+- **[Android bloquea instalaciones de esta fuente]** → se abre únicamente el ajuste de la aplicación y Android conserva la confirmación; el resto de MoneyTrack continúa disponible.
 - **[Dos dispositivos capturan el mismo evento]** → alcance inicial de un dispositivo y revisión manual; no se añade coordinación global prematura.
 - **[Cuenta o instrumento cambia entre captura y confirmación]** → recarga servidor-actual y bloqueo reparable; nunca se confía en la sugerencia capturada.
 - **[Reglas complejas bloquean el batch legítimo]** → pruebas con emulador para cada transición y despliegue de reglas antes del APK.
@@ -268,14 +287,16 @@ La confirmación sigue usando `confirmTransactionImport` con `ledger-mutation:an
 2. **Contrato aditivo:** desplegar primero tipos, decodificadores y reglas compatibles con candidatos/instrumentos v1 y v2. No hay backfill; los documentos v1 permanecen válidos.
 3. **PWA:** desplegar gestión de medios con terminación opcional para tokens, coincidencia por señales e inbox vacío. Verificar creación, transición y confirmación con emulador y proyecto de prueba.
 4. **Firebase Android:** registrar `com.moneytrack.capture` en el mismo proyecto, agregar SHA-1/SHA-256 de debug/canario, descargar `google-services.json` local y verificar que Google Sign-In produce el mismo UID de la PWA.
-5. **Canario privado:** solo después del despliegue web/reglas compatible, construir e instalar APK con `google-wallet-purchase`; habilitar una fuente a la vez y mantener confirmación manual.
-6. **Criterio de aceptación:** revisar al menos 50 notificaciones elegibles durante un mínimo de 14 días, con cero dobles contabilizaciones, 100 % de candidatos sin texto crudo persistido, al menos 95 % de monto correcto, al menos 90 % de preselección de cuenta correcta y máximo 5 % de falsos positivos en la bandeja.
-7. **Siguiente decisión:** solo después de aceptar el canario se podrá proponer otro cambio OpenSpec para auto-confirmación por instrumento y parser confiable. No se habilita como parte de este cambio.
+5. **Bootstrap privado:** solo después del despliegue web/reglas compatible, construir `0.2.0` con la misma firma del canario actual, auditarlo y entregarlo por enlace HTTPS para instalarlo sobre `0.1.0`.
+6. **Primera OTA interna:** publicar y verificar un APK `versionCode 3` con la misma firma; actualizar `update.json` únicamente después de comprobar el asset remoto y probar la instalación desde `0.2.0`.
+7. **Criterio de aceptación:** revisar al menos 50 notificaciones elegibles durante un mínimo de 14 días, con cero dobles contabilizaciones, 100 % de candidatos sin texto crudo persistido, al menos 95 % de monto correcto, al menos 90 % de preselección de cuenta correcta y máximo 5 % de falsos positivos en la bandeja; verificar además que bootstrap y OTA preservan sesión, preferencias, permiso y acceso directo.
+8. **Siguiente decisión:** solo después de aceptar el canario se podrá proponer otro cambio OpenSpec para auto-confirmación por instrumento y parser confiable. No se habilita como parte de este cambio.
 
 ### Rollback
 
 - Deshabilitar el acceso a notificaciones o desinstalar el compañero detiene nuevas capturas de inmediato.
 - Revertir la UI PWA y las reglas de creación oculta la capacidad; las colecciones nuevas pueden permanecer sin afectar cálculos existentes.
+- Mantener `update.json` en la versión instalada u ocultar el aviso detiene nuevas ofertas OTA sin tocar el APK ya instalado; un APK rechazado se elimina antes de invocar al instalador.
 - Los candidatos pendientes/dismissed no requieren reparación porque nunca tocaron el libro.
 - Las transacciones ya confirmadas son transacciones canónicas y no se borran automáticamente; se corrigen con las operaciones normales del libro si una persona decide revertirlas.
 - No se eliminan datos existentes ni se ejecuta migración destructiva durante despliegue o rollback.

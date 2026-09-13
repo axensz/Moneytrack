@@ -11,6 +11,7 @@ Registrar manualmente cada compra hecha con una tarjeta del celular genera omisi
 - Permitir que un token de wallet se identifique mediante apodo, terminación o ambas; una tarjeta ajena, desconocida o ausente de Moneytrack permanecerá sin cuenta recomendada y no creará asociaciones automáticamente.
 - Añadir en la PWA una bandeja de candidatos pendientes para revisar, completar, confirmar o descartar compras capturadas.
 - Publicar un acceso directo Android `Registrar gasto` que solicite descripción, fecha, monto COP, categoría de gasto y `Cuenta usada`, cree únicamente un borrador privado v3 y abra MoneyTrack en la revisión exacta mediante un identificador opaco.
+- Añadir un canal OTA privado para el compañero Android: `0.2.0` se instalará una vez desde un enlace HTTPS sobre el canario `0.1.0`, y las versiones posteriores se ofrecerán dentro de la app únicamente después de validar versión, origen, tamaño, SHA-256, paquete y certificado de firma.
 - Reorganizar el compañero Android como una configuración progresiva con identidad MoneyTrack, sesión, acceso a notificaciones, captura y una pantalla operativa final; respetará barras del sistema y modos claro/oscuro.
 - Refinar toda la superficie Android con el logo canónico de la PWA, una acción principal inequívoca por estado, controles nativos semánticos, respuesta visible durante la autenticación y un layout legible en anchos compactos, expandidos, orientación horizontal y texto ampliado, sin migrar a Compose ni añadir una librería visual.
 - Confirmar cada candidato mediante la frontera contable autenticada existente, con identidad determinista y un único batch que escriba la transacción, actualice el cupo usado cuando corresponda y cierre el candidato.
@@ -25,6 +26,7 @@ Registrar manualmente cada compra hecha con una tarjeta del celular genera omisi
 - No asumir que un apodo de Wallet identifica una tarjeta propia, ni consultar qué tarjetas existen dentro de Google Wallet.
 - No contabilizar candidatos de forma autónoma, ni implementar reversos automáticos, conciliación bancaria u Open Banking.
 - No enviar monto, descripción, categoría o cuenta en una URL, ni exigir acceso a notificaciones para la captura manual.
+- No descargar en segundo plano sin acción visible, instalar silenciosamente, omitir la confirmación de Android ni ofrecer una opción para saltar la validación de integridad o firma.
 - No reescribir la PWA como aplicación nativa, no crear un backend o Cloud Function y no implementar iOS.
 - No publicar en Google Play dentro de esta propuesta; la preparación técnica conservará compatibilidad con una publicación posterior.
 
@@ -36,6 +38,7 @@ Registrar manualmente cada compra hecha con una tarjeta del celular genera omisi
 - `transaction-import-inbox`: ciclo de vida de candidatos, revisión en la PWA y confirmación atómica e idempotente en el libro.
 - `android-notification-capture`: consentimiento, filtrado, análisis local, privacidad, deduplicación y sincronización de compras observadas en Android.
 - `android-quick-expense`: acceso directo, captura manual nativa, borrador privado y entrega opaca a la revisión de MoneyTrack.
+- `android-private-update`: bootstrap HTTPS, consulta de versión, descarga privada, verificación criptográfica y entrega al instalador oficial de Android.
 
 ### Modified Capabilities
 
@@ -46,6 +49,7 @@ Ninguna. Las especificaciones principales actuales no cambian; las nuevas capaci
 - **Web/PWA:** nuevos tipos, decodificadores, hooks y componentes bajo `src/`; integración localizada en `AccountsView`, `TransactionsView` y el escritor contable autenticado. La vista de transacciones podrá resolver un `reviewAndroid` opaco sin exponer datos financieros en la URL.
 - **Datos:** nuevas subcolecciones `users/{uid}/paymentInstruments` y `users/{uid}/transactionImportCandidates`; las colecciones actuales y sus documentos no requieren backfill.
 - **Seguridad:** cambios aditivos en `firestore.rules`, `firestore.indexes.json` y pruebas del emulador. El propietario autenticado continúa siendo el único lector/escritor.
-- **Android:** nuevo proyecto `android-capture/`, `applicationId` `com.moneytrack.capture`, `minSdk 26`, `compileSdk/targetSdk 36`, autenticación Google mediante Credential Manager y Firebase Auth, Cloud Firestore, AppCompat DayNight y Core SplashScreen. El launcher publicará `Registrar gasto` y una `QuickExpenseActivity` independiente de los permisos de notificaciones.
+- **Android:** nuevo proyecto `android-capture/`, `applicationId` `com.moneytrack.capture`, `minSdk 26`, `compileSdk/targetSdk 36`, autenticación Google mediante Credential Manager y Firebase Auth, Cloud Firestore, AppCompat DayNight y Core SplashScreen. El launcher publicará `Registrar gasto` y una `QuickExpenseActivity` independiente de los permisos de notificaciones. El mismo paquete incorporará un actualizador canario privado que conserva la confirmación del instalador oficial.
+- **Distribución:** `public/android/update.json` anunciará solo un APK de GitHub Releases ya publicado y verificado. El bootstrap `0.2.0` mantiene el certificado del canario actual; la primera actualización interna será una versión posterior con `versionCode 3` o mayor.
 - **Dependencias:** no se añaden dependencias npm ni servicios backend. Android usa AGP 9.3.0, Gradle 9.5.0, JDK 17, Firebase BoM 34.18.0, Google Services 4.5.0, Activity KTX 1.12.4 y Credentials 1.6.0.
 - **Superficies:** la gestión y revisión se adaptan a escritorio y móvil con los componentes/tokens existentes. El modo invitado no ofrece captura ni importación Android.

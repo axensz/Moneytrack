@@ -23,11 +23,28 @@ class UpdateUiStateTest {
     private val apk = File("MoneyTrack-0.2.1.apk")
 
     @Test
-    fun `check results map to hidden available or error`() {
-        assertEquals(UpdateUiPhase.HIDDEN, updateUiStateFor(UpdateCheckResult.Current).phase)
-        assertEquals(UpdateUiPhase.ERROR, updateUiStateFor(UpdateCheckResult.Failed).phase)
+    fun `automatic check failure stays quiet while a manual failure remains repairable`() {
+        assertEquals(
+            UpdateUiPhase.HIDDEN,
+            updateUiStateFor(UpdateCheckResult.Failed, manualCheck = false).phase,
+        )
+        assertEquals(
+            UpdateUiPhase.ERROR,
+            updateUiStateFor(UpdateCheckResult.Failed, manualCheck = true).phase,
+        )
+    }
 
-        val available = updateUiStateFor(UpdateCheckResult.Available(manifest))
+    @Test
+    fun `current and available check results map to hidden or available`() {
+        assertEquals(
+            UpdateUiPhase.HIDDEN,
+            updateUiStateFor(UpdateCheckResult.Current, manualCheck = false).phase,
+        )
+
+        val available = updateUiStateFor(
+            UpdateCheckResult.Available(manifest),
+            manualCheck = false,
+        )
         assertEquals(UpdateUiPhase.AVAILABLE, available.phase)
         assertEquals(manifest, available.manifest)
     }

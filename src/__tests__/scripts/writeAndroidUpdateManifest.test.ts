@@ -94,14 +94,14 @@ describe('buildAndroidUpdateManifest', () => {
 });
 
 describe('Android private release contract', () => {
-  it('uses bootstrap code 2 and requires all external signing values', async () => {
+  it('builds the first OTA after bootstrap and requires all external signing values', async () => {
     const buildFile = await readFile(
       path.join(process.cwd(), 'android-capture/app/build.gradle.kts'),
       'utf8',
     );
 
-    expect(buildFile).toContain('versionCode = 2');
-    expect(buildFile).toContain('versionName = "0.2.0"');
+    expect(buildFile).toContain('versionCode = 3');
+    expect(buildFile).toContain('versionName = "0.2.1"');
     expect(buildFile).toContain('MONEYTRACK_ANDROID_KEYSTORE_PATH');
     expect(buildFile).toContain('MONEYTRACK_ANDROID_KEY_ALIAS');
     expect(buildFile).toContain('MONEYTRACK_ANDROID_KEYSTORE_PASSWORD');

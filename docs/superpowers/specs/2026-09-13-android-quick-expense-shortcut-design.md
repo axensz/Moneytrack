@@ -63,7 +63,12 @@ La APK incorporará además una actualización OTA privada: detectará una versi
 
 - Al mantener presionado el icono de MoneyTrack, Android mostrará **Registrar gasto**.
 - El acceso se podrá arrastrar a la pantalla de inicio como icono independiente.
-- El acceso directo apuntará a una `QuickExpenseActivity` y no aceptará datos financieros de aplicaciones externas.
+- En **Ajustes rápidos > Editar**, Android ofrecerá otra entrada **Registrar gasto**
+  con icono sólido de 24 dp. Se verá como control nativo junto a Wi-Fi o Bluetooth,
+  pero actuará como botón y no como interruptor.
+- Ambas entradas apuntarán a la misma `QuickExpenseActivity` y no aceptarán datos
+  financieros de aplicaciones externas. Desde una pantalla bloqueada, Android
+  exigirá desbloqueo antes de abrirla.
 
 ### 4.2 Capturar el gasto
 

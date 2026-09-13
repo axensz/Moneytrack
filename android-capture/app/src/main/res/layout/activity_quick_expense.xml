@@ -6,6 +6,7 @@
     android:layout_height="match_parent"
     android:clipToPadding="true"
     android:fillViewport="true"
+    android:scrollbars="none"
     android:paddingStart="@dimen/screen_padding"
     android:paddingTop="@dimen/screen_padding"
     android:paddingEnd="@dimen/screen_padding"

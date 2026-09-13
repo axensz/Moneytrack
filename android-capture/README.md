@@ -113,24 +113,12 @@ scripts, historial de terminal, issues o artefactos de CI. Sin las cuatro
 variables, `assembleRelease` falla deliberadamente antes de producir una APK de
 entrega.
 
-### 1. Construir y auditar el bootstrap 0.2.0
+### 1. Conservar y auditar el bootstrap 0.2.0
 
-Inyecta las variables desde el almacén seguro autorizado y ejecuta un build
-limpio:
-
-```powershell
-$env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
-$env:Path = "$env:JAVA_HOME\bin;$env:Path"
-.\android-capture\gradlew.bat -p android-capture --no-configuration-cache clean testDebugUnitTest lintDebug assembleRelease
-```
-
-La opción `--no-configuration-cache` es obligatoria en una compilación firmada:
-evita que Gradle persista las credenciales de entorno dentro de su caché local
-de configuración.
-
-La salida esperada es
-`android-capture/app/build/outputs/apk/release/app-release.apk`. Antes de
-publicarla, usa `apksigner verify --verbose --print-certs` y comprueba:
+El árbol actual ya genera la primera OTA, no el bootstrap. Conserva como
+artefacto inmutable la APK **0.2.0** exacta que fue instalada; no recompiles el
+árbol actual para etiquetarlo como 0.2.0. Al volver a auditar ese archivo, usa
+`apksigner verify --verbose --print-certs` y comprueba:
 
 - paquete: `com.moneytrack.capture`;
 - versión: `0.2.0` y código `2`;
@@ -142,24 +130,36 @@ Si la huella difiere, detén la entrega. No desinstales la versión existente pa
 forzar la actualización: eso ocultaría una ruptura de identidad y puede perder
 estado local.
 
-Calcula además el hash del archivo de forma independiente:
+Calcula además el hash del archivo conservado de forma independiente:
 
 ```powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath '.\android-capture\app\build\outputs\apk\release\app-release.apk'
-(Get-Item -LiteralPath '.\android-capture\app\build\outputs\apk\release\app-release.apk').Length
+Get-FileHash -Algorithm SHA256 -LiteralPath 'C:\ruta-segura\MoneyTrack-Android-0.2.0.apk'
+(Get-Item -LiteralPath 'C:\ruta-segura\MoneyTrack-Android-0.2.0.apk').Length
 ```
 
-Publica esa APK como asset inmutable de un GitHub Release canario y
-descárgala otra vez por su URL final. El archivo descargado debe conservar el
-mismo tamaño, SHA-256, paquete, versión y certificado. Solo entonces puede
-compartirse el enlace HTTPS de **0.2.0**. En el dispositivo con **0.1.0**, abre
-el enlace y acepta la actualización ofrecida por Android; no uses `adb uninstall`
-ni limpieza de datos.
+Solo esa APK auditada puede conservarse o compartirse como bootstrap. No uses
+`adb uninstall` ni limpieza de datos para forzar una instalación: eso ocultaría
+una ruptura de identidad y puede perder estado local.
 
-### 2. Preparar la primera OTA interna
+### 2. Construir y preparar la primera OTA interna
 
-La primera versión ofrecida dentro de la app debe ser posterior al bootstrap;
-por ejemplo **0.2.1** (`versionCode 3`). El orden de entrega es obligatorio:
+El árbol actual produce **0.2.1** (`versionCode 3`), la primera versión posterior
+al bootstrap. Inyecta las variables desde el almacén seguro autorizado y ejecuta:
+
+```powershell
+$env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+.\android-capture\gradlew.bat -p android-capture --no-configuration-cache clean testDebugUnitTest lintDebug assembleRelease
+```
+
+La opción `--no-configuration-cache` evita que Gradle persista las credenciales
+de entorno dentro de su caché local. La salida esperada es
+`android-capture/app/build/outputs/apk/release/app-release.apk`; antes de
+publicarla comprueba paquete `com.moneytrack.capture`, versión **0.2.1**, código
+**3**, firma válida y la misma huella de certificado del bootstrap. Calcula su
+tamaño y SHA-256, y regístralos para compararlos con el asset remoto.
+
+El orden de entrega es obligatorio:
 
 1. desplegar primero las reglas de Firestore y la PWA compatibles;
 2. construir código 3 con el mismo certificado y repetir la auditoría anterior;
@@ -186,6 +186,24 @@ Hasta que el asset de código 3 exista y pase esa auditoría, el manifiesto debe
 seguir anunciando el canario actual de código 1. Nunca publiques primero un
 manifiesto que apunte a una descarga ausente o no verificada.
 
+El manifiesto base debe estar desplegado en Pages antes de distribuir el
+bootstrap 0.2.0. Si una consulta automática falla, 0.2.1 mantiene ese fallo en
+segundo plano; una consulta manual sí muestra un mensaje reparable.
+
+## Añadir Registrar gasto a Ajustes rápidos
+
+La versión **0.2.1** (`versionCode 3`) conserva el acceso directo del launcher y
+añade una acción nativa en Ajustes rápidos:
+
+1. Desliza dos veces desde la parte superior y pulsa **Editar**.
+2. Busca **Registrar gasto** entre los controles de aplicaciones instaladas.
+3. Arrástralo a los controles visibles.
+4. Tócalo para abrir directamente el formulario de gasto rápido.
+
+Es una acción, no un interruptor: no representa un estado encendido o apagado.
+Si el teléfono está bloqueado de forma segura, Android solicita desbloquearlo
+antes de abrir el formulario.
+
 ## Activar la captura en el dispositivo
 
 1. Abre Moneytrack Capture e inicia sesión con la misma cuenta Google usada en
@@ -199,12 +217,12 @@ manifiesto que apunte a una descarga ausente o no verificada.
 4. Regresa a la aplicación, selecciona una sola fuente confiable y activa
    **Permitir captura de compras**.
 5. La aplicación solo muestra **Captura activa** después de que Android enlaza
-   realmente el listener. Si aparece **Verifica la captura**, abre la ficha de
-   la aplicación, permite el inicio automático y selecciona batería **Sin
-   restricciones**; después regresa para repetir la comprobación.
+   realmente el listener. Si aparece **Reactiva la captura**, pulsa **Reactivar
+   acceso**, desactiva y vuelve a activar MoneyTrack en Acceso a notificaciones.
 6. En Xiaomi/HyperOS también puedes abrir **Ajustes > Aplicaciones > Permisos >
-   Inicio automático en segundo plano** y habilitar MoneyTrack. Esta autorización
-   debe revisarse después de reinstalar la APK o si el sistema la revoca.
+   Inicio automático en segundo plano** y habilitar MoneyTrack, además de usar
+   batería **Sin restricciones**. Revisa estas autorizaciones si el sistema
+   vuelve a pausar la captura.
 7. Genera primero una notificación sintética válida y otra rechazada. Solo la
    válida debe aparecer como candidato pendiente en Moneytrack web.
 8. Revisa en la web el monto y la cuenta o tarjeta sugerida. La confirmación

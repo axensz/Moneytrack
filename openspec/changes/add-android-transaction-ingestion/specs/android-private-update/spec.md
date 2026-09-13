@@ -24,7 +24,8 @@ MoneyTrack MUST limitar una consulta automática exitosa a una ventana de 24 hor
 
 #### Scenario: La consulta falla
 - **WHEN** ocurre un timeout, falta de red, respuesta HTTP no válida o JSON rechazado
-- **THEN** MoneyTrack muestra una salida reparable sin bloquear la captura, el gasto rápido ni la apertura web
+- **THEN** una consulta automática permanece silenciosa y una consulta manual muestra una salida reparable
+- **AND** ninguna de las dos bloquea la captura, el gasto rápido ni la apertura web
 
 ### Requirement: Las actualizaciones privadas se verifican antes de instalar
 La APK MUST aceptar únicamente una versión con `versionCode` mayor, `versionCode` y `versionName` idénticos a los anunciados, URL HTTPS permitida, tamaño y SHA-256 exactos, paquete `com.moneytrack.capture` y al menos un certificado de firma coincidente con la instalación actual.

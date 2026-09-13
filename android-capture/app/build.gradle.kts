@@ -12,7 +12,7 @@ abstract class BuildFeaturesAccessor @Inject constructor(
 val hasGoogleServices = file("google-services.json").exists()
 val requestedReleaseTask = gradle.startParameter.taskNames.any { requestedTask ->
     requestedTask.substringAfterLast(':') in
-        setOf("assemble", "assembleRelease", "build", "bundleRelease", "packageRelease")
+        setOf("assembleRelease", "build", "bundleRelease", "packageRelease")
 }
 val configurationCacheActive = objects
     .newInstance(BuildFeaturesAccessor::class.java)
@@ -57,8 +57,8 @@ android {
         applicationId = "com.moneytrack.capture"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.2.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         if (!hasGoogleServices) {

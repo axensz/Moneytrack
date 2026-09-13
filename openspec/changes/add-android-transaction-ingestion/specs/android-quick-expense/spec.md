@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
-### Requirement: Android publica un acceso directo de gasto rápido
-El compañero MUST publicar `Registrar gasto` y MUST abrir una captura nativa que no dependa del permiso de notificaciones. La entrada MUST NOT aceptar datos financieros enviados por intents externos.
+### Requirement: Android publica accesos rápidos para registrar un gasto
+El compañero MUST publicar `Registrar gasto` como acceso directo del launcher y como acción de Ajustes rápidos. Ambas entradas MUST abrir la misma captura nativa sin depender del permiso de notificaciones y MUST NOT aceptar datos financieros enviados por intents externos. La acción de Ajustes rápidos MUST NOT anunciarse como interruptor porque no representa un estado encendido o apagado.
 
 #### Scenario: Abrir desde el launcher
 - **WHEN** la persona toca o arrastra el acceso directo publicado por MoneyTrack
@@ -10,6 +10,10 @@ El compañero MUST publicar `Registrar gasto` y MUST abrir una captura nativa qu
 #### Scenario: El acceso a notificaciones está deshabilitado
 - **WHEN** existe una sesión válida pero Android no concedió acceso a notificaciones
 - **THEN** el acceso directo permite registrar el gasto manual sin solicitar ese permiso
+
+#### Scenario: Abrir desde Ajustes rápidos
+- **WHEN** la persona añadió `Registrar gasto` a sus controles y toca la acción
+- **THEN** Android solicita desbloquear un dispositivo protegido cuando corresponde y abre la captura nativa existente
 
 ### Requirement: La captura manual crea solo un borrador privado
 La captura MUST exigir descripción, fecha, monto COP, categoría de gasto y cuenta usada; MUST crear un candidato v3 del propietario mediante una operación online idempotente; y MUST NOT escribir una transacción.

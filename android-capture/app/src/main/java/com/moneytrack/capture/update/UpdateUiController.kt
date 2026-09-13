@@ -34,10 +34,12 @@ data class UpdateUiState(
     val totalBytes: Long = 0L,
 )
 
-fun updateUiStateFor(result: UpdateCheckResult): UpdateUiState = when (result) {
+fun updateUiStateFor(result: UpdateCheckResult, manualCheck: Boolean): UpdateUiState = when (result) {
     UpdateCheckResult.Current -> UpdateUiState(UpdateUiPhase.HIDDEN)
     is UpdateCheckResult.Available -> UpdateUiState(UpdateUiPhase.AVAILABLE, result.manifest)
-    UpdateCheckResult.Failed -> UpdateUiState(UpdateUiPhase.ERROR)
+    UpdateCheckResult.Failed -> UpdateUiState(
+        if (manualCheck) UpdateUiPhase.ERROR else UpdateUiPhase.HIDDEN,
+    )
 }
 
 fun updateUiStateFor(current: UpdateUiState, download: DownloadState): UpdateUiState {
@@ -400,7 +402,7 @@ class UpdateUiController private constructor(
                 }
             ) return@checkAsync
             postToUi(operation) {
-                state = updateUiStateFor(resultForUi)
+                state = updateUiStateFor(resultForUi, manualCheck = manual)
                 manualStatusText = if (manual && resultForUi is UpdateCheckResult.Current) {
                     activity.getString(R.string.update_current)
                 } else {

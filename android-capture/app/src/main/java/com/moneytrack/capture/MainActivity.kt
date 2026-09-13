@@ -211,12 +211,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }
         findViewById<Button>(R.id.open_app_settings_button).setOnClickListener {
-            startActivity(
-                Intent(
-                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    "package:$packageName".toUri(),
-                ),
-            )
+            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }
         openPwaButton.setOnClickListener {
             startActivity(Intent(Intent.ACTION_VIEW, getString(R.string.pwa_url).toUri()))

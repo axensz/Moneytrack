@@ -8,9 +8,8 @@ const M = vi.hoisted(() => ({
     constraints: Array<Record<string, unknown>>;
   }>,
   listeners: [] as Array<{
-    next: (snapshot: {
-      docs: Array<{ id: string; data: () => Record<string, unknown> }>;
-    }) => void;
+    path: string;
+    next: (snapshot: unknown) => void;
     error: (error: Error) => void;
     active: boolean;
   }>,
@@ -23,9 +22,11 @@ const M = vi.hoisted(() => ({
 vi.mock('firebase/firestore', () => ({
   collection: (_db: unknown, ...segments: string[]) => ({
     path: segments.join('/'),
+    kind: 'collection',
   }),
   doc: (_db: unknown, ...segments: string[]) => ({
     path: segments.join('/'),
+    kind: 'document',
   }),
   where: (field: string, operator: string, value: unknown) => ({
     type: 'where',
@@ -43,18 +44,16 @@ vi.mock('firebase/firestore', () => ({
     ref: { path: string },
     ...constraints: Array<Record<string, unknown>>
   ) => {
-    const result = { path: ref.path, constraints };
-    M.queries.push(result);
+    const result = { path: ref.path, constraints, kind: 'query' };
+    M.queries.push({ path: ref.path, constraints });
     return result;
   },
-  onSnapshot: (
-    _query: unknown,
-    next: (snapshot: {
-      docs: Array<{ id: string; data: () => Record<string, unknown> }>;
-    }) => void,
-    error: (error: Error) => void,
-  ) => {
-    const listener = { next, error, active: true };
+  onSnapshot: (...args: unknown[]) => {
+    const target = args[0] as { path: string };
+    const hasOptions = typeof args[1] !== 'function';
+    const next = args[hasOptions ? 2 : 1] as (snapshot: unknown) => void;
+    const error = args[hasOptions ? 3 : 2] as (error: Error) => void;
+    const listener = { path: target.path, next, error, active: true };
     M.listeners.push(listener);
     return () => {
       listener.active = false;
@@ -96,13 +95,54 @@ const candidateDocument = (
   }),
 });
 
+const shortcutDocument = (
+  id: string,
+  overrides: Record<string, unknown> = {},
+) => ({
+  id,
+  data: () => ({
+    schemaVersion: 3,
+    source: 'android-shortcut',
+    occurredAt: timestamp('2026-09-13T17:00:00.000Z'),
+    amountMinor: 259_900,
+    currency: 'COP',
+    merchant: 'Almuerzo',
+    suggestedAccountId: 'cash-1',
+    suggestedCategory: 'Comida',
+    createdAt: timestamp('2026-09-13T17:01:00.000Z'),
+    status: 'pending',
+    ...overrides,
+  }),
+});
+
 const emit = (
   listenerIndex: number,
-  documents: ReturnType<typeof candidateDocument>[],
+  documents: Array<{ id: string; data: () => Record<string, unknown> }>,
 ) => {
   const listener = M.listeners[listenerIndex];
   if (!listener) throw new Error('La prueba requiere una suscripción');
-  act(() => listener.next({ docs: documents }));
+  act(() => listener.next({
+    docs: documents,
+    metadata: { fromCache: false, hasPendingWrites: false },
+  }));
+};
+
+const emitRequested = (
+  listenerIndex: number,
+  document: ReturnType<typeof shortcutDocument> | null,
+  metadata: { fromCache?: boolean; hasPendingWrites?: boolean } = {},
+) => {
+  const listener = M.listeners[listenerIndex];
+  if (!listener) throw new Error('La prueba requiere una suscripción puntual');
+  act(() => listener.next({
+    id: document?.id ?? '',
+    exists: () => document !== null,
+    data: () => document?.data() ?? {},
+    metadata: {
+      fromCache: metadata.fromCache ?? false,
+      hasPendingWrites: metadata.hasPendingWrites ?? false,
+    },
+  }));
 };
 
 describe('useTransactionImportCandidates', () => {
@@ -139,6 +179,24 @@ describe('useTransactionImportCandidates', () => {
       }),
     ]);
     expect(result.current.reachedLimit).toBe(false);
+  });
+
+  it('hides the previous owner queue synchronously when the user changes', () => {
+    const hook = renderHook(
+      ({ userId }) => useTransactionImportCandidates(userId),
+      { initialProps: { userId: 'user-1' } },
+    );
+    emit(0, [candidateDocument('a'.repeat(64))]);
+    expect(hook.result.current.candidates).toHaveLength(1);
+
+    hook.rerender({ userId: 'user-2' });
+    expect(hook.result.current.candidates).toEqual([]);
+    expect(hook.result.current.loading).toBe(true);
+
+    emit(1, [candidateDocument('b'.repeat(64))]);
+    expect(hook.result.current.candidates.map(item => item.id)).toEqual([
+      'b'.repeat(64),
+    ]);
   });
 
   it('does not report a limit when the first page contains exactly 100 rows', () => {
@@ -221,6 +279,139 @@ describe('useTransactionImportCandidates', () => {
         dismissedAt: M.serverTime,
       },
     }]);
+  });
+
+  it('loads and merges the exact shortcut candidate beyond the bounded query', () => {
+    const requestedId = 'b'.repeat(64);
+    const { result } = renderHook(() => (
+      useTransactionImportCandidates('user-1', requestedId)
+    ));
+
+    expect(M.listeners.map(listener => listener.path)).toEqual([
+      'users/user-1/transactionImportCandidates',
+      `users/user-1/transactionImportCandidates/${requestedId}`,
+    ]);
+    emit(0, [candidateDocument('a'.repeat(64))]);
+    emitRequested(1, shortcutDocument(requestedId));
+
+    expect(result.current.requestedStatus).toBe('ready');
+    expect(result.current.requestedRequest).toEqual({
+      userId: 'user-1',
+      candidateId: requestedId,
+    });
+    expect(result.current.requestedCandidate).toEqual(expect.objectContaining({
+      id: requestedId,
+      source: 'android-shortcut',
+      suggestedAccountId: 'cash-1',
+      suggestedCategory: 'Comida',
+    }));
+    expect(result.current.candidates.map(item => item.id)).toEqual([
+      requestedId,
+      'a'.repeat(64),
+    ]);
+  });
+
+  it('waits for the server before resolving a cache-only shortcut handoff', () => {
+    const requestedId = 'b'.repeat(64);
+    const { result } = renderHook(() => (
+      useTransactionImportCandidates('user-1', requestedId)
+    ));
+
+    emitRequested(1, shortcutDocument(requestedId), { fromCache: true });
+    expect(result.current.requestedStatus).toBe('loading');
+    expect(result.current.requestedCandidate).toBeNull();
+
+    emitRequested(1, shortcutDocument(requestedId, {
+      status: 'dismissed',
+      dismissedAt: timestamp('2026-09-13T17:05:00.000Z'),
+    }));
+    expect(result.current.requestedStatus).toBe('terminal');
+    expect(result.current.requestedCandidate).toBeNull();
+  });
+
+  it('does not duplicate a requested shortcut already present in the page', () => {
+    const requestedId = 'b'.repeat(64);
+    const { result } = renderHook(() => (
+      useTransactionImportCandidates('user-1', requestedId)
+    ));
+
+    const requested = shortcutDocument(requestedId);
+    emit(0, [requested]);
+    emitRequested(1, requested);
+
+    expect(result.current.candidates).toHaveLength(1);
+    expect(result.current.candidates[0]?.id).toBe(requestedId);
+  });
+
+  it('reports missing, terminal and invalid requested documents without approximation', () => {
+    const requestedId = 'b'.repeat(64);
+    const hook = renderHook(
+      ({ id }) => useTransactionImportCandidates('user-1', id),
+      { initialProps: { id: requestedId } },
+    );
+    emit(0, [candidateDocument('a'.repeat(64))]);
+
+    emitRequested(1, null);
+    expect(hook.result.current.requestedStatus).toBe('missing');
+    expect(hook.result.current.requestedCandidate).toBeNull();
+    expect(hook.result.current.candidates.map(item => item.id)).toEqual([
+      'a'.repeat(64),
+    ]);
+
+    hook.rerender({ id: 'c'.repeat(64) });
+    expect(M.listeners[1]?.active).toBe(false);
+    emitRequested(2, shortcutDocument('c'.repeat(64), {
+      status: 'dismissed',
+      dismissedAt: timestamp('2026-09-13T17:05:00.000Z'),
+    }));
+    expect(hook.result.current.requestedStatus).toBe('terminal');
+    expect(hook.result.current.requestedCandidate).toBeNull();
+
+    hook.rerender({ id: 'd'.repeat(64) });
+    emitRequested(3, shortcutDocument('d'.repeat(64), { amountMinor: 0 }));
+    expect(hook.result.current.requestedStatus).toBe('error');
+    expect(hook.result.current.error?.message).toContain('amountMinor');
+    expect(hook.result.current.candidates.map(item => item.id)).toEqual([
+      'a'.repeat(64),
+    ]);
+  });
+
+  it('rejects a notification candidate addressed through the shortcut handoff', () => {
+    const requestedId = 'b'.repeat(64);
+    const { result } = renderHook(() => (
+      useTransactionImportCandidates('user-1', requestedId)
+    ));
+
+    const listener = M.listeners[1];
+    act(() => listener.next({
+      id: requestedId,
+      exists: () => true,
+      data: () => candidateDocument(requestedId).data(),
+      metadata: { fromCache: false, hasPendingWrites: false },
+    }));
+
+    expect(result.current.requestedStatus).toBe('error');
+    expect(result.current.requestedCandidate).toBeNull();
+    expect(result.current.error?.message).toMatch(/gasto rápido/i);
+  });
+
+  it('clears a requested-candidate error after a later valid or absent snapshot', () => {
+    const requestedId = 'b'.repeat(64);
+    const { result } = renderHook(() => (
+      useTransactionImportCandidates('user-1', requestedId)
+    ));
+
+    emitRequested(1, shortcutDocument(requestedId, { amountMinor: 0 }));
+    expect(result.current.requestedStatus).toBe('error');
+    expect(result.current.error).not.toBeNull();
+
+    emitRequested(1, shortcutDocument(requestedId));
+    expect(result.current.requestedStatus).toBe('ready');
+    expect(result.current.error).toBeNull();
+
+    emitRequested(1, null);
+    expect(result.current.requestedStatus).toBe('missing');
+    expect(result.current.error).toBeNull();
   });
 
   it('exposes subscription errors and performs no guest work', async () => {

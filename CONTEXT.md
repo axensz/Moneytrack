@@ -44,6 +44,10 @@ _Avoid_: Aplicación instalada, fuente autorizada
 Propuesta financiera normalizada a partir de un evento de pago observado. No modifica saldos, deuda ni estadísticas mientras siga pendiente.
 _Avoid_: Transacción automática, transacción
 
+**Borrador de gasto rápido**:
+Candidato de importación creado explícitamente desde el acceso directo Android. Conserva los datos propuestos por la persona, pero no modifica el libro hasta su confirmación en MoneyTrack.
+_Avoid_: Transacción guardada, gasto contabilizado, movimiento automático
+
 **Bandeja de importación**:
 Conjunto de candidatos pendientes que una persona puede revisar, confirmar o descartar.
 _Avoid_: Libro, historial de transacciones

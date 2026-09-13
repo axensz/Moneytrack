@@ -6,6 +6,7 @@
     android:layout_height="match_parent"
     android:clipToPadding="true"
     android:fillViewport="true"
+    android:scrollbars="none"
     android:paddingStart="@dimen/screen_padding"
     android:paddingTop="@dimen/screen_padding"
     android:paddingEnd="@dimen/screen_padding"
@@ -386,6 +387,12 @@
             android:drawableTint="@color/text_primary"
             android:text="@string/open_pwa_action"
             android:visibility="gone" />
+
+        <include
+            layout="@layout/include_update_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_medium" />
 
         <Button
             android:id="@+id/sign_out_button"

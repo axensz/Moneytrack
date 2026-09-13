@@ -43,7 +43,8 @@ class GuidedUiLayoutContractTest {
         assertTrue(activity.contains("NotificationAccess.observeConnection"))
         assertTrue(activity.contains("NotificationAccess.observeConnection(null)"))
         assertFalse(activity.contains("postDelayed"))
-        assertTrue(strings.contains("Verifica la captura"))
+        assertTrue(strings.contains("Reactiva la captura"))
+        assertTrue(strings.contains("desactiva y vuelve a activar MoneyTrack"))
         assertTrue(strings.contains("Inicio automático"))
     }
 
@@ -153,16 +154,16 @@ class GuidedUiLayoutContractTest {
     }
 
     @Test
-    fun `scrolling content is clipped outside the safe system bar padding`() {
-        val document = DocumentBuilderFactory.newInstance()
-            .newDocumentBuilder()
-            .parse(resourceFile("layout/activity_main.xml"))
-        val elements = document.getElementsByTagName("*")
-        val scrollView = (0 until elements.length)
-            .mapNotNull { elements.item(it) as? Element }
-            .single { it.getAttribute("android:id") == "@+id/content_scroll" }
+    fun `scrolling content stays accessible without a visible overflow bar`() {
+        listOf("layout/activity_main.xml", "layout/activity_quick_expense.xml").forEach { path ->
+            val scrollView = DocumentBuilderFactory.newInstance()
+                .newDocumentBuilder()
+                .parse(resourceFile(path))
+                .documentElement
 
-        assertEquals("true", scrollView.getAttribute("android:clipToPadding"))
+            assertEquals("true", scrollView.getAttribute("android:clipToPadding"))
+            assertEquals("none", scrollView.getAttribute("android:scrollbars"))
+        }
     }
 
     private fun resource(relative: String): String = resourceFile(relative).readText()

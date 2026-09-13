@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "channel": "canary",
+  "versionCode": 1,
+  "versionName": "0.1.0",
+  "apkUrl": "https://github.com/axensz/Moneytrack/releases/download/android-wallet-canary-2026-08-26/MoneyTrack-Google-Wallet-canary.apk",
+  "sha256": "d952d9448995f41faf4521ea4e6ee0bba04e71dbb7bda5f214d518add878dbdc",
+  "sizeBytes": 9942363,
+  "releaseNotes": ["Canario inicial de captura Android"]
+}

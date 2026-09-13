@@ -7,6 +7,15 @@ import type {
   PendingTransactionImportCandidate,
 } from '../../types/transactionImport';
 
+type PendingShortcutCandidate = Extract<
+  PendingTransactionImportCandidate,
+  { source: 'android-shortcut' }
+>;
+type PendingNotificationCandidate = Extract<
+  PendingTransactionImportCandidate,
+  { source: 'android-notification' }
+>;
+
 type StoredDocument = Record<string, unknown>;
 type DocumentReference = { path: string; id: string };
 type BatchWrite = {
@@ -207,8 +216,8 @@ const transactionPath = (transactionId = OPERATION_ID) => (
 const accountPath = (accountId: string) => `users/${UID}/accounts/${accountId}`;
 
 const candidate = (
-  overrides: Partial<PendingTransactionImportCandidate> = {},
-): PendingTransactionImportCandidate => ({
+  overrides: Partial<PendingNotificationCandidate> = {},
+): PendingNotificationCandidate => ({
   id: CANDIDATE_ID,
   schemaVersion: 1,
   source: 'android-notification',
@@ -221,6 +230,23 @@ const candidate = (
   parserId: 'strict-cop-purchase',
   parserVersion: 1,
   confidence: 'high',
+  status: 'pending',
+  ...overrides,
+});
+
+const shortcutCandidate = (
+  overrides: Partial<PendingShortcutCandidate> = {},
+): PendingShortcutCandidate => ({
+  id: CANDIDATE_ID,
+  schemaVersion: 3,
+  source: 'android-shortcut',
+  occurredAt: new Date('2026-09-13T17:00:00.000Z'),
+  amountMinor: 25_990,
+  currency: 'COP',
+  merchant: 'Almuerzo',
+  suggestedAccountId: 'savings',
+  suggestedCategory: 'Alimentación',
+  createdAt: new Date('2026-09-13T17:01:00.000Z'),
   status: 'pending',
   ...overrides,
 });
@@ -582,6 +608,35 @@ describe('confirmTransactionImport', () => {
     )).rejects.toThrow(/cambió/i);
 
     expect(M.commits).toBe(0);
+  });
+
+  it.each([
+    ['suggested account', { suggestedAccountId: 'cash' }],
+    ['suggested category', { suggestedCategory: 'Transporte' }],
+    ['creation time', { createdAt: new Date('2026-09-13T17:02:00.000Z') }],
+  ] as const)('blocks when the shortcut %s changed after review opened', async (
+    _field,
+    currentOverride,
+  ) => {
+    const shortcut = shortcutCandidate();
+    M.documents.set(candidatePath(), storedCandidate(shortcut));
+    M.beforeRead = (path, count) => {
+      if (path === candidatePath() && count === 2) {
+        M.documents.set(path, {
+          ...storedCandidate(shortcut),
+          ...currentOverride,
+        });
+      }
+    };
+
+    await expect(confirmTransactionImport(
+      UID,
+      CANDIDATE_ID,
+      reviewed({ expectedCandidate: shortcut }),
+    )).rejects.toThrow(/cambió en el servidor/i);
+
+    expect(M.commits).toBe(0);
+    expect(M.documents.has(transactionPath())).toBe(false);
   });
 
   it('counts transaction, authority, instrument, candidate and release capacity', async () => {

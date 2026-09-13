@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ChevronDown,
   ChevronUp,
@@ -14,6 +14,11 @@ import { usePaymentInstruments } from '../../../../hooks/firestore/usePaymentIns
 import { useTransactionImportCandidates } from '../../../../hooks/firestore/useTransactionImportCandidates';
 import { formatCurrency, formatDate } from '../../../../utils/formatters';
 import { matchPaymentInstrument } from '../../../../utils/paymentInstrumentMatching';
+import {
+  clearAndroidReviewRequest,
+  readAndroidReviewRequest,
+  type AndroidReviewRequest,
+} from '../../../../utils/androidQuickExpenseHandoff';
 import { TransactionImportReviewModal } from './TransactionImportReviewModal';
 
 interface TransactionImportInboxProps {
@@ -23,34 +28,124 @@ interface TransactionImportInboxProps {
   isOnline: boolean;
 }
 
+interface OwnedReviewCandidate {
+  ownerUserId: string;
+  candidate: PendingTransactionImportCandidate;
+}
+
 export function TransactionImportInbox({
   userId,
   accounts,
   categories,
   isOnline,
 }: TransactionImportInboxProps) {
+  const [reviewRequest, setReviewRequest] = useState<AndroidReviewRequest>({
+    kind: 'none',
+  });
+  const requestedCandidateId = reviewRequest.kind === 'valid'
+    ? reviewRequest.candidateId
+    : null;
   const {
     candidates,
+    requestedCandidate,
+    requestedStatus,
+    requestedRequest,
     loading,
     error,
     reachedLimit,
     dismissCandidate,
-  } = useTransactionImportCandidates(userId);
+  } = useTransactionImportCandidates(userId, requestedCandidateId);
   const { instruments } = usePaymentInstruments(userId);
   const [expanded, setExpanded] = useState(false);
-  const [reviewCandidate, setReviewCandidate] = useState<
-    PendingTransactionImportCandidate | null
-  >(null);
+  const [reviewSelection, setReviewSelection] = useState<OwnedReviewCandidate | null>(null);
   const [dismissingId, setDismissingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
+  const handledReviewStateRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    setReviewSelection(current => current?.ownerUserId === userId ? current : null);
+  }, [userId]);
+
+  useEffect(() => {
+    setReviewRequest(readAndroidReviewRequest(window.location.search));
+  }, []);
+
+  useEffect(() => {
+    if (reviewRequest.kind === 'none') return;
+    const requestKey = reviewRequest.kind === 'valid'
+      ? `${userId ?? 'guest'}:${reviewRequest.candidateId}`
+      : 'invalid';
+
+    const clearRequestFromUrl = () => {
+      window.history.replaceState(
+        window.history.state,
+        '',
+        clearAndroidReviewRequest(window.location.href),
+      );
+    };
+
+    if (reviewRequest.kind === 'invalid') {
+      if (handledReviewStateRef.current === requestKey) return;
+      handledReviewStateRef.current = requestKey;
+      setReviewSelection(null);
+      setActionError('El enlace del gasto rápido no es válido. Abre MoneyTrack e inténtalo de nuevo.');
+      setExpanded(true);
+      clearRequestFromUrl();
+      return;
+    }
+    const requestMatches = requestedRequest?.userId === userId &&
+      requestedRequest.candidateId === reviewRequest.candidateId;
+    if (!requestMatches) {
+      setReviewSelection(current => (
+        current?.ownerUserId === userId && current.candidate.id === reviewRequest.candidateId
+          ? current
+          : null
+      ));
+      return;
+    }
+    if (requestedStatus === 'idle' || requestedStatus === 'loading') return;
+    const reviewStateKey = `${requestKey}:${requestedStatus}:${requestedCandidate?.id ?? 'none'}`;
+    if (handledReviewStateRef.current === reviewStateKey) return;
+    handledReviewStateRef.current = reviewStateKey;
+
+    if (requestedStatus === 'ready' && requestedCandidate) {
+      setActionError(null);
+      setExpanded(true);
+      setReviewSelection({ ownerUserId: requestedRequest.userId, candidate: requestedCandidate });
+    } else if (requestedStatus === 'missing') {
+      setActionError('El borrador ya no existe o no está disponible en esta sesión.');
+      setExpanded(true);
+      setReviewSelection(null);
+    } else if (requestedStatus === 'terminal') {
+      setActionError('Este borrador ya fue confirmado o descartado.');
+      setExpanded(true);
+      setReviewSelection(null);
+    } else if (requestedStatus === 'error') {
+      setActionError('No se pudo abrir el borrador de gasto rápido. Inténtalo de nuevo.');
+      setExpanded(true);
+      setReviewSelection(null);
+    }
+    clearRequestFromUrl();
+  }, [requestedCandidate, requestedRequest, requestedStatus, reviewRequest, userId]);
 
   if (!userId) return null;
+  const reviewCandidate = reviewSelection?.ownerUserId === userId
+    ? reviewSelection.candidate
+    : null;
   if (candidates.length === 0) {
-    if (!error) return null;
+    if (requestedStatus === 'loading') {
+      return (
+        <p role="status" className="mb-4 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+          Abriendo gasto rápido…
+        </p>
+      );
+    }
+    const standaloneError = actionError ?? error?.message;
+    if (!standaloneError) return null;
     return (
       <p role="alert" className="mb-4 rounded-lg bg-destructive-muted px-3 py-2 text-sm font-medium text-destructive">
-        {error.message}
+        {standaloneError}
       </p>
     );
   }
@@ -132,13 +227,17 @@ export function TransactionImportInbox({
           ) : (
             <div className="mt-4 divide-y divide-border rounded-xl border border-border">
               {candidates.map(candidate => {
-                const match = matchPaymentInstrument({
-                  cardLast4: candidate.cardLast4,
-                  observedInstrumentLabel: candidate.observedInstrumentLabel,
-                }, instruments);
-                const account = match.status === 'matched'
-                  ? accounts.find(current => current.id === match.accountId)
-                  : undefined;
+                const match = candidate.source === 'android-notification'
+                  ? matchPaymentInstrument({
+                    cardLast4: candidate.cardLast4,
+                    observedInstrumentLabel: candidate.observedInstrumentLabel,
+                  }, instruments)
+                  : { status: 'none' as const };
+                const account = candidate.source === 'android-shortcut'
+                  ? accounts.find(current => current.id === candidate.suggestedAccountId)
+                  : match.status === 'matched'
+                    ? accounts.find(current => current.id === match.accountId)
+                    : undefined;
 
                 return (
                   <article key={candidate.id} className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
@@ -162,7 +261,7 @@ export function TransactionImportInbox({
                       <button
                         type="button"
                         className="btn-secondary min-h-[44px]"
-                        onClick={() => setReviewCandidate(candidate)}
+                        onClick={() => setReviewSelection({ ownerUserId: userId, candidate })}
                       >
                         <Eye size={17} aria-hidden="true" />
                         Revisar
@@ -195,7 +294,7 @@ export function TransactionImportInbox({
           expenseCategories={categories.expense}
           instruments={instruments}
           isOnline={isOnline}
-          onClose={() => setReviewCandidate(null)}
+          onClose={() => setReviewSelection(null)}
           onConfirmed={() => toggleRef.current?.focus()}
         />
       )}

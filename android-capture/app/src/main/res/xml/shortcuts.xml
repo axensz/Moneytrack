@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="quick_expense"
+        android:enabled="true"
+        android:icon="@drawable/ic_add_expense"
+        android:shortcutDisabledMessage="@string/quick_expense_disabled_message"
+        android:shortcutLongLabel="@string/quick_expense_long_label"
+        android:shortcutShortLabel="@string/quick_expense_short_label">
+        <intent
+            android:action="com.moneytrack.capture.action.QUICK_EXPENSE"
+            android:targetClass="com.moneytrack.capture.QuickExpenseActivity"
+            android:targetPackage="com.moneytrack.capture" />
+    </shortcut>
+</shortcuts>

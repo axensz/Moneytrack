@@ -449,6 +449,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
         onOpenCategories={handleOpenCategories}
         onOpenNotificationPreferences={handleOpenNotificationPreferences}
         onOpenLedgerReconciliation={handleOpenLedgerReconciliation}
+        onOpenAISettings={() => setShowAISettingsModal(true)}
         onGoToTransactions={() => setView('transactions')}
         onLogout={handleLogout}
       />

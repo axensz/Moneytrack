@@ -228,6 +228,39 @@ describe('buildLedgerReconciliationReport', () => {
     expect(report.issues).toContainEqual(expect.objectContaining({ code: expectedCode }));
   });
 
+  it('acepta una deuda condonada como regalo sin inventar un pago', () => {
+    const report = buildLedgerReconciliationReport(input({
+      debts: [debt({
+        originalAmount: 160,
+        remainingAmount: 0,
+        isSettled: true,
+        forgivenReason: 'gift',
+      })],
+      transactions: [
+        transaction({
+          id: 'principal',
+          amount: 160,
+          category: 'Préstamo',
+          debtId: 'debt-1',
+          mutationSource: 'debt',
+        }),
+        transaction({
+          id: 'payment',
+          type: 'income',
+          amount: 70,
+          category: 'Cobro Préstamo',
+          debtId: 'debt-1',
+          mutationSource: 'debt',
+        }),
+      ],
+    }));
+
+    expect(report.issues).not.toContainEqual(expect.objectContaining({
+      code: 'dependent-debt-mismatch',
+      entityId: 'debt-1',
+    }));
+  });
+
   it('ordena las clasificaciones por prioridad y expone el estado más crítico', () => {
     const report = buildLedgerReconciliationReport(input({
       complete: false,

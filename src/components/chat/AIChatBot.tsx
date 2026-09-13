@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
-import { X, Send, Bot, User, Loader2, Trash2, Check, XCircle, Info } from 'lucide-react';
+import { X, Send, Bot, User, Loader2, Trash2, Check, XCircle, Info, RefreshCw } from 'lucide-react';
 import { sendChatMessage, isGeminiConfigured, parseActionFromResponse, type ChatMessage, type ChatAction, type TokenUsage } from '../../lib/gemini';
 import { formatCurrency } from '../../utils/formatters';
 import { logger } from '../../utils/logger';
@@ -18,6 +18,31 @@ type UIChatMessage = ChatMessage & {
   proposedAt?: number;
   financialCommitted?: boolean;
 };
+
+interface PendingChatRequest {
+  text: string;
+  history: ChatMessage[];
+}
+
+function getChatErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/failed to fetch|networkerror|network request failed|load failed/i.test(message)) {
+    return 'No se pudo conectar con Gemini';
+  }
+  if (message.includes('429') || message.includes('RATE_LIMIT') || message.includes('quota')) {
+    return 'Cuota agotada temporalmente. El asistente reintentará automáticamente. Si persiste, espera 2 minutos e intenta de nuevo.';
+  }
+  if (message.includes('API_KEY_INVALID') || message.includes('400')) {
+    return 'API key inválida. Revísala en Ajustes → Asistente IA.';
+  }
+  if (message.includes('PERMISSION_DENIED') || message.includes('403')) {
+    return 'API key sin permisos. Habilita la API de Gemini en Google AI Studio.';
+  }
+  if (message.includes('API_KEY') || message.includes('configurada')) {
+    return 'No hay API key de Gemini. Agrégala en Ajustes → Asistente IA.';
+  }
+  return `Error: ${message.slice(0, 150)}`;
+}
 
 const createAiLedgerOperationId = (
   messageId: string,
@@ -326,6 +351,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [failedRequest, setFailedRequest] = useState<PendingChatRequest | null>(null);
   const [executingAction, setExecutingAction] = useState<number | null>(null); // index of message with action being executed
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -355,31 +381,17 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
     categories,
   }), [balanceTransactions, accounts, categories]);
 
-  const sendMessage = useCallback(async (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed || isLoading) return;
-    if (!balancesReady) {
-      setError('Espera un momento: aún estamos cargando el historial financiero completo.');
-      return;
-    }
-
-    const userMessage: UIChatMessage = { id: nextMsgId(), role: 'user', content: trimmed };
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
+  const performRequest = useCallback(async (request: PendingChatRequest) => {
     setIsLoading(true);
     setError(null);
+    setFailedRequest(null);
 
     try {
-      // Historial sin el mensaje de bienvenida, limitado a los últimos N mensajes
-      const history = messages
-        .filter((_, i) => i > 0)
-        .slice(-MAX_HISTORY_MESSAGES)
-        .map(m => ({
-          role: m.role,
-          content: m.content,
-        }));
-
-      const { text: rawText, action: toolAction, tokenUsage } = await sendChatMessage(trimmed, history, financialData);
+      const { text: rawText, action: toolAction, tokenUsage } = await sendChatMessage(
+        request.text,
+        request.history,
+        financialData,
+      );
 
       // Preferir function calling; mantener el parser de bloques como fallback.
       const { text, action: textAction } = parseActionFromResponse(rawText);
@@ -394,22 +406,39 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
       }]);
     } catch (err) {
       logger.error('[AIChatBot] Error sending message', err);
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      if (errorMsg.includes('API_KEY') || errorMsg.includes('configurada')) {
-        setError('No hay API key de Gemini. Agrégala en Ajustes → Asistente IA.');
-      } else if (errorMsg.includes('429') || errorMsg.includes('RATE_LIMIT') || errorMsg.includes('quota')) {
-        setError('Cuota agotada temporalmente. El asistente reintentará automáticamente. Si persiste, espera 2 minutos e intenta de nuevo.');
-      } else if (errorMsg.includes('API_KEY_INVALID') || errorMsg.includes('400')) {
-        setError('API key inválida. Revísala en Ajustes → Asistente IA.');
-      } else if (errorMsg.includes('PERMISSION_DENIED') || errorMsg.includes('403')) {
-        setError('API key sin permisos. Habilita la API de Gemini en Google Cloud Console.');
-      } else {
-        setError(`Error: ${errorMsg.slice(0, 150)}`);
-      }
+      setError(getChatErrorMessage(err));
+      setFailedRequest(request);
     } finally {
       setIsLoading(false);
     }
-  }, [balancesReady, isLoading, messages, financialData]);
+  }, [financialData]);
+
+  const sendMessage = useCallback(async (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || isLoading) return;
+    if (!balancesReady) {
+      setError('Espera un momento: aún estamos cargando el historial financiero completo.');
+      return;
+    }
+
+    const request: PendingChatRequest = {
+      text: trimmed,
+      // Historial sin el mensaje de bienvenida, limitado a los últimos N mensajes.
+      history: messages
+        .filter((_, index) => index > 0)
+        .slice(-MAX_HISTORY_MESSAGES)
+        .map((message) => ({ role: message.role, content: message.content })),
+    };
+    const userMessage: UIChatMessage = { id: nextMsgId(), role: 'user', content: trimmed };
+    setMessages((previous) => [...previous, userMessage]);
+    setInput('');
+    await performRequest(request);
+  }, [balancesReady, isLoading, messages, performRequest]);
+
+  const retryFailedRequest = useCallback(() => {
+    if (!failedRequest || isLoading) return;
+    void performRequest(failedRequest);
+  }, [failedRequest, isLoading, performRequest]);
 
   const handleSend = useCallback(() => {
     sendMessage(input);
@@ -429,6 +458,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
   const handleClearChat = useCallback(() => {
     setMessages([WELCOME_MESSAGE]);
     setError(null);
+    setFailedRequest(null);
   }, []);
 
   const requestClose = useCallback(() => {
@@ -765,11 +795,22 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
         )}
 
         {error && (
-          <div className="text-center px-3 py-2 text-xs text-destructive bg-destructive-muted rounded-lg border border-destructive animate-in fade-in duration-200">
+          <div role="alert" className="text-center px-3 py-2 text-xs text-destructive bg-destructive-muted rounded-lg border border-destructive animate-in fade-in duration-200">
             <div className="flex items-center justify-center gap-2">
               <XCircle size={14} />
               <span>{error}</span>
             </div>
+            {failedRequest && (
+              <button
+                type="button"
+                onClick={retryFailedRequest}
+                disabled={isLoading}
+                className="control-target-44 mx-auto mt-1 inline-flex items-center justify-center gap-1.5 rounded-lg px-3 font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-50"
+              >
+                <RefreshCw size={13} aria-hidden="true" />
+                Reintentar
+              </button>
+            )}
           </div>
         )}
 

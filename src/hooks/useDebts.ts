@@ -384,6 +384,12 @@ export function useDebts(
   }, [userId, mutateGuestLedger, assertGuestLedgerMutation]);
 
   const updateDebt = useCallback(async (id: string, updates: Partial<Debt>) => {
+    if (Object.prototype.hasOwnProperty.call(updates, 'originalAmount')) {
+      throw new Error('Usa la acción de ajustar el saldo para cambiar el principal del préstamo.');
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'accountId')) {
+      throw new Error('Usa la acción de reasignar cuenta para cambiar la cuenta del préstamo.');
+    }
     if (userId) {
       if (!checkNetworkConnection()) {
         throw new Error('Sin conexión a internet');
@@ -1014,6 +1020,27 @@ export function useDebts(
         const originalAmount = roundMoney(debt.originalAmount + direction * amount);
         const remainingAmount = roundMoney(debt.remainingAmount + direction * amount);
         const isSettled = remainingAmount === 0;
+        if (debt.accountId) {
+          const principals = draft.transactions.filter(transaction => (
+            transaction.debtId === debtId && transaction.category === LOAN_CATEGORY
+          ));
+          const expectedType = debt.type === 'lent' ? 'expense' : 'income';
+          const principal = principals[0];
+          if (
+            principals.length !== 1
+            || !principal?.id
+            || principal.type !== expectedType
+            || principal.accountId !== debt.accountId
+            || roundMoney(principal.amount) !== roundMoney(debt.originalAmount)
+          ) {
+            throw new Error('El historial principal del préstamo requiere reconciliación.');
+          }
+          draft.transactions = draft.transactions.map(transaction => (
+            transaction.id === principal.id
+              ? { ...transaction, amount: originalAmount }
+              : transaction
+          ));
+        }
         draft.debts = draft.debts.map(candidate => candidate.id === debtId
           ? {
               ...candidate,
@@ -1034,6 +1061,10 @@ export function useDebts(
 
     if (debt.isSettled) {
       throw new Error('No puedes modificar un préstamo ya saldado');
+    }
+
+    if (!checkNetworkConnection()) {
+      throw new Error('Sin conexión a internet');
     }
 
     // Invariante de dominio: la magnitud a sumar/restar debe ser positiva finita. Sin
@@ -1057,13 +1088,160 @@ export function useDebts(
     // Check if debt becomes settled
     const isSettled = newRemainingAmount === 0;
 
-    await updateDebt(debtId, {
-      originalAmount: newOriginalAmount,
-      remainingAmount: newRemainingAmount,
-      isSettled,
-      ...(isSettled ? { settledAt: new Date() } : {}),
-    });
-  }, [userId, mutateGuestLedger, debts, updateDebt]);
+    const expectedOriginalAmount = normalizeLedgerAmount(debt.originalAmount);
+    const expectedRemainingAmount = normalizeLedgerAmount(debt.remainingAmount);
+    const targetOriginalAmount = normalizeLedgerAmount(newOriginalAmount);
+    const targetRemainingAmount = normalizeLedgerAmount(newRemainingAmount);
+    const settledAt = isSettled ? new Date() : null;
+    const operationId = createAccountOperationId('ledger-mutation');
+    const loadPersistedState = async () => {
+      const debtSnapshot = await getDocFromServer(
+        doc(db, `users/${userId}/debts`, debtId)
+      );
+      if (!debtSnapshot.exists()) {
+        throw new Error('El préstamo cambió o ya no existe. Actualiza e intenta de nuevo.');
+      }
+      const persistedDebt = {
+        ...(debtSnapshot.data() as Omit<Debt, 'id'>),
+        id: debtId,
+      } as Debt;
+      const transactionSnapshot = await getDocsFromServer(query(
+        collection(db, `users/${userId}/transactions`),
+        where('debtId', '==', debtId),
+      ));
+      const linkedTransactions = transactionSnapshot.docs.map(snapshot => (
+        requireDecodedTransaction(snapshot)
+      ));
+      return { persistedDebt, linkedTransactions };
+    };
+
+    const updatedPrincipal = await safeFirestoreOperation(
+      async () => {
+        const observed = await loadPersistedState();
+        const observedPrincipals = observed.linkedTransactions.filter(transaction => (
+          transaction.category === LOAN_CATEGORY
+        ));
+        const observedPrincipal = observedPrincipals[0];
+        const debtAlreadyUpdated = (
+          roundMoney(observed.persistedDebt.originalAmount) === targetOriginalAmount
+          && roundMoney(observed.persistedDebt.remainingAmount) === targetRemainingAmount
+          && observed.persistedDebt.isSettled === isSettled
+        );
+        const principalAlreadyUpdated = !observed.persistedDebt.accountId || (
+          observedPrincipals.length === 1
+          && roundMoney(observedPrincipal.amount) === targetOriginalAmount
+        );
+        if (debtAlreadyUpdated && principalAlreadyUpdated) {
+          return observed.persistedDebt.accountId ? observedPrincipal : null;
+        }
+
+        return executeAuthenticatedLedgerMutation(
+          userId,
+          async ({ loadContext }) => {
+            const { persistedDebt, linkedTransactions } = await loadPersistedState();
+            if (
+              persistedDebt.isSettled
+              || roundMoney(persistedDebt.originalAmount) !== expectedOriginalAmount
+              || roundMoney(persistedDebt.remainingAmount) !== expectedRemainingAmount
+            ) {
+              throw new Error('El préstamo cambió. Actualiza e intenta de nuevo.');
+            }
+
+            if (!persistedDebt.accountId) {
+              const context = await loadContext([]);
+              return {
+                intent: {
+                  kind: 'edit' as const,
+                  before: [],
+                  after: [],
+                  metadata: { operationId, mutationSource: 'debt' as const },
+                },
+                context,
+                writeCount: 1,
+                stage: batch => batch.update(
+                  doc(db, `users/${userId}/debts`, debtId),
+                  {
+                    originalAmount: targetOriginalAmount,
+                    remainingAmount: targetRemainingAmount,
+                    isSettled,
+                    settledAt: settledAt ?? deleteField(),
+                  },
+                ),
+                result: null,
+              };
+            }
+
+            const principals = linkedTransactions.filter(transaction => (
+              transaction.category === LOAN_CATEGORY
+            ));
+            const principal = principals[0];
+            const expectedType = persistedDebt.type === 'lent' ? 'expense' : 'income';
+            if (
+              principals.length !== 1
+              || !principal?.id
+              || principal.type !== expectedType
+              || principal.accountId !== persistedDebt.accountId
+              || roundMoney(principal.amount) !== expectedOriginalAmount
+            ) {
+              throw new Error('El historial principal del préstamo requiere reconciliación.');
+            }
+
+            const nextPrincipal: Transaction = {
+              ...principal,
+              amount: targetOriginalAmount,
+            };
+            const context = await loadContext([persistedDebt.accountId]);
+            const intent = {
+              kind: 'edit' as const,
+              before: [principal],
+              after: [nextPrincipal],
+              metadata: { operationId, mutationSource: 'debt' as const },
+            };
+            const creditChanges = planCreditAuthorityChanges(intent, context);
+
+            return {
+              intent,
+              context,
+              writeCount: 2 + creditChanges.length,
+              stage: batch => {
+                batch.update(
+                  doc(db, `users/${userId}/debts`, debtId),
+                  {
+                    originalAmount: targetOriginalAmount,
+                    remainingAmount: targetRemainingAmount,
+                    isSettled,
+                    settledAt: settledAt ?? deleteField(),
+                  },
+                );
+                batch.update(
+                  doc(db, `users/${userId}/transactions`, principal.id!),
+                  { amount: targetOriginalAmount },
+                );
+                creditChanges.forEach(({ accountId, delta }) => {
+                  batch.update(
+                    doc(db, `users/${userId}/accounts`, accountId),
+                    { usedCredit: increment(delta) },
+                  );
+                });
+              },
+              result: nextPrincipal,
+            };
+          },
+          { operationId },
+        );
+      },
+      'modifyDebtBalance',
+      { maxRetries: 2, retryRecoverableErrors: true },
+    );
+
+    if (updatedPrincipal) {
+      publishTransactionCacheMutation({
+        userId,
+        type: 'update',
+        transactions: [updatedPrincipal],
+      });
+    }
+  }, [userId, mutateGuestLedger, debts]);
 
   // Condonar una deuda: marcarla saldada con motivo, SIN mover dinero. El dinero
   // ya se movió al prestar/recibir; condonar solo deja de esperarlo (no revierte

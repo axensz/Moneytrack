@@ -3,6 +3,11 @@ import { renderHook, act } from '@testing-library/react';
 import { useGeminiApiKey } from '../../hooks/useGeminiApiKey';
 import { getGeminiApiKey, setGeminiApiKey } from '../../lib/geminiClient';
 import { hasAiConsent, setAiConsent } from '../../lib/aiConsent';
+import {
+  DEFAULT_GEMINI_MODEL,
+  getGeminiModel,
+  setGeminiModel,
+} from '../../lib/geminiConfig';
 
 const LONG_KEY = 'AIzaSyAFAKEKEY1234567890abcdefGHIJ';
 
@@ -11,6 +16,7 @@ describe('useGeminiApiKey (BYOK)', () => {
     localStorage.clear();
     setGeminiApiKey('');
     setAiConsent(false);
+    setGeminiModel(DEFAULT_GEMINI_MODEL);
   });
 
   it('starts empty and syncs the central module', () => {
@@ -51,6 +57,30 @@ describe('useGeminiApiKey (BYOK)', () => {
     expect(result.current.apiKey).toBe('');
     expect(getGeminiApiKey()).toBe('');
     expect(localStorage.getItem('moneytrack_gemini_key_user-1')).toBeNull();
+  });
+
+  it('uses one saved model for the active user and the central Gemini client', () => {
+    const { result } = renderHook(() => useGeminiApiKey('user-1'));
+
+    expect(result.current.selectedModel).toBe('gemini-3.5-flash');
+
+    act(() => result.current.setSelectedModel('gemini-3.8-flash'));
+
+    expect(result.current.selectedModel).toBe('gemini-3.8-flash');
+    expect(getGeminiModel()).toBe('gemini-3.8-flash');
+    expect(localStorage.getItem('moneytrack_gemini_model_user-1')).toBe('gemini-3.8-flash');
+  });
+
+  it('does not carry a model choice into another user', () => {
+    const { result, rerender } = renderHook(({ uid }) => useGeminiApiKey(uid), {
+      initialProps: { uid: 'user-1' as string | null },
+    });
+    act(() => result.current.setSelectedModel('gemini-3.8-flash'));
+
+    rerender({ uid: 'user-2' });
+
+    expect(result.current.selectedModel).toBe('gemini-3.5-flash');
+    expect(getGeminiModel()).toBe('gemini-3.5-flash');
   });
 });
 

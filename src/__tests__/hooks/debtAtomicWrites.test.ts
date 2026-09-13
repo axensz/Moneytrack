@@ -345,6 +345,64 @@ describe('useDebts authenticated atomic writes', () => {
     expect(M.accounts.get('credit')?.usedCredit).toBe(0);
   });
 
+  it('atomically synchronizes the debt principal and credit authority when its amount changes', async () => {
+    const debt = existingDebt();
+    M.debts.set(debt.id!, { ...debt, id: undefined });
+    M.transactions.set('principal', {
+      type: 'expense',
+      amount: 1_000_000,
+      category: 'Préstamo',
+      description: 'Préstamo a Isabella',
+      date: new Date('2026-08-01T12:00:00Z'),
+      paid: true,
+      accountId: 'credit',
+      debtId: debt.id,
+      mutationSource: 'debt',
+    });
+    M.accounts.set('credit', { ...creditAccount, usedCredit: 1_000_000 });
+    const { result } = renderHook(() => useDebts(UID, [], [debt], {}));
+
+    await result.current.modifyDebtBalance(debt.id!, 250_000, 'add');
+
+    expect(M.transactionCommits).toBe(1);
+    expect(M.debts.get(debt.id!)).toMatchObject({
+      originalAmount: 1_250_000,
+      remainingAmount: 1_250_000,
+      isSettled: false,
+    });
+    expect(M.transactions.get('principal')).toMatchObject({ amount: 1_250_000 });
+    expect(M.accounts.get('credit')?.usedCredit).toBe(1_250_000);
+  });
+
+  it('does not apply the debt amount twice when the commit acknowledgement is lost', async () => {
+    const debt = existingDebt();
+    M.debts.set(debt.id!, { ...debt, id: undefined });
+    M.transactions.set('principal', {
+      type: 'expense',
+      amount: 1_000_000,
+      category: 'Préstamo',
+      description: 'Préstamo a Isabella',
+      date: new Date('2026-08-01T12:00:00Z'),
+      paid: true,
+      accountId: 'credit',
+      debtId: debt.id,
+      mutationSource: 'debt',
+    });
+    M.accounts.set('credit', { ...creditAccount, usedCredit: 1_000_000 });
+    M.failAfterCommitOnce = true;
+    const { result } = renderHook(() => useDebts(UID, [], [debt], {}));
+
+    await result.current.modifyDebtBalance(debt.id!, 250_000, 'add');
+
+    expect(M.transactionCommits).toBe(1);
+    expect(M.debts.get(debt.id!)).toMatchObject({
+      originalAmount: 1_250_000,
+      remainingAmount: 1_250_000,
+    });
+    expect(M.transactions.get('principal')).toMatchObject({ amount: 1_250_000 });
+    expect(M.accounts.get('credit')?.usedCredit).toBe(1_250_000);
+  });
+
   it('atomically registers a partial payment and releases credit used by a lent loan', async () => {
     const debt = existingDebt();
     M.debts.set(debt.id!, { ...debt, id: undefined });

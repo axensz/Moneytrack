@@ -2,7 +2,9 @@ package com.moneytrack.capture.update
 
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UpdateUiStateTest {
@@ -79,5 +81,44 @@ class UpdateUiStateTest {
         assertEquals(manifest, permission.manifest)
         assertEquals(apk, permission.file)
         assertNull(UpdateUiState(UpdateUiPhase.HIDDEN).file)
+    }
+
+    @Test
+    fun `checks are blocked while an update operation or download is active`() {
+        val pending = PendingUpdateDownload(downloadId = 41, versionCode = 3)
+
+        assertTrue(canCheckForUpdate(UpdateUiState(UpdateUiPhase.HIDDEN), busy = false, pending = null))
+        assertTrue(canCheckForUpdate(UpdateUiState(UpdateUiPhase.AVAILABLE, manifest), busy = false, pending = null))
+        assertFalse(canCheckForUpdate(UpdateUiState(UpdateUiPhase.HIDDEN), busy = true, pending = null))
+        assertFalse(canCheckForUpdate(UpdateUiState(UpdateUiPhase.AVAILABLE, manifest), busy = false, pending = pending))
+        assertFalse(canCheckForUpdate(UpdateUiState(UpdateUiPhase.DOWNLOADING, manifest), busy = false, pending = null))
+        assertFalse(canCheckForUpdate(UpdateUiState(UpdateUiPhase.READY_TO_INSTALL, manifest, apk), busy = false, pending = null))
+        assertFalse(canCheckForUpdate(UpdateUiState(UpdateUiPhase.PERMISSION_REQUIRED, manifest, apk), busy = false, pending = null))
+    }
+
+    @Test
+    fun `a changed or current manifest discards the previous cached update`() {
+        val newer = manifest.copy(versionCode = 4, versionName = "0.2.2")
+
+        assertFalse(shouldDiscardCachedUpdate(null, UpdateCheckResult.Current))
+        assertTrue(shouldDiscardCachedUpdate(manifest, UpdateCheckResult.Current))
+        assertFalse(shouldDiscardCachedUpdate(manifest, UpdateCheckResult.Available(manifest)))
+        assertTrue(shouldDiscardCachedUpdate(manifest, UpdateCheckResult.Available(newer)))
+        assertFalse(shouldDiscardCachedUpdate(manifest, UpdateCheckResult.Failed))
+    }
+
+    @Test
+    fun `operation guard rejects overlap and stale completion`() {
+        val guard = UpdateOperationGuard()
+        val first = requireNotNull(guard.begin())
+
+        assertTrue(guard.busy)
+        assertNull(guard.begin())
+        guard.invalidate()
+        assertFalse(guard.finish(first))
+
+        val second = requireNotNull(guard.begin())
+        assertTrue(guard.finish(second))
+        assertFalse(guard.busy)
     }
 }

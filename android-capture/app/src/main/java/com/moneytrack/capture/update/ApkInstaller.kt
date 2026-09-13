@@ -16,6 +16,7 @@ sealed interface InstallAction {
 class ApkInstaller(context: Context) {
     private val appContext = context.applicationContext
 
+    @Suppress("DEPRECATION") // Required by the explicit Package Installer handoff contract on API 26+.
     fun prepare(file: File): InstallAction {
         if (!file.isFile || !isManagedUpdateFile(appContext, file)) return InstallAction.Rejected
 

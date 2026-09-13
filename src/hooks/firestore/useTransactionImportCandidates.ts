@@ -142,6 +142,7 @@ export function useTransactionImportCandidates(
       ),
       snapshot => {
         if (!active) return;
+        setRequestedError(null);
         if (!snapshot.exists()) {
           setRequestedCandidate(null);
           setRequestedStatus('missing');

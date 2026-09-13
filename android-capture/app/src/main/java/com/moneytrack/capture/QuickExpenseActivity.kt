@@ -41,6 +41,8 @@ import com.moneytrack.capture.quickexpense.QuickExpenseOptions
 import com.moneytrack.capture.quickexpense.QuickExpenseOptionsRepository
 import com.moneytrack.capture.quickexpense.QuickExpenseWriteResult
 import com.moneytrack.capture.quickexpense.buildQuickExpenseDraft
+import com.moneytrack.capture.quickexpense.canRestoreQuickExpenseState
+import com.moneytrack.capture.quickexpense.quickExpenseOwnerBinding
 import com.moneytrack.capture.quickexpense.validateQuickExpenseForm
 import com.moneytrack.capture.update.UpdateUiController
 import java.time.LocalDate
@@ -75,6 +77,15 @@ internal fun quickExpensePrimaryAction(
     QuickExpenseScreenState.STORED -> QuickExpensePrimaryAction.OPEN
     QuickExpenseScreenState.ERROR -> QuickExpensePrimaryAction.RETRY
 }
+
+internal fun shouldRestoreQuickExpenseSaveError(
+    state: QuickExpenseScreenState?,
+    wasSaveError: Boolean,
+    candidateId: String?,
+): Boolean = candidateId != null && (
+    state == QuickExpenseScreenState.SAVING ||
+        (state == QuickExpenseScreenState.ERROR && wasSaveError)
+    )
 
 private enum class QuickExpenseErrorKind {
     LOAD,
@@ -111,6 +122,8 @@ class QuickExpenseActivity : AppCompatActivity() {
     private var selectedDate: LocalDate = LocalDate.now()
     private var options = QuickExpenseOptions(emptyList(), emptyList())
     private var candidateId: String? = null
+    private var stateOwnerUid: String? = null
+    private var sessionGeneration = 0L
     private var loadingUid: String? = null
     private var loadedUid: String? = null
     private var preferredAccountId: String? = null
@@ -170,19 +183,26 @@ class QuickExpenseActivity : AppCompatActivity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        outState.putString(KEY_MERCHANT, merchantInput.text.toString())
-        outState.putString(KEY_DATE, selectedDate.toString())
-        outState.putString(KEY_AMOUNT, amountInput.text.toString())
-        outState.putString(KEY_ACCOUNT_ID, selectedAccount()?.id ?: preferredAccountId)
-        outState.putString(KEY_ACCOUNT_NAME, selectedAccount()?.name ?: preferredAccountName)
-        outState.putString(KEY_CATEGORY, selectedCategory()?.name ?: preferredCategory)
-        outState.putString(KEY_CANDIDATE_ID, candidateId)
-        outState.putString(KEY_SCREEN_STATE, screenState.name)
-        outState.putString(KEY_ERROR_KIND, errorKind.name)
-        outState.putString(KEY_FEEDBACK, feedbackOverride)
-        fieldErrors().forEach { (field, view) ->
-            if (view.isVisible) {
-                outState.putString(errorKey(field), view.text.toString())
+        val uid = firebaseAuth?.currentUser?.uid
+        if (uid != null && uid == stateOwnerUid) {
+            outState.putString(
+                KEY_OWNER_BINDING,
+                quickExpenseOwnerBinding(uid, preferences.installationId()),
+            )
+            outState.putString(KEY_MERCHANT, merchantInput.text.toString())
+            outState.putString(KEY_DATE, selectedDate.toString())
+            outState.putString(KEY_AMOUNT, amountInput.text.toString())
+            outState.putString(KEY_ACCOUNT_ID, selectedAccount()?.id ?: preferredAccountId)
+            outState.putString(KEY_ACCOUNT_NAME, selectedAccount()?.name ?: preferredAccountName)
+            outState.putString(KEY_CATEGORY, selectedCategory()?.name ?: preferredCategory)
+            outState.putString(KEY_CANDIDATE_ID, candidateId)
+            outState.putString(KEY_SCREEN_STATE, screenState.name)
+            outState.putString(KEY_ERROR_KIND, errorKind.name)
+            outState.putString(KEY_FEEDBACK, feedbackOverride)
+            fieldErrors().forEach { (field, view) ->
+                if (view.isVisible) {
+                    outState.putString(errorKey(field), view.text.toString())
+                }
             }
         }
         super.onSaveInstanceState(outState)
@@ -211,6 +231,17 @@ class QuickExpenseActivity : AppCompatActivity() {
 
     private fun restoreForm(savedState: Bundle?) {
         if (savedState == null) return
+        val uid = firebaseAuth?.currentUser?.uid
+        if (
+            !canRestoreQuickExpenseState(
+                savedOwnerBinding = savedState.getString(KEY_OWNER_BINDING),
+                currentUid = uid,
+                installationId = preferences.installationId(),
+            )
+        ) {
+            return
+        }
+        stateOwnerUid = uid
         merchantInput.setText(savedState.getString(KEY_MERCHANT).orEmpty())
         amountInput.setText(savedState.getString(KEY_AMOUNT).orEmpty())
         selectedDate = savedState.getString(KEY_DATE)
@@ -259,6 +290,20 @@ class QuickExpenseActivity : AppCompatActivity() {
 
     private fun resolveSession() {
         if (isFinishing || isDestroyed) return
+        val user = firebaseAuth?.currentUser
+        if (user == null) {
+            if (stateOwnerUid != null) clearSensitiveState()
+            screenState = QuickExpenseScreenState.SIGNED_OUT
+            render()
+            return
+        }
+        if (stateOwnerUid == null) {
+            stateOwnerUid = user.uid
+        } else if (stateOwnerUid != user.uid) {
+            clearSensitiveState()
+            stateOwnerUid = user.uid
+        }
+
         val restored = restoredScreenState
         val restoredOpenState = candidateId != null && (
             restored == QuickExpenseScreenState.STORED ||
@@ -266,21 +311,13 @@ class QuickExpenseActivity : AppCompatActivity() {
             )
         if (restoredOpenState) {
             seedRestoredOptions()
-            screenState = requireNotNull(restored)
-            errorKind = restoredErrorKind ?: QuickExpenseErrorKind.OPEN
             restoredScreenState = null
-            render()
+            restoredErrorKind = null
+            screenState = QuickExpenseScreenState.EDITING
+            saveDraft(openAfterStore = false, restoredVerification = true)
             return
         }
 
-        val user = firebaseAuth?.currentUser
-        if (user == null) {
-            loadingUid = null
-            loadedUid = null
-            screenState = QuickExpenseScreenState.SIGNED_OUT
-            render()
-            return
-        }
         if (loadingUid == user.uid) return
         if (loadedUid == user.uid) {
             screenState = QuickExpenseScreenState.EDITING
@@ -297,9 +334,16 @@ class QuickExpenseActivity : AppCompatActivity() {
         render()
         val accountBeforeLoad = selectedAccount()?.id ?: preferredAccountId
         val categoryBeforeLoad = selectedCategory()?.name ?: preferredCategory
+        val generation = sessionGeneration
         QuickExpenseOptionsRepository(uid).load { result ->
             runOnUiThread {
-                if (isFinishing || isDestroyed || firebaseAuth?.currentUser?.uid != uid) {
+                if (
+                    isFinishing ||
+                    isDestroyed ||
+                    firebaseAuth?.currentUser?.uid != uid ||
+                    stateOwnerUid != uid ||
+                    generation != sessionGeneration
+                ) {
                     return@runOnUiThread
                 }
                 loadingUid = null
@@ -310,18 +354,28 @@ class QuickExpenseActivity : AppCompatActivity() {
                         preferredAccountId = accountBeforeLoad
                         preferredCategory = categoryBeforeLoad
                         populateSpinners()
-                        val shouldRestoreSaveError =
-                            restoredScreenState == QuickExpenseScreenState.ERROR &&
-                                restoredErrorKind == QuickExpenseErrorKind.SAVE
+                        val shouldRestoreSaveError = shouldRestoreQuickExpenseSaveError(
+                            state = restoredScreenState,
+                            wasSaveError = restoredErrorKind == QuickExpenseErrorKind.SAVE,
+                            candidateId = candidateId,
+                        )
                         screenState = if (shouldRestoreSaveError) {
                             QuickExpenseScreenState.ERROR
                         } else {
                             QuickExpenseScreenState.EDITING
                         }
-                        errorKind = restoredErrorKind ?: QuickExpenseErrorKind.LOAD
+                        errorKind = if (shouldRestoreSaveError) {
+                            QuickExpenseErrorKind.SAVE
+                        } else {
+                            restoredErrorKind ?: QuickExpenseErrorKind.LOAD
+                        }
                         restoredScreenState = null
                         restoredErrorKind = null
-                        if (!shouldRestoreSaveError) feedbackOverride = null
+                        feedbackOverride = if (shouldRestoreSaveError) {
+                            feedbackOverride ?: getString(R.string.quick_expense_save_error)
+                        } else {
+                            null
+                        }
                         render()
                     },
                     onFailure = {
@@ -422,12 +476,19 @@ class QuickExpenseActivity : AppCompatActivity() {
         }
     }
 
-    private fun saveDraft() {
+    private fun saveDraft(
+        openAfterStore: Boolean = true,
+        restoredVerification: Boolean = false,
+    ) {
         if (screenState == QuickExpenseScreenState.SAVING) return
         val user = firebaseAuth?.currentUser
         if (user == null) {
             screenState = QuickExpenseScreenState.SIGNED_OUT
             render()
+            return
+        }
+        if (stateOwnerUid != user.uid) {
+            resolveSession()
             return
         }
         val input = currentInput()
@@ -441,20 +502,35 @@ class QuickExpenseActivity : AppCompatActivity() {
         screenState = QuickExpenseScreenState.SAVING
         feedbackOverride = null
         render()
+        val generation = sessionGeneration
         QuickExpenseDraftRepository(user.uid).save(draft) { result ->
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
+                if (
+                    firebaseAuth?.currentUser?.uid != user.uid ||
+                    stateOwnerUid != user.uid ||
+                    generation != sessionGeneration ||
+                    candidateId != draft.candidateId
+                ) {
+                    resolveSession()
+                    return@runOnUiThread
+                }
                 when (result) {
                     QuickExpenseWriteResult.STORED -> {
                         screenState = QuickExpenseScreenState.STORED
                         render()
-                        openStoredCandidate()
+                        if (openAfterStore) openStoredCandidate()
                     }
                     QuickExpenseWriteResult.COLLISION -> {
-                        candidateId = null
                         screenState = QuickExpenseScreenState.ERROR
-                        errorKind = QuickExpenseErrorKind.SAVE
-                        feedbackOverride = getString(R.string.quick_expense_collision_error)
+                        if (restoredVerification) {
+                            errorKind = QuickExpenseErrorKind.OPEN
+                            feedbackOverride = getString(R.string.quick_expense_restored_unavailable)
+                        } else {
+                            candidateId = null
+                            errorKind = QuickExpenseErrorKind.SAVE
+                            feedbackOverride = getString(R.string.quick_expense_collision_error)
+                        }
                         render()
                     }
                     QuickExpenseWriteResult.WRITE_FAILED -> {
@@ -525,9 +601,27 @@ class QuickExpenseActivity : AppCompatActivity() {
         val error = fieldErrors().getValue(field)
         error.text = ""
         error.visibility = View.GONE
-        if (screenState == QuickExpenseScreenState.ERROR && errorKind == QuickExpenseErrorKind.SAVE) {
-            candidateId = null
-        }
+    }
+
+    private fun clearSensitiveState() {
+        sessionGeneration += 1
+        stateOwnerUid = null
+        loadingUid = null
+        loadedUid = null
+        candidateId = null
+        merchantInput.text.clear()
+        amountInput.text.clear()
+        selectedDate = LocalDate.now()
+        options = QuickExpenseOptions(emptyList(), emptyList())
+        preferredAccountId = null
+        preferredAccountName = null
+        preferredCategory = null
+        restoredScreenState = null
+        restoredErrorKind = null
+        feedbackOverride = null
+        clearAllFieldErrors()
+        renderDate()
+        populateSpinners()
     }
 
     private fun clearAllFieldErrors() {
@@ -574,7 +668,7 @@ class QuickExpenseActivity : AppCompatActivity() {
             }
             screenState == QuickExpenseScreenState.EDITING ||
                 (screenState == QuickExpenseScreenState.ERROR && errorKind == QuickExpenseErrorKind.SAVE) -> {
-                setFormEnabled(true)
+                setFormEnabled(candidateId == null || screenState == QuickExpenseScreenState.EDITING)
             }
             else -> setFormEnabled(false)
         }
@@ -645,6 +739,10 @@ class QuickExpenseActivity : AppCompatActivity() {
 
     private fun openStoredCandidate() {
         val candidateId = candidateId ?: return
+        if (firebaseAuth?.currentUser?.uid != stateOwnerUid) {
+            resolveSession()
+            return
+        }
         try {
             startActivity(Intent(Intent.ACTION_VIEW, QuickExpenseHandoff.url(candidateId).toUri()))
             finish()
@@ -740,5 +838,6 @@ class QuickExpenseActivity : AppCompatActivity() {
         const val KEY_SCREEN_STATE = "quick_expense_screen_state"
         const val KEY_ERROR_KIND = "quick_expense_error_kind"
         const val KEY_FEEDBACK = "quick_expense_feedback"
+        const val KEY_OWNER_BINDING = "quick_expense_owner_binding"
     }
 }

@@ -75,6 +75,57 @@ fun permissionRequiredUpdateUiState(ready: UpdateUiState): UpdateUiState = Updat
     file = ready.file,
 )
 
+fun canCheckForUpdate(
+    state: UpdateUiState,
+    busy: Boolean,
+    pending: PendingUpdateDownload?,
+): Boolean = !busy && pending == null && state.phase !in setOf(
+    UpdateUiPhase.DOWNLOADING,
+    UpdateUiPhase.READY_TO_INSTALL,
+    UpdateUiPhase.PERMISSION_REQUIRED,
+)
+
+fun shouldDiscardCachedUpdate(
+    previous: AndroidUpdateManifest?,
+    result: UpdateCheckResult,
+): Boolean = previous != null && when (result) {
+    UpdateCheckResult.Current -> true
+    is UpdateCheckResult.Available -> previous != result.manifest
+    UpdateCheckResult.Failed -> false
+}
+
+internal class UpdateOperationGuard {
+    @Volatile
+    var busy: Boolean = false
+        private set
+
+    private var generation = 0L
+
+    @Synchronized
+    fun begin(): Long? {
+        if (busy) return null
+        busy = true
+        generation += 1
+        return generation
+    }
+
+    @Synchronized
+    fun isCurrent(operation: Long): Boolean = busy && generation == operation
+
+    @Synchronized
+    fun finish(operation: Long): Boolean {
+        if (!isCurrent(operation)) return false
+        busy = false
+        return true
+    }
+
+    @Synchronized
+    fun invalidate() {
+        generation += 1
+        busy = false
+    }
+}
+
 class UpdateUiController private constructor(
     private val activity: AppCompatActivity,
     private val section: View,
@@ -103,9 +154,12 @@ class UpdateUiController private constructor(
         ?: UpdateUiState(UpdateUiPhase.HIDDEN)
     private var receiver: BroadcastReceiver? = null
     private var started = false
-    private var busy = false
+    private val operations = UpdateOperationGuard()
+    private var launching = false
     private var manualStatusText: String? = null
     private var completedDownloadId: Long? = null
+    private val busy: Boolean
+        get() = operations.busy || launching
 
     init {
         manualCheck.setOnClickListener { check(manual = true) }
@@ -116,30 +170,32 @@ class UpdateUiController private constructor(
     fun onStart() {
         if (started) return
         started = true
-        busy = false
         receiver = runCatching {
             downloader.registerCompletionReceiver(::onDownloadComplete)
         }.getOrNull()
 
-        var cachedManifest = preferences.cachedAvailableManifest()
+        if (busy) {
+            render()
+            return
+        }
+
+        val cachedManifest = preferences.cachedAvailableManifest()
+        val pending = preferences.pendingDownload()
         if (
             cachedManifest != null &&
             decideUpdate(BuildConfig.VERSION_CODE.toLong(), cachedManifest.versionCode) == UpdateDecision.CURRENT
         ) {
             val obsoleteManifest = cachedManifest
-            executor.execute { downloader.discard(obsoleteManifest) }
             preferences.clearAvailableManifest()
-            cachedManifest = null
+            discardPendingAndResume(obsoleteManifest, pending)
+            return
         }
-        if (cachedManifest != null && preferences.pendingDownload() != null) {
+        if (cachedManifest != null && pending != null) {
             refreshDownload(cachedManifest)
-        } else if (preferences.shouldCheck(manual = false)) {
-            check(manual = false)
+        } else if (pending != null) {
+            discardPendingAndResume(expectedPending = pending)
         } else {
-            state = cachedManifest
-                ?.let { UpdateUiState(UpdateUiPhase.AVAILABLE, it) }
-                ?: UpdateUiState(UpdateUiPhase.HIDDEN)
-            render()
+            resumeWithoutPending(cachedManifest)
         }
     }
 
@@ -154,22 +210,53 @@ class UpdateUiController private constructor(
 
     fun onDestroy() {
         onStop()
+        operations.invalidate()
         executor.shutdownNow()
     }
 
+    private fun resumeWithoutPending(cachedManifest: AndroidUpdateManifest?) {
+        if (preferences.shouldCheck(manual = false)) {
+            check(manual = false)
+        } else {
+            state = cachedManifest
+                ?.let { UpdateUiState(UpdateUiPhase.AVAILABLE, it) }
+                ?: UpdateUiState(UpdateUiPhase.HIDDEN)
+            render()
+        }
+    }
+
+    private fun discardPendingAndResume(
+        manifest: AndroidUpdateManifest? = null,
+        expectedPending: PendingUpdateDownload? = null,
+    ) {
+        val operation = operations.begin() ?: return
+        render()
+        executor.execute {
+            manifest?.let(downloader::discard)
+            expectedPending?.let(downloader::discardPending)
+            postToUi(operation) { resumeWithoutPending(null) }
+        }
+    }
+
     private fun check(manual: Boolean) {
-        if (busy || !preferences.shouldCheck(manual)) return
-        busy = true
+        if (
+            !preferences.shouldCheck(manual) ||
+            !canCheckForUpdate(state, busy, preferences.pendingDownload())
+        ) {
+            return
+        }
+        val operation = operations.begin() ?: return
         manualStatusText = null
         render()
         checker.checkAsync(executor) { result ->
+            if (!operations.isCurrent(operation)) return@checkAsync
             val previousManifest = preferences.cachedAvailableManifest()
-            if (result is UpdateCheckResult.Current && previousManifest != null) {
-                downloader.discard(previousManifest)
+            if (shouldDiscardCachedUpdate(previousManifest, result)) {
+                previousManifest?.let(downloader::discard)
             }
+            if (!operations.isCurrent(operation)) return@checkAsync
             preferences.recordSuccessfulCheck(result)
-            postToUi {
-                busy = false
+            postToUi(operation) {
                 state = updateUiStateFor(result)
                 manualStatusText = if (manual && result is UpdateCheckResult.Current) {
                     activity.getString(R.string.update_current)
@@ -183,6 +270,7 @@ class UpdateUiController private constructor(
     }
 
     private fun performAction() {
+        if (busy) return
         when (state.phase) {
             UpdateUiPhase.AVAILABLE -> startDownload()
             UpdateUiPhase.READY_TO_INSTALL,
@@ -206,7 +294,11 @@ class UpdateUiController private constructor(
     private fun startDownload(discardExisting: Boolean = false) {
         val manifest = state.manifest ?: return
         if (busy) return
-        busy = true
+        if (!discardExisting && preferences.pendingDownload() != null) {
+            refreshDownload(manifest)
+            return
+        }
+        val operation = operations.begin() ?: return
         state = UpdateUiState(UpdateUiPhase.DOWNLOADING, manifest)
         render()
         executor.execute {
@@ -215,8 +307,7 @@ class UpdateUiController private constructor(
                 UpdateUiState(UpdateUiPhase.AVAILABLE, manifest),
                 downloader.enqueue(manifest),
             )
-            postToUi {
-                busy = false
+            postToUi(operation) {
                 state = next
                 render()
                 consumeCompletedDownload()
@@ -243,16 +334,18 @@ class UpdateUiController private constructor(
 
     private fun refreshDownload(manifest: AndroidUpdateManifest) {
         if (busy) return
-        busy = true
+        val operation = operations.begin() ?: return
         val downloadingState = UpdateUiState(UpdateUiPhase.DOWNLOADING, manifest)
         state = downloadingState
         render()
         executor.execute {
             val queried = updateUiStateFor(downloadingState, downloader.query(manifest))
             val verified = verifyReadyState(queried)
-            if (verified.phase == UpdateUiPhase.ERROR) downloader.discard(manifest)
-            postToUi {
-                busy = false
+            if (!operations.isCurrent(operation)) return@execute
+            if (verified.phase == UpdateUiPhase.ERROR) {
+                downloader.discard(manifest)
+            }
+            postToUi(operation) {
                 state = verified
                 render()
             }
@@ -269,7 +362,7 @@ class UpdateUiController private constructor(
         return verifiedUpdateUiState(
             ready = candidate,
             integrity = integrity,
-            signature = signatureVerifier.verify(file),
+            signature = signatureVerifier.verify(file, manifest),
         )
     }
 
@@ -277,14 +370,13 @@ class UpdateUiController private constructor(
         val manifest = state.manifest ?: return
         val file = state.file ?: return
         if (busy) return
-        busy = true
+        val operation = operations.begin() ?: return
         render()
         executor.execute {
             val verified = verifyReadyState(
                 UpdateUiState(UpdateUiPhase.READY_TO_INSTALL, manifest, file),
             )
-            postToUi {
-                busy = false
+            postToUi(operation) {
                 if (verified.phase == UpdateUiPhase.ERROR) {
                     downloader.discard(manifest)
                     state = verified
@@ -305,7 +397,6 @@ class UpdateUiController private constructor(
             }
             is InstallAction.Ready -> {
                 state = ready
-                busy = true
                 render()
                 launch(installAction.intent)
             }
@@ -320,16 +411,25 @@ class UpdateUiController private constructor(
     }
 
     private fun launch(intent: Intent) {
+        launching = true
+        render()
         try {
             activity.startActivity(intent)
         } catch (_: ActivityNotFoundException) {
-            state.manifest?.let { manifest ->
-                executor.execute { downloader.discard(manifest) }
-            }
-            state = UpdateUiState(UpdateUiPhase.ERROR, state.manifest)
-            busy = false
+            rejectLaunch()
+        } catch (_: SecurityException) {
+            rejectLaunch()
+        } finally {
+            launching = false
             render()
         }
+    }
+
+    private fun rejectLaunch() {
+        state.manifest?.let { manifest ->
+            executor.execute { downloader.discard(manifest) }
+        }
+        state = UpdateUiState(UpdateUiPhase.ERROR, state.manifest)
     }
 
     private fun render() {
@@ -337,7 +437,11 @@ class UpdateUiController private constructor(
         section.isVisible = showManualCheck || hasPanel || manualStatusText != null
         panel.isVisible = hasPanel
         manualCheck.isVisible = showManualCheck
-        manualCheck.isEnabled = !busy
+        manualCheck.isEnabled = canCheckForUpdate(
+            state,
+            busy,
+            preferences.pendingDownload(),
+        )
         manualCheck.alpha = if (manualCheck.isEnabled) 1f else DISABLED_ALPHA
         manualCheck.text = activity.getString(
             if (busy && !hasPanel) R.string.update_checking else R.string.update_manual_action,
@@ -428,9 +532,15 @@ class UpdateUiController private constructor(
         }
     }
 
-    private fun postToUi(block: () -> Unit) {
+    private fun postToUi(operation: Long, block: () -> Unit) {
         activity.runOnUiThread {
-            if (!activity.isFinishing && !activity.isDestroyed) block()
+            if (
+                !activity.isFinishing &&
+                !activity.isDestroyed &&
+                operations.finish(operation)
+            ) {
+                block()
+            }
         }
     }
 

@@ -44,7 +44,7 @@ class FirebaseQuickExpenseDocumentStore(
                     transaction.set(reference, fields)
                     QuickExpenseDocumentResult.CREATED
                 }
-                quickExpenseImmutableFieldsMatch(snapshot.data.orEmpty(), fields) -> {
+                quickExpensePendingDocumentMatches(snapshot.data.orEmpty(), fields) -> {
                     QuickExpenseDocumentResult.MATCHED
                 }
                 else -> QuickExpenseDocumentResult.COLLISION
@@ -116,6 +116,14 @@ internal fun quickExpenseImmutableFieldsMatch(
     }
 }
 
+internal fun quickExpensePendingDocumentMatches(
+    existing: Map<String, Any?>,
+    expected: Map<String, Any>,
+): Boolean = existing.keys == QUICK_EXPENSE_DOCUMENT_FIELDS &&
+    existing["status"] == "pending" &&
+    existing["createdAt"] is Timestamp &&
+    quickExpenseImmutableFieldsMatch(existing, expected)
+
 private fun Any?.asExactLong(): Long? {
     val number = this as? Number ?: return null
     return try {
@@ -136,6 +144,11 @@ private val QUICK_EXPENSE_IMMUTABLE_FIELDS = setOf(
     "merchant",
     "suggestedAccountId",
     "suggestedCategory",
+)
+
+private val QUICK_EXPENSE_DOCUMENT_FIELDS = QUICK_EXPENSE_IMMUTABLE_FIELDS + setOf(
+    "createdAt",
+    "status",
 )
 
 private val QUICK_EXPENSE_NUMERIC_FIELDS = setOf("schemaVersion", "amountMinor")

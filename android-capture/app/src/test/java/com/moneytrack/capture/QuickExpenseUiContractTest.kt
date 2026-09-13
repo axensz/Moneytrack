@@ -20,6 +20,16 @@ class QuickExpenseUiContractTest {
     }
 
     @Test
+    fun `an interrupted or failed save restores as a locked idempotent retry`() {
+        val candidateId = "a".repeat(64)
+
+        assertTrue(shouldRestoreQuickExpenseSaveError(QuickExpenseScreenState.SAVING, false, candidateId))
+        assertTrue(shouldRestoreQuickExpenseSaveError(QuickExpenseScreenState.ERROR, true, candidateId))
+        assertFalse(shouldRestoreQuickExpenseSaveError(QuickExpenseScreenState.ERROR, false, candidateId))
+        assertFalse(shouldRestoreQuickExpenseSaveError(QuickExpenseScreenState.SAVING, false, null))
+    }
+
+    @Test
     fun `five fields are labeled ordered and usable with touch and keyboard`() {
         val document = parse(resourceFile("layout/activity_quick_expense.xml"))
         val elements = document.getElementsByTagName("*")
@@ -59,6 +69,10 @@ class QuickExpenseUiContractTest {
         val activity = source("java/com/moneytrack/capture/QuickExpenseActivity.kt")
 
         assertTrue(activity.contains("override fun onSaveInstanceState"))
+        assertTrue(activity.contains("KEY_OWNER_BINDING"))
+        assertTrue(activity.contains("canRestoreQuickExpenseState("))
+        assertTrue(activity.contains("sessionGeneration"))
+        assertTrue(activity.contains("generation != sessionGeneration"))
         assertTrue(activity.contains("buildQuickExpenseDraft("))
         assertTrue(activity.contains("QuickExpenseHandoff.url(candidateId)"))
         assertTrue(activity.contains("QuickExpenseWriteResult.STORED"))

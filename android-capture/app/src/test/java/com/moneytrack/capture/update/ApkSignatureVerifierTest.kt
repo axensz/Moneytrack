@@ -23,4 +23,12 @@ class ApkSignatureVerifierTest {
         assertFalse(sameSigner(setOf(signer), emptySet()))
         assertFalse(sameSigner(setOf("not-a-digest"), setOf("not-a-digest")))
     }
+
+    @Test
+    fun `requires the archive version to match the manifest and advance the install`() {
+        assertTrue(archiveVersionMatchesManifest(2, 3, "0.2.1", 3, "0.2.1"))
+        assertFalse(archiveVersionMatchesManifest(3, 3, "0.2.1", 3, "0.2.1"))
+        assertFalse(archiveVersionMatchesManifest(2, 4, "0.2.1", 3, "0.2.1"))
+        assertFalse(archiveVersionMatchesManifest(2, 3, "0.2.2", 3, "0.2.1"))
+    }
 }

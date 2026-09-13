@@ -121,8 +121,12 @@ limpio:
 ```powershell
 $env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
 $env:Path = "$env:JAVA_HOME\bin;$env:Path"
-.\android-capture\gradlew.bat -p android-capture clean testDebugUnitTest lintDebug assembleRelease
+.\android-capture\gradlew.bat -p android-capture --no-configuration-cache clean testDebugUnitTest lintDebug assembleRelease
 ```
+
+La opción `--no-configuration-cache` es obligatoria en una compilación firmada:
+evita que Gradle persista las credenciales de entorno dentro de su caché local
+de configuración.
 
 La salida esperada es
 `android-capture/app/build/outputs/apk/release/app-release.apk`. Antes de
@@ -206,7 +210,7 @@ manifiesto que apunte a una descarga ausente o no verificada.
 8. Revisa en la web el monto y la cuenta o tarjeta sugerida. La confirmación
    manual es el único paso que crea la transacción y actualiza el saldo.
 
-El botón **Abrir Moneytrack web** usa `https://moneytrack-889fe.web.app`, definido
+El botón **Abrir Moneytrack web** usa `https://axensz.github.io/Moneytrack/`, definido
 en `app/src/main/res/values/strings.xml`. Verifica ese destino contra el entorno
 que se vaya a usar y actualiza el recurso en otro cambio si el despliegue oficial
 tiene un host diferente.

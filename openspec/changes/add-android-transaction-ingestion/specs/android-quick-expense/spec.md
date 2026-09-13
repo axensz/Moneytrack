@@ -27,6 +27,15 @@ La captura MUST exigir descripción, fecha, monto COP, categoría de gasto y cue
 - **WHEN** la misma captura se envía más de una vez
 - **THEN** Android reutiliza el mismo ID opaco y solo acepta la creación ausente o un documento servidor-actual idéntico
 
+#### Scenario: La sesión cambia durante la captura
+- **WHEN** cambia la persona autenticada mientras hay un formulario, una carga o una escritura en curso
+- **THEN** Android elimina el estado financiero local de la sesión anterior e ignora sus respuestas tardías
+
+#### Scenario: Android restaura un borrador que parecía guardado
+- **WHEN** el sistema recrea la pantalla después de guardar o mientras una escritura seguía en curso
+- **THEN** Android vuelve a comprobar el mismo ID y el documento pendiente exacto antes de habilitar el handoff
+- **AND** nunca genera una segunda identidad por una respuesta de red incierta
+
 ### Requirement: El borrador manual tiene un contrato v3 exacto
 El sistema MUST aceptar para `schemaVersion: 3` únicamente `source: android-shortcut`, los campos comunes, `suggestedAccountId`, `suggestedCategory`, `createdAt` y los campos del estado correspondiente. MUST rechazar campos de notificación o parser, claves desconocidas, referencias ajenas y combinaciones cruzadas de esquema/fuente.
 

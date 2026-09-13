@@ -27,13 +27,13 @@ class ApkDownloadManager(
     private val appContext = context.applicationContext
     private val downloadManager = appContext.getSystemService(DownloadManager::class.java)
 
-    fun enqueue(manifest: AndroidUpdateManifest): DownloadState {
-        val fileName = updateApkFileName(manifest.versionName) ?: return DownloadState.Failed
-        if (!isAllowedUpdateApkUrl(manifest.apkUrl)) return DownloadState.Failed
-        val destination = managedUpdateFile(appContext, fileName) ?: return DownloadState.Failed
+    fun enqueue(manifest: AndroidUpdateManifest): DownloadState = synchronized(DOWNLOAD_COORDINATION_LOCK) {
+        val fileName = updateApkFileName(manifest.versionName) ?: return@synchronized DownloadState.Failed
+        if (!isAllowedUpdateApkUrl(manifest.apkUrl)) return@synchronized DownloadState.Failed
+        val destination = managedUpdateFile(appContext, fileName) ?: return@synchronized DownloadState.Failed
 
-        return try {
-            if (destination.exists() && !destination.delete()) return DownloadState.Failed
+        try {
+            if (destination.exists() && !destination.delete()) return@synchronized DownloadState.Failed
             val request = DownloadManager.Request(manifest.apkUrl.toUri())
                 .setAllowedOverRoaming(false)
                 .setMimeType(APK_MIME_TYPE)
@@ -98,13 +98,31 @@ class ApkDownloadManager(
         appContext.unregisterReceiver(receiver)
     }
 
-    fun discard(manifest: AndroidUpdateManifest) {
-        preferences.pendingDownload()?.let { downloadManager.remove(it.downloadId) }
+    fun discard(manifest: AndroidUpdateManifest) = synchronized(DOWNLOAD_COORDINATION_LOCK) {
+        val pending = preferences.pendingDownload()
+        if (pendingDownloadMatchesVersion(pending, manifest.versionCode)) {
+            runCatching { downloadManager.remove(requireNotNull(pending).downloadId) }
+            preferences.clearDownload()
+        }
+        deleteManagedUpdateFile(manifest)
+    }
+
+    fun discardPending(expected: PendingUpdateDownload) = synchronized(DOWNLOAD_COORDINATION_LOCK) {
+        if (preferences.pendingDownload() != expected) return@synchronized
+        runCatching { downloadManager.remove(expected.downloadId) }
+        managedUpdateDirectory(appContext)
+            ?.listFiles()
+            .orEmpty()
+            .filter(::isDirectManagedApk)
+            .forEach { file -> runCatching { file.delete() } }
+        preferences.clearDownload()
+    }
+
+    private fun deleteManagedUpdateFile(manifest: AndroidUpdateManifest) {
         updateApkFileName(manifest.versionName)
             ?.let { managedUpdateFile(appContext, it) }
             ?.takeIf(File::isFile)
             ?.delete()
-        preferences.clearDownload()
     }
 
     private companion object {
@@ -112,16 +130,30 @@ class ApkDownloadManager(
     }
 }
 
+internal fun pendingDownloadMatchesVersion(
+    pending: PendingUpdateDownload?,
+    versionCode: Long,
+): Boolean = pending?.versionCode == versionCode
+
 internal const val UPDATE_DIRECTORY = "android-updates"
 
 internal fun managedUpdateFile(context: Context, fileName: String): File? {
     return runCatching {
-        val directory = context.getExternalFilesDir(UPDATE_DIRECTORY)?.canonicalFile
-            ?: return@runCatching null
+        val directory = managedUpdateDirectory(context) ?: return@runCatching null
         val file = File(directory, fileName).canonicalFile
         file.takeIf { it.parentFile == directory && it.extension == "apk" }
     }.getOrNull()
 }
+
+private fun managedUpdateDirectory(context: Context): File? = runCatching {
+    context.getExternalFilesDir(UPDATE_DIRECTORY)?.canonicalFile
+}.getOrNull()
+
+private fun isDirectManagedApk(file: File): Boolean = runCatching {
+    file.isFile && file.extension == "apk" && file.canonicalFile.parentFile == file.parentFile?.canonicalFile
+}.getOrDefault(false)
+
+private val DOWNLOAD_COORDINATION_LOCK = Any()
 
 internal fun isManagedUpdateFile(context: Context, file: File): Boolean {
     val directory = context.getExternalFilesDir(UPDATE_DIRECTORY)?.canonicalFile ?: return false

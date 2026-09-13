@@ -346,6 +346,25 @@ describe('useTransactionImportCandidates', () => {
     expect(result.current.error?.message).toMatch(/gasto rápido/i);
   });
 
+  it('clears a requested-candidate error after a later valid or absent snapshot', () => {
+    const requestedId = 'b'.repeat(64);
+    const { result } = renderHook(() => (
+      useTransactionImportCandidates('user-1', requestedId)
+    ));
+
+    emitRequested(1, shortcutDocument(requestedId, { amountMinor: 0 }));
+    expect(result.current.requestedStatus).toBe('error');
+    expect(result.current.error).not.toBeNull();
+
+    emitRequested(1, shortcutDocument(requestedId));
+    expect(result.current.requestedStatus).toBe('ready');
+    expect(result.current.error).toBeNull();
+
+    emitRequested(1, null);
+    expect(result.current.requestedStatus).toBe('missing');
+    expect(result.current.error).toBeNull();
+  });
+
   it('exposes subscription errors and performs no guest work', async () => {
     const authenticated = renderHook(() => (
       useTransactionImportCandidates('user-1')

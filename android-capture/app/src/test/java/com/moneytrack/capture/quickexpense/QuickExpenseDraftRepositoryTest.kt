@@ -97,20 +97,27 @@ class QuickExpenseDraftRepositoryTest {
     }
 
     @Test
-    fun `matches only normalized immutable fields and ignores lifecycle fields`() {
-        val expected = expectedImmutableFields()
-        val existing = expected + mapOf(
+    fun `matches only the exact pending v3 document`() {
+        val expected = expectedDocumentFields()
+        val existing = expectedImmutableFields() + mapOf(
             "schemaVersion" to 3,
             "amountMinor" to 139_900.toInt(),
             "createdAt" to Timestamp(Date(OCCURRED_AT + 1_000L)),
-            "status" to "confirmed",
-            "transactionId" to "ledger-id",
+            "status" to "pending",
         )
 
-        assertTrue(quickExpenseImmutableFieldsMatch(existing, expected))
-        assertTrue(!quickExpenseImmutableFieldsMatch(existing + ("merchant" to "Cena"), expected))
-        assertTrue(!quickExpenseImmutableFieldsMatch(existing - "suggestedCategory", expected))
+        assertTrue(quickExpensePendingDocumentMatches(existing, expected))
+        assertTrue(!quickExpensePendingDocumentMatches(existing + ("merchant" to "Cena"), expected))
+        assertTrue(!quickExpensePendingDocumentMatches(existing - "suggestedCategory", expected))
+        assertTrue(!quickExpensePendingDocumentMatches(existing + ("status" to "confirmed"), expected))
+        assertTrue(!quickExpensePendingDocumentMatches(existing + ("transactionId" to "ledger-id"), expected))
+        assertTrue(!quickExpensePendingDocumentMatches(existing + ("createdAt" to "not-a-timestamp"), expected))
     }
+
+    private fun expectedDocumentFields(): Map<String, Any> = expectedImmutableFields() + mapOf(
+        "createdAt" to Any(),
+        "status" to "pending",
+    )
 
     private fun expectedImmutableFields(): Map<String, Any> = mapOf(
         "schemaVersion" to 3L,

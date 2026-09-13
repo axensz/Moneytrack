@@ -101,6 +101,7 @@
     <string name="quick_expense_load_error">No pudimos cargar tus cuentas y categorías. Revisa la conexión y vuelve a intentarlo.</string>
     <string name="quick_expense_save_error">No pudimos guardar el borrador. Conservamos el formulario para que vuelvas a intentarlo.</string>
     <string name="quick_expense_collision_error">La identidad del borrador ya está en uso. Vuelve a intentarlo para generar una nueva.</string>
+    <string name="quick_expense_restored_unavailable">El borrador guardado cambió o ya fue procesado. Ábrelo en MoneyTrack para ver su estado sin crear otro gasto.</string>
     <string name="quick_expense_open_error">El borrador está listo, pero Android no encontró cómo abrir MoneyTrack. Inténtalo de nuevo.</string>
     <string name="quick_expense_missing_heading">Completa tus opciones en MoneyTrack</string>
     <string name="quick_expense_missing_accounts">Necesitas al menos una cuenta, efectivo o tarjeta para continuar.</string>

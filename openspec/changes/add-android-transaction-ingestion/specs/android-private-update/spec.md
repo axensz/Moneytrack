@@ -27,7 +27,7 @@ MoneyTrack MUST limitar una consulta automática exitosa a una ventana de 24 hor
 - **THEN** MoneyTrack muestra una salida reparable sin bloquear la captura, el gasto rápido ni la apertura web
 
 ### Requirement: Las actualizaciones privadas se verifican antes de instalar
-La APK MUST aceptar únicamente una versión con `versionCode` mayor, URL HTTPS permitida, tamaño y SHA-256 exactos, paquete `com.moneytrack.capture` y al menos un certificado de firma coincidente con la instalación actual.
+La APK MUST aceptar únicamente una versión con `versionCode` mayor, `versionCode` y `versionName` idénticos a los anunciados, URL HTTPS permitida, tamaño y SHA-256 exactos, paquete `com.moneytrack.capture` y al menos un certificado de firma coincidente con la instalación actual.
 
 #### Scenario: Asset válido
 - **WHEN** la persona solicita una versión posterior y la descarga coincide en tamaño, hash, paquete y certificado
@@ -38,8 +38,8 @@ La APK MUST aceptar únicamente una versión con `versionCode` mayor, URL HTTPS 
 - **WHEN** la descarga no coincide con el tamaño o SHA-256 anunciado
 - **THEN** MoneyTrack elimina únicamente ese archivo de actualización, conserva la versión instalada y no abre el instalador
 
-#### Scenario: Paquete o firma diferente
-- **WHEN** el APK descargado pertenece a otro paquete o no comparte un certificado con la instalación actual
+#### Scenario: Versión, paquete o firma diferente
+- **WHEN** el APK descargado no coincide con la versión anunciada, pertenece a otro paquete o no comparte un certificado con la instalación actual
 - **THEN** MoneyTrack elimina únicamente ese archivo, conserva la versión instalada y no abre el instalador
 
 ### Requirement: La descarga requiere una decisión visible y almacenamiento acotado

@@ -245,3 +245,16 @@ Section 13 implements the approved source-specific parser from two sanitized rea
 - [x] 13.5 Add failing web decoder, matcher and Firestore-emulator tests for legacy v1, current v2, alias-only wallet tokens, physical-card last4, unique alias, duplicate alias, signal conflict, unknown alias and forbidden raw fields; implement fail-closed contracts and rules; rerun green.
 - [x] 13.6 Add failing component/orchestration tests for optional wallet termination, required physical termination, alias-only account suggestion, hidden observed alias, explicit remember, one-time confirmation without association and current-server signal validation; implement the minimal responsive UI and atomic writer changes; rerun green.
 - [x] 13.7 Run focused web/Android tests, Firestore emulator rules, full web tests, typecheck, lint, production build, Android `testDebugUnitTest lintDebug assembleDebug`, strict OpenSpec validation, graph impact/coverage and `git diff --check`; inspect the diff and preserve the release order web/rules before APK.
+
+## 14. Approved Android quick expense shortcut
+
+Section 14 adds a manual native entry point while preserving `Account` as financial authority and `confirmTransactionImport` as the only path from candidate to ledger.
+
+- [x] 14.1 Add `Borrador de gasto rápido` to the domain language and amend proposal, design, delta specs and tasks with the approved v3 contract, online handoff and exact-candidate review; validate OpenSpec strictly before production edits.
+- [ ] 14.2 Add failing web decoder/orchestration tests for the exact v3 `android-shortcut` shape, cross-variant fields and server-current identity; implement the discriminated candidate union and retain v1/v2 behavior.
+- [ ] 14.3 Add failing Firestore-emulator tests for owner-only v3 creation, exact keys, current account/category, server timestamp, immutable payload and terminal transitions; implement fail-closed rules without weakening v1/v2.
+- [ ] 14.4 Add failing hook/view tests for opaque `reviewAndroid`, exact document loading beyond the 100-item inbox, invalid/missing/terminal handling and URL cleanup; implement the smallest exact-candidate handoff.
+- [ ] 14.5 Add failing inbox/modal tests for `Revisar gasto rápido`, valid account/category prefill, stale-option fallback and absence of payment-instrument controls; implement the additive responsive review UI.
+- [ ] 14.6 Add failing Android JVM/repository tests for validation, COP/date normalization, account/category loading, random opaque IDs and online idempotent v3 creation; implement pure helpers and the smallest Firestore repository.
+- [ ] 14.7 Add failing Android resource/Activity tests for the static shortcut, `QuickExpenseActivity`, session recovery, accessible five-field form, retained error state and opaque PWA intent; implement with AppCompat XML and no navigation dependency.
+- [ ] 14.8 Run focused and full web/Android/rules verification, typecheck, lint, production build, strict OpenSpec, graph impact/tests and `git diff --check`; deploy compatible rules/PWA before building and validating the signed canary APK on device.

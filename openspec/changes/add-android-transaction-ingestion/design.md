@@ -15,6 +15,7 @@ Hay cambios OpenSpec activos sobre integridad del libro y entrega de notificacio
 **Goals:**
 
 - Capturar automáticamente compras notificadas por aplicaciones Android seleccionadas.
+- Registrar manualmente un gasto desde un acceso directo Android sin convertirlo en transacción antes de la revisión web.
 - Separar el medio de pago observado de la cuenta contable que conserva saldo o deuda.
 - Mantener toda captura fuera del libro hasta que una persona confirme monto, cuenta, categoría y detalles necesarios.
 - Hacer la confirmación atómica, reintentable e idempotente mediante la frontera contable existente.
@@ -28,6 +29,7 @@ Hay cambios OpenSpec activos sobre integridad del libro y entrega de notificacio
 - Acceso directo a la base de datos o historial de Google Wallet.
 - Contabilización automática, detección de reversos, cuotas inferidas, conciliación bancaria o soporte de monedas diferentes de COP en el primer canario.
 - Captura para invitados, iOS, múltiples dispositivos activos garantizados, publicación en Play Store, analítica, telemetría o un backend nuevo.
+- Datos financieros en intents externos o parámetros de URL, creación de cuentas/categorías desde Android y confirmación nativa del gasto.
 - Parser específico para cada banco antes de contar con ejemplos sanitizados y pruebas de ese emisor.
 - Rediseñar navegación, cálculos financieros, `Account`, `bankAccountId`, deuda, pagos de TC o persistencia existente.
 
@@ -217,6 +219,35 @@ El inicio de sesión bloquea gestos repetidos mientras Credential Manager está 
 
 La adaptación usa recursos de dimensiones, no una librería nueva. Los gutters crecen en orientación horizontal y anchos medianos/expandidos para conservar una columna legible; en 320–400 dp mantienen el ancho útil y el `ScrollView`. La lista modal sigue acotada y desplazable. El contrato incluye 48 dp, orden y nombres TalkBack, foco visible, contraste AA, texto a 1,3×, landscape, barras/recortes seguros y ausencia de movimiento personalizado que ignore la preferencia de reducción de movimiento.
 
+### 14. El acceso directo crea un borrador manual, no una transacción
+
+El launcher publicará un acceso directo estático `Registrar gasto` que abre una `QuickExpenseActivity`. Esta entrada no recibe monto, descripción, categoría, cuenta ni otros datos financieros mediante intent y no depende del permiso de acceso a notificaciones. La captura solicita descripción, fecha —hoy por defecto—, monto COP, categoría de gasto y `Cuenta usada`; esa última selección sigue siendo una `Account`, con la ayuda de producto `Cuenta, efectivo o tarjeta que pagó`.
+
+La Activity carga las cuentas y categorías del propietario autenticado desde Firestore, puede mostrar opciones cacheadas y no crea entidades nuevas. Al continuar genera 32 bytes aleatorios, representados como 64 caracteres hexadecimales minúsculos, y usa esa identidad para una transacción Firestore que requiere confirmación de servidor: crea el documento solo si no existe o acepta únicamente un documento ya existente e idéntico. Una escritura encolada offline no habilita la apertura web. Ante un fallo conserva el formulario y ofrece `Reintentar`.
+
+La variante manual de `users/{uid}/transactionImportCandidates/{candidateId}` usa este contrato exacto:
+
+| Campo | Contrato v3 |
+| --- | --- |
+| `schemaVersion` | literal `3` |
+| `source` | literal `android-shortcut` |
+| `occurredAt` | timestamp de la fecha elegida |
+| `amountMinor` | entero positivo en centavos, máximo `100000000000` |
+| `currency` | literal `COP` |
+| `merchant` | descripción de 1–140 caracteres |
+| `suggestedAccountId` | ID de cuenta de 1–1500 caracteres perteneciente al propietario |
+| `suggestedCategory` | categoría de gasto de 1–100 caracteres |
+| `createdAt` | timestamp del servidor, igual a `request.time` al crear |
+| `status` | `pending`, `confirmed` o `dismissed` |
+| `transactionId`, `confirmedAt` | solo para `confirmed` |
+| `dismissedAt` | solo para `dismissed` |
+
+La variante v3 prohíbe `sourcePackage`, `cardLast4`, `observedInstrumentLabel`, `parserId`, `parserVersion` y `confidence`; las variantes de notificación v1/v2 no aceptan los campos sugeridos de v3. Ningún payload puede cambiar después de crearse, salvo el no-op idéntico y las transiciones terminales ya autorizadas. Los documentos terminales se conservan para trazabilidad e idempotencia.
+
+Después de que el servidor confirma el borrador, Android abre `https://axensz.github.io/Moneytrack/?view=transactions&reviewAndroid=<candidateId>`. La URL contiene únicamente la identidad opaca. La PWA valida su forma, consulta ese documento exacto bajo el UID actual aunque no esté entre los 100 elementos de la bandeja, abre solo si continúa `pending` y precarga cuenta/categoría únicamente si siguen siendo opciones válidas. Un documento ausente, terminal o de otra sesión produce un mensaje reparable y nunca selecciona otro candidato por aproximación. Tras resolverlo, `history.replaceState` elimina solo `reviewAndroid` y conserva los demás parámetros válidos.
+
+La confirmación sigue usando `confirmTransactionImport` con `ledger-mutation:android:<candidateId>` y la frontera contable servidor-actual. Hasta ese commit, el borrador no afecta saldos, cupos, estadísticas, presupuestos ni conciliación.
+
 ## Risks / Trade-offs
 
 - **[Formato de Wallet cambia o el apodo no identifica una tarjeta propia]** → el parser dedicado falla cerrado para cuerpos desconocidos; un apodo válido sigue siendo solo una pista y nunca crea ni asigna una cuenta sin acción explícita.
@@ -225,6 +256,7 @@ La adaptación usa recursos de dimensiones, no una librería nueva. Los gutters 
 - **[Notificación falsa, reversada o incompleta]** → exclusiones estrictas, confianza conservada para diagnóstico y sin contabilización autónoma.
 - **[Android mata el proceso o no concede acceso]** → pantalla de estado y enlace directo a ajustes; no se promete captura mientras el servicio esté deshabilitado.
 - **[Sin red]** → Firestore encola el candidato normalizado; la PWA bloquea la confirmación financiera offline y conserva el formulario para reintentar.
+- **[Sin red durante un gasto rápido]** → la creación manual exige respuesta del servidor, conserva el formulario y no abre la PWA; no confunde una escritura cacheada con un handoff disponible.
 - **[Dos dispositivos capturan el mismo evento]** → alcance inicial de un dispositivo y revisión manual; no se añade coordinación global prematura.
 - **[Cuenta o instrumento cambia entre captura y confirmación]** → recarga servidor-actual y bloqueo reparable; nunca se confía en la sugerencia capturada.
 - **[Reglas complejas bloquean el batch legítimo]** → pruebas con emulador para cada transición y despliegue de reglas antes del APK.

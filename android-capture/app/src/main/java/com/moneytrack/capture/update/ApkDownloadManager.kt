@@ -33,6 +33,7 @@ class ApkDownloadManager(
         val destination = managedUpdateFile(appContext, fileName) ?: return DownloadState.Failed
 
         return try {
+            if (destination.exists() && !destination.delete()) return DownloadState.Failed
             val request = DownloadManager.Request(manifest.apkUrl.toUri())
                 .setAllowedOverRoaming(false)
                 .setMimeType(APK_MIME_TYPE)
@@ -114,9 +115,12 @@ class ApkDownloadManager(
 internal const val UPDATE_DIRECTORY = "android-updates"
 
 internal fun managedUpdateFile(context: Context, fileName: String): File? {
-    val directory = context.getExternalFilesDir(UPDATE_DIRECTORY)?.canonicalFile ?: return null
-    val file = File(directory, fileName).canonicalFile
-    return file.takeIf { it.parentFile == directory && it.extension == "apk" }
+    return runCatching {
+        val directory = context.getExternalFilesDir(UPDATE_DIRECTORY)?.canonicalFile
+            ?: return@runCatching null
+        val file = File(directory, fileName).canonicalFile
+        file.takeIf { it.parentFile == directory && it.extension == "apk" }
+    }.getOrNull()
 }
 
 internal fun isManagedUpdateFile(context: Context, file: File): Boolean {

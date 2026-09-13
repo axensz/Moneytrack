@@ -42,6 +42,7 @@ import com.moneytrack.capture.quickexpense.QuickExpenseOptionsRepository
 import com.moneytrack.capture.quickexpense.QuickExpenseWriteResult
 import com.moneytrack.capture.quickexpense.buildQuickExpenseDraft
 import com.moneytrack.capture.quickexpense.validateQuickExpenseForm
+import com.moneytrack.capture.update.UpdateUiController
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -102,6 +103,7 @@ class QuickExpenseActivity : AppCompatActivity() {
     private lateinit var amountError: TextView
     private lateinit var categoryError: TextView
     private lateinit var accountError: TextView
+    private lateinit var updateUiController: UpdateUiController
 
     private var firebaseAuth: FirebaseAuth? = null
     private var screenState = QuickExpenseScreenState.LOADING_OPTIONS
@@ -137,6 +139,11 @@ class QuickExpenseActivity : AppCompatActivity() {
         signInController = GoogleSignInController(this)
         firebaseAuth = if (FirebaseApp.getApps(this).isEmpty()) null else FirebaseAuth.getInstance()
         bindViews()
+        updateUiController = UpdateUiController.bind(
+            activity = this,
+            root = findViewById(R.id.update_section),
+            showManualCheck = false,
+        )
         restoreForm(savedInstanceState)
         bindActions()
         applyWindowInsets()
@@ -147,12 +154,19 @@ class QuickExpenseActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
+        updateUiController.onStart()
         firebaseAuth?.addAuthStateListener(authStateListener)
     }
 
     override fun onStop() {
+        updateUiController.onStop()
         firebaseAuth?.removeAuthStateListener(authStateListener)
         super.onStop()
+    }
+
+    override fun onDestroy() {
+        updateUiController.onDestroy()
+        super.onDestroy()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

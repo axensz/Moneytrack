@@ -47,6 +47,10 @@ class UpdatePreferences internal constructor(
         .getString(KEY_AVAILABLE_MANIFEST, null)
         ?.let(decoder::decode)
 
+    fun clearAvailableManifest() {
+        preferences.edit { remove(KEY_AVAILABLE_MANIFEST) }
+    }
+
     fun recordDownload(downloadId: Long, versionCode: Long) {
         if (downloadId < 0L || versionCode <= 0L) return
         preferences.edit {

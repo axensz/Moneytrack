@@ -2,6 +2,22 @@
 <resources>
     <string name="update_checking">Buscando actualización…</string>
     <string name="update_check_failed">No pudimos buscar actualizaciones. Intenta de nuevo.</string>
+    <string name="update_manual_action">Buscar actualización</string>
+    <string name="update_current">MoneyTrack está al día.</string>
+    <string name="update_available_heading">Actualización disponible</string>
+    <string name="update_available_version">Versión %1$s</string>
+    <string name="update_available_notes">Versión %1$s\n%2$s</string>
+    <string name="update_action">Actualizar MoneyTrack</string>
+    <string name="update_downloading_heading">Preparando actualización</string>
+    <string name="update_downloading">Descargando actualización…</string>
+    <string name="update_ready_heading">Actualización lista</string>
+    <string name="update_ready_explanation">Verificamos el archivo. Android te pedirá confirmar la instalación.</string>
+    <string name="update_install_action">Instalar actualización</string>
+    <string name="update_permission_heading">Permiso necesario</string>
+    <string name="update_permission_explanation">Autoriza instalaciones desde MoneyTrack y vuelve para continuar.</string>
+    <string name="update_permission_action">Autorizar instalación</string>
+    <string name="update_error_heading">No pudimos actualizar</string>
+    <string name="update_prepare_failed">No pudimos preparar la actualización. Intenta de nuevo.</string>
     <string name="app_name">MoneyTrack</string>
     <string name="notification_listener_label">Captura de compras de MoneyTrack</string>
     <string name="screen_title">MoneyTrack móvil</string>

@@ -387,6 +387,12 @@
             android:text="@string/open_pwa_action"
             android:visibility="gone" />
 
+        <include
+            layout="@layout/include_update_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_medium" />
+
         <Button
             android:id="@+id/sign_out_button"
             style="@style/Widget.MoneyTrack.Button.Tertiary"

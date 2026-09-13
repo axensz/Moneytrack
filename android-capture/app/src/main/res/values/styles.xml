@@ -29,6 +29,13 @@
         <item name="android:textColor">@color/text_secondary</item>
     </style>
 
+    <style name="Widget.MoneyTrack.Button.Secondary" parent="Widget.AppCompat.Button">
+        <item name="android:background">@drawable/button_utility</item>
+        <item name="android:minHeight">@dimen/control_min_height</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textColor">@color/brand_violet_dark</item>
+    </style>
+
     <style name="Widget.MoneyTrack.Button.Utility" parent="Widget.AppCompat.Button">
         <item name="android:background">@drawable/button_utility</item>
         <item name="android:gravity">center_vertical</item>

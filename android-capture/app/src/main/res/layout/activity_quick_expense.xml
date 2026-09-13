@@ -295,5 +295,11 @@
             android:text="@string/quick_expense_draft_note"
             android:textColor="@color/text_secondary"
             android:textSize="14sp" />
+
+        <include
+            layout="@layout/include_update_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_large" />
     </LinearLayout>
 </ScrollView>

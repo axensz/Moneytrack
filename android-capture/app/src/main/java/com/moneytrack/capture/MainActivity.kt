@@ -41,6 +41,7 @@ import com.moneytrack.capture.notification.NotificationAccess
 import com.moneytrack.capture.preferences.AppThemeMode
 import com.moneytrack.capture.preferences.CandidateSyncOverview
 import com.moneytrack.capture.preferences.CapturePreferences
+import com.moneytrack.capture.update.UpdateUiController
 
 class MainActivity : AppCompatActivity() {
     private lateinit var preferences: CapturePreferences
@@ -70,6 +71,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var syncFailurePanel: View
     private lateinit var lastCaptureStatus: TextView
     private lateinit var themeButton: ImageButton
+    private lateinit var updateUiController: UpdateUiController
     private var firebaseAuth: FirebaseAuth? = null
     private var authenticationUiState = AuthenticationUiState()
     private var rendering = false
@@ -100,6 +102,11 @@ class MainActivity : AppCompatActivity() {
         signInController = GoogleSignInController(this)
         firebaseAuth = if (FirebaseApp.getApps(this).isEmpty()) null else FirebaseAuth.getInstance()
         bindViews()
+        updateUiController = UpdateUiController.bind(
+            activity = this,
+            root = findViewById(R.id.update_section),
+            showManualCheck = true,
+        )
         applyWindowInsets()
         bindActions()
         firebaseAuth?.addAuthStateListener(authStateListener)
@@ -116,18 +123,21 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
+        updateUiController.onStart()
         preferences.registerOnChangeListener(preferenceChangeListener)
         NotificationAccess.observeConnection(listenerConnectionObserver)
         reconcilePendingCandidates()
     }
 
     override fun onStop() {
+        updateUiController.onStop()
         NotificationAccess.observeConnection(null)
         preferences.unregisterOnChangeListener(preferenceChangeListener)
         super.onStop()
     }
 
     override fun onDestroy() {
+        updateUiController.onDestroy()
         firebaseAuth?.removeAuthStateListener(authStateListener)
         super.onDestroy()
     }

@@ -69,6 +69,27 @@ class UpdatePreferencesTest {
     }
 
     @Test
+    fun `clears cached metadata without changing the check clock`() {
+        val manifest = AndroidUpdateManifest(
+            1,
+            "canary",
+            3,
+            "0.2.1",
+            "https://github.com/axensz/Moneytrack/releases/download/release/app.apk",
+            "a".repeat(64),
+            10,
+            listOf("Nota"),
+        )
+        preferences.recordSuccessfulCheck(UpdateCheckResult.Available(manifest))
+        val checkTime = values["last_successful_check"]
+
+        preferences.clearAvailableManifest()
+
+        assertNull(preferences.cachedAvailableManifest())
+        assertEquals(checkTime, values["last_successful_check"])
+    }
+
+    @Test
     fun `stores only the download identity and version and clears them together`() {
         preferences.recordDownload(downloadId = 41L, versionCode = 3L)
 

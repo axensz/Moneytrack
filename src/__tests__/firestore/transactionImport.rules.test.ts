@@ -97,6 +97,20 @@ const validWalletCandidate = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const validShortcutCandidate = (overrides: Record<string, unknown> = {}) => ({
+  schemaVersion: 3,
+  source: 'android-shortcut',
+  occurredAt: new Date('2026-09-13T17:00:00.000Z'),
+  amountMinor: 259_900,
+  currency: 'COP',
+  merchant: 'Almuerzo',
+  suggestedAccountId: 'account-1',
+  suggestedCategory: 'Alimentación',
+  createdAt: serverTimestamp(),
+  status: 'pending',
+  ...overrides,
+});
+
 const seedAccount = async (
   accountId = 'account-1',
   overrides: Record<string, unknown> = {},
@@ -129,6 +143,27 @@ const seedCandidate = async (
         candidateId,
       ),
       validPendingCandidate(overrides),
+    );
+  });
+};
+
+const seedShortcutCandidate = async (
+  candidateId = CANDIDATE_ID,
+  overrides: Record<string, unknown> = {},
+) => {
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await setDoc(
+      doc(
+        context.firestore(),
+        'users',
+        OWNER_ID,
+        'transactionImportCandidates',
+        candidateId,
+      ),
+      validShortcutCandidate({
+        createdAt: new Date('2026-09-13T17:01:00.000Z'),
+        ...overrides,
+      }),
     );
   });
 };
@@ -312,6 +347,45 @@ describeWithFirestoreEmulator('Android transaction import rules contract', () =>
     await assertSucceeds(setDoc(candidateRef(), candidate));
   });
 
+  it('creates an exact shortcut v3 candidate and permits only an identical no-op', async () => {
+    await seedAccount();
+    await assertSucceeds(setDoc(candidateRef(), validShortcutCandidate()));
+
+    const persisted = (await getDoc(candidateRef())).data()!;
+    await assertSucceeds(setDoc(candidateRef(), persisted));
+    await assertFails(setDoc(candidateRef(), {
+      ...persisted,
+      merchant: 'Cena',
+    }));
+  });
+
+  it.each([
+    ['missing account', { suggestedAccountId: 'missing-account' }],
+    ['empty account', { suggestedAccountId: '' }],
+    ['overlong account', { suggestedAccountId: 'a'.repeat(1_501) }],
+    ['empty category', { suggestedCategory: '' }],
+    ['overlong category', { suggestedCategory: 'c'.repeat(101) }],
+    ['client creation timestamp', {
+      createdAt: new Date('2026-09-13T17:01:00.000Z'),
+    }],
+    ['notification parser field', { parserId: 'manual' }],
+    ['notification package field', { sourcePackage: 'com.example.bank' }],
+  ])('rejects a shortcut candidate with %s', async (_name, overrides) => {
+    await seedAccount();
+    await assertFails(setDoc(
+      candidateRef(),
+      validShortcutCandidate(overrides),
+    ));
+  });
+
+  it('rejects a foreign shortcut candidate create', async () => {
+    await seedAccount();
+    await assertFails(setDoc(
+      candidateRef(CANDIDATE_ID, intruderDb()),
+      validShortcutCandidate(),
+    ));
+  });
+
   it.each([
     ['legacy schema with Wallet parser', validPendingCandidate({
       parserId: 'google-wallet-purchase',
@@ -335,6 +409,15 @@ describeWithFirestoreEmulator('Android transaction import rules contract', () =>
       observedInstrumentLabel: 'Mama\u0301Debito',
     })],
     ['raw notification text', validWalletCandidate({ text: 'raw' })],
+    ['shortcut account field on v1', validPendingCandidate({
+      suggestedAccountId: 'account-1',
+    })],
+    ['shortcut category field on v2', validWalletCandidate({
+      suggestedCategory: 'Alimentación',
+    })],
+    ['shortcut creation time on v2', validWalletCandidate({
+      createdAt: serverTimestamp(),
+    })],
   ])('rejects an invalid v1 or v2 candidate contract: %s', async (_name, data) => {
     await assertFails(setDoc(candidateRef(), data));
   });
@@ -395,6 +478,19 @@ describeWithFirestoreEmulator('Android transaction import rules contract', () =>
     }));
   });
 
+  it('allows a shortcut candidate to become dismissed without changing its payload', async () => {
+    await seedAccount();
+    await assertSucceeds(setDoc(candidateRef(), validShortcutCandidate()));
+    await assertSucceeds(updateDoc(candidateRef(), {
+      status: 'dismissed',
+      dismissedAt: serverTimestamp(),
+    }));
+    await assertFails(updateDoc(candidateRef(), {
+      status: 'pending',
+      dismissedAt: null,
+    }));
+  });
+
   it('confirms only with the matching transaction and ledger lease release', async () => {
     await seedAccount();
     await seedCandidate();
@@ -404,6 +500,22 @@ describeWithFirestoreEmulator('Android transaction import rules contract', () =>
 
     const candidate = await getDoc(candidateRef());
     expect(candidate.data()).toEqual(expect.objectContaining({
+      status: 'confirmed',
+      transactionId: TRANSACTION_ID,
+    }));
+    expect((await getDoc(transactionRef())).exists()).toBe(true);
+  });
+
+  it('confirms a shortcut candidate only through the existing ledger lease', async () => {
+    await seedAccount();
+    await seedShortcutCandidate();
+    await assertSucceeds(acquireLedgerLease());
+
+    await assertSucceeds(stageCandidateConfirmation(true));
+
+    expect((await getDoc(candidateRef())).data()).toEqual(expect.objectContaining({
+      schemaVersion: 3,
+      source: 'android-shortcut',
       status: 'confirmed',
       transactionId: TRANSACTION_ID,
     }));

@@ -23,39 +23,62 @@ export interface PaymentInstrument {
 export type TransactionImportConfidence = 'high' | 'medium';
 export type TransactionImportStatus = 'pending' | 'confirmed' | 'dismissed';
 
-interface TransactionImportCandidateBase {
+interface TransactionImportCandidateCommon {
   id: string;
-  schemaVersion: 1 | 2;
-  source: 'android-notification';
-  sourcePackage: string;
   occurredAt: Date;
   amountMinor: number;
   currency: 'COP';
   merchant: string;
+}
+
+export interface AndroidNotificationCandidateBase
+  extends TransactionImportCandidateCommon {
+  schemaVersion: 1 | 2;
+  source: 'android-notification';
+  sourcePackage: string;
   cardLast4?: string;
   observedInstrumentLabel?: string;
   parserId: 'strict-cop-purchase' | 'google-wallet-purchase';
   parserVersion: 1;
   confidence: TransactionImportConfidence;
+  suggestedAccountId?: never;
+  suggestedCategory?: never;
+  createdAt?: never;
 }
 
-export interface PendingTransactionImportCandidate
-  extends TransactionImportCandidateBase {
+export interface AndroidShortcutCandidateBase
+  extends TransactionImportCandidateCommon {
+  schemaVersion: 3;
+  source: 'android-shortcut';
+  suggestedAccountId: string;
+  suggestedCategory: string;
+  createdAt: Date;
+  sourcePackage?: never;
+  cardLast4?: never;
+  observedInstrumentLabel?: never;
+  parserId?: never;
+  parserVersion?: never;
+  confidence?: never;
+}
+
+type TransactionImportCandidateBase =
+  | AndroidNotificationCandidateBase
+  | AndroidShortcutCandidateBase;
+
+export type PendingTransactionImportCandidate = TransactionImportCandidateBase & {
   status: 'pending';
-}
+};
 
-export interface ConfirmedTransactionImportCandidate
-  extends TransactionImportCandidateBase {
+export type ConfirmedTransactionImportCandidate = TransactionImportCandidateBase & {
   status: 'confirmed';
   transactionId: string;
   confirmedAt: Date;
-}
+};
 
-export interface DismissedTransactionImportCandidate
-  extends TransactionImportCandidateBase {
+export type DismissedTransactionImportCandidate = TransactionImportCandidateBase & {
   status: 'dismissed';
   dismissedAt: Date;
-}
+};
 
 export type TransactionImportCandidate =
   | PendingTransactionImportCandidate

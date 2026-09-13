@@ -11,6 +11,11 @@ import type {
   PaymentInstrument,
 } from '../../types/transactionImport';
 
+type PendingNotificationCandidate = Extract<
+  PendingTransactionImportCandidate,
+  { source: 'android-notification' }
+>;
+
 const H = vi.hoisted(() => ({
   candidates: [] as PendingTransactionImportCandidate[],
   loading: false,
@@ -75,7 +80,7 @@ const categories: Categories = {
 const candidate = (
   id: string,
   merchant: string,
-): PendingTransactionImportCandidate => ({
+): PendingNotificationCandidate => ({
   id,
   schemaVersion: 1,
   source: 'android-notification',

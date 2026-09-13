@@ -64,6 +64,20 @@ const validWalletCandidate = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const validShortcutCandidate = (overrides: Record<string, unknown> = {}) => ({
+  schemaVersion: 3,
+  source: 'android-shortcut',
+  occurredAt: timestamp('2026-09-13T17:00:00.000Z'),
+  amountMinor: 259_900,
+  currency: 'COP',
+  merchant: 'Almuerzo',
+  suggestedAccountId: 'cash-1',
+  suggestedCategory: 'Comida',
+  createdAt: timestamp('2026-09-13T17:01:00.000Z'),
+  status: 'pending',
+  ...overrides,
+});
+
 const pendingCandidateId = 'a'.repeat(64);
 const mediumCandidateId = 'b'.repeat(64);
 const confirmedCandidateId = 'c'.repeat(64);
@@ -245,6 +259,101 @@ describe('transactionImportDecoder', () => {
       });
     });
 
+    it('decodes an Android shortcut v3 candidate without parser fields', () => {
+      const result = decodeTransactionImportCandidate(
+        document(mediumCandidateId, validShortcutCandidate()),
+      );
+
+      expect(result).toEqual({
+        ok: true,
+        candidate: {
+          id: mediumCandidateId,
+          schemaVersion: 3,
+          source: 'android-shortcut',
+          occurredAt: new Date('2026-09-13T17:00:00.000Z'),
+          amountMinor: 259_900,
+          currency: 'COP',
+          merchant: 'Almuerzo',
+          suggestedAccountId: 'cash-1',
+          suggestedCategory: 'Comida',
+          createdAt: new Date('2026-09-13T17:01:00.000Z'),
+          status: 'pending',
+        },
+      });
+    });
+
+    it.each([
+      ['sourcePackage', { sourcePackage: 'com.example.bank' }],
+      ['cardLast4', { cardLast4: '1234' }],
+      ['observedInstrumentLabel', { observedInstrumentLabel: 'Oro' }],
+      ['parserId', { parserId: 'strict-cop-purchase' }],
+      ['parserVersion', { parserVersion: 1 }],
+      ['confidence', { confidence: 'high' }],
+    ] as const)('rejects notification field %s on a shortcut candidate', (field, extra) => {
+      expect(decodeTransactionImportCandidate(document(
+        mediumCandidateId,
+        validShortcutCandidate(extra),
+      ))).toEqual({
+        ok: false,
+        issue: expect.objectContaining({
+          code: 'unknown-field',
+          field,
+        }),
+      });
+    });
+
+    it.each([
+      ['suggestedAccountId', { suggestedAccountId: 'cash-1' }],
+      ['suggestedCategory', { suggestedCategory: 'Comida' }],
+      ['createdAt', { createdAt: timestamp('2026-09-13T17:01:00.000Z') }],
+    ] as const)('rejects shortcut field %s on a notification candidate', (field, extra) => {
+      expect(decodeTransactionImportCandidate(document(
+        pendingCandidateId,
+        validPendingCandidate(extra),
+      ))).toEqual({
+        ok: false,
+        issue: expect.objectContaining({
+          code: 'unknown-field',
+          field,
+        }),
+      });
+    });
+
+    it.each([
+      ['createdAt', { createdAt: undefined }],
+      ['suggestedAccountId', { suggestedAccountId: '' }],
+      ['suggestedAccountId', { suggestedAccountId: 'a'.repeat(1_501) }],
+      ['suggestedCategory', { suggestedCategory: '' }],
+      ['suggestedCategory', { suggestedCategory: 'c'.repeat(101) }],
+    ] as const)('rejects invalid shortcut field %s', (field, overrides) => {
+      expect(decodeTransactionImportCandidate(document(
+        mediumCandidateId,
+        validShortcutCandidate(overrides),
+      ))).toEqual({
+        ok: false,
+        issue: expect.objectContaining({ field }),
+      });
+    });
+
+    it.each([
+      ['shortcut schema with notification source', {
+        schemaVersion: 3,
+        source: 'android-notification',
+      }],
+      ['notification schema with shortcut source', {
+        schemaVersion: 2,
+        source: 'android-shortcut',
+      }],
+    ] as const)('rejects %s', (_name, overrides) => {
+      expect(decodeTransactionImportCandidate(document(
+        mediumCandidateId,
+        validShortcutCandidate(overrides),
+      ))).toEqual({
+        ok: false,
+        issue: expect.objectContaining({ field: 'source' }),
+      });
+    });
+
     it('rejects mixed candidate schema and parser contracts', () => {
       for (const [id, data] of [
         ['1'.repeat(64), validPendingCandidate({ parserId: 'google-wallet-purchase' })],
@@ -306,7 +415,7 @@ describe('transactionImportDecoder', () => {
     });
 
     it.each([
-      ['schemaVersion', { schemaVersion: 3 }],
+      ['schemaVersion', { schemaVersion: 4 }],
       ['source', { source: 'manual' }],
       ['sourcePackage', { sourcePackage: '' }],
       ['sourcePackage', { sourcePackage: 'p'.repeat(161) }],

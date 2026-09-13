@@ -251,7 +251,7 @@ Section 13 implements the approved source-specific parser from two sanitized rea
 Section 14 adds a manual native entry point while preserving `Account` as financial authority and `confirmTransactionImport` as the only path from candidate to ledger.
 
 - [x] 14.1 Add `Borrador de gasto rápido` to the domain language and amend proposal, design, delta specs and tasks with the approved v3 contract, online handoff and exact-candidate review; validate OpenSpec strictly before production edits.
-- [ ] 14.2 Add failing web decoder/orchestration tests for the exact v3 `android-shortcut` shape, cross-variant fields and server-current identity; implement the discriminated candidate union and retain v1/v2 behavior.
+- [x] 14.2 Add failing web decoder/orchestration tests for the exact v3 `android-shortcut` shape, cross-variant fields and server-current identity; implement the discriminated candidate union and retain v1/v2 behavior.
 - [ ] 14.3 Add failing Firestore-emulator tests for owner-only v3 creation, exact keys, current account/category, server timestamp, immutable payload and terminal transitions; implement fail-closed rules without weakening v1/v2.
 - [ ] 14.4 Add failing hook/view tests for opaque `reviewAndroid`, exact document loading beyond the 100-item inbox, invalid/missing/terminal handling and URL cleanup; implement the smallest exact-candidate handoff.
 - [ ] 14.5 Add failing inbox/modal tests for `Revisar gasto rápido`, valid account/category prefill, stale-option fallback and absence of payment-instrument controls; implement the additive responsive review UI.

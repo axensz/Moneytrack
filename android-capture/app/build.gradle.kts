@@ -62,4 +62,5 @@ dependencies {
     implementation(libs.googleid)
 
     testImplementation(libs.junit)
+    testImplementation("org.json:json:20250517")
 }

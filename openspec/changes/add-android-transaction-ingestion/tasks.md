@@ -264,7 +264,7 @@ Section 14 adds a manual native entry point while preserving `Account` as financ
 Section 15 adds a private update channel to the existing Android companion. The bootstrap remains explicit, every later APK fails closed on origin, integrity, package and signer, and Android retains final installation authority.
 
 - [x] 15.1 Amend proposal and design, add the `android-private-update` delta and record bootstrap, manifest, verification, UI, signing and release-order requirements; validate OpenSpec strictly before production edits.
-- [ ] 15.2 Add a non-promotional initial `public/android/update.json`, failing JVM tests for exact manifest decoding and version decisions, and the smallest strict model/decoder; rerun green.
+- [x] 15.2 Add a non-promotional initial `public/android/update.json`, failing JVM tests for exact manifest decoding and version decisions, and the smallest strict model/decoder; rerun green.
 - [ ] 15.3 Add failing checker, transport and throttle tests for fixed HTTPS origin, no redirects, timeouts, 32 KiB limit, 24-hour automatic cadence and manual bypass; implement the background query without blocking either Activity.
 - [ ] 15.4 Add failing integrity, signer and installation-contract tests; implement scoped download, exact size/SHA-256 verification, package/signer continuity, `FileProvider` and official Package Installer handoff.
 - [ ] 15.5 Add failing shared-state and resource tests for hidden, available, downloading, ready, permission and error states; integrate a secondary accessible updater in `MainActivity` and `QuickExpenseActivity` without disabling their primary actions.

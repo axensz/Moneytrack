@@ -97,6 +97,32 @@ class UpdateUiStateTest {
     }
 
     @Test
+    fun `stale controller adopts the cached manifest that owns the pending download`() {
+        val cached = manifest.copy(versionCode = 4, versionName = "0.2.2")
+        val pending = PendingUpdateDownload(downloadId = 42, versionCode = 4)
+
+        assertEquals(
+            cached,
+            manifestForPendingDownload(
+                pending = pending,
+                local = manifest,
+                cached = cached,
+            ),
+        )
+        assertNull(
+            manifestForPendingDownload(
+                pending = pending,
+                local = manifest,
+                cached = null,
+            ),
+        )
+        assertEquals(
+            manifest,
+            resumeManifestAfterOrphanDownload(local = manifest, cached = null),
+        )
+    }
+
+    @Test
     fun `a changed or current manifest discards the previous cached update`() {
         val newer = manifest.copy(versionCode = 4, versionName = "0.2.2")
 
@@ -110,15 +136,67 @@ class UpdateUiStateTest {
     @Test
     fun `operation guard rejects overlap and stale completion`() {
         val guard = UpdateOperationGuard()
-        val first = requireNotNull(guard.begin())
+        val firstOwner = Any()
+        val secondOwner = Any()
+        val first = requireNotNull(guard.begin(firstOwner))
 
         assertTrue(guard.busy)
-        assertNull(guard.begin())
-        guard.invalidate()
-        assertFalse(guard.finish(first))
+        assertNull(guard.begin(secondOwner))
+        guard.invalidate(secondOwner)
+        assertTrue(guard.busy)
+        assertTrue(guard.isCurrent(firstOwner, first))
+        guard.invalidate(firstOwner)
+        assertFalse(guard.finish(firstOwner, first))
 
-        val second = requireNotNull(guard.begin())
-        assertTrue(guard.finish(second))
+        val second = requireNotNull(guard.begin(secondOwner))
+        assertTrue(guard.finish(secondOwner, second))
         assertFalse(guard.busy)
+    }
+
+    @Test
+    fun `download completion received during a refresh is consumed afterwards`() {
+        val guard = UpdateOperationGuard()
+        val owner = Any()
+        val completion = DownloadCompletionTracker()
+        val pending = PendingUpdateDownload(downloadId = 41, versionCode = 3)
+        val operation = requireNotNull(guard.begin(owner))
+
+        completion.record(pending.downloadId)
+        assertTrue(guard.finish(owner, operation))
+
+        assertTrue(completion.consume(pending))
+        assertFalse(completion.consume(pending))
+    }
+
+    @Test
+    fun `waiting controller resumes when the process operation becomes available`() {
+        val guard = UpdateOperationGuard()
+        val firstOwner = Any()
+        val waitingOwner = Any()
+        val operation = requireNotNull(guard.begin(firstOwner))
+        var resumed = false
+
+        guard.runWhenAvailable(waitingOwner) { resumed = true }
+        assertFalse(resumed)
+
+        assertTrue(guard.finish(firstOwner, operation))
+        assertTrue(resumed)
+    }
+
+    @Test
+    fun `rejection cleanup keeps immediate retry and another controller serialized`() {
+        val guard = UpdateOperationGuard()
+        val rejectingOwner = Any()
+        val retryingOwner = Any()
+        val cleanup = requireNotNull(guard.begin(rejectingOwner))
+        var discarded = false
+
+        assertNull(guard.begin(retryingOwner))
+        assertTrue(guard.runIfCurrent(rejectingOwner, cleanup) { discarded = true })
+        assertTrue(discarded)
+        assertTrue(guard.busy)
+
+        assertTrue(guard.finish(rejectingOwner, cleanup))
+        assertTrue(guard.begin(retryingOwner) != null)
     }
 }

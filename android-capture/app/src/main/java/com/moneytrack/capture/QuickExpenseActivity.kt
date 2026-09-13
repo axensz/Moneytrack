@@ -27,7 +27,6 @@ import androidx.core.view.updatePadding
 import androidx.core.widget.doAfterTextChanged
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
-import com.moneytrack.capture.auth.AuthenticationResult
 import com.moneytrack.capture.auth.GoogleSignInController
 import com.moneytrack.capture.preferences.AppThemeMode
 import com.moneytrack.capture.preferences.CapturePreferences
@@ -87,6 +86,72 @@ internal fun shouldRestoreQuickExpenseSaveError(
         (state == QuickExpenseScreenState.ERROR && wasSaveError)
     )
 
+internal enum class QuickExpenseCollisionRecovery {
+    OPEN_EXACT_CANDIDATE,
+    ROTATE_FRESH_ID,
+}
+
+internal fun quickExpenseCollisionRecovery(
+    candidateExistedBeforeAttempt: Boolean,
+    restoredVerification: Boolean,
+): QuickExpenseCollisionRecovery = if (candidateExistedBeforeAttempt || restoredVerification) {
+    QuickExpenseCollisionRecovery.OPEN_EXACT_CANDIDATE
+} else {
+    QuickExpenseCollisionRecovery.ROTATE_FRESH_ID
+}
+
+internal fun quickExpenseStateForLoadedSession(
+    current: QuickExpenseScreenState,
+): QuickExpenseScreenState = when (current) {
+    QuickExpenseScreenState.SAVING,
+    QuickExpenseScreenState.STORED,
+    QuickExpenseScreenState.ERROR,
+    -> current
+    QuickExpenseScreenState.SIGNED_OUT,
+    QuickExpenseScreenState.LOADING_OPTIONS,
+    QuickExpenseScreenState.EDITING,
+    -> QuickExpenseScreenState.EDITING
+}
+
+internal fun shouldPreserveQuickExpenseState(
+    state: QuickExpenseScreenState,
+    continuingOwner: Boolean,
+): Boolean = continuingOwner && state in setOf(
+    QuickExpenseScreenState.SAVING,
+    QuickExpenseScreenState.STORED,
+    QuickExpenseScreenState.ERROR,
+)
+
+internal fun isCurrentQuickExpenseSaveAttempt(
+    authenticatedUid: String?,
+    stateOwnerUid: String?,
+    expectedUid: String,
+    currentGeneration: Long,
+    expectedGeneration: Long,
+    currentCandidateId: String?,
+    expectedCandidateId: String,
+): Boolean = authenticatedUid == expectedUid &&
+    stateOwnerUid == expectedUid &&
+    currentGeneration == expectedGeneration &&
+    currentCandidateId == expectedCandidateId
+
+internal enum class QuickExpenseSignInResolution {
+    IGNORE,
+    RESOLVE_SESSION,
+    SHOW_FAILURE,
+}
+
+internal fun quickExpenseSignInResolution(
+    callbackAttempt: Long,
+    currentAttempt: Long,
+    activityAlive: Boolean,
+    hasAuthenticatedUser: Boolean,
+): QuickExpenseSignInResolution = when {
+    !activityAlive || callbackAttempt != currentAttempt -> QuickExpenseSignInResolution.IGNORE
+    hasAuthenticatedUser -> QuickExpenseSignInResolution.RESOLVE_SESSION
+    else -> QuickExpenseSignInResolution.SHOW_FAILURE
+}
+
 private enum class QuickExpenseErrorKind {
     LOAD,
     SAVE,
@@ -124,6 +189,7 @@ class QuickExpenseActivity : AppCompatActivity() {
     private var candidateId: String? = null
     private var stateOwnerUid: String? = null
     private var sessionGeneration = 0L
+    private var signInAttempt = 0L
     private var loadingUid: String? = null
     private var loadedUid: String? = null
     private var preferredAccountId: String? = null
@@ -178,6 +244,7 @@ class QuickExpenseActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        signInAttempt += 1
         updateUiController.onDestroy()
         super.onDestroy()
     }
@@ -297,6 +364,7 @@ class QuickExpenseActivity : AppCompatActivity() {
             render()
             return
         }
+        val continuingOwner = stateOwnerUid == user.uid
         if (stateOwnerUid == null) {
             stateOwnerUid = user.uid
         } else if (stateOwnerUid != user.uid) {
@@ -318,9 +386,14 @@ class QuickExpenseActivity : AppCompatActivity() {
             return
         }
 
+        if (shouldPreserveQuickExpenseState(screenState, continuingOwner)) {
+            render()
+            return
+        }
+
         if (loadingUid == user.uid) return
         if (loadedUid == user.uid) {
-            screenState = QuickExpenseScreenState.EDITING
+            screenState = quickExpenseStateForLoadedSession(screenState)
             render()
             return
         }
@@ -464,14 +537,26 @@ class QuickExpenseActivity : AppCompatActivity() {
 
     private fun beginSignIn() {
         primaryAction.isEnabled = false
-        signInController.signIn { result ->
-            if (result == AuthenticationResult.SIGNED_IN) {
-                feedbackOverride = null
-                resolveSession()
-            } else {
-                screenState = QuickExpenseScreenState.SIGNED_OUT
-                feedbackOverride = getString(R.string.auth_failed_actionable)
-                render()
+        val attempt = ++signInAttempt
+        signInController.signIn {
+            runOnUiThread {
+                when (quickExpenseSignInResolution(
+                    callbackAttempt = attempt,
+                    currentAttempt = signInAttempt,
+                    activityAlive = !isFinishing && !isDestroyed,
+                    hasAuthenticatedUser = firebaseAuth?.currentUser != null,
+                )) {
+                    QuickExpenseSignInResolution.IGNORE -> Unit
+                    QuickExpenseSignInResolution.RESOLVE_SESSION -> {
+                        feedbackOverride = null
+                        resolveSession()
+                    }
+                    QuickExpenseSignInResolution.SHOW_FAILURE -> {
+                        screenState = QuickExpenseScreenState.SIGNED_OUT
+                        feedbackOverride = getString(R.string.auth_failed_actionable)
+                        render()
+                    }
+                }
             }
         }
     }
@@ -497,6 +582,7 @@ class QuickExpenseActivity : AppCompatActivity() {
             showFieldError(issue.field, issue.message)
             return
         }
+        val candidateExistedBeforeAttempt = candidateId != null
         val id = candidateId ?: candidateIdGenerator.generate().also { candidateId = it }
         val draft = buildQuickExpenseDraft(input, id)
         screenState = QuickExpenseScreenState.SAVING
@@ -506,15 +592,16 @@ class QuickExpenseActivity : AppCompatActivity() {
         QuickExpenseDraftRepository(user.uid).save(draft) { result ->
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
-                if (
-                    firebaseAuth?.currentUser?.uid != user.uid ||
-                    stateOwnerUid != user.uid ||
-                    generation != sessionGeneration ||
-                    candidateId != draft.candidateId
-                ) {
-                    resolveSession()
-                    return@runOnUiThread
-                }
+                if (!isCurrentQuickExpenseSaveAttempt(
+                        authenticatedUid = firebaseAuth?.currentUser?.uid,
+                        stateOwnerUid = stateOwnerUid,
+                        expectedUid = user.uid,
+                        currentGeneration = sessionGeneration,
+                        expectedGeneration = generation,
+                        currentCandidateId = candidateId,
+                        expectedCandidateId = draft.candidateId,
+                    )
+                ) return@runOnUiThread
                 when (result) {
                     QuickExpenseWriteResult.STORED -> {
                         screenState = QuickExpenseScreenState.STORED
@@ -523,7 +610,12 @@ class QuickExpenseActivity : AppCompatActivity() {
                     }
                     QuickExpenseWriteResult.COLLISION -> {
                         screenState = QuickExpenseScreenState.ERROR
-                        if (restoredVerification) {
+                        if (
+                            quickExpenseCollisionRecovery(
+                                candidateExistedBeforeAttempt,
+                                restoredVerification,
+                            ) == QuickExpenseCollisionRecovery.OPEN_EXACT_CANDIDATE
+                        ) {
                             errorKind = QuickExpenseErrorKind.OPEN
                             feedbackOverride = getString(R.string.quick_expense_restored_unavailable)
                         } else {
@@ -605,6 +697,9 @@ class QuickExpenseActivity : AppCompatActivity() {
 
     private fun clearSensitiveState() {
         sessionGeneration += 1
+        signInAttempt += 1
+        screenState = QuickExpenseScreenState.LOADING_OPTIONS
+        errorKind = QuickExpenseErrorKind.LOAD
         stateOwnerUid = null
         loadingUid = null
         loadedUid = null

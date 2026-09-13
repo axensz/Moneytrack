@@ -27,8 +27,13 @@ class ApkDownloadManager(
     private val appContext = context.applicationContext
     private val downloadManager = appContext.getSystemService(DownloadManager::class.java)
 
-    fun enqueue(manifest: AndroidUpdateManifest): DownloadState = synchronized(DOWNLOAD_COORDINATION_LOCK) {
-        if (!canEnqueueUpdateDownload(preferences.pendingDownload())) {
+    @Suppress("DEPRECATION")
+    fun enqueue(
+        manifest: AndroidUpdateManifest,
+        pendingToReplace: PendingUpdateDownload? = null,
+    ): DownloadState = synchronized(DOWNLOAD_COORDINATION_LOCK) {
+        val currentPending = preferences.pendingDownload()
+        if (!canMutatePendingDownload(currentPending, pendingToReplace, manifest.versionCode)) {
             return@synchronized DownloadState.Failed
         }
         val fileName = updateApkFileName(manifest.versionName) ?: return@synchronized DownloadState.Failed
@@ -36,11 +41,16 @@ class ApkDownloadManager(
         val destination = managedUpdateFile(appContext, fileName) ?: return@synchronized DownloadState.Failed
 
         try {
+            pendingToReplace?.let { pending ->
+                if (!removePendingDownload(pending)) return@synchronized DownloadState.Failed
+            }
             if (destination.exists() && !destination.delete()) return@synchronized DownloadState.Failed
+            if (pendingToReplace != null) preferences.clearDownload()
             val request = DownloadManager.Request(manifest.apkUrl.toUri())
                 .setAllowedOverRoaming(false)
                 .setMimeType(APK_MIME_TYPE)
-                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
+                .setVisibleInDownloadsUi(false)
                 .setTitle("MoneyTrack ${manifest.versionName}")
                 .setDestinationInExternalFilesDir(appContext, UPDATE_DIRECTORY, fileName)
             val downloadId = downloadManager.enqueue(request)
@@ -101,31 +111,57 @@ class ApkDownloadManager(
         appContext.unregisterReceiver(receiver)
     }
 
-    fun discard(manifest: AndroidUpdateManifest) = synchronized(DOWNLOAD_COORDINATION_LOCK) {
-        val pending = preferences.pendingDownload()
-        if (pendingDownloadMatchesVersion(pending, manifest.versionCode)) {
-            runCatching { downloadManager.remove(requireNotNull(pending).downloadId) }
-            preferences.clearDownload()
+    fun discard(
+        manifest: AndroidUpdateManifest,
+        expectedPending: PendingUpdateDownload?,
+    ): Boolean = synchronized(DOWNLOAD_COORDINATION_LOCK) {
+        val currentPending = preferences.pendingDownload()
+        if (!canMutatePendingDownload(currentPending, expectedPending, manifest.versionCode)) {
+            return@synchronized false
         }
-        deleteManagedUpdateFile(manifest)
+        if (expectedPending != null) {
+            if (!removePendingDownload(expectedPending)) return@synchronized false
+        }
+        if (!deleteManagedUpdateFile(manifest)) return@synchronized false
+        if (expectedPending != null) preferences.clearDownload()
+        true
     }
 
-    fun discardPending(expected: PendingUpdateDownload) = synchronized(DOWNLOAD_COORDINATION_LOCK) {
-        if (preferences.pendingDownload() != expected) return@synchronized
-        runCatching { downloadManager.remove(expected.downloadId) }
-        managedUpdateDirectory(appContext)
+    fun discardPending(expected: PendingUpdateDownload): Boolean = synchronized(DOWNLOAD_COORDINATION_LOCK) {
+        if (preferences.pendingDownload() != expected) return@synchronized false
+        if (!removePendingDownload(expected)) return@synchronized false
+        val deleted = managedUpdateDirectory(appContext)
             ?.listFiles()
             .orEmpty()
             .filter(::isDirectManagedApk)
-            .forEach { file -> runCatching { file.delete() } }
+            .all { file -> runCatching { file.delete() }.getOrDefault(false) }
+        if (!deleted) return@synchronized false
         preferences.clearDownload()
+        true
     }
 
-    private fun deleteManagedUpdateFile(manifest: AndroidUpdateManifest) {
-        updateApkFileName(manifest.versionName)
-            ?.let { managedUpdateFile(appContext, it) }
-            ?.takeIf(File::isFile)
-            ?.delete()
+    private fun deleteManagedUpdateFile(manifest: AndroidUpdateManifest): Boolean {
+        val fileName = updateApkFileName(manifest.versionName) ?: return false
+        val file = managedUpdateFile(appContext, fileName) ?: return false
+        return !file.exists() || (file.isFile && file.delete())
+    }
+
+    private fun removePendingDownload(pending: PendingUpdateDownload): Boolean {
+        val removedCount = try {
+            downloadManager.remove(pending.downloadId)
+        } catch (_: Exception) {
+            return false
+        }
+        if (removedCount > 0) return true
+
+        val stillExists = try {
+            downloadManager.query(DownloadManager.Query().setFilterById(pending.downloadId)).use {
+                it.moveToFirst()
+            }
+        } catch (_: Exception) {
+            return false
+        }
+        return canClearPendingAfterRemoval(removedCount, stillExists)
     }
 
     private companion object {
@@ -139,6 +175,17 @@ internal fun pendingDownloadMatchesVersion(
 ): Boolean = pending?.versionCode == versionCode
 
 internal fun canEnqueueUpdateDownload(pending: PendingUpdateDownload?): Boolean = pending == null
+
+internal fun canMutatePendingDownload(
+    current: PendingUpdateDownload?,
+    expected: PendingUpdateDownload?,
+    versionCode: Long,
+): Boolean = current == expected && (expected == null || expected.versionCode == versionCode)
+
+internal fun canClearPendingAfterRemoval(
+    removedCount: Int,
+    stillExists: Boolean,
+): Boolean = removedCount > 0 || !stillExists
 
 internal const val UPDATE_DIRECTORY = "android-updates"
 

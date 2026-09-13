@@ -28,6 +28,11 @@ interface TransactionImportInboxProps {
   isOnline: boolean;
 }
 
+interface OwnedReviewCandidate {
+  ownerUserId: string;
+  candidate: PendingTransactionImportCandidate;
+}
+
 export function TransactionImportInbox({
   userId,
   accounts,
@@ -44,6 +49,7 @@ export function TransactionImportInbox({
     candidates,
     requestedCandidate,
     requestedStatus,
+    requestedRequest,
     loading,
     error,
     reachedLimit,
@@ -51,13 +57,15 @@ export function TransactionImportInbox({
   } = useTransactionImportCandidates(userId, requestedCandidateId);
   const { instruments } = usePaymentInstruments(userId);
   const [expanded, setExpanded] = useState(false);
-  const [reviewCandidate, setReviewCandidate] = useState<
-    PendingTransactionImportCandidate | null
-  >(null);
+  const [reviewSelection, setReviewSelection] = useState<OwnedReviewCandidate | null>(null);
   const [dismissingId, setDismissingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
-  const handledReviewRequestRef = useRef<string | null>(null);
+  const handledReviewStateRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    setReviewSelection(current => current?.ownerUserId === userId ? current : null);
+  }, [userId]);
 
   useEffect(() => {
     setReviewRequest(readAndroidReviewRequest(window.location.search));
@@ -66,9 +74,8 @@ export function TransactionImportInbox({
   useEffect(() => {
     if (reviewRequest.kind === 'none') return;
     const requestKey = reviewRequest.kind === 'valid'
-      ? reviewRequest.candidateId
+      ? `${userId ?? 'guest'}:${reviewRequest.candidateId}`
       : 'invalid';
-    if (handledReviewRequestRef.current === requestKey) return;
 
     const clearRequestFromUrl = () => {
       window.history.replaceState(
@@ -79,36 +86,53 @@ export function TransactionImportInbox({
     };
 
     if (reviewRequest.kind === 'invalid') {
-      handledReviewRequestRef.current = requestKey;
+      if (handledReviewStateRef.current === requestKey) return;
+      handledReviewStateRef.current = requestKey;
+      setReviewSelection(null);
       setActionError('El enlace del gasto rápido no es válido. Abre MoneyTrack e inténtalo de nuevo.');
       setExpanded(true);
       clearRequestFromUrl();
       return;
     }
+    const requestMatches = requestedRequest?.userId === userId &&
+      requestedRequest.candidateId === reviewRequest.candidateId;
+    if (!requestMatches) {
+      setReviewSelection(current => (
+        current?.ownerUserId === userId && current.candidate.id === reviewRequest.candidateId
+          ? current
+          : null
+      ));
+      return;
+    }
     if (requestedStatus === 'idle' || requestedStatus === 'loading') return;
-    handledReviewRequestRef.current = requestKey;
+    const reviewStateKey = `${requestKey}:${requestedStatus}:${requestedCandidate?.id ?? 'none'}`;
+    if (handledReviewStateRef.current === reviewStateKey) return;
+    handledReviewStateRef.current = reviewStateKey;
 
     if (requestedStatus === 'ready' && requestedCandidate) {
       setActionError(null);
       setExpanded(true);
-      setReviewCandidate(requestedCandidate);
+      setReviewSelection({ ownerUserId: requestedRequest.userId, candidate: requestedCandidate });
     } else if (requestedStatus === 'missing') {
       setActionError('El borrador ya no existe o no está disponible en esta sesión.');
       setExpanded(true);
-      setReviewCandidate(null);
+      setReviewSelection(null);
     } else if (requestedStatus === 'terminal') {
       setActionError('Este borrador ya fue confirmado o descartado.');
       setExpanded(true);
-      setReviewCandidate(null);
+      setReviewSelection(null);
     } else if (requestedStatus === 'error') {
       setActionError('No se pudo abrir el borrador de gasto rápido. Inténtalo de nuevo.');
       setExpanded(true);
-      setReviewCandidate(null);
+      setReviewSelection(null);
     }
     clearRequestFromUrl();
-  }, [requestedCandidate, requestedStatus, reviewRequest]);
+  }, [requestedCandidate, requestedRequest, requestedStatus, reviewRequest, userId]);
 
   if (!userId) return null;
+  const reviewCandidate = reviewSelection?.ownerUserId === userId
+    ? reviewSelection.candidate
+    : null;
   if (candidates.length === 0) {
     if (requestedStatus === 'loading') {
       return (
@@ -237,7 +261,7 @@ export function TransactionImportInbox({
                       <button
                         type="button"
                         className="btn-secondary min-h-[44px]"
-                        onClick={() => setReviewCandidate(candidate)}
+                        onClick={() => setReviewSelection({ ownerUserId: userId, candidate })}
                       >
                         <Eye size={17} aria-hidden="true" />
                         Revisar
@@ -270,7 +294,7 @@ export function TransactionImportInbox({
           expenseCategories={categories.expense}
           instruments={instruments}
           isOnline={isOnline}
-          onClose={() => setReviewCandidate(null)}
+          onClose={() => setReviewSelection(null)}
           onConfirmed={() => toggleRef.current?.focus()}
         />
       )}

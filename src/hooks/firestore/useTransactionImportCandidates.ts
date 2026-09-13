@@ -24,10 +24,16 @@ export type RequestedTransactionImportCandidateStatus =
   | 'terminal'
   | 'error';
 
+export interface ResolvedTransactionImportCandidateRequest {
+  userId: string;
+  candidateId: string;
+}
+
 export interface UseTransactionImportCandidatesReturn {
   candidates: PendingTransactionImportCandidate[];
   requestedCandidate: PendingTransactionImportCandidate | null;
   requestedStatus: RequestedTransactionImportCandidateStatus;
+  requestedRequest: ResolvedTransactionImportCandidateRequest | null;
   loading: boolean;
   error: Error | null;
   reachedLimit: boolean;
@@ -41,6 +47,7 @@ export function useTransactionImportCandidates(
   const [listedCandidates, setListedCandidates] = useState<
     PendingTransactionImportCandidate[]
   >([]);
+  const [listedOwnerUserId, setListedOwnerUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(userId));
   const [listError, setListError] = useState<Error | null>(null);
   const [reachedLimit, setReachedLimit] = useState(false);
@@ -50,11 +57,15 @@ export function useTransactionImportCandidates(
   const [requestedStatus, setRequestedStatus] = useState<
     RequestedTransactionImportCandidateStatus
   >('idle');
+  const [requestedRequest, setRequestedRequest] = useState<
+    ResolvedTransactionImportCandidateRequest | null
+  >(null);
   const [requestedError, setRequestedError] = useState<Error | null>(null);
 
   useEffect(() => {
     let active = true;
     setListedCandidates([]);
+    setListedOwnerUserId(null);
     setListError(null);
     setReachedLimit(false);
 
@@ -88,6 +99,7 @@ export function useTransactionImportCandidates(
             ? [result.candidate]
             : []
         )));
+        setListedOwnerUserId(userId);
         setListError(
           issue
             ? new Error(
@@ -103,6 +115,7 @@ export function useTransactionImportCandidates(
       subscriptionError => {
         if (!active) return;
         setListedCandidates([]);
+        setListedOwnerUserId(userId);
         setListError(
           subscriptionError instanceof Error
             ? subscriptionError
@@ -123,6 +136,7 @@ export function useTransactionImportCandidates(
     let active = true;
     setRequestedCandidate(null);
     setRequestedError(null);
+    setRequestedRequest(null);
 
     if (!userId || !requestedCandidateId) {
       setRequestedStatus('idle');
@@ -140,8 +154,11 @@ export function useTransactionImportCandidates(
         'transactionImportCandidates',
         requestedCandidateId,
       ),
+      { includeMetadataChanges: true },
       snapshot => {
         if (!active) return;
+        if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return;
+        setRequestedRequest({ userId, candidateId: requestedCandidateId });
         setRequestedError(null);
         if (!snapshot.exists()) {
           setRequestedCandidate(null);
@@ -175,6 +192,7 @@ export function useTransactionImportCandidates(
       },
       subscriptionError => {
         if (!active) return;
+        setRequestedRequest({ userId, candidateId: requestedCandidateId });
         setRequestedCandidate(null);
         setRequestedError(
           subscriptionError instanceof Error
@@ -191,15 +209,24 @@ export function useTransactionImportCandidates(
     };
   }, [requestedCandidateId, userId]);
 
+  const visibleListedCandidates = useMemo(
+    () => listedOwnerUserId === userId ? listedCandidates : [],
+    [listedCandidates, listedOwnerUserId, userId],
+  );
+  const requestedRequestMatches = requestedRequest?.userId === userId &&
+    requestedRequest.candidateId === requestedCandidateId;
+  const visibleRequestedCandidate = requestedRequestMatches
+    ? requestedCandidate
+    : null;
   const candidates = useMemo(() => {
     if (
-      !requestedCandidate
-      || listedCandidates.some(candidate => candidate.id === requestedCandidate.id)
+      !visibleRequestedCandidate
+      || visibleListedCandidates.some(candidate => candidate.id === visibleRequestedCandidate.id)
     ) {
-      return listedCandidates;
+      return visibleListedCandidates;
     }
-    return [requestedCandidate, ...listedCandidates];
-  }, [listedCandidates, requestedCandidate]);
+    return [visibleRequestedCandidate, ...visibleListedCandidates];
+  }, [visibleListedCandidates, visibleRequestedCandidate]);
 
   const dismissCandidate = useCallback(
     async (candidateId: string) => {
@@ -217,11 +244,17 @@ export function useTransactionImportCandidates(
 
   return {
     candidates,
-    requestedCandidate,
-    requestedStatus,
-    loading,
-    error: requestedError ?? listError,
-    reachedLimit,
+    requestedCandidate: visibleRequestedCandidate,
+    requestedStatus: !userId || !requestedCandidateId
+      ? 'idle'
+      : requestedRequestMatches
+        ? requestedStatus
+        : 'loading',
+    requestedRequest: requestedRequestMatches ? requestedRequest : null,
+    loading: Boolean(userId) && (listedOwnerUserId !== userId || loading),
+    error: (requestedRequestMatches ? requestedError : null) ??
+      (listedOwnerUserId === userId ? listError : null),
+    reachedLimit: listedOwnerUserId === userId && reachedLimit,
     dismissCandidate,
   };
 }

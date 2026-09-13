@@ -48,11 +48,11 @@ vi.mock('firebase/firestore', () => ({
     M.queries.push({ path: ref.path, constraints });
     return result;
   },
-  onSnapshot: (
-    target: { path: string },
-    next: (snapshot: unknown) => void,
-    error: (error: Error) => void,
-  ) => {
+  onSnapshot: (...args: unknown[]) => {
+    const target = args[0] as { path: string };
+    const hasOptions = typeof args[1] !== 'function';
+    const next = args[hasOptions ? 2 : 1] as (snapshot: unknown) => void;
+    const error = args[hasOptions ? 3 : 2] as (error: Error) => void;
     const listener = { path: target.path, next, error, active: true };
     M.listeners.push(listener);
     return () => {
@@ -121,12 +121,16 @@ const emit = (
 ) => {
   const listener = M.listeners[listenerIndex];
   if (!listener) throw new Error('La prueba requiere una suscripción');
-  act(() => listener.next({ docs: documents }));
+  act(() => listener.next({
+    docs: documents,
+    metadata: { fromCache: false, hasPendingWrites: false },
+  }));
 };
 
 const emitRequested = (
   listenerIndex: number,
   document: ReturnType<typeof shortcutDocument> | null,
+  metadata: { fromCache?: boolean; hasPendingWrites?: boolean } = {},
 ) => {
   const listener = M.listeners[listenerIndex];
   if (!listener) throw new Error('La prueba requiere una suscripción puntual');
@@ -134,6 +138,10 @@ const emitRequested = (
     id: document?.id ?? '',
     exists: () => document !== null,
     data: () => document?.data() ?? {},
+    metadata: {
+      fromCache: metadata.fromCache ?? false,
+      hasPendingWrites: metadata.hasPendingWrites ?? false,
+    },
   }));
 };
 
@@ -171,6 +179,24 @@ describe('useTransactionImportCandidates', () => {
       }),
     ]);
     expect(result.current.reachedLimit).toBe(false);
+  });
+
+  it('hides the previous owner queue synchronously when the user changes', () => {
+    const hook = renderHook(
+      ({ userId }) => useTransactionImportCandidates(userId),
+      { initialProps: { userId: 'user-1' } },
+    );
+    emit(0, [candidateDocument('a'.repeat(64))]);
+    expect(hook.result.current.candidates).toHaveLength(1);
+
+    hook.rerender({ userId: 'user-2' });
+    expect(hook.result.current.candidates).toEqual([]);
+    expect(hook.result.current.loading).toBe(true);
+
+    emit(1, [candidateDocument('b'.repeat(64))]);
+    expect(hook.result.current.candidates.map(item => item.id)).toEqual([
+      'b'.repeat(64),
+    ]);
   });
 
   it('does not report a limit when the first page contains exactly 100 rows', () => {
@@ -269,6 +295,10 @@ describe('useTransactionImportCandidates', () => {
     emitRequested(1, shortcutDocument(requestedId));
 
     expect(result.current.requestedStatus).toBe('ready');
+    expect(result.current.requestedRequest).toEqual({
+      userId: 'user-1',
+      candidateId: requestedId,
+    });
     expect(result.current.requestedCandidate).toEqual(expect.objectContaining({
       id: requestedId,
       source: 'android-shortcut',
@@ -279,6 +309,24 @@ describe('useTransactionImportCandidates', () => {
       requestedId,
       'a'.repeat(64),
     ]);
+  });
+
+  it('waits for the server before resolving a cache-only shortcut handoff', () => {
+    const requestedId = 'b'.repeat(64);
+    const { result } = renderHook(() => (
+      useTransactionImportCandidates('user-1', requestedId)
+    ));
+
+    emitRequested(1, shortcutDocument(requestedId), { fromCache: true });
+    expect(result.current.requestedStatus).toBe('loading');
+    expect(result.current.requestedCandidate).toBeNull();
+
+    emitRequested(1, shortcutDocument(requestedId, {
+      status: 'dismissed',
+      dismissedAt: timestamp('2026-09-13T17:05:00.000Z'),
+    }));
+    expect(result.current.requestedStatus).toBe('terminal');
+    expect(result.current.requestedCandidate).toBeNull();
   });
 
   it('does not duplicate a requested shortcut already present in the page', () => {
@@ -339,6 +387,7 @@ describe('useTransactionImportCandidates', () => {
       id: requestedId,
       exists: () => true,
       data: () => candidateDocument(requestedId).data(),
+      metadata: { fromCache: false, hasPendingWrites: false },
     }));
 
     expect(result.current.requestedStatus).toBe('error');

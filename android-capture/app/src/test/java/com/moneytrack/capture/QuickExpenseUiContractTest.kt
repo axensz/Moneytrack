@@ -30,6 +30,105 @@ class QuickExpenseUiContractTest {
     }
 
     @Test
+    fun `ambiguous save followed by a terminal collision keeps the same identity`() {
+        val candidateIdAfterWriteFailure: String? = "a".repeat(64)
+
+        assertEquals(
+            QuickExpenseCollisionRecovery.OPEN_EXACT_CANDIDATE,
+            quickExpenseCollisionRecovery(
+                candidateExistedBeforeAttempt = candidateIdAfterWriteFailure != null,
+                restoredVerification = false,
+            ),
+        )
+        assertEquals(
+            QuickExpenseCollisionRecovery.ROTATE_FRESH_ID,
+            quickExpenseCollisionRecovery(
+                candidateExistedBeforeAttempt = false,
+                restoredVerification = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `same-session lifecycle callbacks preserve in-flight and terminal states`() {
+        listOf(
+            QuickExpenseScreenState.SAVING,
+            QuickExpenseScreenState.STORED,
+            QuickExpenseScreenState.ERROR,
+        ).forEach { state ->
+            assertEquals(state, quickExpenseStateForLoadedSession(state))
+            assertTrue(shouldPreserveQuickExpenseState(state, continuingOwner = true))
+        }
+        listOf(
+            QuickExpenseScreenState.SAVING,
+            QuickExpenseScreenState.ERROR,
+        ).forEach { state ->
+            assertFalse(shouldPreserveQuickExpenseState(state, continuingOwner = false))
+        }
+        assertEquals(
+            QuickExpenseScreenState.EDITING,
+            quickExpenseStateForLoadedSession(QuickExpenseScreenState.LOADING_OPTIONS),
+        )
+    }
+
+    @Test
+    fun `late callback from a previous user cannot alter the current save`() {
+        assertFalse(
+            isCurrentQuickExpenseSaveAttempt(
+                authenticatedUid = "user-b",
+                stateOwnerUid = "user-b",
+                expectedUid = "user-a",
+                currentGeneration = 2,
+                expectedGeneration = 1,
+                currentCandidateId = "candidate-b",
+                expectedCandidateId = "candidate-a",
+            ),
+        )
+        assertTrue(
+            isCurrentQuickExpenseSaveAttempt(
+                authenticatedUid = "user-b",
+                stateOwnerUid = "user-b",
+                expectedUid = "user-b",
+                currentGeneration = 2,
+                expectedGeneration = 2,
+                currentCandidateId = "candidate-b",
+                expectedCandidateId = "candidate-b",
+            ),
+        )
+    }
+
+    @Test
+    fun `late sign-in failure resolves an authenticated session and ignores an invalidated activity`() {
+        assertEquals(
+            QuickExpenseSignInResolution.RESOLVE_SESSION,
+            quickExpenseSignInResolution(
+                callbackAttempt = 1,
+                currentAttempt = 1,
+                activityAlive = true,
+                hasAuthenticatedUser = true,
+            ),
+        )
+        assertEquals(
+            QuickExpenseSignInResolution.IGNORE,
+            quickExpenseSignInResolution(
+                callbackAttempt = 1,
+                currentAttempt = 2,
+                activityAlive = true,
+                hasAuthenticatedUser = false,
+            ),
+        )
+        assertEquals(
+            QuickExpenseSignInResolution.IGNORE,
+            quickExpenseSignInResolution(
+                callbackAttempt = 1,
+                currentAttempt = 1,
+                activityAlive = false,
+                hasAuthenticatedUser = false,
+            ),
+        )
+    }
+
+    @Test
     fun `five fields are labeled ordered and usable with touch and keyboard`() {
         val document = parse(resourceFile("layout/activity_quick_expense.xml"))
         val elements = document.getElementsByTagName("*")

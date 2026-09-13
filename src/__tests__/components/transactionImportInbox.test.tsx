@@ -15,9 +15,16 @@ type PendingNotificationCandidate = Extract<
   PendingTransactionImportCandidate,
   { source: 'android-notification' }
 >;
+type PendingShortcutCandidate = Extract<
+  PendingTransactionImportCandidate,
+  { source: 'android-shortcut' }
+>;
 
 const H = vi.hoisted(() => ({
   candidates: [] as PendingTransactionImportCandidate[],
+  requestedCandidate: null as PendingTransactionImportCandidate | null,
+  requestedStatus: 'idle' as 'idle' | 'loading' | 'ready' | 'missing' | 'terminal' | 'error',
+  requestedIds: [] as Array<string | null>,
   loading: false,
   error: null as Error | null,
   reachedLimit: false,
@@ -26,13 +33,18 @@ const H = vi.hoisted(() => ({
 }));
 
 vi.mock('../../hooks/firestore/useTransactionImportCandidates', () => ({
-  useTransactionImportCandidates: () => ({
+  useTransactionImportCandidates: (_userId: string | null, requestedId: string | null) => {
+    H.requestedIds.push(requestedId);
+    return {
     candidates: H.candidates,
+    requestedCandidate: H.requestedCandidate,
+    requestedStatus: H.requestedStatus,
     loading: H.loading,
     error: H.error,
     reachedLimit: H.reachedLimit,
     dismissCandidate: H.dismissCandidate,
-  }),
+    };
+  },
 }));
 
 vi.mock('../../hooks/firestore/usePaymentInstruments', () => ({
@@ -96,6 +108,22 @@ const candidate = (
   status: 'pending',
 });
 
+const shortcutCandidate = (
+  id = 'c'.repeat(64),
+): PendingShortcutCandidate => ({
+  id,
+  schemaVersion: 3,
+  source: 'android-shortcut',
+  occurredAt: new Date('2026-09-13T17:00:00.000Z'),
+  amountMinor: 259_900,
+  currency: 'COP',
+  merchant: 'Almuerzo',
+  suggestedAccountId: 'savings',
+  suggestedCategory: 'Alimentación',
+  createdAt: new Date('2026-09-13T17:01:00.000Z'),
+  status: 'pending',
+});
+
 beforeEach(() => {
   H.candidates = [
     candidate('a'.repeat(64), 'Mercado Central'),
@@ -104,7 +132,11 @@ beforeEach(() => {
   H.loading = false;
   H.error = null;
   H.reachedLimit = false;
+  H.requestedCandidate = null;
+  H.requestedStatus = 'idle';
+  H.requestedIds = [];
   H.instruments = [];
+  window.history.replaceState({}, '', '/');
   vi.clearAllMocks();
 });
 
@@ -232,6 +264,91 @@ describe('TransactionImportInbox', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent('valor inválido');
     expect(screen.getByText('Mercado Central')).toBeInTheDocument();
+  });
+
+  it('opens and expands exactly the shortcut candidate requested by the URL', async () => {
+    const requested = shortcutCandidate();
+    H.candidates = [candidate('a'.repeat(64), 'Otra compra'), requested];
+    H.requestedCandidate = requested;
+    H.requestedStatus = 'ready';
+    window.history.replaceState(
+      {},
+      '',
+      `/?view=transactions&reviewAndroid=${requested.id}`,
+    );
+
+    render(
+      <TransactionImportInbox
+        userId="owner"
+        accounts={accounts}
+        categories={categories}
+        isOnline
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByRole('dialog')).toHaveTextContent(
+      'Revisando Almuerzo',
+    ));
+    expect(H.requestedIds).toContain(requested.id);
+    expect(screen.getByRole('button', {
+      name: 'Compras del celular, 2 pendientes',
+    })).toHaveAttribute('aria-expanded', 'true');
+    expect(window.location.search).toBe('?view=transactions');
+  });
+
+  it('rejects and removes an invalid shortcut URL without selecting another row', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/?view=transactions&reviewAndroid=abc',
+    );
+
+    render(
+      <TransactionImportInbox
+        userId="owner"
+        accounts={accounts}
+        categories={categories}
+        isOnline
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(
+      /enlace del gasto rápido no es válido/i,
+    ));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(H.requestedIds.at(-1)).toBeNull();
+    expect(window.location.search).toBe('?view=transactions');
+  });
+
+  it.each([
+    ['missing', /ya no existe|no está disponible/i],
+    ['terminal', /ya fue confirmado o descartado/i],
+  ] as const)('does not approximate another candidate when the request is %s', async (
+    requestedStatus,
+    expectedMessage,
+  ) => {
+    const requestedId = 'd'.repeat(64);
+    H.requestedStatus = requestedStatus;
+    window.history.replaceState(
+      {},
+      '',
+      `/?view=transactions&reviewAndroid=${requestedId}`,
+    );
+
+    render(
+      <TransactionImportInbox
+        userId="owner"
+        accounts={accounts}
+        categories={categories}
+        isOnline
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(
+      expectedMessage,
+    ));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(window.location.search).toBe('?view=transactions');
   });
 
   it('keeps guest mode unchanged', () => {

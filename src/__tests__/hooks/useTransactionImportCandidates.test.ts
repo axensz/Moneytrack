@@ -8,9 +8,8 @@ const M = vi.hoisted(() => ({
     constraints: Array<Record<string, unknown>>;
   }>,
   listeners: [] as Array<{
-    next: (snapshot: {
-      docs: Array<{ id: string; data: () => Record<string, unknown> }>;
-    }) => void;
+    path: string;
+    next: (snapshot: unknown) => void;
     error: (error: Error) => void;
     active: boolean;
   }>,
@@ -23,9 +22,11 @@ const M = vi.hoisted(() => ({
 vi.mock('firebase/firestore', () => ({
   collection: (_db: unknown, ...segments: string[]) => ({
     path: segments.join('/'),
+    kind: 'collection',
   }),
   doc: (_db: unknown, ...segments: string[]) => ({
     path: segments.join('/'),
+    kind: 'document',
   }),
   where: (field: string, operator: string, value: unknown) => ({
     type: 'where',
@@ -43,18 +44,16 @@ vi.mock('firebase/firestore', () => ({
     ref: { path: string },
     ...constraints: Array<Record<string, unknown>>
   ) => {
-    const result = { path: ref.path, constraints };
-    M.queries.push(result);
+    const result = { path: ref.path, constraints, kind: 'query' };
+    M.queries.push({ path: ref.path, constraints });
     return result;
   },
   onSnapshot: (
-    _query: unknown,
-    next: (snapshot: {
-      docs: Array<{ id: string; data: () => Record<string, unknown> }>;
-    }) => void,
+    target: { path: string },
+    next: (snapshot: unknown) => void,
     error: (error: Error) => void,
   ) => {
-    const listener = { next, error, active: true };
+    const listener = { path: target.path, next, error, active: true };
     M.listeners.push(listener);
     return () => {
       listener.active = false;
@@ -96,13 +95,46 @@ const candidateDocument = (
   }),
 });
 
+const shortcutDocument = (
+  id: string,
+  overrides: Record<string, unknown> = {},
+) => ({
+  id,
+  data: () => ({
+    schemaVersion: 3,
+    source: 'android-shortcut',
+    occurredAt: timestamp('2026-09-13T17:00:00.000Z'),
+    amountMinor: 259_900,
+    currency: 'COP',
+    merchant: 'Almuerzo',
+    suggestedAccountId: 'cash-1',
+    suggestedCategory: 'Comida',
+    createdAt: timestamp('2026-09-13T17:01:00.000Z'),
+    status: 'pending',
+    ...overrides,
+  }),
+});
+
 const emit = (
   listenerIndex: number,
-  documents: ReturnType<typeof candidateDocument>[],
+  documents: Array<{ id: string; data: () => Record<string, unknown> }>,
 ) => {
   const listener = M.listeners[listenerIndex];
   if (!listener) throw new Error('La prueba requiere una suscripción');
   act(() => listener.next({ docs: documents }));
+};
+
+const emitRequested = (
+  listenerIndex: number,
+  document: ReturnType<typeof shortcutDocument> | null,
+) => {
+  const listener = M.listeners[listenerIndex];
+  if (!listener) throw new Error('La prueba requiere una suscripción puntual');
+  act(() => listener.next({
+    id: document?.id ?? '',
+    exists: () => document !== null,
+    data: () => document?.data() ?? {},
+  }));
 };
 
 describe('useTransactionImportCandidates', () => {
@@ -221,6 +253,97 @@ describe('useTransactionImportCandidates', () => {
         dismissedAt: M.serverTime,
       },
     }]);
+  });
+
+  it('loads and merges the exact shortcut candidate beyond the bounded query', () => {
+    const requestedId = 'b'.repeat(64);
+    const { result } = renderHook(() => (
+      useTransactionImportCandidates('user-1', requestedId)
+    ));
+
+    expect(M.listeners.map(listener => listener.path)).toEqual([
+      'users/user-1/transactionImportCandidates',
+      `users/user-1/transactionImportCandidates/${requestedId}`,
+    ]);
+    emit(0, [candidateDocument('a'.repeat(64))]);
+    emitRequested(1, shortcutDocument(requestedId));
+
+    expect(result.current.requestedStatus).toBe('ready');
+    expect(result.current.requestedCandidate).toEqual(expect.objectContaining({
+      id: requestedId,
+      source: 'android-shortcut',
+      suggestedAccountId: 'cash-1',
+      suggestedCategory: 'Comida',
+    }));
+    expect(result.current.candidates.map(item => item.id)).toEqual([
+      requestedId,
+      'a'.repeat(64),
+    ]);
+  });
+
+  it('does not duplicate a requested shortcut already present in the page', () => {
+    const requestedId = 'b'.repeat(64);
+    const { result } = renderHook(() => (
+      useTransactionImportCandidates('user-1', requestedId)
+    ));
+
+    const requested = shortcutDocument(requestedId);
+    emit(0, [requested]);
+    emitRequested(1, requested);
+
+    expect(result.current.candidates).toHaveLength(1);
+    expect(result.current.candidates[0]?.id).toBe(requestedId);
+  });
+
+  it('reports missing, terminal and invalid requested documents without approximation', () => {
+    const requestedId = 'b'.repeat(64);
+    const hook = renderHook(
+      ({ id }) => useTransactionImportCandidates('user-1', id),
+      { initialProps: { id: requestedId } },
+    );
+    emit(0, [candidateDocument('a'.repeat(64))]);
+
+    emitRequested(1, null);
+    expect(hook.result.current.requestedStatus).toBe('missing');
+    expect(hook.result.current.requestedCandidate).toBeNull();
+    expect(hook.result.current.candidates.map(item => item.id)).toEqual([
+      'a'.repeat(64),
+    ]);
+
+    hook.rerender({ id: 'c'.repeat(64) });
+    expect(M.listeners[1]?.active).toBe(false);
+    emitRequested(2, shortcutDocument('c'.repeat(64), {
+      status: 'dismissed',
+      dismissedAt: timestamp('2026-09-13T17:05:00.000Z'),
+    }));
+    expect(hook.result.current.requestedStatus).toBe('terminal');
+    expect(hook.result.current.requestedCandidate).toBeNull();
+
+    hook.rerender({ id: 'd'.repeat(64) });
+    emitRequested(3, shortcutDocument('d'.repeat(64), { amountMinor: 0 }));
+    expect(hook.result.current.requestedStatus).toBe('error');
+    expect(hook.result.current.error?.message).toContain('amountMinor');
+    expect(hook.result.current.candidates.map(item => item.id)).toEqual([
+      'a'.repeat(64),
+    ]);
+  });
+
+  it('rejects a notification candidate addressed through the shortcut handoff', () => {
+    const requestedId = 'b'.repeat(64);
+    const { result } = renderHook(() => (
+      useTransactionImportCandidates('user-1', requestedId)
+    ));
+
+    const listener = M.listeners[1];
+    act(() => listener.next({
+      id: requestedId,
+      exists: () => true,
+      data: () => candidateDocument(requestedId).data(),
+    }));
+
+    expect(result.current.requestedStatus).toBe('error');
+    expect(result.current.requestedCandidate).toBeNull();
+    expect(result.current.error?.message).toMatch(/gasto rápido/i);
   });
 
   it('exposes subscription errors and performs no guest work', async () => {

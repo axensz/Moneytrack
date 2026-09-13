@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="update_checking">Buscando actualización…</string>
+    <string name="update_check_failed">No pudimos buscar actualizaciones. Intenta de nuevo.</string>
     <string name="app_name">MoneyTrack</string>
     <string name="notification_listener_label">Captura de compras de MoneyTrack</string>
     <string name="screen_title">MoneyTrack móvil</string>

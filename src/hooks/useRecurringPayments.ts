@@ -16,7 +16,7 @@ import {
   orderBy,
   doc,
   addDoc,
-  deleteDoc,
+  deleteField,
   updateDoc,
 } from 'firebase/firestore';
 import { db } from '../lib/firebaseDb';
@@ -25,6 +25,11 @@ import { safeFirestoreOperation, checkNetworkConnection, stripUndefined } from '
 import { generateId } from '../utils/formatters';
 import { useGuestLedger } from './useGuestLedger';
 import { useRecurringUtils } from './recurring/useRecurringUtils';
+import {
+  executeAuthenticatedLedgerMutation,
+  loadServerLedgerTransactionsByRecurringPayment,
+} from './firestore/ledgerMutationOrchestration';
+import { publishTransactionCacheMutation } from './firestore/transactionPaginationCache';
 import type { Transaction, RecurringPayment } from '../types/finance';
 
 export function useRecurringPayments(
@@ -126,11 +131,58 @@ export function useRecurringPayments(
     async (id: string) => {
       if (userId) {
         if (!checkNetworkConnection()) throw new Error('Sin conexión a internet');
-        await safeFirestoreOperation(
-          () => deleteDoc(doc(db, `users/${userId}/recurringPayments`, id)),
+        const updatedTransactions = await safeFirestoreOperation(
+          () => executeAuthenticatedLedgerMutation(userId, async ({ loadContext }) => {
+            const linkedTransactions = await loadServerLedgerTransactionsByRecurringPayment(
+              userId,
+              id,
+            );
+            const context = await loadContext([]);
+            const recurringRef = doc(db, `users/${userId}/recurringPayments`, id);
+            const cleanedTransactions = linkedTransactions.map(transaction => {
+              const cleaned = { ...transaction };
+              delete cleaned.recurringPaymentId;
+              delete cleaned.recurringCycle;
+              return cleaned;
+            });
+
+            return {
+              intent: {
+                kind: 'edit' as const,
+                before: [],
+                after: [],
+                metadata: { mutationSource: 'recurring' as const },
+              },
+              context,
+              writeCount: linkedTransactions.length + 1,
+              stage: batch => {
+                linkedTransactions.forEach(transaction => {
+                  if (!transaction.id) {
+                    throw new Error('Una transacción periódica no tiene identidad válida.');
+                  }
+                  batch.update(
+                    doc(db, `users/${userId}/transactions`, transaction.id),
+                    {
+                      recurringPaymentId: deleteField(),
+                      recurringCycle: deleteField(),
+                    },
+                  );
+                });
+                batch.delete(recurringRef);
+              },
+              result: cleanedTransactions,
+            };
+          }),
           'deleteRecurringPayment',
-          { maxRetries: 2 }
+          { maxRetries: 2, retryRecoverableErrors: true }
         );
+        if (updatedTransactions.length > 0) {
+          publishTransactionCacheMutation({
+            userId,
+            type: 'update',
+            transactions: updatedTransactions,
+          });
+        }
       } else {
         await mutateGuestLedger(draft => {
           draft.recurringPayments = draft.recurringPayments.filter(payment => payment.id !== id);

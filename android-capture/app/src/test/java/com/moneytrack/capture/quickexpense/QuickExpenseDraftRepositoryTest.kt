@@ -74,6 +74,19 @@ class QuickExpenseDraftRepositoryTest {
     }
 
     @Test
+    fun `maps a synchronous timestamp failure without reaching the store`() {
+        val store = FakeDocumentStore(QuickExpenseDocumentResult.CREATED)
+        var result: QuickExpenseWriteResult? = null
+
+        QuickExpenseDraftRepository(USER_ID, store) {
+            throw IllegalStateException("timestamp unavailable")
+        }.save(draft()) { result = it }
+
+        assertSame(QuickExpenseWriteResult.WRITE_FAILED, result)
+        assertTrue(store.requests.isEmpty())
+    }
+
+    @Test
     fun `rejects an invalid uid before reaching the document store`() {
         val store = FakeDocumentStore(QuickExpenseDocumentResult.CREATED)
 

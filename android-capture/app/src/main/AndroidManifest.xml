@@ -16,12 +16,22 @@
         <activity
             android:name=".MainActivity"
             android:exported="true">
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".QuickExpenseActivity"
+            android:exported="true"
+            android:theme="@style/Theme.MoneytrackCapture.Starting"
+            android:windowSoftInputMode="adjustResize" />
 
         <service
             android:name=".notification.MoneyNotificationListenerService"

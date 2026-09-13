@@ -70,20 +70,20 @@ class QuickExpenseDraftRepository(
         draft: QuickExpenseDraft,
         onResult: (QuickExpenseWriteResult) -> Unit,
     ) {
-        val fields = mapOf(
-            "schemaVersion" to QuickExpenseDraft.SCHEMA_VERSION.toLong(),
-            "source" to QuickExpenseDraft.SOURCE,
-            "occurredAt" to Timestamp(Date(draft.occurredAtEpochMillis)),
-            "amountMinor" to draft.amountMinor,
-            "currency" to QuickExpenseDraft.CURRENCY,
-            "merchant" to draft.merchant,
-            "suggestedAccountId" to draft.suggestedAccountId,
-            "suggestedCategory" to draft.suggestedCategory,
-            "createdAt" to serverTimestamp(),
-            "status" to "pending",
-        )
-
         try {
+            val fields = mapOf(
+                "schemaVersion" to QuickExpenseDraft.SCHEMA_VERSION.toLong(),
+                "source" to QuickExpenseDraft.SOURCE,
+                "occurredAt" to Timestamp(Date(draft.occurredAtEpochMillis)),
+                "amountMinor" to draft.amountMinor,
+                "currency" to QuickExpenseDraft.CURRENCY,
+                "merchant" to draft.merchant,
+                "suggestedAccountId" to draft.suggestedAccountId,
+                "suggestedCategory" to draft.suggestedCategory,
+                "createdAt" to serverTimestamp(),
+                "status" to "pending",
+            )
+
             store.createIfAbsentOrMatch(
                 collectionPath = collectionPath,
                 documentId = draft.candidateId,

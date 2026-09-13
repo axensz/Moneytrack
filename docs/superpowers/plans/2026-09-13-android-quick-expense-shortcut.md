@@ -540,6 +540,7 @@ Verificar XML para:
 - Activity exportada y tema MoneyTrack;
 - `ScrollView`, labels asociados, `inputType=numberDecimal`, `accessibilityLiveRegion=polite`, botón primario y 48 dp;
 - ausencia de campos intent para monto/categoría/cuenta.
+- paridad entre las categorías canónicas de gasto de la PWA y el recurso Android, seguida por las categorías personalizadas `expense`.
 
 - [ ] **Step 2: Ejecutar rojo**
 

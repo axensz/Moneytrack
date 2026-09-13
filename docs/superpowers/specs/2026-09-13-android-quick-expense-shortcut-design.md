@@ -38,7 +38,7 @@ La APK incorporará además una actualización OTA privada: detectará una versi
 
 - Acceso directo estático compatible con Android 8 o posterior, acorde con el `minSdk 26` actual.
 - Pantalla nativa dedicada de captura rápida en español.
-- Lectura privada de cuentas y categorías del usuario autenticado desde Firestore.
+- Lectura privada de cuentas y categorías personalizadas del usuario autenticado desde Firestore; las categorías canónicas incluidas en la PWA se empaquetan también en Android y se mantienen bajo una prueba de paridad.
 - Creación idempotente de un candidato manual normalizado.
 - Apertura de la PWA con un identificador opaco para revisar exactamente ese borrador.
 - Precarga y revalidación de los cinco datos en la revisión web.
@@ -71,7 +71,7 @@ La APK incorporará además una actualización OTA privada: detectará una versi
 - Si no hay sesión, mostrará una explicación breve y la acción de inicio de sesión existente. No exigirá acceso a notificaciones para registrar un gasto manual.
 - **Fecha** inicia en hoy.
 - **Cuenta usada** muestra el nombre de las cuentas, efectivo y tarjetas actuales. Se preselecciona únicamente la cuenta marcada como predeterminada; si no existe una opción inequívoca, queda sin selección.
-- **Categoría** muestra solo categorías `expense` y queda sin selección para evitar clasificaciones silenciosas.
+- **Categoría** muestra las categorías canónicas actuales y solo categorías personalizadas `expense`; queda sin selección para evitar clasificaciones silenciosas.
 - **Monto** usa teclado numérico, formato colombiano visible y la misma normalización a centavos usada por los candidatos actuales.
 - Todos los campos tienen etiqueta persistente, mensaje de error junto al control y objetivos táctiles de al menos 48 dp.
 
@@ -140,7 +140,7 @@ La variante manual no incluye `sourcePackage`, `parserId`, `confidence`, último
 
 ### 7.2 Datos
 
-- Un repositorio pequeño carga `users/{uid}/accounts` y `categories`; Firestore conserva su caché local actual, sin Room ni otra base.
+- Un repositorio pequeño carga `users/{uid}/accounts` y `categories`; la Activity combina las categorías canónicas empaquetadas con las personalizadas, conservando el mismo orden inicial de la PWA. Firestore conserva su caché local actual, sin Room ni otra base.
 - Los datos cacheados pueden poblar el formulario, pero la creación del borrador usa una transacción online y las reglas vuelven a validar la cuenta.
 - Si no hay cuentas o categorías, la pantalla explica qué falta y ofrece abrir MoneyTrack; no inventa valores.
 - La lógica pura de validación, formato, selección predeterminada e identidad queda fuera de la Activity y tiene pruebas JVM.

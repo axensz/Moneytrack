@@ -36,6 +36,7 @@ function renderHeader(overrides: Partial<React.ComponentProps<typeof Header>> = 
     onOpenCategories: vi.fn(),
     onOpenNotificationPreferences: vi.fn(),
     onOpenLedgerReconciliation: vi.fn(),
+    onOpenAISettings: vi.fn(),
     onGoToTransactions: vi.fn(),
     onLogout: vi.fn().mockResolvedValue(undefined),
     ...overrides,
@@ -64,13 +65,28 @@ describe('Header', () => {
     expect(onGoToTransactions).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps privacy and assistant actions outside the header and settings menu', () => {
+  it('keeps privacy outside the header and restores assistant settings', () => {
     const { container } = renderHeader({ showSettingsMenu: true });
 
     expect(screen.queryByRole('button', { name: 'Ocultar valores' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Mostrar valores' })).not.toBeInTheDocument();
     expect(container.querySelector('[data-header-action="assistant"]')).toBeNull();
-    expect(screen.queryByRole('menuitem', { name: /asistente IA/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Asistente IA' })).toBeInTheDocument();
+  });
+
+  it('opens assistant settings from Ajustes and returns focus to its stable trigger', () => {
+    let activeElementWhenOpened: Element | null = null;
+    const onOpenAISettings = vi.fn(() => {
+      activeElementWhenOpened = document.activeElement;
+    });
+    renderHeader({ showSettingsMenu: true, onOpenAISettings });
+    const settingsTrigger = screen.getByRole('button', { name: 'Abrir menú de ajustes' });
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Asistente IA' }));
+
+    expect(onOpenAISettings).toHaveBeenCalledTimes(1);
+    expect(activeElementWhenOpened).toBe(settingsTrigger);
+    expect(settingsTrigger).toHaveFocus();
   });
 
   it('keeps compact utility actions reachable and relocates logout through responsive affordances', () => {
@@ -150,12 +166,16 @@ describe('Header', () => {
     renderHeader({ showSettingsMenu: true });
     const menu = screen.getByRole('menu', { name: 'Opciones de ajustes' });
     const notifications = screen.getByRole('menuitem', { name: 'Notificaciones' });
+    const assistant = screen.getByRole('menuitem', { name: 'Asistente IA' });
     const integrity = screen.getByRole('menuitem', { name: 'Integridad del libro' });
     const help = screen.getByRole('menuitem', { name: 'Ayuda' });
     const logout = screen.getByRole('menuitem', { name: 'Cerrar sesión' });
     logout.style.display = 'none';
 
     notifications.focus();
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(assistant).toHaveFocus();
+
     fireEvent.keyDown(menu, { key: 'ArrowDown' });
     expect(integrity).toHaveFocus();
 

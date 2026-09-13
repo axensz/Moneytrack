@@ -251,10 +251,34 @@ describe('AIChatBot shell control', () => {
     await screen.findByText('Resumen listo');
     fireEvent.click(screen.getByRole('button', { name: 'Ver uso de tokens' }));
     expect(await screen.findByText('Entrada')).toBeInTheDocument();
+    expect(screen.getByText('170 tokens usados')).toBeInTheDocument();
 
     const classText = getClassText(screen.getByRole('dialog'));
     expect(classText).not.toMatch(decorativeAssistantClasses);
     expect(classText).not.toContain('animate-spin');
+  });
+
+  it('accumulates measured token usage across the current chat', async () => {
+    sendChatMessageMock
+      .mockResolvedValueOnce({
+        text: 'Primera respuesta',
+        tokenUsage: { promptTokens: 80, responseTokens: 20, totalTokens: 100 },
+      })
+      .mockResolvedValueOnce({
+        text: 'Segunda respuesta',
+        tokenUsage: { promptTokens: 45, responseTokens: 15, totalTokens: 60 },
+      });
+    parseActionFromResponseMock
+      .mockReturnValueOnce({ text: 'Primera respuesta' })
+      .mockReturnValueOnce({ text: 'Segunda respuesta' });
+    render(<ControlledChat />);
+
+    sendAssistantMessage('Primera consulta');
+    await screen.findByText('Primera respuesta');
+    sendAssistantMessage('Segunda consulta');
+    await screen.findByText('Segunda respuesta');
+
+    expect(screen.getByText('160 tokens usados')).toBeInTheDocument();
   });
 
   it('keeps parsed action confirmation free of decorative motion', async () => {
@@ -285,6 +309,28 @@ describe('AIChatBot shell control', () => {
     });
     expect(financeDomainMocks.addCategory).toHaveBeenCalledTimes(1);
     expect(await screen.findByText('Acción ejecutada ✓')).toBeInTheDocument();
+  });
+
+  it('translates a network failure and retries the exact request without duplicating it', async () => {
+    sendChatMessageMock
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce({
+        text: 'Respuesta recuperada',
+        tokenUsage: { promptTokens: 30, responseTokens: 10, totalTokens: 40 },
+      });
+    parseActionFromResponseMock.mockReturnValue({ text: 'Conexión recuperada' });
+    render(<ControlledChat />);
+
+    sendAssistantMessage('¿Cómo voy este mes?');
+
+    expect(await screen.findByText('No se pudo conectar con Gemini')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+
+    expect(await screen.findByText('Conexión recuperada')).toBeInTheDocument();
+    expect(sendChatMessageMock).toHaveBeenCalledTimes(2);
+    expect(sendChatMessageMock.mock.calls[1]).toEqual(sendChatMessageMock.mock.calls[0]);
+    expect(screen.getAllByText('¿Cómo voy este mes?')).toHaveLength(1);
+    expect(screen.queryByText('No se pudo conectar con Gemini')).toBeNull();
   });
 
   it('uses the complete balance history and refuses an unresolved financial context', async () => {

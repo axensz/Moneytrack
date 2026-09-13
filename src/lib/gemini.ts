@@ -4,7 +4,7 @@
  */
 
 import { getGeminiClient, isAiEnabled } from './geminiClient';
-import { GEMINI_MODELS } from './geminiConfig';
+import { getGeminiModel } from './geminiConfig';
 import type { FunctionCall } from '@google/genai';
 import type { Transaction, Account, Categories } from '../types/finance';
 import { formatCurrency } from '../utils/formatters';
@@ -668,7 +668,7 @@ export async function sendChatMessage(
   for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
     try {
       const response = await client.interactions.create({
-        model: GEMINI_MODELS.chat,
+        model: getGeminiModel(),
         input,
         stream: false,
         store: false,

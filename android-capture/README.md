@@ -89,6 +89,99 @@ git status --short
 git ls-files -- android-capture/app/google-services.json android-capture/local.properties
 ```
 
+## Entrega privada y actualizaciones OTA
+
+La versión de arranque de este canal es **0.2.0** (`versionCode 2`). Se instala
+una sola vez desde un enlace HTTPS verificado, encima del canario **0.1.0**,
+sin desinstalar ni borrar datos. Desde entonces, MoneyTrack puede preparar
+versiones posteriores mediante su actualizador interno; Android siempre muestra
+la confirmación final de instalación.
+
+La compilación de entrega acepta la firma únicamente desde estas cuatro
+variables de entorno:
+
+```text
+MONEYTRACK_ANDROID_KEYSTORE_PATH
+MONEYTRACK_ANDROID_KEY_ALIAS
+MONEYTRACK_ANDROID_KEYSTORE_PASSWORD
+MONEYTRACK_ANDROID_KEY_PASSWORD
+```
+
+El archivo `signing.properties.example` solo enumera el contrato y no es leído
+por Gradle. No guardes claves, alias privados ni contraseñas en el repositorio,
+scripts, historial de terminal, issues o artefactos de CI. Sin las cuatro
+variables, `assembleRelease` falla deliberadamente antes de producir una APK de
+entrega.
+
+### 1. Construir y auditar el bootstrap 0.2.0
+
+Inyecta las variables desde el almacén seguro autorizado y ejecuta un build
+limpio:
+
+```powershell
+$env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+.\android-capture\gradlew.bat -p android-capture clean testDebugUnitTest lintDebug assembleRelease
+```
+
+La salida esperada es
+`android-capture/app/build/outputs/apk/release/app-release.apk`. Antes de
+publicarla, usa `apksigner verify --verbose --print-certs` y comprueba:
+
+- paquete: `com.moneytrack.capture`;
+- versión: `0.2.0` y código `2`;
+- verificación criptográfica exitosa;
+- SHA-256 del certificado firmante:
+  `87e88b8490a7f1bc4fa64995ae383e7fd17fcf8953f4b454849d570544ed4de7`.
+
+Si la huella difiere, detén la entrega. No desinstales la versión existente para
+forzar la actualización: eso ocultaría una ruptura de identidad y puede perder
+estado local.
+
+Calcula además el hash del archivo de forma independiente:
+
+```powershell
+Get-FileHash -Algorithm SHA256 -LiteralPath '.\android-capture\app\build\outputs\apk\release\app-release.apk'
+(Get-Item -LiteralPath '.\android-capture\app\build\outputs\apk\release\app-release.apk').Length
+```
+
+Publica esa APK como asset inmutable de un GitHub Release canario y
+descárgala otra vez por su URL final. El archivo descargado debe conservar el
+mismo tamaño, SHA-256, paquete, versión y certificado. Solo entonces puede
+compartirse el enlace HTTPS de **0.2.0**. En el dispositivo con **0.1.0**, abre
+el enlace y acepta la actualización ofrecida por Android; no uses `adb uninstall`
+ni limpieza de datos.
+
+### 2. Preparar la primera OTA interna
+
+La primera versión ofrecida dentro de la app debe ser posterior al bootstrap;
+por ejemplo **0.2.1** (`versionCode 3`). El orden de entrega es obligatorio:
+
+1. desplegar primero las reglas de Firestore y la PWA compatibles;
+2. construir código 3 con el mismo certificado y repetir la auditoría anterior;
+3. publicar la APK y descargar de nuevo el asset desde su URL final;
+4. generar `public/android/update.json` desde ese archivo remoto ya verificado;
+5. revisar el diff del manifiesto y solo después desplegarlo en Pages;
+6. desde **0.2.0**, pulsar **Buscar actualización**, descargar, verificar y
+   aceptar la instalación de Android; confirmar al final que aparece código 3 y
+   que la sesión y preferencias siguen presentes.
+
+El manifiesto se genera sin dependencias y nunca accede a la clave de firma:
+
+```powershell
+node .\scripts\write-android-update-manifest.mjs `
+  --apk 'C:\ruta-segura\MoneyTrack-0.2.1-descargada.apk' `
+  --version-code 3 `
+  --version-name '0.2.1' `
+  --apk-url 'https://github.com/axensz/Moneytrack/releases/download/android-capture-v0.2.1/MoneyTrack-0.2.1.apk' `
+  --release-note 'Atajo de gasto rápido y actualización privada' `
+  --output '.\public\android\update.json'
+```
+
+Hasta que el asset de código 3 exista y pase esa auditoría, el manifiesto debe
+seguir anunciando el canario actual de código 1. Nunca publiques primero un
+manifiesto que apunte a una descarga ausente o no verificada.
+
 ## Activar la captura en el dispositivo
 
 1. Abre Moneytrack Capture e inicia sesión con la misma cuenta Google usada en

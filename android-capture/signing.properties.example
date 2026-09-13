@@ -1,0 +1,6 @@
+# Referencia únicamente. El build no lee este archivo.
+# Define las cuatro variables en un entorno seguro y nunca escribas aquí valores reales.
+MONEYTRACK_ANDROID_KEYSTORE_PATH=<set-in-environment>
+MONEYTRACK_ANDROID_KEY_ALIAS=<set-in-environment>
+MONEYTRACK_ANDROID_KEYSTORE_PASSWORD=<set-in-environment>
+MONEYTRACK_ANDROID_KEY_PASSWORD=<set-in-environment>

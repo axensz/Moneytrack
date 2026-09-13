@@ -158,8 +158,11 @@ android-capture/**/build/
 android-capture/local.properties
 android-capture/app/google-services.json
 android-capture/signing.properties
+android-capture/signing.properties.*
+!android-capture/signing.properties.example
 *.jks
 *.keystore
+*.apk
 
 # ============================================================
 # Claude Code / asistentes de IA

@@ -3,6 +3,23 @@ plugins {
 }
 
 val hasGoogleServices = file("google-services.json").exists()
+val releaseSigningEnvironment = mapOf(
+    "keystorePath" to providers.environmentVariable("MONEYTRACK_ANDROID_KEYSTORE_PATH").orNull,
+    "keyAlias" to providers.environmentVariable("MONEYTRACK_ANDROID_KEY_ALIAS").orNull,
+    "keystorePassword" to providers.environmentVariable("MONEYTRACK_ANDROID_KEYSTORE_PASSWORD").orNull,
+    "keyPassword" to providers.environmentVariable("MONEYTRACK_ANDROID_KEY_PASSWORD").orNull,
+)
+val hasCompleteReleaseSigning = releaseSigningEnvironment.values.all { !it.isNullOrBlank() }
+val requestedReleaseTask = gradle.startParameter.taskNames.any { requestedTask ->
+    requestedTask.substringAfterLast(':') in
+        setOf("assemble", "assembleRelease", "build", "bundleRelease", "packageRelease")
+}
+
+if (requestedReleaseTask && !hasCompleteReleaseSigning) {
+    throw GradleException(
+        "Release signing is not configured. Provide all MONEYTRACK_ANDROID_* environment variables.",
+    )
+}
 
 if (hasGoogleServices) {
     apply(plugin = "com.google.gms.google-services")
@@ -16,8 +33,8 @@ android {
         applicationId = "com.moneytrack.capture"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         if (!hasGoogleServices) {
@@ -25,8 +42,22 @@ android {
         }
     }
 
+    signingConfigs {
+        if (hasCompleteReleaseSigning) {
+            create("privateRelease") {
+                storeFile = file(requireNotNull(releaseSigningEnvironment["keystorePath"]))
+                keyAlias = requireNotNull(releaseSigningEnvironment["keyAlias"])
+                storePassword = requireNotNull(releaseSigningEnvironment["keystorePassword"])
+                keyPassword = requireNotNull(releaseSigningEnvironment["keyPassword"])
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (hasCompleteReleaseSigning) {
+                signingConfig = signingConfigs.getByName("privateRelease")
+            }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

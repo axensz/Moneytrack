@@ -129,17 +129,17 @@ class QuickExpenseUiContractTest {
     }
 
     @Test
-    fun `five fields are labeled ordered and usable with touch and keyboard`() {
+    fun `quick expense centers the amount before a compact details card`() {
         val document = parse(resourceFile("layout/activity_quick_expense.xml"))
         val elements = document.getElementsByTagName("*")
         val all = (0 until elements.length).mapNotNull { elements.item(it) as? Element }
         val ids = all.map { it.getAttribute("android:id") }
         val expectedControls = listOf(
-            "@+id/quick_expense_merchant",
-            "@+id/quick_expense_date",
             "@+id/quick_expense_amount",
+            "@+id/quick_expense_merchant",
             "@+id/quick_expense_category",
             "@+id/quick_expense_account",
+            "@+id/quick_expense_date",
         )
 
         assertTrue(all.first().tagName.endsWith("ScrollView"))
@@ -149,6 +149,10 @@ class QuickExpenseUiContractTest {
         }
         val amount = all.single { it.getAttribute("android:id") == "@+id/quick_expense_amount" }
         assertEquals("numberDecimal", amount.getAttribute("android:inputType"))
+        val amountPanel = all.single { it.getAttribute("android:id") == "@+id/quick_expense_amount_panel" }
+        assertEquals("@drawable/quick_expense_amount_panel", amountPanel.getAttribute("android:background"))
+        val detailsCard = all.single { it.getAttribute("android:id") == "@+id/quick_expense_form" }
+        assertEquals("@drawable/status_panel", detailsCard.getAttribute("android:background"))
         val primary = all.single { it.getAttribute("android:id") == "@+id/quick_expense_primary_action" }
         assertEquals("@style/Widget.MoneyTrack.Button.Primary", primary.getAttribute("style"))
         assertEquals("@dimen/control_min_height", primary.getAttribute("android:minHeight"))

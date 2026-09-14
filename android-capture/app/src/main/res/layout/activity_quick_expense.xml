@@ -24,7 +24,7 @@
             android:layout_height="wrap_content"
             android:text="@string/quick_expense_title"
             android:textColor="@color/text_primary"
-            android:textSize="28sp"
+            android:textSize="26sp"
             android:textStyle="bold" />
 
         <TextView
@@ -65,15 +65,88 @@
         </LinearLayout>
 
         <LinearLayout
-            android:id="@+id/quick_expense_form"
+            android:id="@+id/quick_expense_amount_panel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/space_large"
-            android:orientation="vertical">
+            android:background="@drawable/quick_expense_amount_panel"
+            android:orientation="vertical"
+            android:padding="@dimen/panel_padding">
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:labelFor="@id/quick_expense_amount"
+                android:text="@string/quick_expense_amount_label"
+                android:textColor="@color/brand_violet_dark"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_small"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="@dimen/space_small"
+                    android:text="@string/quick_expense_amount_prefix"
+                    android:textColor="@color/brand_violet_dark"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <EditText
+                    android:id="@+id/quick_expense_amount"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:digits="0123456789.,"
+                    android:fontFamily="monospace"
+                    android:hint="@string/quick_expense_amount_hint"
+                    android:imeOptions="actionNext"
+                    android:importantForAutofill="no"
+                    android:inputType="numberDecimal"
+                    android:minHeight="@dimen/control_min_height"
+                    android:singleLine="true"
+                    android:textColor="@color/text_primary"
+                    android:textSize="28sp"
+                    tools:ignore="LabelFor" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/quick_expense_amount_error"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_tiny"
+                android:textColor="@color/status_destructive"
+                android:textSize="14sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/quick_expense_form"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_large"
+            android:background="@drawable/status_panel"
+            android:orientation="vertical"
+            android:padding="@dimen/panel_padding">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/quick_expense_details_label"
+                android:textColor="@color/text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_medium"
                 android:labelFor="@id/quick_expense_merchant"
                 android:text="@string/quick_expense_merchant_label"
                 android:textColor="@color/text_primary"
@@ -96,84 +169,6 @@
 
             <TextView
                 android:id="@+id/quick_expense_merchant_error"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/space_tiny"
-                android:textColor="@color/status_destructive"
-                android:textSize="14sp"
-                android:visibility="gone" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/form_field_gap"
-                android:labelFor="@id/quick_expense_date"
-                android:text="@string/quick_expense_date_label"
-                android:textColor="@color/text_primary"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-
-            <Button
-                android:id="@+id/quick_expense_date"
-                style="@style/Widget.MoneyTrack.Button.Utility"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/space_small"
-                android:contentDescription="@string/quick_expense_date_content_description"
-                android:gravity="start|center_vertical" />
-
-            <TextView
-                android:id="@+id/quick_expense_date_error"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/space_tiny"
-                android:textColor="@color/status_destructive"
-                android:textSize="14sp"
-                android:visibility="gone" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/form_field_gap"
-                android:labelFor="@id/quick_expense_amount"
-                android:text="@string/quick_expense_amount_label"
-                android:textColor="@color/text_primary"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/space_small"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginEnd="@dimen/space_small"
-                    android:text="@string/quick_expense_amount_prefix"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="16sp" />
-
-                <EditText
-                    android:id="@+id/quick_expense_amount"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:digits="0123456789.,"
-                    android:fontFamily="monospace"
-                    android:hint="@string/quick_expense_amount_hint"
-                    android:imeOptions="actionNext"
-                    android:importantForAutofill="no"
-                    android:inputType="numberDecimal"
-                    android:minHeight="@dimen/control_min_height"
-                    android:singleLine="true"
-                    tools:ignore="LabelFor" />
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/quick_expense_amount_error"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/space_tiny"
@@ -236,6 +231,34 @@
 
             <TextView
                 android:id="@+id/quick_expense_account_error"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_tiny"
+                android:textColor="@color/status_destructive"
+                android:textSize="14sp"
+                android:visibility="gone" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/form_field_gap"
+                android:labelFor="@id/quick_expense_date"
+                android:text="@string/quick_expense_date_label"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/quick_expense_date"
+                style="@style/Widget.MoneyTrack.Button.Utility"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_small"
+                android:contentDescription="@string/quick_expense_date_content_description"
+                android:gravity="start|center_vertical" />
+
+            <TextView
+                android:id="@+id/quick_expense_date_error"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/space_tiny"

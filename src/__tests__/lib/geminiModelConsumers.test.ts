@@ -43,13 +43,14 @@ describe('selected Gemini model consumers', () => {
   });
 
   it('uses the selected model for chat', async () => {
-    clientMocks.interactionCreate.mockResolvedValue({ output_text: 'Listo' });
+    clientMocks.generateContent.mockResolvedValue({ text: 'Listo', functionCalls: undefined });
 
     await sendChatMessage('Hola', [], { transactions: [], accounts: [], categories: { income: [], expense: [] } });
 
-    expect(clientMocks.interactionCreate).toHaveBeenCalledWith(
+    expect(clientMocks.generateContent).toHaveBeenCalledWith(
       expect.objectContaining({ model: 'gemini-3.8-flash' }),
     );
+    expect(clientMocks.interactionCreate).not.toHaveBeenCalled();
   });
 
   it('uses the selected model for smart date filters', async () => {

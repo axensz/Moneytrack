@@ -5,7 +5,7 @@
 
 import { getGeminiClient, isAiEnabled } from './geminiClient';
 import { getGeminiModel } from './geminiConfig';
-import type { FunctionCall } from '@google/genai';
+import type { Content, FunctionCall, FunctionCallingConfigMode, GenerateContentResponse } from '@google/genai';
 import type { Transaction, Account, Categories } from '../types/finance';
 import { formatCurrency } from '../utils/formatters';
 import { BalanceCalculator } from '../utils/balanceCalculator';
@@ -375,11 +375,13 @@ const CHAT_ACTION_FUNCTION_DEFINITIONS = [
   },
 ] as const satisfies readonly ChatActionFunctionDefinition[];
 
-const CHAT_ACTION_INTERACTION_TOOLS = CHAT_ACTION_FUNCTION_DEFINITIONS.map((definition) => ({
-  type: 'function' as const,
+// Function declarations para la API generateContent (models.generateContent).
+// Usamos parametersJsonSchema para reutilizar los mismos JSON Schemas de las
+// acciones sin traducirlos al tipo Schema del SDK.
+const CHAT_ACTION_FUNCTION_DECLARATIONS = CHAT_ACTION_FUNCTION_DEFINITIONS.map((definition) => ({
   name: definition.name,
   description: definition.description,
-  parameters: definition.parameters,
+  parametersJsonSchema: definition.parameters,
 }));
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -501,70 +503,32 @@ export function parseActionFromInteractionPayload(payload: unknown): ChatAction 
   );
 }
 
-function extractTextFromContentBlocks(content: unknown): string[] {
-  if (!Array.isArray(content)) return [];
-
-  return content.flatMap((item) => {
-    if (!isRecord(item) || item.type !== 'text') return [];
-    const text = stringValue(item.text);
-    return text ? [text] : [];
-  });
-}
-
-function extractTextFromInteractionItems(items: unknown): string[] {
-  if (!Array.isArray(items)) return [];
-
-  return items.flatMap((item) => {
-    if (!isRecord(item)) return [];
-    if (item.type === 'text') {
-      const text = stringValue(item.text);
-      return text ? [text] : [];
-    }
-    if (item.type === 'model_output') {
-      return extractTextFromContentBlocks(item.content);
-    }
-    return [];
-  });
-}
-
-function extractInteractionText(payload: unknown): string {
-  if (!isRecord(payload)) return '';
-
-  const outputText = stringValue(payload.output_text);
-  if (outputText) return outputText;
-
-  return [
-    ...extractTextFromInteractionItems(payload.outputs),
-    ...extractTextFromInteractionItems(payload.steps),
-  ].join('\n').trim();
-}
-
-function extractInteractionTokenUsage(payload: unknown): TokenUsage | undefined {
-  if (!isRecord(payload) || !isRecord(payload.usage)) return undefined;
-
-  const promptTokens = numberValue(payload.usage.total_input_tokens) ?? 0;
-  const responseTokens = numberValue(payload.usage.total_output_tokens) ?? 0;
-  const totalTokens = numberValue(payload.usage.total_tokens) ?? promptTokens + responseTokens;
-  const thinkingTokens = numberValue(payload.usage.total_thought_tokens) ?? undefined;
-
-  return {
-    promptTokens,
-    responseTokens,
-    totalTokens,
-    thinkingTokens,
-  };
-}
-
 function shouldIncludeRecentTransactions(message: string): boolean {
   return /\b(transacci|movimiento|recategori|categoria|categoría|agrega|agregar|gaste|gast[eé]|ingreso|cuenta|ultimo|último|detalle|editar|cambiar)\b/i.test(message);
 }
 
-function buildInteractionInput(message: string, history: ChatMessage[]): string {
-  const historyText = history
-    .map((item) => `${item.role === 'user' ? 'Usuario' : 'Asistente'}: ${item.content}`)
-    .join('\n\n');
+function buildChatContents(message: string, history: ChatMessage[]): Content[] {
+  const contents: Content[] = history
+    .filter((item) => item.content.trim().length > 0)
+    .map((item) => ({
+      role: item.role === 'user' ? 'user' : 'model',
+      parts: [{ text: item.content }],
+    }));
 
-  return historyText ? `${historyText}\n\nUsuario: ${message}` : message;
+  contents.push({ role: 'user', parts: [{ text: message }] });
+  return contents;
+}
+
+function extractGenerateContentTokenUsage(response: GenerateContentResponse): TokenUsage | undefined {
+  const usage = response.usageMetadata;
+  if (!usage) return undefined;
+
+  const promptTokens = usage.promptTokenCount ?? 0;
+  const responseTokens = usage.candidatesTokenCount ?? 0;
+  const totalTokens = usage.totalTokenCount ?? promptTokens + responseTokens;
+  const thinkingTokens = usage.thoughtsTokenCount ?? undefined;
+
+  return { promptTokens, responseTokens, totalTokens, thinkingTokens };
 }
 
 const SYSTEM_PROMPT = `Eres el asistente financiero de MoneyTrack, una app de finanzas personales colombiana.
@@ -635,7 +599,12 @@ export function parseActionFromResponse(response: string): { text: string; actio
 
 /**
  * Envía un mensaje al chatbot con contexto financiero.
- * Usa Interactions API para chat y function calling confirmable.
+ *
+ * Usa models.generateContent con function calling confirmable. NO usa la
+ * Interactions API (next-gen): ese endpoint (/v1beta/interactions) no devuelve
+ * cabeceras CORS para orígenes web como GitHub Pages, así que el navegador
+ * bloquea la llamada con "failed to fetch". generateContent sí soporta CORS y
+ * es la misma superficie que usa el plan financiero.
  */
 export async function sendChatMessage(
   message: string,
@@ -655,41 +624,38 @@ export async function sendChatMessage(
     { includeRecentTransactions: shouldIncludeRecentTransactions(message) },
   );
 
-  // Construir el contenido completo del prompt
+  // System instruction + contexto financiero, y el historial como contents.
   const systemInstruction = `${SYSTEM_PROMPT}\n\n${financialContext}`;
-  const input = buildInteractionInput(message, history);
+  const contents = buildChatContents(message, history);
 
-  // Construir historial de mensajes para la API
-  // Agregar historial de conversación previo
-  // Agregar el mensaje actual
   // Retry con espera progresiva: 10s, 30s, 60s
   const RETRY_DELAYS = [10_000, 30_000, 60_000];
 
   for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
     try {
-      const response = await client.interactions.create({
+      const response = await client.models.generateContent({
         model: getGeminiModel(),
-        input,
-        stream: false,
-        store: false,
-        system_instruction: systemInstruction,
-        tools: CHAT_ACTION_INTERACTION_TOOLS,
-        generation_config: {
+        contents,
+        config: {
+          systemInstruction,
           temperature: 0.7,
-          max_output_tokens: 8192,
-          tool_choice: {
-            allowed_tools: {
-              mode: 'validated',
-              tools: [...ACTION_FUNCTION_NAMES],
+          maxOutputTokens: 8192,
+          tools: [{ functionDeclarations: CHAT_ACTION_FUNCTION_DECLARATIONS }],
+          toolConfig: {
+            functionCallingConfig: {
+              mode: 'AUTO' as FunctionCallingConfigMode,
+              allowedFunctionNames: [...ACTION_FUNCTION_NAMES],
             },
           },
         },
       });
 
-      const action = parseActionFromInteractionPayload(response);
-      const text = extractInteractionText(response) || (action ? 'Perfecto. Revisa y confirma la accion propuesta.' : '');
+      const call = response.functionCalls?.[0];
+      const action = call ? parseActionFromFunctionCall(call) : undefined;
+      const text = (response.text ?? '').trim()
+        || (action ? 'Perfecto. Revisa y confirma la accion propuesta.' : '');
 
-      const tokenUsage = extractInteractionTokenUsage(response);
+      const tokenUsage = extractGenerateContentTokenUsage(response);
 
       return { text: text || 'No pude generar una respuesta. Intenta de nuevo.', action, tokenUsage };
     } catch (error: unknown) {

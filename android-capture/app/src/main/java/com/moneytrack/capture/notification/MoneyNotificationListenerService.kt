@@ -129,6 +129,9 @@ class MoneyNotificationListenerService : NotificationListenerService() {
 
     override fun onListenerConnected() {
         super.onListenerConnected()
+        // markListenerConnected(true) registra internamente lastConnectedAtElapsedMillis
+        // (vía el reloj inyectable de NotificationAccess), origen de la ventana de gracia.
+        // No se registra la marca temporal por separado para no duplicar ese estado.
         NotificationAccess.markListenerConnected(true)
         val preferences = CapturePreferences.create(this)
         val activeDeliveries = try {
@@ -148,12 +151,17 @@ class MoneyNotificationListenerService : NotificationListenerService() {
     }
 
     override fun onListenerDisconnected() {
+        // Solo se baja la bandera: no se propaga pausa inmediata. Si el acceso sigue
+        // concedido, NotificationAccess.connectionState mantiene el estado activo
+        // (CONNECTING) dentro de la ventana de gracia y se solicita rebind.
         NotificationAccess.markListenerConnected(false)
         super.onListenerDisconnected()
         NotificationAccess.requestRebind(this)
     }
 
     override fun onDestroy() {
+        // La gracia en connectionState absorbe el reciclado sin marcar pausa inmediata;
+        // aquí solo se limpia el estado en memoria del proceso antes de destruir el servicio.
         NotificationAccess.markListenerConnected(false)
         super.onDestroy()
     }

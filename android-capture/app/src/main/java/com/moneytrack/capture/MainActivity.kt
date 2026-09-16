@@ -234,12 +234,18 @@ class MainActivity : AppCompatActivity() {
         val allowedPackages = AvailableCaptureSourceCatalog.productAllowedPackages(
             preferences.allowedPackages(),
         )
+        // Bandera cruda en memoria (referencia; el estado resuelto manda). Se usa como
+        // fast-path: si la bandera ya está en true, evitamos consultar el estado resuelto.
+        val rawConnected = NotificationAccess.listenerConnected
+        // El estado resuelto (CONNECTED o CONNECTING) mapea a activo; DISCONNECTED a inactivo.
+        val listenerActive = rawConnected ||
+            NotificationAccess.connectionState(this) != NotificationAccess.ConnectionState.DISCONNECTED
         val step = CaptureSetupFlow.resolve(
             signedIn = signedIn,
             notificationAccessGranted = accessGranted,
             captureEnabled = preferences.captureEnabled,
             allowedPackages = allowedPackages,
-            notificationListenerConnected = NotificationAccess.listenerConnected,
+            notificationListenerConnected = listenerActive,
         )
 
         renderStep(step)

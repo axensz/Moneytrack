@@ -100,8 +100,8 @@ describe('Android private release contract', () => {
       'utf8',
     );
 
-    expect(buildFile).toContain('versionCode = 3');
-    expect(buildFile).toContain('versionName = "0.2.1"');
+    expect(buildFile).toContain('versionCode = 4');
+    expect(buildFile).toContain('versionName = "0.2.2"');
     expect(buildFile).toContain('MONEYTRACK_ANDROID_KEYSTORE_PATH');
     expect(buildFile).toContain('MONEYTRACK_ANDROID_KEY_ALIAS');
     expect(buildFile).toContain('MONEYTRACK_ANDROID_KEYSTORE_PASSWORD');

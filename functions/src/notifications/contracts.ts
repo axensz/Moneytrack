@@ -184,6 +184,7 @@ export const DELIVERY_STATES = [
   'sending',
   'accepted',
   'ambiguous',
+  'retrying',
   'failed',
   'expired',
 ] as const;

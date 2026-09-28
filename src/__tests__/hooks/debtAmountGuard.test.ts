@@ -19,6 +19,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useDebts } from '../../hooks/useDebts';
 import type { Account, Debt, Transaction } from '../../types/finance';
+import { LOAN_CATEGORY } from '../../config/constants';
 import {
   GUEST_LEDGER_STORAGE_KEY,
   createGuestLedgerEnvelope,
@@ -250,6 +251,35 @@ const renderGuestLedgerDebts = (
 };
 
 describe('debt ledger source-funds guard in guest mode', () => {
+  it('keeps the principal transaction synchronized when the debt amount changes', async () => {
+    const linkedDebt: Debt = {
+      ...SEED_DEBT,
+      type: 'borrowed',
+      accountId: SAVINGS.id,
+    };
+    const principal = guestTransaction({
+      id: 'principal',
+      type: 'income',
+      amount: linkedDebt.originalAmount,
+      category: LOAN_CATEGORY,
+      debtId: linkedDebt.id,
+      mutationSource: 'debt',
+    });
+    const { result } = renderGuestLedgerDebts([linkedDebt], [principal]);
+
+    await act(async () => {
+      await result.current.modifyDebtBalance(linkedDebt.id!, 250, 'add');
+    });
+
+    const ledger = readGuestLedgerEnvelope().data;
+    expect(ledger.debts[0]).toMatchObject({
+      originalAmount: 1_250,
+      remainingAmount: 1_250,
+    });
+    expect(ledger.transactions.find(item => item.id === 'principal'))
+      .toMatchObject({ amount: 1_250 });
+  });
+
   it('rejects lent origination that would overdraw savings before any local write', async () => {
     const { result, addTransaction } = renderGuestLedgerDebts();
 

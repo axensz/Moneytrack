@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "channel": "canary",
+  "versionCode": 4,
+  "versionName": "0.2.2",
+  "apkUrl": "https://github.com/axensz/Moneytrack/releases/download/android-capture-v0.2.2/MoneyTrack-0.2.2.apk",
+  "sha256": "029919d5f68f880a8219489b10766d545a6b893fdffb9bc8e521300da9596c05",
+  "sizeBytes": 10097273,
+  "releaseNotes": [
+    "Corrige el falso aviso de captura pausada al reciclarse el listener de notificaciones.",
+    "La captura se mantiene activa durante reconexiones normales con el acceso concedido."
+  ]
+}

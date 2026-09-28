@@ -1,12 +1,17 @@
 'use client';
 
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { Edit2, Trash2, GripVertical, ChevronUp, ChevronDown, Wallet, CreditCard, Banknote, Combine, AlertTriangle, Smartphone } from 'lucide-react';
 import type { Account } from '../../../../types/finance';
 import { getCreditAuthorityState } from '../../../../utils/creditAuthority';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 import { BalanceSettling } from '@/components/shared/BalanceSettling';
 import { UI_LABELS } from '@/config/constants';
+import {
+  getAccountBalancePresentation,
+  PROGRESS_BAR_TONE_CLASSES,
+  type CreditBreakdownPresentation,
+} from '../utils/accountBalancePresentation';
 
 const ACCOUNT_TYPES = [
   { value: 'savings' as const, label: UI_LABELS.accountTypes.savings, icon: Wallet },
@@ -93,7 +98,19 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
   const authorityMessageId = `credit-authority-${account.id ?? 'unknown'}`;
   const accountTypeInfo = ACCOUNT_TYPES.find((t) => t.value === account.type);
 
-  const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
+  const presentation = useMemo(
+    () =>
+      getAccountBalancePresentation({
+        account,
+        balance,
+        creditUsed,
+        creditAuthority,
+        balanceSettling,
+        hideBalances,
+        formatCurrency,
+      }),
+    [account, balance, creditUsed, creditAuthority, balanceSettling, hideBalances, formatCurrency]
+  );
 
   const getCardClasses = () => {
     const base = 'rounded-xl p-5 transition-[box-shadow,border-color,transform,opacity,background-color] touch-none select-none relative overflow-hidden';
@@ -205,22 +222,20 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
           {/* Balance */}
           <div className="text-left sm:text-right">
             <div
-              className={`text-xl sm:text-2xl font-bold ${isCredit && !creditAuthority.ready
-                ? 'text-warning'
-                : balance < 0 ? 'text-destructive' : 'text-success'
-                }`}
+              className={`text-xl sm:text-2xl font-bold font-mono ${presentation.toneClass}`}
+              aria-label={presentation.accessibleAmountLabel}
             >
-              {isCredit && (
-                <div className="text-xs font-normal text-muted-foreground mb-1">
-                  Disponible
+              {presentation.primaryLabel && (
+                <div className="text-xs font-normal font-sans text-muted-foreground mb-1">
+                  {presentation.primaryLabel}
                 </div>
               )}
-              {isCredit && !creditAuthority.ready ? (
-                <span className="text-base sm:text-lg">Por conciliar</span>
-              ) : !isCredit && balanceSettling ? (
-                <BalanceSettling className="text-base font-medium text-muted-foreground" />
+              {presentation.isUnreconciled ? (
+                <span className="text-base sm:text-lg font-sans">{presentation.unreconciledBadgeText}</span>
+              ) : presentation.isSettling ? (
+                <BalanceSettling className="text-base font-medium font-sans text-muted-foreground" />
               ) : (
-                displayAmount(balance)
+                presentation.formattedAmount
               )}
             </div>
           </div>
@@ -229,8 +244,9 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
         {/* Credit card specific info */}
         {isCredit && (
           <CreditCardInfo
+            creditBreakdown={presentation.credit}
             creditUsed={creditUsed}
-            creditLimit={account.creditLimit!}
+            creditLimit={account.creditLimit ?? 0}
             nextCutoff={nextCutoff}
             nextPayment={nextPayment}
             monthlySpendingLimit={account.monthlySpendingLimit}
@@ -306,6 +322,7 @@ AccountCard.displayName = 'AccountCard';
 
 // Sub-componente para info de tarjeta de crédito
 interface CreditCardInfoProps {
+  creditBreakdown?: CreditBreakdownPresentation;
   creditUsed: number;
   creditLimit: number;
   nextCutoff: Date | null;
@@ -319,6 +336,7 @@ interface CreditCardInfoProps {
 }
 
 const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
+  creditBreakdown,
   creditUsed,
   creditLimit,
   nextCutoff,
@@ -331,9 +349,6 @@ const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
   authorityMessageId,
 }) => {
   const { hideBalances } = useUIPreferences();
-  const usagePercentage = creditLimit > 0 ? Math.min((creditUsed / creditLimit) * 100, 100) : 0;
-  const isHighUsage = creditLimit > 0 && creditUsed > creditLimit * 0.8;
-
   const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
 
   if (!authorityReady) {
@@ -354,19 +369,26 @@ const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
     );
   }
 
+  const formattedUsed = creditBreakdown?.formattedUsed ?? displayAmount(creditUsed);
+  const formattedLimit = creditBreakdown?.formattedLimit ?? displayAmount(creditLimit);
+  const progressBarWidth = creditBreakdown?.progressBarWidth ?? (hideBalances ? '0%' : `${creditLimit > 0 ? Math.min(100, Math.max(0, (creditUsed / creditLimit) * 100)) : 0}%`);
+  const progressBarToneClass = creditBreakdown
+    ? PROGRESS_BAR_TONE_CLASSES[creditBreakdown.progressBarTone]
+    : 'bg-primary';
+
   return (
     <div className="mt-4">
       <div className={`flex justify-between ${isAssociated ? 'text-xs sm:text-sm' : 'text-sm'} mb-1.5`}>
         <span className="text-muted-foreground">Cupo utilizado</span>
-        <span className="font-medium text-foreground">
-          {displayAmount(creditUsed)} / {displayAmount(creditLimit)}
+        <span className="font-medium font-mono text-foreground">
+          {formattedUsed} / {formattedLimit}
         </span>
       </div>
 
-      <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden">
+      <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden" aria-hidden="true">
         <div
-          className={`h-full transition-[width,background-color] ${isHighUsage ? 'bg-warning' : 'bg-primary'}`}
-          style={{ width: `${usagePercentage}%` }}
+          className={`h-full transition-[width,background-color] ${progressBarToneClass}`}
+          style={{ width: progressBarWidth }}
         />
       </div>
 
@@ -386,7 +408,7 @@ const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
         {interestRate && interestRate > 0 && (
           <div>
             <span className="text-muted-foreground">Tasa E.A.: </span>
-            <span className="font-medium text-foreground">
+            <span className="font-medium font-mono text-foreground">
               {interestRate.toFixed(2).replace('.', ',')}%
             </span>
           </div>
@@ -394,7 +416,7 @@ const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
         {monthlySpendingLimit && monthlySpendingLimit > 0 && (
           <div>
             <span className="text-muted-foreground">Tope manual: </span>
-            <span className="font-medium text-foreground">
+            <span className="font-medium font-mono text-foreground">
               {displayAmount(monthlySpendingLimit)}
             </span>
           </div>

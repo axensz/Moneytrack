@@ -4,6 +4,13 @@ import { isFirebaseConfigured } from '../lib/firebase';
 import { db } from '../lib/firebaseDb';
 import { setGeminiApiKey } from '../lib/geminiClient';
 import { setAiConsent } from '../lib/aiConsent';
+import {
+  DEFAULT_GEMINI_MODEL,
+  isGeminiModelId,
+  normalizeGeminiModel,
+  setGeminiModel,
+  type GeminiModelId,
+} from '../lib/geminiConfig';
 import { logger } from '../utils/logger';
 
 /**
@@ -35,6 +42,7 @@ import { logger } from '../utils/logger';
  */
 // Intencionalmente NO existe storage en cliente para la API key: solo memoria + Firestore.
 const consentKeyFor = (userId: string | null) => `moneytrack_ai_consent_${userId ?? 'guest'}`;
+const modelKeyFor = (userId: string | null) => `moneytrack_gemini_model_${userId ?? 'guest'}`;
 
 export interface UseGeminiApiKeyResult {
   apiKey: string;
@@ -44,11 +52,15 @@ export interface UseGeminiApiKeyResult {
   /** Consentimiento explícito para enviar datos a la IA (S4). Off por defecto. */
   hasConsent: boolean;
   setConsent: (value: boolean) => void;
+  /** Un solo modelo para chat, filtros inteligentes y plan financiero. */
+  selectedModel: GeminiModelId;
+  setSelectedModel: (model: GeminiModelId) => void;
 }
 
 export function useGeminiApiKey(userId: string | null): UseGeminiApiKeyResult {
   const [apiKey, setApiKeyState] = useState('');
   const [hasConsent, setHasConsentState] = useState(false);
+  const [selectedModel, setSelectedModelState] = useState<GeminiModelId>(DEFAULT_GEMINI_MODEL);
 
   // Aplica una key a estado + módulo central (solo memoria en cliente).
   const apply = useCallback((key: string) => {
@@ -72,15 +84,20 @@ export function useGeminiApiKey(userId: string | null): UseGeminiApiKeyResult {
   // sincroniza desde Firestore. El consentimiento sí se lee del caché local.
   useEffect(() => {
     let localConsent = false;
+    let localModel: GeminiModelId = DEFAULT_GEMINI_MODEL;
     try {
       localConsent = localStorage.getItem(consentKeyFor(userId)) === 'true';
+      localModel = normalizeGeminiModel(localStorage.getItem(modelKeyFor(userId)));
     } catch {
       localConsent = false;
+      localModel = DEFAULT_GEMINI_MODEL;
     }
     setApiKeyState('');
     setGeminiApiKey('');
     setHasConsentState(localConsent);
     setAiConsent(localConsent);
+    setSelectedModelState(localModel);
+    setGeminiModel(localModel);
 
     if (!userId || !isFirebaseConfigured) return;
 
@@ -103,6 +120,13 @@ export function useGeminiApiKey(userId: string | null): UseGeminiApiKeyResult {
           setHasConsentState(remoteConsent);
           setAiConsent(remoteConsent);
           try { localStorage.setItem(consentKeyFor(userId), remoteConsent ? 'true' : 'false'); } catch { /* noop */ }
+        }
+
+        const remoteModel = snap.data()?.geminiModel;
+        if (isGeminiModelId(remoteModel)) {
+          setSelectedModelState(remoteModel);
+          setGeminiModel(remoteModel);
+          try { localStorage.setItem(modelKeyFor(userId), remoteModel); } catch { /* noop */ }
         }
       },
       (err) => logger.error('No se pudieron leer los ajustes de IA', err),
@@ -135,6 +159,21 @@ export function useGeminiApiKey(userId: string | null): UseGeminiApiKeyResult {
     }
   }, [userId, applyConsent]);
 
+  const setSelectedModel = useCallback((model: GeminiModelId) => {
+    const normalized = normalizeGeminiModel(model);
+    setSelectedModelState(normalized);
+    setGeminiModel(normalized);
+    try {
+      localStorage.setItem(modelKeyFor(userId), normalized);
+    } catch {
+      // localStorage no disponible: se mantiene solo en memoria
+    }
+    if (userId && isFirebaseConfigured) {
+      setDoc(doc(db, `users/${userId}/settings/ai`), { geminiModel: normalized }, { merge: true })
+        .catch((err) => logger.error('No se pudo guardar el modelo de Gemini en la nube', err));
+    }
+  }, [userId]);
+
   return {
     apiKey,
     isConfigured: apiKey.trim().length > 10,
@@ -142,5 +181,7 @@ export function useGeminiApiKey(userId: string | null): UseGeminiApiKeyResult {
     clearApiKey,
     hasConsent,
     setConsent,
+    selectedModel,
+    setSelectedModel,
   };
 }

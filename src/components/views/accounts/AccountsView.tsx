@@ -126,7 +126,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
 
     const totalLimit = cards.reduce((sum, card) => sum + card.creditLimit, 0);
     const totalUsed = cards.reduce((sum, card) => sum + card.used, 0);
-    const totalAvailable = Math.max(0, totalLimit - totalUsed);
+    const totalAvailable = cards.reduce((sum, card) => sum + card.available, 0);
     const usagePercentage = totalLimit > 0
       ? Math.min((totalUsed / totalLimit) * 100, 100)
       : 0;
@@ -372,9 +372,9 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
     }
   };
 
-  // Cuentas principales (no asociadas)
+  // Cuentas principales (no asociadas o cuya cuenta bancaria asociada ya no existe)
   const mainAccounts = accounts
-    .filter((account) => account.type !== 'credit' || !account.bankAccountId)
+    .filter((account) => account.type !== 'credit' || !account.bankAccountId || !accounts.some((a) => a.id === account.bankAccountId))
     .sort((a, b) => (a.order || 0) - (b.order || 0));
 
   return (

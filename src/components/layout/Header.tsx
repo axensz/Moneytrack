@@ -4,6 +4,7 @@ import React, { useRef, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import {
   Bell,
+  Bot,
   HelpCircle,
   LogIn,
   LogOut,
@@ -28,6 +29,7 @@ interface HeaderProps {
   onOpenCategories: () => void;
   onOpenNotificationPreferences: () => void;
   onOpenLedgerReconciliation: () => void;
+  onOpenAISettings: () => void;
   onGoToTransactions: () => void;
   onLogout: () => Promise<void>;
 }
@@ -46,6 +48,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCategories,
   onOpenNotificationPreferences,
   onOpenLedgerReconciliation,
+  onOpenAISettings,
   onGoToTransactions,
   onLogout,
 }) => {
@@ -212,14 +215,24 @@ export const Header: React.FC<HeaderProps> = ({
                     <span>Categorías y personas</span>
                   </button>
                   {user && (
-                    <button
-                      onClick={() => openSettingsModal(onOpenNotificationPreferences)}
-                      className={menuItemClass}
-                      role="menuitem"
-                    >
-                      <Bell size={18} aria-hidden="true" />
-                      <span>Notificaciones</span>
-                    </button>
+                    <>
+                      <button
+                        onClick={() => openSettingsModal(onOpenNotificationPreferences)}
+                        className={menuItemClass}
+                        role="menuitem"
+                      >
+                        <Bell size={18} aria-hidden="true" />
+                        <span>Notificaciones</span>
+                      </button>
+                      <button
+                        onClick={() => openSettingsModal(onOpenAISettings)}
+                        className={menuItemClass}
+                        role="menuitem"
+                      >
+                        <Bot size={18} aria-hidden="true" />
+                        <span>Asistente IA</span>
+                      </button>
+                    </>
                   )}
                   <button
                     onClick={() => openSettingsModal(onOpenLedgerReconciliation)}

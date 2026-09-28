@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="default_expense_categories">
+        <item>Alimentación</item>
+        <item>Transporte</item>
+        <item>Servicios</item>
+        <item>Vivienda</item>
+        <item>Salud</item>
+        <item>Entretenimiento</item>
+        <item>Educación</item>
+        <item>Compras Personales</item>
+        <item>Regalos</item>
+        <item>Otros</item>
+    </string-array>
+</resources>

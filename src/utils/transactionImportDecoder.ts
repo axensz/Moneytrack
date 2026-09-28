@@ -1,4 +1,6 @@
 import type {
+  AndroidNotificationCandidateBase,
+  AndroidShortcutCandidateBase,
   PaymentInstrument,
   PaymentInstrumentKind,
   PaymentInstrumentNetwork,
@@ -50,23 +52,34 @@ const PAYMENT_INSTRUMENT_FIELDS = new Set([
   'updatedAt',
 ]);
 
-const TRANSACTION_IMPORT_CANDIDATE_FIELDS = new Set([
+const TRANSACTION_IMPORT_CANDIDATE_COMMON_FIELDS = [
   'schemaVersion',
   'source',
-  'sourcePackage',
   'occurredAt',
   'amountMinor',
   'currency',
   'merchant',
+  'status',
+  'transactionId',
+  'confirmedAt',
+  'dismissedAt',
+] as const;
+
+const NOTIFICATION_CANDIDATE_FIELDS = new Set([
+  ...TRANSACTION_IMPORT_CANDIDATE_COMMON_FIELDS,
+  'sourcePackage',
   'cardLast4',
   'observedInstrumentLabel',
   'parserId',
   'parserVersion',
   'confidence',
-  'status',
-  'transactionId',
-  'confirmedAt',
-  'dismissedAt',
+]);
+
+const SHORTCUT_CANDIDATE_FIELDS = new Set([
+  ...TRANSACTION_IMPORT_CANDIDATE_COMMON_FIELDS,
+  'suggestedAccountId',
+  'suggestedCategory',
+  'createdAt',
 ]);
 
 const PAYMENT_INSTRUMENT_KINDS = new Set<PaymentInstrumentKind>([
@@ -280,18 +293,33 @@ export function decodeTransactionImportCandidate(
   const data = document.data();
   if (!isRecord(data)) return invalidCandidate(document.id, 'invalid-document');
 
-  const extraField = unknownField(data, TRANSACTION_IMPORT_CANDIDATE_FIELDS);
-  if (extraField) return invalidCandidate(document.id, 'unknown-field', extraField);
-
-  if (data.schemaVersion !== 1 && data.schemaVersion !== 2) {
+  if (
+    data.schemaVersion !== 1
+    && data.schemaVersion !== 2
+    && data.schemaVersion !== 3
+  ) {
     return invalidCandidate(document.id, 'invalid-field', 'schemaVersion');
   }
-  if (data.source !== 'android-notification') {
+
+  const isNotificationCandidate = (
+    (data.schemaVersion === 1 || data.schemaVersion === 2)
+    && data.source === 'android-notification'
+  );
+  const isShortcutCandidate = (
+    data.schemaVersion === 3
+    && data.source === 'android-shortcut'
+  );
+  if (!isNotificationCandidate && !isShortcutCandidate) {
     return invalidCandidate(document.id, 'invalid-field', 'source');
   }
-  if (!hasBoundedText(data.sourcePackage, 160)) {
-    return invalidCandidate(document.id, 'invalid-field', 'sourcePackage');
-  }
+
+  const extraField = unknownField(
+    data,
+    isNotificationCandidate
+      ? NOTIFICATION_CANDIDATE_FIELDS
+      : SHORTCUT_CANDIDATE_FIELDS,
+  );
+  if (extraField) return invalidCandidate(document.id, 'unknown-field', extraField);
 
   const occurredAt = decodeTimestamp(data.occurredAt);
   if (!occurredAt) {
@@ -311,37 +339,6 @@ export function decodeTransactionImportCandidate(
   if (!hasBoundedText(data.merchant, 140)) {
     return invalidCandidate(document.id, 'invalid-field', 'merchant');
   }
-  if (data.cardLast4 !== undefined && !isLast4(data.cardLast4)) {
-    return invalidCandidate(document.id, 'invalid-field', 'cardLast4');
-  }
-  if (
-    data.observedInstrumentLabel !== undefined
-    && (
-      !hasBoundedText(data.observedInstrumentLabel, 24)
-      || !/^\p{L}+$/u.test(data.observedInstrumentLabel)
-    )
-  ) {
-    return invalidCandidate(document.id, 'invalid-field', 'observedInstrumentLabel');
-  }
-  const validParserContract = data.schemaVersion === 1
-    ? data.parserId === 'strict-cop-purchase'
-      && data.observedInstrumentLabel === undefined
-    : data.parserId === 'google-wallet-purchase'
-      && data.sourcePackage === 'com.google.android.apps.walletnfcrel';
-  if (!validParserContract) {
-    return invalidCandidate(document.id, 'invalid-field', 'parserId');
-  }
-  if (data.parserVersion !== 1) {
-    return invalidCandidate(document.id, 'invalid-field', 'parserVersion');
-  }
-  if (
-    typeof data.confidence !== 'string'
-    || !TRANSACTION_IMPORT_CONFIDENCES.has(
-      data.confidence as TransactionImportConfidence,
-    )
-  ) {
-    return invalidCandidate(document.id, 'invalid-field', 'confidence');
-  }
   if (
     typeof data.status !== 'string'
     || !TRANSACTION_IMPORT_STATUSES.has(data.status as TransactionImportStatus)
@@ -349,23 +346,85 @@ export function decodeTransactionImportCandidate(
     return invalidCandidate(document.id, 'invalid-field', 'status');
   }
 
-  const common = {
-    id: document.id,
-    schemaVersion: data.schemaVersion as 1 | 2,
-    source: 'android-notification' as const,
-    sourcePackage: data.sourcePackage,
-    occurredAt,
-    amountMinor: data.amountMinor,
-    currency: 'COP' as const,
-    merchant: data.merchant,
-    ...(data.cardLast4 === undefined ? {} : { cardLast4: data.cardLast4 }),
-    ...(data.observedInstrumentLabel === undefined
-      ? {}
-      : { observedInstrumentLabel: data.observedInstrumentLabel }),
-    parserId: data.parserId as 'strict-cop-purchase' | 'google-wallet-purchase',
-    parserVersion: 1 as const,
-    confidence: data.confidence as TransactionImportConfidence,
-  };
+  let common: AndroidNotificationCandidateBase | AndroidShortcutCandidateBase;
+  if (isNotificationCandidate) {
+    if (!hasBoundedText(data.sourcePackage, 160)) {
+      return invalidCandidate(document.id, 'invalid-field', 'sourcePackage');
+    }
+    if (data.cardLast4 !== undefined && !isLast4(data.cardLast4)) {
+      return invalidCandidate(document.id, 'invalid-field', 'cardLast4');
+    }
+    if (
+      data.observedInstrumentLabel !== undefined
+      && (
+        !hasBoundedText(data.observedInstrumentLabel, 24)
+        || !/^\p{L}+$/u.test(data.observedInstrumentLabel)
+      )
+    ) {
+      return invalidCandidate(document.id, 'invalid-field', 'observedInstrumentLabel');
+    }
+    const validParserContract = data.schemaVersion === 1
+      ? data.parserId === 'strict-cop-purchase'
+        && data.observedInstrumentLabel === undefined
+      : data.parserId === 'google-wallet-purchase'
+        && data.sourcePackage === 'com.google.android.apps.walletnfcrel';
+    if (!validParserContract) {
+      return invalidCandidate(document.id, 'invalid-field', 'parserId');
+    }
+    if (data.parserVersion !== 1) {
+      return invalidCandidate(document.id, 'invalid-field', 'parserVersion');
+    }
+    if (
+      typeof data.confidence !== 'string'
+      || !TRANSACTION_IMPORT_CONFIDENCES.has(
+        data.confidence as TransactionImportConfidence,
+      )
+    ) {
+      return invalidCandidate(document.id, 'invalid-field', 'confidence');
+    }
+
+    common = {
+      id: document.id,
+      schemaVersion: data.schemaVersion as 1 | 2,
+      source: 'android-notification',
+      sourcePackage: data.sourcePackage,
+      occurredAt,
+      amountMinor: data.amountMinor,
+      currency: 'COP',
+      merchant: data.merchant,
+      ...(data.cardLast4 === undefined ? {} : { cardLast4: data.cardLast4 }),
+      ...(data.observedInstrumentLabel === undefined
+        ? {}
+        : { observedInstrumentLabel: data.observedInstrumentLabel }),
+      parserId: data.parserId as 'strict-cop-purchase' | 'google-wallet-purchase',
+      parserVersion: 1,
+      confidence: data.confidence as TransactionImportConfidence,
+    };
+  } else {
+    if (!hasBoundedText(data.suggestedAccountId, 1_500)) {
+      return invalidCandidate(document.id, 'invalid-field', 'suggestedAccountId');
+    }
+    if (!hasBoundedText(data.suggestedCategory, 100)) {
+      return invalidCandidate(document.id, 'invalid-field', 'suggestedCategory');
+    }
+    const createdAt = decodeTimestamp(data.createdAt);
+    if (!createdAt) {
+      return invalidCandidate(document.id, 'invalid-field', 'createdAt');
+    }
+
+    common = {
+      id: document.id,
+      schemaVersion: 3,
+      source: 'android-shortcut',
+      occurredAt,
+      amountMinor: data.amountMinor,
+      currency: 'COP',
+      merchant: data.merchant,
+      suggestedAccountId: data.suggestedAccountId,
+      suggestedCategory: data.suggestedCategory,
+      createdAt,
+    };
+  }
 
   if (data.status === 'pending') {
     const terminalField = ['transactionId', 'confirmedAt', 'dismissedAt']

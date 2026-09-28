@@ -6,7 +6,7 @@ import type { DateRangePreset } from '../../../../types/finance';
 import { DATE_PRESETS } from '../../../../utils/dateUtils';
 import { isGeminiConfigured } from '../../../../lib/gemini';
 import { getGeminiClient, isAiEnabled } from '../../../../lib/geminiClient';
-import { GEMINI_MODELS, dateRangeResponseSchema, geminiJsonConfig, parseGeminiJson } from '../../../../lib/geminiConfig';
+import { getGeminiModel, dateRangeResponseSchema, geminiJsonConfig, parseGeminiJson } from '../../../../lib/geminiConfig';
 
 interface DateFilterDropdownProps {
   dateRangePreset: DateRangePreset;
@@ -37,7 +37,7 @@ function isDateRangeAIResult(value: unknown): value is DateRangeAIResult {
   );
 }
 
-async function parseDateWithAI(query: string): Promise<DateRangeAIResult | null> {
+export async function parseDateWithAI(query: string): Promise<DateRangeAIResult | null> {
   if (!isAiEnabled()) return null;
 
   const today = new Date();
@@ -46,7 +46,7 @@ async function parseDateWithAI(query: string): Promise<DateRangeAIResult | null>
 
   const ai = await getGeminiClient();
   const response = await ai.models.generateContent({
-    model: GEMINI_MODELS.structured,
+    model: getGeminiModel(),
     contents: `Hoy es ${dayOfWeek} ${todayStr}. El usuario quiere filtrar por rango de fechas y dice: "${query}". Responde SOLO un JSON con formato {"startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD"}. Sin explicaciones.`,
     config: {
       ...geminiJsonConfig(dateRangeResponseSchema),

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   collection,
   doc,
@@ -16,8 +16,24 @@ import { decodeTransactionImportCandidate } from '../../utils/transactionImportD
 
 const CANDIDATE_PAGE_SIZE = 100;
 
+export type RequestedTransactionImportCandidateStatus =
+  | 'idle'
+  | 'loading'
+  | 'ready'
+  | 'missing'
+  | 'terminal'
+  | 'error';
+
+export interface ResolvedTransactionImportCandidateRequest {
+  userId: string;
+  candidateId: string;
+}
+
 export interface UseTransactionImportCandidatesReturn {
   candidates: PendingTransactionImportCandidate[];
+  requestedCandidate: PendingTransactionImportCandidate | null;
+  requestedStatus: RequestedTransactionImportCandidateStatus;
+  requestedRequest: ResolvedTransactionImportCandidateRequest | null;
   loading: boolean;
   error: Error | null;
   reachedLimit: boolean;
@@ -26,16 +42,31 @@ export interface UseTransactionImportCandidatesReturn {
 
 export function useTransactionImportCandidates(
   userId: string | null,
+  requestedCandidateId: string | null = null,
 ): UseTransactionImportCandidatesReturn {
-  const [candidates, setCandidates] = useState<PendingTransactionImportCandidate[]>([]);
+  const [listedCandidates, setListedCandidates] = useState<
+    PendingTransactionImportCandidate[]
+  >([]);
+  const [listedOwnerUserId, setListedOwnerUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(userId));
-  const [error, setError] = useState<Error | null>(null);
+  const [listError, setListError] = useState<Error | null>(null);
   const [reachedLimit, setReachedLimit] = useState(false);
+  const [requestedCandidate, setRequestedCandidate] = useState<
+    PendingTransactionImportCandidate | null
+  >(null);
+  const [requestedStatus, setRequestedStatus] = useState<
+    RequestedTransactionImportCandidateStatus
+  >('idle');
+  const [requestedRequest, setRequestedRequest] = useState<
+    ResolvedTransactionImportCandidateRequest | null
+  >(null);
+  const [requestedError, setRequestedError] = useState<Error | null>(null);
 
   useEffect(() => {
     let active = true;
-    setCandidates([]);
-    setError(null);
+    setListedCandidates([]);
+    setListedOwnerUserId(null);
+    setListError(null);
     setReachedLimit(false);
 
     if (!userId) {
@@ -63,12 +94,13 @@ export function useTransactionImportCandidates(
         const issue = decoded.find(result => (
           !result.ok || result.candidate.status !== 'pending'
         ));
-        setCandidates(decoded.flatMap(result => (
+        setListedCandidates(decoded.flatMap(result => (
           result.ok && result.candidate.status === 'pending'
             ? [result.candidate]
             : []
         )));
-        setError(
+        setListedOwnerUserId(userId);
+        setListError(
           issue
             ? new Error(
               issue.ok
@@ -82,8 +114,9 @@ export function useTransactionImportCandidates(
       },
       subscriptionError => {
         if (!active) return;
-        setCandidates([]);
-        setError(
+        setListedCandidates([]);
+        setListedOwnerUserId(userId);
+        setListError(
           subscriptionError instanceof Error
             ? subscriptionError
             : new Error('No se pudieron cargar las transacciones por revisar.'),
@@ -98,6 +131,102 @@ export function useTransactionImportCandidates(
       unsubscribe();
     };
   }, [userId]);
+
+  useEffect(() => {
+    let active = true;
+    setRequestedCandidate(null);
+    setRequestedError(null);
+    setRequestedRequest(null);
+
+    if (!userId || !requestedCandidateId) {
+      setRequestedStatus('idle');
+      return () => {
+        active = false;
+      };
+    }
+
+    setRequestedStatus('loading');
+    const unsubscribe = onSnapshot(
+      doc(
+        db,
+        'users',
+        userId,
+        'transactionImportCandidates',
+        requestedCandidateId,
+      ),
+      { includeMetadataChanges: true },
+      snapshot => {
+        if (!active) return;
+        if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return;
+        setRequestedRequest({ userId, candidateId: requestedCandidateId });
+        setRequestedError(null);
+        if (!snapshot.exists()) {
+          setRequestedCandidate(null);
+          setRequestedStatus('missing');
+          return;
+        }
+
+        const decoded = decodeTransactionImportCandidate(snapshot);
+        if (!decoded.ok) {
+          setRequestedCandidate(null);
+          setRequestedError(new Error(decoded.issue.message));
+          setRequestedStatus('error');
+          return;
+        }
+        if (decoded.candidate.status !== 'pending') {
+          setRequestedCandidate(null);
+          setRequestedStatus('terminal');
+          return;
+        }
+        if (decoded.candidate.source !== 'android-shortcut') {
+          setRequestedCandidate(null);
+          setRequestedError(new Error(
+            'El enlace no corresponde a un borrador de gasto rápido.',
+          ));
+          setRequestedStatus('error');
+          return;
+        }
+
+        setRequestedCandidate(decoded.candidate);
+        setRequestedStatus('ready');
+      },
+      subscriptionError => {
+        if (!active) return;
+        setRequestedRequest({ userId, candidateId: requestedCandidateId });
+        setRequestedCandidate(null);
+        setRequestedError(
+          subscriptionError instanceof Error
+            ? subscriptionError
+            : new Error('No se pudo abrir el borrador de gasto rápido.'),
+        );
+        setRequestedStatus('error');
+      },
+    );
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [requestedCandidateId, userId]);
+
+  const visibleListedCandidates = useMemo(
+    () => listedOwnerUserId === userId ? listedCandidates : [],
+    [listedCandidates, listedOwnerUserId, userId],
+  );
+  const requestedRequestMatches = requestedRequest?.userId === userId &&
+    requestedRequest.candidateId === requestedCandidateId;
+  const visibleRequestedCandidate = requestedRequestMatches
+    ? requestedCandidate
+    : null;
+  const candidates = useMemo(() => {
+    if (
+      !visibleRequestedCandidate
+      || visibleListedCandidates.some(candidate => candidate.id === visibleRequestedCandidate.id)
+    ) {
+      return visibleListedCandidates;
+    }
+    return [visibleRequestedCandidate, ...visibleListedCandidates];
+  }, [visibleListedCandidates, visibleRequestedCandidate]);
 
   const dismissCandidate = useCallback(
     async (candidateId: string) => {
@@ -115,9 +244,17 @@ export function useTransactionImportCandidates(
 
   return {
     candidates,
-    loading,
-    error,
-    reachedLimit,
+    requestedCandidate: visibleRequestedCandidate,
+    requestedStatus: !userId || !requestedCandidateId
+      ? 'idle'
+      : requestedRequestMatches
+        ? requestedStatus
+        : 'loading',
+    requestedRequest: requestedRequestMatches ? requestedRequest : null,
+    loading: Boolean(userId) && (listedOwnerUserId !== userId || loading),
+    error: (requestedRequestMatches ? requestedError : null) ??
+      (listedOwnerUserId === userId ? listError : null),
+    reachedLimit: listedOwnerUserId === userId && reachedLimit,
     dismissCandidate,
   };
 }

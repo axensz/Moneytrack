@@ -82,22 +82,43 @@ const loadInstruments = async (
 const sameCandidate = (
   current: PendingTransactionImportCandidate,
   expected: PendingTransactionImportCandidate,
-): boolean => (
-  current.id === expected.id
-  && current.schemaVersion === expected.schemaVersion
-  && current.source === expected.source
-  && current.sourcePackage === expected.sourcePackage
-  && current.occurredAt.getTime() === expected.occurredAt.getTime()
-  && current.amountMinor === expected.amountMinor
-  && current.currency === expected.currency
-  && current.merchant === expected.merchant
-  && current.cardLast4 === expected.cardLast4
-  && current.observedInstrumentLabel === expected.observedInstrumentLabel
-  && current.parserId === expected.parserId
-  && current.parserVersion === expected.parserVersion
-  && current.confidence === expected.confidence
-  && current.status === expected.status
-);
+): boolean => {
+  if (
+    current.id !== expected.id
+    || current.schemaVersion !== expected.schemaVersion
+    || current.source !== expected.source
+    || current.occurredAt.getTime() !== expected.occurredAt.getTime()
+    || current.amountMinor !== expected.amountMinor
+    || current.currency !== expected.currency
+    || current.merchant !== expected.merchant
+    || current.status !== expected.status
+  ) {
+    return false;
+  }
+
+  if (
+    current.source === 'android-shortcut'
+    && expected.source === 'android-shortcut'
+  ) {
+    return current.suggestedAccountId === expected.suggestedAccountId
+      && current.suggestedCategory === expected.suggestedCategory
+      && current.createdAt.getTime() === expected.createdAt.getTime();
+  }
+
+  if (
+    current.source === 'android-notification'
+    && expected.source === 'android-notification'
+  ) {
+    return current.sourcePackage === expected.sourcePackage
+      && current.cardLast4 === expected.cardLast4
+      && current.observedInstrumentLabel === expected.observedInstrumentLabel
+      && current.parserId === expected.parserId
+      && current.parserVersion === expected.parserVersion
+      && current.confidence === expected.confidence;
+  }
+
+  return false;
+};
 
 const requireCurrentPendingCandidate = (
   candidate: TransactionImportCandidate,

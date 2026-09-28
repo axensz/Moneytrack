@@ -25,6 +25,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Prototipos estáticos de diseño (no se compilan ni se envían):
     "design-system/**",
+    // Worktrees de git: copias del repo (a veces con build output en out/); no lintear.
+    ".worktrees/**",
     // Worktrees y ajustes locales de Claude Code (copias del repo: no lintear).
     ".claude/**",
     // Skills/herramientas locales de agentes; no forman parte del producto.

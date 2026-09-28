@@ -42,6 +42,25 @@ El sistema MUST consultar como máximo los 100 candidatos pendientes más recien
 - **WHEN** existen más de 100 candidatos pendientes
 - **THEN** la consulta inicial muestra los 100 más recientes y comunica el límite sin cargar un historial ilimitado
 
+### Requirement: Un enlace Android resuelve únicamente el borrador indicado
+La PWA MUST aceptar `reviewAndroid` solo como un ID opaco de 64 caracteres hexadecimales minúsculos, MUST cargar el documento exacto bajo el usuario autenticado aunque no aparezca en la consulta acotada de la bandeja y MUST NOT seleccionar otro candidato por similitud. Después de resolver el intento, MUST eliminar únicamente `reviewAndroid` de la URL mediante `history.replaceState`.
+
+#### Scenario: Abrir un borrador manual pendiente
+- **WHEN** la vista de transacciones recibe un `reviewAndroid` válido que identifica un candidato v3 `android-shortcut` pendiente del usuario actual
+- **THEN** la bandeja incluye ese candidato exacto y abre `Revisar gasto rápido` con sus valores válidos precargados
+
+#### Scenario: El borrador no pertenece a la sesión o ya terminó
+- **WHEN** el ID no existe bajo el usuario actual o identifica un candidato terminal
+- **THEN** la PWA muestra un mensaje reparable, no revela datos de otra sesión y no abre ningún candidato alternativo
+
+#### Scenario: El parámetro es inválido
+- **WHEN** `reviewAndroid` no cumple el formato opaco
+- **THEN** la PWA no consulta Firestore, informa que no puede abrir el borrador y conserva la vista de transacciones
+
+#### Scenario: Limpiar el handoff resuelto
+- **WHEN** la PWA termina de resolver un `reviewAndroid` válido o inválido
+- **THEN** elimina ese parámetro sin recargar la página y conserva `view=transactions` y cualquier otro parámetro reconocido
+
 ### Requirement: La revisión permite corregir lo que la notificación no sabe
 El sistema MUST exigir una cuenta y categoría válidas, permitir corregir monto, comercio y fecha, y MUST solicitar cuotas/interés explícitos para gastos de TC sin inferirlos.
 
@@ -64,6 +83,10 @@ El sistema MUST exigir una cuenta y categoría válidas, permitir corregir monto
 #### Scenario: Confirmar una compra de un medio desconocido sin recordarlo
 - **WHEN** el apodo corresponde a una tarjeta ajena o ausente de Moneytrack y la persona selecciona una cuenta solo para esta compra sin marcar “Recordar”
 - **THEN** el sistema puede confirmar el gasto revisado, pero no crea ni modifica un medio de pago
+
+#### Scenario: Revisar un borrador de gasto rápido
+- **WHEN** la revisión recibe un candidato v3 `android-shortcut`
+- **THEN** usa el título `Revisar gasto rápido`, precarga descripción, monto, fecha, categoría y cuenta solo cuando siguen siendo válidas, y no ofrece recordar un medio de pago inexistente
 
 ### Requirement: La confirmación es servidor-actual, atómica e idempotente
 El sistema MUST confirmar mediante la frontera contable autenticada con `operationId` y documento `ledger-mutation:android:<candidateId>`, MUST usar `mutationSource: android` y MUST escribir transacción, autoridad de crédito, medio recordado, estado del candidato y liberación del lease en un único batch.

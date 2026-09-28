@@ -187,8 +187,20 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
-    function isValidTransactionImportCandidateBase(candidateId, data) {
+    function isValidTransactionImportCandidateCommon(candidateId, data) {
       return candidateId.matches('[a-f0-9]{64}')
+        && data.occurredAt is timestamp
+        && data.amountMinor is int
+        && data.amountMinor > 0
+        && data.amountMinor <= 100000000000
+        && data.currency == 'COP'
+        && isValidString(data.merchant, 1, 140)
+        && data.status in ['pending', 'confirmed', 'dismissed'];
+    }
+
+    function isValidAndroidNotificationCandidate(candidateId, data) {
+      return data.schemaVersion in [1, 2]
+        && data.source == 'android-notification'
         && data.keys().hasOnly([
           'schemaVersion',
           'source',
@@ -220,15 +232,8 @@ service cloud.firestore {
           'confidence',
           'status'
         ])
-        && data.schemaVersion in [1, 2]
-        && data.source == 'android-notification'
+        && isValidTransactionImportCandidateCommon(candidateId, data)
         && isValidString(data.sourcePackage, 1, 160)
-        && data.occurredAt is timestamp
-        && data.amountMinor is int
-        && data.amountMinor > 0
-        && data.amountMinor <= 100000000000
-        && data.currency == 'COP'
-        && isValidString(data.merchant, 1, 140)
         && (
           !('cardLast4' in data.keys())
           || isValidLast4(data.cardLast4)
@@ -250,8 +255,54 @@ service cloud.firestore {
           )
         )
         && data.parserVersion == 1
-        && data.confidence in ['high', 'medium']
-        && data.status in ['pending', 'confirmed', 'dismissed'];
+        && data.confidence in ['high', 'medium'];
+    }
+
+    function isValidAndroidShortcutCandidate(candidateId, data) {
+      return data.schemaVersion == 3
+        && data.source == 'android-shortcut'
+        && data.keys().hasOnly([
+          'schemaVersion',
+          'source',
+          'occurredAt',
+          'amountMinor',
+          'currency',
+          'merchant',
+          'suggestedAccountId',
+          'suggestedCategory',
+          'createdAt',
+          'status',
+          'transactionId',
+          'confirmedAt',
+          'dismissedAt'
+        ])
+        && data.keys().hasAll([
+          'schemaVersion',
+          'source',
+          'occurredAt',
+          'amountMinor',
+          'currency',
+          'merchant',
+          'suggestedAccountId',
+          'suggestedCategory',
+          'createdAt',
+          'status'
+        ])
+        && isValidTransactionImportCandidateCommon(candidateId, data)
+        && isValidString(data.suggestedAccountId, 1, 1500)
+        && isValidString(data.suggestedCategory, 1, 100)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidTransactionImportCandidateBase(candidateId, data) {
+      return (
+          data.schemaVersion in [1, 2]
+          && isValidAndroidNotificationCandidate(candidateId, data)
+        )
+        || (
+          data.schemaVersion == 3
+          && isValidAndroidShortcutCandidate(candidateId, data)
+        );
     }
 
     function isValidTransactionImportCandidateState(candidateId, data) {
@@ -274,6 +325,23 @@ service cloud.firestore {
             && data.dismissedAt is timestamp
             && !('transactionId' in data.keys())
             && !('confirmedAt' in data.keys())
+          )
+        );
+    }
+
+    function transactionImportCandidateCreateAllowed(userId, candidateId) {
+      return isValidTransactionImportCandidateState(
+          candidateId,
+          request.resource.data
+        )
+        && request.resource.data.status == 'pending'
+        && (
+          request.resource.data.schemaVersion != 3
+          || (
+            request.resource.data.createdAt == request.time
+            && exists(
+              /databases/$(database)/documents/users/$(userId)/accounts/$(request.resource.data.suggestedAccountId)
+            )
           )
         );
     }
@@ -554,11 +622,7 @@ service cloud.firestore {
         allow read: if isOwner(userId);
 
         allow create: if isOwner(userId)
-          && isValidTransactionImportCandidateState(
-            candidateId,
-            request.resource.data
-          )
-          && request.resource.data.status == 'pending';
+          && transactionImportCandidateCreateAllowed(userId, candidateId);
 
         allow update: if isOwner(userId)
           && (

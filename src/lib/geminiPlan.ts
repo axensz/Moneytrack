@@ -6,7 +6,7 @@
 import type { FinancialPlan, PlanConfig } from '../hooks/useFinancialPlan';
 import { formatCurrency } from '../utils/formatters';
 import { logger } from '../utils/logger';
-import { GEMINI_MODELS } from './geminiConfig';
+import { getGeminiModel } from './geminiConfig';
 import { getGeminiClient } from './geminiClient';
 
 export function buildPlanPrompt(plan: FinancialPlan, config: PlanConfig): string {
@@ -95,7 +95,7 @@ export async function getFinancialAdvice(plan: FinancialPlan, config: PlanConfig
 
   try {
     const response = await client.models.generateContent({
-      model: GEMINI_MODELS.planning,
+      model: getGeminiModel(),
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: { temperature: 0.7, maxOutputTokens: 2048 },
     });

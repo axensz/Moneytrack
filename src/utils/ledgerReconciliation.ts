@@ -553,9 +553,12 @@ const addDebtMismatchIssues = (
       debtValue.originalAmount
       - payments.reduce((sum, transaction) => sum + transaction.amount, 0),
     ));
-    const settledShouldBe = expectedRemaining === 0;
-    const authorityMatches = roundMoney(debtValue.remainingAmount) === expectedRemaining
-      && debtValue.isSettled === settledShouldBe;
+    const wasForgiven = Boolean(debtValue.forgivenReason);
+    const settledShouldBe = wasForgiven || expectedRemaining === 0;
+    const authorityMatches = wasForgiven
+      ? roundMoney(debtValue.remainingAmount) === 0 && debtValue.isSettled
+      : roundMoney(debtValue.remainingAmount) === expectedRemaining
+        && debtValue.isSettled === settledShouldBe;
     if (principalIsValid && paymentsAreValid && authorityMatches) return;
 
     issues.push(issue(

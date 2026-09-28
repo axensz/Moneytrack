@@ -13,6 +13,11 @@ import type {
 } from '../../types/transactionImport';
 import type { ReviewedTransactionImportExpense } from '../../hooks/firestore/transactionImportOrchestration';
 
+type PendingShortcutCandidate = Extract<
+  PendingTransactionImportCandidate,
+  { source: 'android-shortcut' }
+>;
+
 const C = vi.hoisted(() => ({
   confirm: vi.fn(async () => ({ id: 'transaction-1' })),
 }));
@@ -38,6 +43,23 @@ const candidate: PendingTransactionImportCandidate = {
   confidence: 'high',
   status: 'pending',
 };
+
+const shortcutCandidate = (
+  overrides: Partial<PendingShortcutCandidate> = {},
+): PendingShortcutCandidate => ({
+  id: 'b'.repeat(64),
+  schemaVersion: 3,
+  source: 'android-shortcut',
+  occurredAt: new Date('2026-09-13T17:00:00.000Z'),
+  amountMinor: 259_900,
+  currency: 'COP',
+  merchant: 'Almuerzo',
+  suggestedAccountId: 'savings',
+  suggestedCategory: 'Alimentación',
+  createdAt: new Date('2026-09-13T17:01:00.000Z'),
+  status: 'pending',
+  ...overrides,
+});
 
 const accounts: Account[] = [
   {
@@ -111,6 +133,45 @@ beforeEach(() => {
 });
 
 describe('TransactionImportReviewModal', () => {
+  it('prefills a current account and category for a quick expense draft', async () => {
+    const currentCandidate = shortcutCandidate();
+    renderModal({ currentCandidate });
+
+    expect(screen.getByText('Revisar gasto rápido')).toBeInTheDocument();
+    expect(screen.getByLabelText('Cuenta')).toHaveValue('savings');
+    expect(screen.getByLabelText('Categoría')).toHaveValue('Alimentación');
+    expect(screen.queryByLabelText('Recordar este medio de pago')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar gasto' }));
+    await waitFor(() => expect(C.confirm).toHaveBeenCalledTimes(1));
+    const [, , expense] = C.confirm.mock.calls[0] as unknown as [
+      string,
+      string,
+      ReviewedTransactionImportExpense,
+    ];
+    expect(expense).toEqual(expect.objectContaining({
+      expectedCandidate: currentCandidate,
+      accountId: 'savings',
+      category: 'Alimentación',
+      paymentInstrumentId: undefined,
+      rememberInstrument: false,
+    }));
+  });
+
+  it('leaves stale shortcut suggestions empty with a repairable warning', () => {
+    renderModal({
+      currentCandidate: shortcutCandidate({
+        suggestedAccountId: 'deleted-account',
+        suggestedCategory: 'Categoría eliminada',
+      }),
+    });
+
+    expect(screen.getByLabelText('Cuenta')).toHaveValue('');
+    expect(screen.getByLabelText('Categoría')).toHaveValue('');
+    expect(screen.getByText(/ya no están disponibles/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Recordar este medio de pago')).not.toBeInTheDocument();
+  });
+
   it('preselects an exact account without exposing the instrument alias', () => {
     const { rerender } = renderModal();
     expect(screen.getByLabelText('Cuenta')).toHaveValue('card');

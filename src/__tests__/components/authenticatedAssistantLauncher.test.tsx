@@ -29,4 +29,10 @@ describe('authenticated assistant launcher contracts', () => {
     expect(headerSource).not.toContain('onOpenAssistant');
     expect(headerSource).not.toContain('useUIPreferences');
   });
+
+  it('keeps assistant configuration reachable from the settings menu', () => {
+    expect(headerSource).toContain('onOpenAISettings');
+    expect(headerSource).toContain('<span>Asistente IA</span>');
+    expect(appSource).toContain('onOpenAISettings={() => setShowAISettingsModal(true)}');
+  });
 });

@@ -103,6 +103,19 @@ describe('modifyDebtBalance (código real de useDebts) — A1', () => {
   });
 
   describe('validaciones', () => {
+    it('impide cambiar el principal por la ruta genérica', async () => {
+      seedDebts([makeDebt()]);
+      const result = renderDebts();
+
+      await expect(
+        act(async () => {
+          await result.current.updateDebt('d1', { originalAmount: 1500 });
+        })
+      ).rejects.toThrow(/ajustar el saldo/i);
+
+      expect(result.current.debts[0].originalAmount).toBe(1000);
+    });
+
     it('lanza al modificar una deuda ya saldada', async () => {
       seedDebts([makeDebt({ isSettled: true, remainingAmount: 0 })]);
       const result = renderDebts();

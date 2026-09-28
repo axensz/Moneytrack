@@ -5,6 +5,11 @@ import { Sparkles, ExternalLink, Trash2, ShieldCheck, Eye, EyeOff } from 'lucide
 import { BaseModal } from './BaseModal';
 import { useGeminiKey } from '../../contexts/GeminiKeyContext';
 import { showToast } from '../../utils/toastHelpers';
+import {
+  GEMINI_MODEL_OPTIONS,
+  getGeminiModelOption,
+  type GeminiModelId,
+} from '../../lib/geminiConfig';
 
 interface GeminiKeyModalProps {
   isOpen: boolean;
@@ -12,9 +17,20 @@ interface GeminiKeyModalProps {
 }
 
 export function GeminiKeyModal({ isOpen, onClose }: GeminiKeyModalProps) {
-  const { apiKey, isConfigured, saveApiKey, clearApiKey, hasConsent, setConsent } = useGeminiKey();
+  const {
+    apiKey,
+    isConfigured,
+    saveApiKey,
+    clearApiKey,
+    hasConsent,
+    setConsent,
+    selectedModel,
+    setSelectedModel,
+  } = useGeminiKey();
   const [draft, setDraft] = useState('');
+  const [draftModel, setDraftModel] = useState<GeminiModelId>(selectedModel);
   const [showKey, setShowKey] = useState(false);
+  const modelDetails = getGeminiModelOption(draftModel);
 
   const handleToggleConsent = (value: boolean) => {
     setConsent(value);
@@ -23,8 +39,11 @@ export function GeminiKeyModal({ isOpen, onClose }: GeminiKeyModalProps) {
 
   // Sincronizar el input con la key guardada al abrir
   useEffect(() => {
-    if (isOpen) setDraft(apiKey);
-  }, [isOpen, apiKey]);
+    if (isOpen) {
+      setDraft(apiKey);
+      setDraftModel(selectedModel);
+    }
+  }, [isOpen, apiKey, selectedModel]);
 
   const handleSave = () => {
     const trimmed = draft.trim();
@@ -33,7 +52,8 @@ export function GeminiKeyModal({ isOpen, onClose }: GeminiKeyModalProps) {
       return;
     }
     saveApiKey(trimmed);
-    showToast.success(trimmed ? 'API key guardada' : 'API key eliminada');
+    setSelectedModel(draftModel);
+    showToast.success(trimmed ? 'Ajustes de IA guardados' : 'API key eliminada');
     onClose();
   };
 
@@ -105,6 +125,69 @@ export function GeminiKeyModal({ isOpen, onClose }: GeminiKeyModalProps) {
               <ShieldCheck size={12} aria-hidden="true" /> Hay una API key configurada.
             </p>
           )}
+        </div>
+
+        <div>
+          <label htmlFor="gemini-model" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            Modelo Gemini
+          </label>
+          <select
+            id="gemini-model"
+            value={draftModel}
+            onChange={(event) => setDraftModel(event.target.value as GeminiModelId)}
+            className="control-target-44 w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            {GEMINI_MODEL_OPTIONS.map((model) => (
+              <option key={model.id} value={model.id}>
+                {model.label}{model.id === 'gemini-3.5-flash' ? ' — Predeterminado' : ''}
+              </option>
+            ))}
+          </select>
+          <div className="mt-2 rounded-xl border border-border bg-muted p-3 text-xs text-muted-foreground">
+            <p className="font-medium text-foreground">{modelDetails.description}</p>
+            <dl className="mt-2 grid grid-cols-2 gap-3">
+              <div>
+                <dt>Contexto máximo</dt>
+                <dd className="mt-0.5 font-mono font-semibold text-foreground">
+                  {modelDetails.inputTokenLimit.toLocaleString('es-CO')} tokens
+                </dd>
+              </div>
+              <div>
+                <dt>Respuesta máxima</dt>
+                <dd className="mt-0.5 font-mono font-semibold text-foreground">
+                  {modelDetails.outputTokenLimit.toLocaleString('es-CO')} tokens
+                </dd>
+              </div>
+            </dl>
+            <p className="mt-2">
+              Este modelo se usará en el chat, los filtros inteligentes y el plan financiero.
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border p-3 text-xs text-muted-foreground">
+          <p>
+            No existe un saldo de tokens por API key. Google aplica las cuotas al proyecto por
+            solicitudes y tokens por minuto, además de solicitudes diarias.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+            <a
+              href="https://aistudio.google.com/usage"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-11 items-center gap-1 text-primary underline underline-offset-2"
+            >
+              Ver consumo y cuotas <ExternalLink size={12} aria-hidden="true" />
+            </a>
+            <a
+              href="https://ai.google.dev/gemini-api/docs/rate-limits"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-11 items-center gap-1 text-primary underline underline-offset-2"
+            >
+              Entender los límites <ExternalLink size={12} aria-hidden="true" />
+            </a>
+          </div>
         </div>
 
         <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl text-xs text-amber-700 dark:text-amber-300">

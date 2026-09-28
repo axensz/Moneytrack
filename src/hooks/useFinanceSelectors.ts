@@ -57,6 +57,8 @@ const selectTransactionDomain = (s: FinanceContextValue) => ({
   loadMoreTransactions: s.loadMoreTransactions,
   balanceTransactions: s.balanceTransactions,
   balancesReady: s.balancesReady,
+  notificationSourcesHydrated: s.notificationSourcesHydrated,
+  balanceTransactionsServerSettled: s.balanceTransactionsServerSettled,
   transactionsServerSettled: s.transactionsServerSettled,
   transactionsHeadExhaustive: s.transactionsHeadExhaustive,
   transactionsUnresolvedReason: s.transactionsUnresolvedReason,

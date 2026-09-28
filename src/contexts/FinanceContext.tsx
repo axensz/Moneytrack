@@ -67,6 +67,14 @@ export interface FinanceContextValue {
    * debe mostrar "calculando" y bloquear el ajuste de saldo hasta que sea true.
    */
   balancesReady: boolean;
+  /**
+   * Task 3: true solo cuando las tres fuentes de notificación (transacciones,
+   * pagos recurrentes, deudas) recibieron su primer snapshot para ESTA cuenta
+   * y el historial de saldos está listo. El bridge lo usa para no evaluar
+   * recordatorios sobre placeholders ni sobre una hidratación parcial.
+   */
+  notificationSourcesHydrated: boolean;
+  balanceTransactionsServerSettled: boolean;
   transactionsServerSettled: boolean;
   transactionsHeadExhaustive: boolean;
   transactionsUnresolvedReason: 'cache' | 'pending-writes' | 'error' | null;
@@ -219,8 +227,10 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     transactionsHeadExhaustive,
     transactionsUnresolvedReason,
     transactionsRetrying,
+    retryGeneration,
     retryLoad,
-    error: firestoreError,
+    notificationSourcesHydrated: notificationSourceSnapshotsReady,
+    error: subscriptionError,
   } = firestoreData;
 
   // 1. Transacciones (base de todo)
@@ -241,8 +251,24 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
   // así que NO pueden calcularse sobre la ventana paginada de 500 (cada tx nueva
   // expulsa a la más antigua y el saldo salta por el monto expulsado). Solo
   // fetchea cuando la ventana está saturada; con <500 txs devuelve el array live.
-  const { transactions: balanceTransactions, ready: balancesReady } =
-    useBalanceTransactions(userId, transactions, transactionsServerSettled, transactionsHeadExhaustive);
+  const {
+    transactions: balanceTransactions,
+    ready: balancesReady,
+    currentServerSettled: balanceTransactionsServerSettled,
+    error: balanceTransactionsError,
+  } =
+    useBalanceTransactions(
+      userId,
+      transactions,
+      transactionsServerSettled,
+      transactionsHeadExhaustive,
+      retryGeneration,
+    );
+  const firestoreError = subscriptionError ?? balanceTransactionsError;
+  // Task 3: la hidratación de fuentes de notificación exige el primer snapshot
+  // de las tres fuentes MÁS el historial de saldos listo (balancesReady). Un
+  // parcial (p.ej. saldos listos pero recurring pendiente) permanece false.
+  const notificationSourcesHydrated = notificationSourceSnapshotsReady && balancesReady;
 
   // 2. Cuentas (depende de balanceTransactions + deleteTransaction)
   const {
@@ -377,6 +403,8 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     transactions,
     balanceTransactions,
     balancesReady,
+    notificationSourcesHydrated,
+    balanceTransactionsServerSettled,
     transactionsServerSettled,
     transactionsHeadExhaustive,
     transactionsUnresolvedReason,
@@ -470,7 +498,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     // Utilidades
     formatCurrency,
   }), [
-    transactions, balanceTransactions, balancesReady, transactionsServerSettled, transactionsHeadExhaustive, transactionsUnresolvedReason, transactionsRetrying, accounts, categories, transactionBeneficiaries, recurringPayments, defaultAccount, totalBalance,
+    transactions, balanceTransactions, balancesReady, notificationSourcesHydrated, balanceTransactionsServerSettled, transactionsServerSettled, transactionsHeadExhaustive, transactionsUnresolvedReason, transactionsRetrying, accounts, categories, transactionBeneficiaries, recurringPayments, defaultAccount, totalBalance,
     transactionsLoading, accountsLoading,
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
     firestoreError, retryLoad,

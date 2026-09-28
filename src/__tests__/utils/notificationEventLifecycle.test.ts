@@ -7,11 +7,12 @@ import {
   buildRecurringEventKey,
   eventDocumentId,
   getDailyReminderDisposition,
-  getCanonicalEventRevision,
   getDailyReminderCatchUp,
+  getEventStageRank,
   getRecurringStageWindow,
   isNotificationDismissed,
   isNotificationRead,
+  resolveVersionedNotification,
 } from '../../utils/notificationEventLifecycle';
 import type { Notification } from '../../types/finance';
 
@@ -65,28 +66,16 @@ describe('notificationEventLifecycle', () => {
     expect(getRecurringStageWindow(2)).toBeNull();
   });
 
-  it('derives canonical revisions from source kind and stage window instead of accepting manual values', () => {
-    const recurring = 'recurring:rent:2026-08';
-    expect(getCanonicalEventRevision({ eventKey: recurring, stage: 'd3', stageWindow: 'd3' })).toBe(1);
-    expect(getCanonicalEventRevision({ eventKey: recurring, stage: 'd1', stageWindow: 'd1' })).toBe(2);
-    expect(getCanonicalEventRevision({ eventKey: recurring, stage: 'due', stageWindow: 'due' })).toBe(3);
-    expect(getCanonicalEventRevision({ eventKey: recurring, stage: 'overdue', stageWindow: 'overdue:0' })).toBe(4);
-    expect(getCanonicalEventRevision({ eventKey: recurring, stage: 'overdue', stageWindow: 'overdue:1' })).toBe(5);
-    expect(getCanonicalEventRevision({ eventKey: recurring, stage: 'overdue', stageWindow: 'overdue:2' })).toBe(6);
-    expect(getCanonicalEventRevision({ eventKey: 'budget:b1:2026-08', stage: 'warning', stageWindow: 'warning' })).toBe(1);
-    expect(getCanonicalEventRevision({ eventKey: 'budget:b1:2026-08', stage: 'critical', stageWindow: 'critical' })).toBe(2);
-    expect(getCanonicalEventRevision({ eventKey: 'budget:b1:2026-08', stage: 'exceeded', stageWindow: 'exceeded' })).toBe(3);
-    expect(getCanonicalEventRevision({ eventKey: 'daily-expense:2026-08-03', stage: 'daily', stageWindow: 'daily' })).toBe(1);
-    expect(getCanonicalEventRevision({ eventKey: 'debt:d1:2026-08', stage: 'due', stageWindow: 'due' })).toBe(1);
-    expect(getCanonicalEventRevision({ eventKey: 'debt:d1:2026-08', stage: 'warning', stageWindow: 'warning' })).toBe(2);
-    expect(getCanonicalEventRevision({ eventKey: 'debt:d1:2026-08', stage: 'critical', stageWindow: 'critical' })).toBe(3);
-    expect(getCanonicalEventRevision({ eventKey: 'debt:d1:2026-08', stage: 'overdue', stageWindow: 'overdue:2' })).toBe(7);
-
-    const normalized = advanceVersionedNotification(
-      versioned(1),
-      versioned(99, { stage: 'd1', stageWindow: 'd1' })
-    );
-    expect(normalized.revision).toBe(2);
+  it('uses stage rank only to validate progression', () => {
+    expect(getEventStageRank({ type: 'recurring', stage: 'd3', stageWindow: 'd3' })).toBe(1);
+    expect(getEventStageRank({ type: 'recurring', stage: 'd1', stageWindow: 'd1' })).toBe(2);
+    expect(getEventStageRank({ type: 'recurring', stage: 'due', stageWindow: 'due' })).toBe(3);
+    expect(getEventStageRank({ type: 'recurring', stage: 'overdue', stageWindow: 'overdue:2' })).toBe(6);
+    expect(getEventStageRank({ type: 'budget', stage: 'warning', stageWindow: 'warning' })).toBe(1);
+    expect(getEventStageRank({ type: 'budget', stage: 'critical', stageWindow: 'critical' })).toBe(2);
+    expect(getEventStageRank({ type: 'budget', stage: 'exceeded', stageWindow: 'exceeded' })).toBe(3);
+    expect(getEventStageRank({ type: 'info', stage: 'daily', stageWindow: 'daily' })).toBe(1);
+    expect(getEventStageRank({ type: 'debt', stage: 'overdue', stageWindow: 'overdue:2' })).toBe(7);
     expect(() => advanceVersionedNotification(
       versioned(1),
       versioned(2, { stage: 'd1', stageWindow: 'due' })
@@ -130,40 +119,158 @@ describe('notificationEventLifecycle', () => {
     })).toEqual({ localDate: '2026-08-03', shouldSend: false });
   });
 
-  it('ignores equal or lower revisions without replacing newer state', () => {
-    const current = versioned(2, { readRevision: 2, dismissedRevision: 2, isRead: true });
-    const stale = versioned(1);
+  it('ignores equal or lower stages and candidate-supplied revisions', () => {
+    const current = versioned(7, {
+      stage: 'd1',
+      stageWindow: 'd1',
+      readRevision: 7,
+      dismissedRevision: 7,
+      isRead: true,
+    });
+    const stale = versioned(99, { stage: 'd1', stageWindow: 'd1' });
 
     expect(advanceVersionedNotification(current, stale)).toBe(current);
   });
 
-  it('resolves the superseded revision without inheriting its read or dismissal state', () => {
-    const current = versioned(1, {
+  it('allocates current revision plus one and preserves lifecycle timestamps on stage advance', () => {
+    const createdAt = new Date('2026-08-01T14:00:00.000Z');
+    const scheduledAt = new Date('2026-08-04T14:00:00.000Z');
+    const updatedAt = new Date('2026-08-02T14:00:00.000Z');
+    const current = versioned(7, {
       lifecycleStatus: 'scheduled',
-      scheduledAt: new Date('2026-08-01T09:00:00.000Z'),
-      readRevision: 1,
-      dismissedRevision: 1,
+      stage: 'd1',
+      stageWindow: 'd1',
+      createdAt,
+      scheduledAt,
+      readRevision: 7,
+      dismissedRevision: 7,
       dismissedAt: new Date('2026-08-01T10:00:00.000Z'),
       isRead: true,
     });
-    const next = advanceVersionedNotification(current, versioned(2, {
-      createdAt: new Date('2026-08-02T14:00:00.000Z'),
+    const next = advanceVersionedNotification(current, versioned(99, {
+      createdAt: updatedAt,
+      stage: 'due',
+      stageWindow: 'due',
       lifecycleStatus: 'active',
     }));
 
     expect(next).toMatchObject({
       id: 'event-recurring-rent-2026-08',
-      revision: 2,
+      revision: 8,
       isRead: false,
       lifecycleStatus: 'active',
-      resolvedRevision: 1,
-      resolvedAt: new Date('2026-08-02T14:00:00.000Z'),
+      createdAt,
+      scheduledAt,
+      updatedAt,
+      resolvedRevision: 7,
+      resolvedAt: updatedAt,
     });
     expect(next.readRevision).toBeUndefined();
     expect(next.dismissedRevision).toBeUndefined();
     expect(next.dismissedAt).toBeUndefined();
-    expect(next.scheduledAt).toBeUndefined();
     expect(isNotificationRead(next)).toBe(false);
     expect(isNotificationDismissed(next)).toBe(false);
+  });
+
+  it('resolves without incrementing and reactivates at plus one while clearing supersession', () => {
+    const createdAt = new Date('2026-08-01T14:00:00.000Z');
+    const scheduledAt = new Date('2026-08-04T14:00:00.000Z');
+    const resolvedAt = new Date('2026-08-05T14:00:00.000Z');
+    const reactivatedAt = new Date('2026-08-06T14:00:00.000Z');
+    const current = versioned(8, {
+      stage: 'due',
+      stageWindow: 'due',
+      createdAt,
+      scheduledAt,
+      authorityConfigVersion: 2,
+      authoritySupersededAt: resolvedAt,
+      authoritySupersededByVersion: 3,
+    });
+
+    const resolved = resolveVersionedNotification(current, resolvedAt);
+    expect(resolved).toMatchObject({
+      revision: 8,
+      lifecycleStatus: 'resolved',
+      isRead: true,
+      readRevision: 8,
+      createdAt,
+      scheduledAt,
+      resolvedAt,
+      updatedAt: resolvedAt,
+    });
+
+    const reactivated = advanceVersionedNotification(resolved, versioned(99, {
+      stage: 'due',
+      stageWindow: 'due',
+      createdAt: reactivatedAt,
+      authorityConfigVersion: 4,
+    }));
+    expect(reactivated).toMatchObject({
+      revision: 9,
+      lifecycleStatus: 'active',
+      isRead: false,
+      createdAt,
+      scheduledAt,
+      updatedAt: reactivatedAt,
+      authorityConfigVersion: 4,
+    });
+    expect(reactivated.authoritySupersededAt).toBeUndefined();
+    expect(reactivated.authoritySupersededByVersion).toBeUndefined();
+  });
+
+  it('clears supersession when a resolved matching namespace reactivates at a higher stage', () => {
+    const supersededAt = new Date('2026-08-05T14:00:00.000Z');
+    const reactivatedAt = new Date('2026-08-06T14:00:00.000Z');
+    const resolved = versioned(8, {
+      stage: 'due',
+      stageWindow: 'due',
+      lifecycleStatus: 'resolved',
+      authoritySupersededAt: supersededAt,
+      authoritySupersededByVersion: 3,
+    });
+
+    const reactivated = advanceVersionedNotification(resolved, versioned(99, {
+      stage: 'overdue',
+      stageWindow: 'overdue:0',
+      lifecycleStatus: 'active',
+      createdAt: reactivatedAt,
+      authorityConfigVersion: 4,
+    }));
+
+    expect(reactivated).toMatchObject({
+      revision: 9,
+      stage: 'overdue',
+      stageWindow: 'overdue:0',
+      lifecycleStatus: 'active',
+      updatedAt: reactivatedAt,
+      authorityConfigVersion: 4,
+    });
+    expect(reactivated.authoritySupersededAt).toBeUndefined();
+    expect(reactivated.authoritySupersededByVersion).toBeUndefined();
+  });
+
+  it('does not clear supersession for lower stages or another event namespace', () => {
+    const supersededAt = new Date('2026-08-05T14:00:00.000Z');
+    const resolved = versioned(8, {
+      stage: 'due',
+      stageWindow: 'due',
+      lifecycleStatus: 'resolved',
+      authoritySupersededAt: supersededAt,
+      authoritySupersededByVersion: 3,
+    });
+
+    expect(advanceVersionedNotification(resolved, versioned(99, {
+      stage: 'd1',
+      stageWindow: 'd1',
+      lifecycleStatus: 'active',
+    }))).toBe(resolved);
+    expect(advanceVersionedNotification(resolved, versioned(99, {
+      eventKey: 'recurring:other:2026-08',
+      stage: 'overdue',
+      stageWindow: 'overdue:0',
+      lifecycleStatus: 'active',
+    }))).toBe(resolved);
+    expect(resolved.authoritySupersededAt).toBe(supersededAt);
+    expect(resolved.authoritySupersededByVersion).toBe(3);
   });
 });

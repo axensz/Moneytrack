@@ -8,9 +8,10 @@ export type VersionedNotification = Notification & {
   revision: number;
 };
 
-export type VersionedEventCandidate = Notification & {
+export type VersionedEventCandidate = Omit<Notification, 'revision'> & {
   schemaVersion: typeof NOTIFICATION_EVENT_SCHEMA_VERSION;
   eventKey: string;
+  revision?: number;
 };
 
 export type RecurringStageWindow = {
@@ -19,7 +20,7 @@ export type RecurringStageWindow = {
   overdueOccurrence?: number;
 };
 
-type EventRevisionInput = Pick<Notification, 'eventKey' | 'stage' | 'stageWindow'>;
+type EventStageInput = Pick<Notification, 'type' | 'stage' | 'stageWindow'>;
 
 const eventSegment = (value: string): string => encodeURIComponent(value);
 
@@ -37,12 +38,12 @@ export const buildDebtEventKey = (debtId: string, localMonth: string): string =>
 
 export const eventDocumentId = (eventKey: string): string => `event:${eventSegment(eventKey)}`;
 
-export function getCanonicalEventRevision({
-  eventKey,
+export function getEventStageRank({
+  type,
   stage,
   stageWindow,
-}: EventRevisionInput): number | null {
-  if (!eventKey || !stage || !stageWindow) return null;
+}: EventStageInput): number | null {
+  if (!stage || !stageWindow) return null;
 
   const fixedRevision = (stages: Array<[NotificationEventStage, number]>): number | null => {
     const match = stages.find(([expectedStage]) => expectedStage === stage);
@@ -54,16 +55,16 @@ export function getCanonicalEventRevision({
     return occurrence === undefined ? null : start + Number(occurrence);
   };
 
-  if (eventKey.startsWith('recurring:')) {
+  if (type === 'recurring') {
     return fixedRevision([['d3', 1], ['d1', 2], ['due', 3]]) ?? overdueRevision(4);
   }
-  if (eventKey.startsWith('budget:')) {
+  if (type === 'budget') {
     return fixedRevision([['warning', 1], ['critical', 2], ['exceeded', 3]]);
   }
-  if (eventKey.startsWith('daily-expense:')) {
+  if (stage === 'daily') {
     return fixedRevision([['daily', 1]]);
   }
-  if (eventKey.startsWith('debt:')) {
+  if (type === 'debt') {
     return fixedRevision([['due', 1], ['warning', 2], ['critical', 3], ['exceeded', 4]])
       ?? overdueRevision(5);
   }
@@ -160,22 +161,34 @@ export function isNotificationDismissed(notification: Notification): boolean {
  */
 export function advanceVersionedNotification(
   current: Notification | undefined,
-  candidate: Notification
+  candidate: Omit<Notification, 'revision'> & { revision?: number }
 ): Notification {
-  const canonicalRevision = isVersionedEventCandidate(candidate)
-    ? getCanonicalEventRevision(candidate)
+  const candidateRank = isVersionedEventCandidate(candidate)
+    ? getEventStageRank(candidate)
     : null;
-  if (isVersionedEventCandidate(candidate) && canonicalRevision === null) {
+  if (isVersionedEventCandidate(candidate) && candidateRank === null) {
     throw new Error('Invalid versioned notification stage');
   }
-  const revision = canonicalRevision ?? 1;
+  const currentRank = isVersionedNotification(current) ? getEventStageRank(current) : null;
+  const lifecycleStatus = candidate.lifecycleStatus ?? 'active';
+  const reactivatesCurrent = isVersionedNotification(current)
+    && current.eventKey === candidate.eventKey
+    && current.lifecycleStatus === 'resolved'
+    && lifecycleStatus === 'active'
+    && candidateRank !== null
+    && currentRank !== null
+    && candidateRank >= currentRank;
+  const advancesCurrent = isVersionedNotification(current)
+    && current.eventKey === candidate.eventKey
+    && currentRank !== null
+    && candidateRank !== null
+    && candidateRank > currentRank;
 
-  if (current && isVersionedNotification(current) && revision <= current.revision!) {
+  if (isVersionedNotification(current) && !advancesCurrent && !reactivatesCurrent) {
     return current;
   }
-
-  const advancesCurrent = isVersionedNotification(current) && revision > current.revision;
-  const lifecycleStatus = candidate.lifecycleStatus ?? 'active';
+  const revision = isVersionedNotification(current) ? current.revision + 1 : 1;
+  const mutationAt = candidate.updatedAt ?? candidate.createdAt;
 
   return {
     ...current,
@@ -186,20 +199,40 @@ export function advanceVersionedNotification(
     revision,
     stageWindow: candidate.stageWindow ?? candidate.stage,
     lifecycleStatus,
+    updatedAt: mutationAt,
     isRead: false,
     readRevision: undefined,
     dismissedRevision: undefined,
     dismissedAt: undefined,
-    scheduledAt: lifecycleStatus === 'scheduled'
-      ? candidate.scheduledAt ?? candidate.createdAt
-      : undefined,
-    resolvedRevision: advancesCurrent
+    scheduledAt: candidate.scheduledAt ?? current?.scheduledAt,
+    resolvedRevision: advancesCurrent || reactivatesCurrent
       ? current.revision
       : lifecycleStatus === 'resolved'
         ? revision
         : undefined,
-    resolvedAt: advancesCurrent || lifecycleStatus === 'resolved'
-      ? candidate.resolvedAt ?? candidate.createdAt
+    resolvedAt: advancesCurrent || reactivatesCurrent || lifecycleStatus === 'resolved'
+      ? candidate.resolvedAt ?? mutationAt
       : undefined,
+    authoritySupersededAt: reactivatesCurrent
+      ? undefined
+      : candidate.authoritySupersededAt ?? current?.authoritySupersededAt,
+    authoritySupersededByVersion: reactivatesCurrent
+      ? undefined
+      : candidate.authoritySupersededByVersion ?? current?.authoritySupersededByVersion,
+  };
+}
+
+export function resolveVersionedNotification(
+  current: Notification,
+  resolvedAt: Date
+): Notification {
+  return {
+    ...current,
+    lifecycleStatus: 'resolved',
+    isRead: true,
+    readRevision: current.revision,
+    resolvedRevision: current.revision,
+    resolvedAt,
+    updatedAt: resolvedAt,
   };
 }

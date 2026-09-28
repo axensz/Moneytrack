@@ -9,7 +9,6 @@ import { localDateKey } from '../utils/dateUtils';
 import { appNotificationToBrowserPayload, showBrowserNotification } from '../lib/browserNotifications';
 import type { Notification, NotificationFilter, NotificationPreferences } from '../types/finance';
 import {
-    getCanonicalEventRevision,
     isVersionedEventCandidate,
     isVersionedNotification,
 } from '../utils/notificationEventLifecycle';
@@ -23,6 +22,45 @@ interface NotificationManagerDeps {
     markAllAsRead: () => Promise<void>;
     notifications: Notification[];
     preferences: NotificationPreferences;
+    /**
+     * Compuerta de presentación OS en primer plano. Cuando se inyecta, ESTE
+     * predicado gobierna si un evento en primer plano puede levantar una
+     * notificación del sistema (autenticado: dispositivo activo + permiso; el
+     * caso de compatibilidad runtime-ausente/no-confirmado delega en el gate
+     * legacy browserNotifications.enabled+permiso — el hook computa el booleano).
+     * Solo afecta la presentación OS en primer plano: nunca la persistencia en
+     * el inbox, los toasts, ni los marcadores de entrega del backend.
+     */
+    canShowBrowserNotification?: () => boolean;
+    /** Reloj inyectable para el diferido de quiet hours (tests deterministas). */
+    now?: () => number;
+    /** Programa el timer de presentación diferida; devuelve un handle opaco. */
+    setDeferTimer?: (callback: () => void, delayMs: number) => number;
+    /** Cancela un timer de presentación diferida por su handle. */
+    clearDeferTimer?: (handle: number) => void;
+}
+
+/**
+ * Registro a nivel de módulo de la compuerta de presentación OS del dispositivo
+ * actual. El NotificationProvider lo registra desde el hook de dispositivo; el
+ * manager lo consulta de forma perezosa. Vive aquí (y no en useNotifications)
+ * para evitar dependencias circulares y para sobrevivir a las reconstrucciones
+ * de `deps` que hace useNotifications al cambiar preferencias/notificaciones.
+ */
+let currentDeviceBrowserGate: (() => boolean) | null = null;
+
+export function setCurrentDeviceBrowserGate(gate: (() => boolean) | null): void {
+    currentDeviceBrowserGate = gate;
+}
+
+/**
+ * Un evento de presentación OS diferida por quiet hours. Se conserva en memoria
+ * mientras la página vive; NUNCA promete entrega con la página cerrada.
+ */
+interface DeferredPresentation {
+    key: string;
+    handle: number;
+    notification: Omit<Notification, 'id' | 'createdAt'>;
 }
 
 export class NotificationManager {
@@ -32,6 +70,9 @@ export class NotificationManager {
     private isProcessingQueue = false;
     private readonly DEBOUNCE_MS = 60000;  // ✅ FIX #6: 60 segundos (1 minuto)
     private readonly MAX_VISIBLE_TOASTS = 3;
+    /** Presentaciones OS diferidas por quiet hours, acotadas por clave. */
+    private deferredPresentations: Map<string, DeferredPresentation> = new Map();
+    private readonly MAX_DEFERRED_PRESENTATIONS = 32;
 
     constructor(deps: NotificationManagerDeps) {
         this.deps = deps;
@@ -42,16 +83,11 @@ export class NotificationManager {
      * La deduplicación ahora se maneja en addNotification con docId determinístico
      */
     async createNotification(notification: Omit<Notification, 'id' | 'createdAt'>): Promise<void> {
-        const canonicalRevision = isVersionedEventCandidate(notification as Notification)
-            ? getCanonicalEventRevision(notification as Notification)
-            : undefined;
-        if (canonicalRevision === null) {
-            logger.warn('Invalid versioned notification stage, skipping', { notification });
-            return;
+        const candidate = { ...notification };
+        const isVersioned = isVersionedEventCandidate(candidate as Notification);
+        if (isVersioned) {
+            delete candidate.revision;
         }
-        const candidate = canonicalRevision === undefined
-            ? notification
-            : { ...notification, revision: canonicalRevision };
         // Check if notification type is enabled
         if (!this.isNotificationTypeEnabled(candidate.type)) {
             logger.info(`Notification type ${candidate.type} is disabled, skipping`);
@@ -59,7 +95,7 @@ export class NotificationManager {
         }
 
         // Check for duplicate (debouncing en memoria - previene llamadas rápidas)
-        if (this.isDuplicate(candidate)) {
+        if (!isVersioned && this.isDuplicate(candidate)) {
             logger.info('Duplicate notification detected (debounce), skipping', { notification: candidate });
             return;
         }
@@ -77,16 +113,26 @@ export class NotificationManager {
             }
 
             // Update debounce map
-            const dedupeKey = this.getDebounceKey(candidate);
-            this.debounceMap.set(dedupeKey, Date.now());
+            if (!isVersioned) {
+                const dedupeKey = this.getDebounceKey(candidate);
+                this.debounceMap.set(dedupeKey, Date.now());
+            }
 
             // Show toast if appropriate
             if (this.shouldShowToast(candidate)) {
                 this.queueToast(candidate);
             }
 
-            if (this.shouldShowBrowserNotification()) {
-                void showBrowserNotification(appNotificationToBrowserPayload(candidate));
+            // Presentación OS en primer plano. La persistencia (inbox) ya ocurrió
+            // arriba y NO se toca aquí. Si el gate permite pero estamos en quiet
+            // hours, se difiere UNA presentación al fin de la ventana en vez de
+            // descartarla.
+            if (this.browserNotificationGateAllows()) {
+                if (this.isInQuietHours()) {
+                    this.scheduleDeferredPresentation(candidate);
+                } else {
+                    void showBrowserNotification(appNotificationToBrowserPayload(candidate));
+                }
             }
 
             logger.info('Notification created', { notification: candidate });
@@ -194,7 +240,7 @@ export class NotificationManager {
             return false;
         }
 
-        const now = new Date();
+        const now = new Date(this.deps.now ? this.deps.now() : Date.now());
         const currentHour = now.getHours();
         const { startHour, endHour } = quietHours;
 
@@ -226,12 +272,129 @@ export class NotificationManager {
         return notification.severity === 'warning' || notification.severity === 'error';
     }
 
+    /**
+     * Compuerta de presentación OS, ignorando quiet hours. Cuando se inyecta
+     * `canShowBrowserNotification`, ESE predicado decide; en caso contrario se
+     * usa el gate legacy `browserNotifications.enabled`.
+     */
+    private browserNotificationGateAllows(): boolean {
+        // Precedencia: dep inyectada (tests) → registro del dispositivo actual
+        // (producción, vía el provider) → gate legacy browserNotifications.enabled.
+        if (this.deps.canShowBrowserNotification) {
+            return this.deps.canShowBrowserNotification();
+        }
+        if (currentDeviceBrowserGate) {
+            return currentDeviceBrowserGate();
+        }
+        return this.deps.preferences.browserNotifications.enabled;
+    }
+
     shouldShowBrowserNotification(): boolean {
-        if (!this.deps.preferences.browserNotifications.enabled) {
-            return false;
+        return this.browserNotificationGateAllows() && !this.isInQuietHours();
+    }
+
+    /**
+     * Momento (ms epoch) del próximo fin de la ventana de quiet hours a partir
+     * de `now`. Devuelve null si quiet hours está deshabilitado o es un rango
+     * degenerado (start === end).
+     */
+    private nextQuietEnd(nowMs: number): number | null {
+        const { quietHours } = this.deps.preferences;
+        if (!quietHours.enabled || quietHours.startHour === quietHours.endHour) {
+            return null;
+        }
+        const end = new Date(nowMs);
+        end.setHours(quietHours.endHour, 0, 0, 0);
+        if (end.getTime() <= nowMs) {
+            // El fin ya pasó hoy → siguiente ocurrencia mañana.
+            end.setDate(end.getDate() + 1);
+        }
+        return end.getTime();
+    }
+
+    /**
+     * Programa UNA presentación OS diferida al fin de la ventana de quiet hours,
+     * con clave account/event/revision. Acotado (cap de timers); reemplaza un
+     * diferido previo de la misma clave (revisión más nueva gana).
+     */
+    private scheduleDeferredPresentation(notification: Omit<Notification, 'id' | 'createdAt'>): void {
+        const nowMs = this.deps.now ? this.deps.now() : Date.now();
+        const quietEnd = this.nextQuietEnd(nowMs);
+        if (quietEnd === null) return;
+
+        const setTimer = this.deps.setDeferTimer
+            ?? ((cb: () => void, ms: number) => setTimeout(cb, ms) as unknown as number);
+
+        const key = this.deferredKey(notification);
+
+        // Revisión más nueva o reprogramación: cancela el diferido previo.
+        const existing = this.deferredPresentations.get(key);
+        if (existing) {
+            this.clearDeferHandle(existing.handle);
+            this.deferredPresentations.delete(key);
         }
 
-        return !this.isInQuietHours();
+        // Cota: si se alcanzó el máximo, descarta el más antiguo.
+        if (this.deferredPresentations.size >= this.MAX_DEFERRED_PRESENTATIONS) {
+            const oldestKey = this.deferredPresentations.keys().next().value;
+            if (oldestKey !== undefined) {
+                const oldest = this.deferredPresentations.get(oldestKey);
+                if (oldest) this.clearDeferHandle(oldest.handle);
+                this.deferredPresentations.delete(oldestKey);
+            }
+        }
+
+        const delay = Math.max(0, quietEnd - nowMs);
+        const handle = setTimer(() => this.fireDeferredPresentation(key), delay);
+        this.deferredPresentations.set(key, { key, handle, notification });
+    }
+
+    /**
+     * Se ejecuta al fin de la ventana. Re-chequea la preferencia/gate y que ya
+     * no estemos en quiet hours antes de UNA presentación OS. Si seguimos en una
+     * ventana (p. ej. cambió la config), reprograma; si el gate ya no permite,
+     * cancela sin presentar.
+     */
+    private fireDeferredPresentation(key: string): void {
+        const entry = this.deferredPresentations.get(key);
+        if (!entry) return;
+        this.deferredPresentations.delete(key);
+
+        if (!this.browserNotificationGateAllows()) {
+            return; // el gate cambió (logout/permiso/desactivado) → no presenta
+        }
+        if (this.isInQuietHours()) {
+            // Aún en quiet hours (ventana reprogramada) → difiere de nuevo.
+            this.scheduleDeferredPresentation(entry.notification);
+            return;
+        }
+        void showBrowserNotification(appNotificationToBrowserPayload(entry.notification));
+    }
+
+    private clearDeferHandle(handle: number): void {
+        if (this.deps.clearDeferTimer) {
+            this.deps.clearDeferTimer(handle);
+        } else {
+            clearTimeout(handle as unknown as ReturnType<typeof setTimeout>);
+        }
+    }
+
+    private deferredKey(notification: Omit<Notification, 'id' | 'createdAt'>): string {
+        const eventKey = notification.eventKey ?? `${notification.type}:${notification.title}`;
+        const revision = notification.revision ?? 0;
+        return `${eventKey}#${revision}`;
+    }
+
+    /**
+     * Cancela TODAS las presentaciones OS diferidas. Debe invocarse en
+     * logout/cambio de cuenta/unmount/cambio de autoridad para que un evento de
+     * una sesión anterior no se presente después.
+     */
+    cancelDeferredPresentations(): void {
+        for (const entry of this.deferredPresentations.values()) {
+            this.clearDeferHandle(entry.handle);
+        }
+        this.deferredPresentations.clear();
     }
 
     /**
@@ -277,9 +440,6 @@ export class NotificationManager {
      * ✅ FIX #3: Generate a unique key for debouncing (incluye fecha para deduplicación diaria)
      */
     private getDebounceKey(notification: Omit<Notification, 'id' | 'createdAt'>): string {
-        if (isVersionedEventCandidate(notification as Notification)) {
-            return `${notification.eventKey}:${notification.revision ?? 1}`;
-        }
         const parts = [notification.type, notification.title];
 
         // Fecha LOCAL para deduplicación diaria (no UTC: en UTC-5 el corte caía a

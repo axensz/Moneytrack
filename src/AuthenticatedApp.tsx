@@ -27,7 +27,7 @@ import { TransactionsView } from './components/views/transactions';
 import { useAddTransaction } from './hooks/useAddTransaction';
 import { useWelcomeModal } from './hooks/useWelcomeModal';
 import { useGuestMigration } from './hooks/useGuestMigration';
-import { NotificationProvider } from './contexts/NotificationContext';
+import { NotificationProvider, useNotificationContext } from './contexts/NotificationContext';
 import { UIPreferencesProvider } from './contexts/UIPreferencesContext';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useViewRouting } from './hooks/useViewRouting';
@@ -260,6 +260,10 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
   // S1: ofrecer migrar datos del modo invitado a la cuenta tras iniciar sesión.
   const guestMigration = useGuestMigration(user?.uid ?? null);
 
+  // Limpieza del dispositivo actual antes de cerrar sesión (acotada a 1.5s y
+  // nunca rechaza), obtenida del contexto de notificaciones.
+  const { prepareForSignOut } = useNotificationContext();
+
   const handleLogout = useCallback(async () => {
     // Si hay datos de invitado sin migrar, advertir antes de borrarlos: al cerrar
     // sesión se limpia el localStorage (privacidad S2) y esos datos se perderían.
@@ -274,6 +278,10 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
 
     try {
       setIsLoggingOut(true);
+      // Desuscribir + revocar + limpiar la cuenta en el worker ANTES de cerrar
+      // sesión. Acotado a 1.5s y nunca rechaza: la limpieza no puede dejar
+      // colgado el logout.
+      await prepareForSignOut();
       await logoutFirebase();
       // Privacidad (S2): borrar datos locales para que en un dispositivo
       // compartido el siguiente usuario no vea los datos del anterior.
@@ -289,7 +297,7 @@ const FinanceTrackerContent = ({ user, isOnline, onDataReady }: { user: User | n
       toast.error('Error al cerrar sesión');
       setIsLoggingOut(false);
     }
-  }, []);
+  }, [prepareForSignOut]);
 
   const handleCloseAuthModal = useCallback(() => setIsAuthModalOpen(false), [setIsAuthModalOpen]);
   const handleOpenHelpModal = useCallback(() => setShowHelpModal(true), []);

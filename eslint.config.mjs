@@ -32,6 +32,8 @@ const eslintConfig = defineConfig([
     // Skills/herramientas locales de agentes; no forman parte del producto.
     ".agents/**",
     ".codex/**",
+    // Paquete backend aislado: tiene su propio lint/typecheck (functions/).
+    "functions/**",
   ]),
 ]);
 

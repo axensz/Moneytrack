@@ -3,10 +3,12 @@
  */
 
 // Configuración regional y de moneda
+export const DEFAULT_TIME_ZONE = 'America/Bogota' as const;
+
 export const APP_CONFIG = {
   locale: 'es-CO',
   currency: 'COP',
-  timezone: 'America/Bogota',
+  timezone: DEFAULT_TIME_ZONE,
   appName: 'MoneyTrack',
   version: '1.0.0'
 } as const;

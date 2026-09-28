@@ -10,16 +10,18 @@ import {
   useAccountsCRUD,
   useCategoriesCRUD,
 } from './firestore';
+import { DEFAULT_RECURRING_TIME_ZONE } from '../utils/recurringPayments';
 
 export function useFirestore(userId: string | null) {
   const {
     transactions, accounts, categories, transactionBeneficiaries,
     recurringPayments, debts, budgets, savingsGoals,
-    notifications, notificationPreferences,
+    notifications, recurringNotificationLifecycles, recurringNotificationLifecyclesReady,
+    notificationPreferences, notificationPreferencesReady, notificationSourcesHydrated,
     loading, error,
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
     transactionsServerSettled, transactionsHeadExhaustive, transactionsUnresolvedReason, transactionsRetrying,
-    retryLoad,
+    retryGeneration, retryLoad,
   } = useFirestoreSubscriptions(userId);
 
   const {
@@ -31,7 +33,13 @@ export function useFirestore(userId: string | null) {
     deleteTransaction,
     updateTransaction,
   } =
-    useTransactionsCRUD(userId, accounts);
+    useTransactionsCRUD(
+      userId,
+      accounts,
+      notificationPreferencesReady
+        ? notificationPreferences.timeZone ?? DEFAULT_RECURRING_TIME_ZONE
+        : DEFAULT_RECURRING_TIME_ZONE,
+    );
 
   const { addAccount, deleteAccount, updateAccount } = useAccountsCRUD(userId);
 
@@ -41,11 +49,12 @@ export function useFirestore(userId: string | null) {
     // Data (all 7 collections + notifications)
     transactions, accounts, categories, transactionBeneficiaries,
     recurringPayments, debts, budgets, savingsGoals,
-    notifications, notificationPreferences,
+    notifications, recurringNotificationLifecycles, recurringNotificationLifecyclesReady,
+    notificationPreferences, notificationPreferencesReady, notificationSourcesHydrated,
     loading, error,
     hasMoreTransactions, loadingMoreTransactions, loadMoreTransactions,
     transactionsServerSettled, transactionsHeadExhaustive, transactionsUnresolvedReason, transactionsRetrying,
-    retryLoad,
+    retryGeneration, retryLoad,
     // Transactions CRUD
     addTransaction,
     addCreditPaymentAtomic,

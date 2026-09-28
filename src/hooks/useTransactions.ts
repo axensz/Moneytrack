@@ -31,6 +31,7 @@ import {
   findHistoricalCreditPaymentPairs,
 } from '../utils/creditPaymentPairs';
 import {
+  DEFAULT_RECURRING_TIME_ZONE,
   isRecurringCycleKeyForPayment,
   recurringTransactionSatisfiesCycleKey,
 } from '../utils/recurringPayments';
@@ -84,8 +85,11 @@ export function useTransactions(userId: string | null) {
     linkRecurringTransactionAtomic: firestoreLinkRecurringTransactionAtomic,
     restoreTransaction: firestoreRestoreTransaction,
     deleteTransaction: firestoreDeleteTransaction,
-    updateTransaction: firestoreUpdateTransaction
+    updateTransaction: firestoreUpdateTransaction,
+    notificationPreferences,
   } = useFirestoreData();
+  const recurringTimeZone = notificationPreferences?.timeZone
+    ?? DEFAULT_RECURRING_TIME_ZONE;
 
   const {
     transactions: localTransactions,
@@ -203,7 +207,7 @@ export function useTransactions(userId: string | null) {
         candidate => candidate.id === transaction.recurringPaymentId
       );
       if (!payment) throw new Error('El pago periódico ya no existe. Actualiza e intenta de nuevo.');
-      if (!isRecurringCycleKeyForPayment(payment, transaction.recurringCycle!)) {
+      if (!isRecurringCycleKeyForPayment(payment, transaction.recurringCycle!, recurringTimeZone)) {
         throw new Error('La identidad del ciclo no corresponde al pago periódico.');
       }
       const duplicate = draft.transactions.find(candidate => (
@@ -211,6 +215,7 @@ export function useTransactions(userId: string | null) {
           payment,
           candidate,
           transaction.recurringCycle!,
+          recurringTimeZone,
         )
       ));
       const committed = duplicate ?? newTransaction;
@@ -243,7 +248,7 @@ export function useTransactions(userId: string | null) {
     await mutateGuestLedger(draft => {
       const payment = draft.recurringPayments.find(candidate => candidate.id === recurringPaymentId);
       if (!payment) throw new Error('El pago periódico ya no existe. Actualiza e intenta de nuevo.');
-      if (!isRecurringCycleKeyForPayment(payment, recurringCycle)) {
+      if (!isRecurringCycleKeyForPayment(payment, recurringCycle, recurringTimeZone)) {
         throw new Error('La identidad del ciclo no corresponde al pago periódico.');
       }
       const existing = draft.transactions.find(candidate => candidate.id === transactionId);
@@ -256,7 +261,12 @@ export function useTransactions(userId: string | null) {
       }
       const duplicate = draft.transactions.find(candidate => (
         candidate.id !== transactionId
-        && recurringTransactionSatisfiesCycleKey(payment, candidate, recurringCycle)
+        && recurringTransactionSatisfiesCycleKey(
+          payment,
+          candidate,
+          recurringCycle,
+          recurringTimeZone,
+        )
       ));
       if (duplicate) throw new Error('Este ciclo ya tiene un pago registrado.');
       const operationId = `guest-recurring:${recurringPaymentId}:${recurringCycle}`;

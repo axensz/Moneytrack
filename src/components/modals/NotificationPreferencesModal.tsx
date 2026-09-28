@@ -11,11 +11,13 @@ import { UI_TEXT } from '../../config/ui';
 interface NotificationPreferencesModalProps {
     isOpen: boolean;
     onClose: () => void;
+    onRequestSignIn?: () => void;
 }
 
 export const NotificationPreferencesModal: React.FC<NotificationPreferencesModalProps> = ({
     isOpen,
     onClose,
+    onRequestSignIn,
 }) => {
     return (
         <BaseModal
@@ -25,7 +27,7 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
             titleIcon={<Bell className="w-5 h-5 text-primary" />}
             maxWidth="max-w-3xl"
         >
-            <NotificationPreferences onSave={onClose} />
+            <NotificationPreferences onSave={onClose} onRequestSignIn={onRequestSignIn} />
         </BaseModal>
     );
 };

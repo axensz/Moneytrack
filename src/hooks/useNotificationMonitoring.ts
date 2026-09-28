@@ -15,6 +15,7 @@ import { DebtMonitor } from '../services/DebtMonitor';
 import { NotificationManager } from '../services/NotificationManager';
 import { logger } from '../utils/logger';
 import { ensureDate } from '../utils/dateUtils';
+import { getForegroundReminderContext } from '../lib/recurringReminderCursorStore';
 
 // Ventana de "recién creada": una transacción cuyo createdAt es más viejo que
 // esto NO dispara alertas individuales aunque su id acabe de entrar al array
@@ -30,6 +31,7 @@ import { ensureDate } from '../utils/dateUtils';
 // ponytail: ceiling = un reloj > 30 min desfasado aún pierde la alerta; si pasa,
 // la señal robusta sería marcar el origen del id (alta vs page-in), no el reloj.
 const FRESH_CREATION_MS = 30 * 60 * 1000;
+import type { NotificationAuthorityState } from '../utils/notificationAuthority';
 import type {
     Transaction,
     Budget,
@@ -55,6 +57,14 @@ interface UseNotificationMonitoringProps {
     notificationManager: NotificationManager;
     /** No evalúa placeholders mientras las fuentes autenticadas se hidratan. */
     isHydrated?: boolean;
+    /**
+     * Task 3: recurring/debt son time-events foreground. Solo un escritor
+     * foreground admitido puede evaluarlos; durable/cutover (writer null) los
+     * fencea. Presupuesto/gasto/saldo por transacción NO se gatean aquí.
+     */
+    foregroundWriterActive?: boolean;
+    /** Token de autoridad para revalidar la generación al mutar (writerPrefix/version). */
+    authority?: NotificationAuthorityState;
 }
 
 export function useNotificationMonitoring({
@@ -67,6 +77,8 @@ export function useNotificationMonitoring({
     debts,
     notificationManager,
     isHydrated = true,
+    foregroundWriterActive = true,
+    authority,
 }: UseNotificationMonitoringProps) {
     const txsForBalance = balanceTransactions ?? transactions;
     const prevTransactionIdsRef = useRef<Set<string>>(new Set());
@@ -93,6 +105,7 @@ export function useNotificationMonitoring({
 
         const preferences = notificationManager.deps?.preferences;
         if (!preferences) return;
+        const reminderContext = getForegroundReminderContext(notificationManager);
 
         monitorsRef.current.budgetMonitor = new BudgetMonitor({
             createNotification: (n) => notificationManager.createNotification(n),
@@ -108,6 +121,10 @@ export function useNotificationMonitoring({
             createNotification: (n) => notificationManager.createNotification(n),
             recurringPayments,
             transactions: txsForBalance,
+            cursorStore: reminderContext?.cursorStore,
+            timeZone: reminderContext?.timeZone ?? preferences.timeZone,
+            writerPrefix: reminderContext?.writerPrefix,
+            authorityConfigVersion: reminderContext?.authorityConfigVersion,
         });
 
         monitorsRef.current.spendingAnalyzer = new SpendingAnalyzer({
@@ -128,6 +145,9 @@ export function useNotificationMonitoring({
         monitorsRef.current.debtMonitor = new DebtMonitor({
             createNotification: (n) => notificationManager.createNotification(n),
             debts,
+            timeZone: reminderContext?.timeZone ?? preferences.timeZone,
+            writerPrefix: reminderContext?.writerPrefix,
+            authorityConfigVersion: reminderContext?.authorityConfigVersion,
         });
 
         monitorsInitializedRef.current = true;
@@ -149,6 +169,7 @@ export function useNotificationMonitoring({
 
         const preferences = notificationManager?.deps?.preferences;
         if (!preferences) return;
+        const reminderContext = getForegroundReminderContext(notificationManager);
 
         m.budgetMonitor.updateDeps({
             ...m.budgetMonitor.deps,
@@ -160,6 +181,10 @@ export function useNotificationMonitoring({
             ...m.paymentMonitor!.deps,
             recurringPayments,
             transactions: txsForBalance,
+            cursorStore: reminderContext?.cursorStore,
+            timeZone: reminderContext?.timeZone ?? preferences.timeZone,
+            writerPrefix: reminderContext?.writerPrefix,
+            authorityConfigVersion: reminderContext?.authorityConfigVersion,
         };
         m.spendingAnalyzer!.deps = {
             ...m.spendingAnalyzer!.deps,
@@ -175,6 +200,9 @@ export function useNotificationMonitoring({
         m.debtMonitor!.deps = {
             ...m.debtMonitor!.deps,
             debts,
+            timeZone: reminderContext?.timeZone ?? preferences.timeZone,
+            writerPrefix: reminderContext?.writerPrefix,
+            authorityConfigVersion: reminderContext?.authorityConfigVersion,
         };
     }, [transactions, txsForBalance, budgets, recurringPayments, accounts, debts, notificationManager]);
 
@@ -186,8 +214,28 @@ export function useNotificationMonitoring({
     useEffect(() => {
         const runDailyChecks = async () => {
             if (!isHydrated) return;
+            // Task 3: recurring/debt son time-events foreground. En durable/cutover
+            // (writer null) no se evalúan ni escriben; solo un snapshot fresco que
+            // devuelva autoridad foreground los reactiva (dep abajo).
+            if (!foregroundWriterActive) return;
             if (!monitorsRef.current.paymentMonitor || !monitorsRef.current.debtMonitor) return;
             try {
+                const context = getForegroundReminderContext(notificationManager);
+                if (context) {
+                    monitorsRef.current.paymentMonitor.deps = {
+                        ...monitorsRef.current.paymentMonitor.deps,
+                        cursorStore: context.cursorStore,
+                        timeZone: context.timeZone,
+                        writerPrefix: context.writerPrefix,
+                        authorityConfigVersion: context.authorityConfigVersion,
+                    };
+                    monitorsRef.current.debtMonitor.deps = {
+                        ...monitorsRef.current.debtMonitor.deps,
+                        timeZone: context.timeZone,
+                        writerPrefix: context.writerPrefix,
+                        authorityConfigVersion: context.authorityConfigVersion,
+                    };
+                }
                 await monitorsRef.current.paymentMonitor?.checkUpcomingPayments();
                 await monitorsRef.current.debtMonitor?.checkOverdueDebts();
             } catch (error) {
@@ -197,13 +245,20 @@ export function useNotificationMonitoring({
 
         runDailyChecks();
 
-        if (typeof document === 'undefined') return;
+        const evaluationInterval = window.setInterval(runDailyChecks, 5 * 60 * 1000);
+
+        if (typeof document === 'undefined') {
+            return () => window.clearInterval(evaluationInterval);
+        }
         const onVisible = () => {
             if (document.visibilityState === 'visible') runDailyChecks();
         };
         document.addEventListener('visibilitychange', onVisible);
-        return () => document.removeEventListener('visibilitychange', onVisible);
-    }, [notificationManager, isHydrated, recurringPayments, txsForBalance]);
+        return () => {
+            window.clearInterval(evaluationInterval);
+            document.removeEventListener('visibilitychange', onVisible);
+        };
+    }, [notificationManager, isHydrated, foregroundWriterActive, authority, recurringPayments, debts, txsForBalance]);
 
     // Al cambiar de usuario (guest→login o cambio de cuenta sin recargar) se
     // reinicia el set de ids previos. Sin esto, las transacciones del nuevo

@@ -4,6 +4,7 @@ import {
   getRecurringLinkCandidates,
   isRecurringCycleKeyForPayment,
   recurringTransactionSatisfiesCycle,
+  recurringTransactionSatisfiesCycleKey,
 } from '../../utils/recurringPayments';
 import { cycleKey } from '../../utils/recurringDates';
 
@@ -84,6 +85,31 @@ describe('recurringTransactionSatisfiesCycle', () => {
     )).toBe(true);
     expect(isRecurringCycleKeyForPayment(annual, targetCycle)).toBe(true);
     expect(isRecurringCycleKeyForPayment(annual, '2026-5-15')).toBe(false);
+  });
+
+  it.each([
+    ['UTC', '2026-06-05T00:00:00.000Z', '2026-07-05T00:00:00.000Z'],
+    ['Pacific/Kiritimati', '2026-06-04T10:00:00.000Z', '2026-07-04T10:00:00.000Z'],
+    ['America/Bogota', '2026-06-05T05:00:00.000Z', '2026-07-05T05:00:00.000Z'],
+  ])('matches legacy cycle boundaries in configured zone %s, independent of host TZ', (
+    timeZone,
+    startIso,
+    endIso,
+  ) => {
+    const targetCycle = '2026-5-5';
+    const at = (timestamp: number) => recurringTransactionSatisfiesCycleKey(
+      payment,
+      transaction({ recurringCycle: undefined, date: new Date(timestamp) }),
+      targetCycle,
+      timeZone,
+    );
+    const start = new Date(startIso).getTime();
+    const end = new Date(endIso).getTime();
+
+    expect(at(start - 1)).toBe(false);
+    expect(at(start)).toBe(true);
+    expect(at(end - 1)).toBe(true);
+    expect(at(end)).toBe(false);
   });
 });
 

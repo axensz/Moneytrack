@@ -1,85 +1,89 @@
 import { useEffect, useRef } from 'react';
 import { logger } from '../utils/logger';
+import { getDailyReminderCatchUp } from '../utils/notificationEventLifecycle';
+import { getForegroundReminderContext } from '../lib/recurringReminderCursorStore';
+import type { NotificationAuthorityState } from '../utils/notificationAuthority';
 import type { NotificationManager } from '../services/NotificationManager';
 import type { NotificationPreferences } from '../types/finance';
 
-const MAX_TIMEOUT_MS = 2_147_483_647;
-const DAILY_REMINDER_METADATA = { reminderKey: 'daily-expense-reminder' };
+const EVALUATION_INTERVAL_MS = 5 * 60 * 1000;
 
-function getNextReminderDate(hour: number, minute: number): Date {
-    const next = new Date();
-    next.setHours(hour, minute, 0, 0);
-
-    if (next.getTime() <= Date.now()) {
-        next.setDate(next.getDate() + 1);
-    }
-
-    return next;
+export interface DailyExpenseReminderOptions {
+  /** Task 3: solo un escritor foreground admitido puede presentar el diario. */
+  foregroundWriterActive?: boolean;
+  /** Token de autoridad para revalidar la generación al mutar. */
+  authority?: NotificationAuthorityState;
 }
 
 export function useDailyExpenseReminder(
-    notificationManager: NotificationManager,
-    preferences: NotificationPreferences
+  notificationManager: NotificationManager,
+  preferences: NotificationPreferences,
+  options: DailyExpenseReminderOptions = {}
 ) {
-    const timeoutRef = useRef<number | null>(null);
-    const {
-        enabled,
-        hour,
-        minute,
-    } = preferences.dailyExpenseReminder;
+  const { enabled, hour, minute } = preferences.dailyExpenseReminder;
+  const { foregroundWriterActive = true, authority } = options;
 
-    useEffect(() => {
-        if (!enabled || typeof window === 'undefined') {
-            return;
-        }
+  // Ref mutable: un callback de timer capturado antes de un cutover revalida el
+  // escritor vigente JUSTO antes de mutar, en vez de usar el valor capturado.
+  const writerRef = useRef<{ active: boolean; authority?: NotificationAuthorityState }>({
+    active: foregroundWriterActive,
+    authority,
+  });
+  writerRef.current = { active: foregroundWriterActive, authority };
 
-        let cancelled = false;
+  useEffect(() => {
+    if (!enabled || typeof window === 'undefined') return;
+    let cancelled = false;
+    let lastReminderLocalDate: string | undefined;
 
-        const clearScheduledReminder = () => {
-            if (timeoutRef.current !== null) {
-                window.clearTimeout(timeoutRef.current);
-                timeoutRef.current = null;
-            }
-        };
+    const evaluate = async () => {
+      if (cancelled) return;
+      // Recheck previo: sin escritor foreground vigente no se evalúa ni presenta.
+      if (!writerRef.current.active) return;
+      const context = getForegroundReminderContext(notificationManager);
+      const timeZone = context?.timeZone
+        ?? preferences.timeZone
+        ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+        ?? 'America/Bogota';
+      const disposition = getDailyReminderCatchUp({
+        now: new Date(), timeZone, hour, minute, lastReminderLocalDate,
+      });
+      if (!disposition.shouldSend) return;
 
-        const scheduleNextReminder = () => {
-            clearScheduledReminder();
-            const nextReminder = getNextReminderDate(hour, minute);
-            const delay = Math.min(nextReminder.getTime() - Date.now(), MAX_TIMEOUT_MS);
+      // Recheck inmediatamente antes de mutar: un cutover ocurrido entre el
+      // inicio de evaluate y este punto revoca la presentación foreground.
+      if (!writerRef.current.active) return;
 
-            timeoutRef.current = window.setTimeout(async () => {
-                if (cancelled) return;
+      lastReminderLocalDate = disposition.localDate;
+      try {
+        await notificationManager.createNotification({
+          type: 'info',
+          title: 'Registra tus gastos',
+          message: 'No se te olvide agregar tus gastos de hoy.',
+          severity: 'info',
+          isRead: false,
+          schemaVersion: 2,
+          eventKey: `${context?.writerPrefix ?? 'foreground:compat'}:daily-expense:${disposition.localDate}`,
+          stage: 'daily',
+          stageWindow: 'daily',
+          lifecycleStatus: 'active',
+          actionUrl: '/?view=transactions',
+          metadata: { reminderKey: 'daily-expense-reminder', localDate: disposition.localDate },
+          ...(context?.authorityConfigVersion === undefined
+            ? {}
+            : { authorityConfigVersion: context.authorityConfigVersion }),
+        });
+      } catch (error) {
+        lastReminderLocalDate = undefined;
+        logger.error('Daily expense reminder failed', error);
+      }
+    };
 
-                try {
-                    await notificationManager.createNotification({
-                        type: 'info',
-                        title: 'Registra tus gastos',
-                        message: 'No se te olvide agregar tus gastos de hoy.',
-                        severity: 'info',
-                        isRead: false,
-                        actionUrl: '/?view=transactions',
-                        metadata: DAILY_REMINDER_METADATA,
-                    });
-                } catch (error) {
-                    logger.error('Daily expense reminder failed', error);
-                } finally {
-                    if (!cancelled) {
-                        scheduleNextReminder();
-                    }
-                }
-            }, delay);
-        };
-
-        scheduleNextReminder();
-
-        return () => {
-            cancelled = true;
-            clearScheduledReminder();
-        };
-    }, [
-        notificationManager,
-        enabled,
-        hour,
-        minute,
-    ]);
+    void evaluate();
+    const interval = window.setInterval(() => { void evaluate(); }, EVALUATION_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [notificationManager, preferences.timeZone, enabled, hour, minute, foregroundWriterActive, authority]);
 }

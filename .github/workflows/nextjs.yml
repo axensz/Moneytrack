@@ -56,8 +56,29 @@ jobs:
           java-version: "21"
       - name: Install dependencies
         run: npm ci
+      - name: Install backend (functions) dependencies
+        run: npm --prefix functions ci
+      - name: Backend audit (zero findings required)
+        run: npm --prefix functions audit --audit-level=low
+      - name: Backend lint
+        run: npm --prefix functions run lint
+      - name: Backend typecheck
+        run: npm --prefix functions run typecheck
+      - name: Backend unit tests
+        run: npm --prefix functions test
       - name: Validate Firestore rules
         run: npm run test:rules
+      # Notification emulator contracts. The demo VAPID public key is generated
+      # in its OWN step and written to $GITHUB_ENV; later steps consume it. The
+      # private key stays only in functions/.secret.local (git-ignored) and is
+      # never printed. This job validates only — it never deploys or reads
+      # production secrets.
+      - name: Prepare ephemeral demo VAPID config
+        run: |
+          npm --prefix functions run build
+          npm --prefix functions run notifications:prepare-emulator -- --project demo-moneytrack --github-env "$GITHUB_ENV"
+      - name: Notification emulator contracts (rules + functions integration)
+        run: npx --yes firebase-tools@15.24.0 emulators:exec --only auth,firestore,functions --project demo-moneytrack "npm run test:rules:run && npm --prefix functions run test:integration"
       - name: Lint
         run: npm run lint
       - name: Typecheck
@@ -94,10 +115,24 @@ jobs:
       NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
       NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID }}
       NEXT_PUBLIC_BASE_PATH: /Moneytrack
+      # Web Push public key comes from a repository variable (not a secret): it
+      # is embedded in the static client so the current device can subscribe.
+      NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY: ${{ vars.NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY }}
       # Gemini usa BYOK: cada usuario agrega su key en la app. No se inyecta en el build.
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+      - name: Require production Web Push public key
+        run: |
+          if [ -z "$NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY" ]; then
+            echo "::error::NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY repository variable is required for a production build."
+            exit 1
+          fi
+          # VAPID public keys are 65-byte base64url (87 chars, no padding).
+          if ! printf '%s' "$NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY" | grep -Eq '^[A-Za-z0-9_-]{87}$'; then
+            echo "::error::NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY is malformed (expected 87-char base64url)."
+            exit 1
+          fi
       - name: Detect package manager
         id: detect-package-manager
         run: |
@@ -140,6 +175,12 @@ jobs:
           BUILD_HASH: ${{ github.sha }}
       - name: Build with Next.js
         run: ${{ steps.detect-package-manager.outputs.runner }} next build
+      - name: Verify Web Push public key is embedded in the artifact
+        run: |
+          if ! grep -rqF "$NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY" ./out; then
+            echo "::error::The Web Push public key was not embedded in the built artifact."
+            exit 1
+          fi
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
         with:

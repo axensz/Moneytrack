@@ -128,23 +128,25 @@ describe('BudgetMonitor — umbrales de presupuesto (A3)', () => {
       expect.objectContaining({
         schemaVersion: 2,
         eventKey: 'budget:b1:2026-06',
-        revision: 1,
         stage: 'warning',
         stageWindow: 'warning',
       }),
       expect.objectContaining({
         eventKey: 'budget:b1:2026-06',
-        revision: 2,
         stage: 'critical',
         stageWindow: 'critical',
       }),
       expect.objectContaining({
         eventKey: 'budget:b1:2026-06',
-        revision: 3,
         stage: 'exceeded',
         stageWindow: 'exceeded',
       }),
     ]);
+    for (const [notification] of createNotification.mock.calls) {
+      expect(notification).not.toHaveProperty('revision');
+      expect(notification).not.toHaveProperty('deliverySource');
+      expect(notification).not.toHaveProperty('authorityConfigVersion');
+    }
     expect(createNotification.mock.calls[0][0].eventKey).not.toBe('daily-expense:2026-06-15');
   });
 });

@@ -9,7 +9,9 @@ import {
 } from '../../hooks/useFinanceSelectors';
 import { useDailyExpenseReminder } from '../../hooks/useDailyExpenseReminder';
 import { useNotificationMonitoring } from '../../hooks/useNotificationMonitoring';
+import { useNotificationAuthority } from '../../hooks/useNotificationAuthority';
 import { useNotificationContext } from '../../contexts/NotificationContext';
+import { isForegroundWriter } from '../../utils/notificationAuthority';
 
 interface FinanceNotificationBridgeProps {
   userId: string | null;
@@ -27,6 +29,7 @@ export function FinanceNotificationBridge({
     balanceTransactions,
     balancesReady,
     transactionsLoading,
+    notificationSourcesHydrated,
   } = useTransactionDomain();
   const { accounts } = useAccountDomain();
   const { recurringPayments } = useRecurringDomain();
@@ -37,6 +40,12 @@ export function FinanceNotificationBridge({
     preferences: notificationPreferences,
   } = useNotificationContext();
 
+  // Task 3: la autoridad admitida decide si el escritor foreground puede evaluar
+  // time-events (daily/recurring/debt). Durable y cutover (writer null) los
+  // fencean; presupuesto/gasto/saldo por transacción no se gatean.
+  const authority = useNotificationAuthority(userId);
+  const foregroundWriterActive = isForegroundWriter(authority);
+
   useNotificationMonitoring({
     userId,
     transactions,
@@ -46,9 +55,14 @@ export function FinanceNotificationBridge({
     accounts,
     debts,
     notificationManager,
-    isHydrated: !transactionsLoading && balancesReady,
+    isHydrated: !transactionsLoading && balancesReady && notificationSourcesHydrated,
+    foregroundWriterActive,
+    authority,
   });
-  useDailyExpenseReminder(notificationManager, notificationPreferences);
+  useDailyExpenseReminder(notificationManager, notificationPreferences, {
+    foregroundWriterActive,
+    authority,
+  });
 
   return null;
 }

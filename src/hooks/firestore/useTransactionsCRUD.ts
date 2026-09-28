@@ -30,6 +30,7 @@ import {
 } from '../../utils/ledgerMutation';
 import { validateTransactionUpdate } from '../../utils/transactionValidation';
 import {
+  DEFAULT_RECURRING_TIME_ZONE,
   isRecurringCycleKeyForPayment,
   recurringTransactionSatisfiesCycleKey,
 } from '../../utils/recurringPayments';
@@ -319,7 +320,8 @@ interface UseTransactionsCRUDReturn {
  */
 export function useTransactionsCRUD(
   userId: string | null,
-  _accounts: Account[] = []
+  _accounts: Account[] = [],
+  timeZone: string = DEFAULT_RECURRING_TIME_ZONE,
 ): UseTransactionsCRUDReturn {
   // Conserva la firma pública; la autoridad financiera siempre se recarga del servidor.
   void _accounts;
@@ -621,11 +623,11 @@ export function useTransactionsCRUD(
               loadServerRecurringPayment(userId, recurringPaymentId),
               loadServerLedgerTransactionsByRecurringPayment(userId, recurringPaymentId),
             ]);
-            if (!isRecurringCycleKeyForPayment(payment, recurringCycle)) {
+            if (!isRecurringCycleKeyForPayment(payment, recurringCycle, timeZone)) {
               throw new Error('La identidad del ciclo no corresponde al pago periódico.');
             }
             const duplicate = linkedTransactions.find(candidate => (
-              recurringTransactionSatisfiesCycleKey(payment, candidate, recurringCycle)
+              recurringTransactionSatisfiesCycleKey(payment, candidate, recurringCycle, timeZone)
             ));
             if (duplicate) {
               const context = await loadContext([]);
@@ -704,7 +706,7 @@ export function useTransactionsCRUD(
         throw error;
       }
     },
-    [userId]
+    [userId, timeZone]
   );
 
   const linkRecurringTransactionAtomic = useCallback(
@@ -730,7 +732,7 @@ export function useTransactionsCRUD(
               loadServerLedgerTransaction(userId, transactionId),
               loadServerLedgerTransactionsByRecurringPayment(userId, recurringPaymentId),
             ]);
-            if (!isRecurringCycleKeyForPayment(payment, recurringCycle)) {
+            if (!isRecurringCycleKeyForPayment(payment, recurringCycle, timeZone)) {
               throw new Error('La identidad del ciclo no corresponde al pago periódico.');
             }
             if (!transaction) {
@@ -766,7 +768,12 @@ export function useTransactionsCRUD(
 
             const duplicate = linkedTransactions.find(candidate => (
               candidate.id !== transactionId
-              && recurringTransactionSatisfiesCycleKey(payment, candidate, recurringCycle)
+              && recurringTransactionSatisfiesCycleKey(
+                payment,
+                candidate,
+                recurringCycle,
+                timeZone,
+              )
             ));
             if (duplicate) {
               const context = await loadContext([]);
@@ -843,7 +850,7 @@ export function useTransactionsCRUD(
           const duplicate = (
             await loadServerLedgerTransactionsByRecurringPayment(userId, recurringPaymentId)
           ).find(candidate => (
-            recurringTransactionSatisfiesCycleKey(payment, candidate, recurringCycle)
+            recurringTransactionSatisfiesCycleKey(payment, candidate, recurringCycle, timeZone)
           ));
           if (duplicate) {
             publish(duplicate);
@@ -855,7 +862,7 @@ export function useTransactionsCRUD(
         throw error;
       }
     },
-    [userId]
+    [userId, timeZone]
   );
 
   const restoreTransaction = useCallback(

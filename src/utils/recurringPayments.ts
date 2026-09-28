@@ -1,34 +1,82 @@
 import type { RecurringPayment, Transaction } from '../types/finance';
-import { cycleKey, effectiveDueDay, getYearlyAnchorMonth } from './recurringDates';
+import { DEFAULT_TIME_ZONE } from '../config/constants';
+import {
+  cycleKey,
+  effectiveDueDay,
+  getZonedDateTimeParts,
+  lastDayOfMonth,
+} from './recurringDates';
 
-const recurringCycleStart = (key: string): Date | null => {
+interface RecurringCycleDate {
+  year: number;
+  month: number;
+  day: number;
+}
+
+const recurringCycleStart = (key: string): RecurringCycleDate | null => {
   const match = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(key);
   if (!match) return null;
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
-  const date = new Date(year, month, day);
-  if (
-    date.getFullYear() !== year
-    || date.getMonth() !== month
-    || date.getDate() !== day
-  ) {
-    return null;
+  if (month < 0 || month > 11 || day < 1 || day > lastDayOfMonth(year, month)) return null;
+  return { year, month, day };
+};
+
+export const DEFAULT_RECURRING_TIME_ZONE = DEFAULT_TIME_ZONE;
+
+const cycleKeyInTimeZone = (
+  payment: RecurringPayment,
+  reference: Date,
+  timeZone: string,
+): string => {
+  const local = getZonedDateTimeParts(reference, timeZone);
+  if (payment.frequency === 'yearly') {
+    const month = yearlyAnchorMonth(payment, local.month, timeZone);
+    const dueDay = effectiveDueDay(payment.dueDay, local.year, month);
+    const year = local.month > month || (local.month === month && local.day >= dueDay)
+      ? local.year
+      : local.year - 1;
+    return `${year}-${month}-${effectiveDueDay(payment.dueDay, year, month)}`;
   }
-  return date;
+
+  let { year, month } = local;
+  if (local.day < effectiveDueDay(payment.dueDay, year, month)) {
+    month -= 1;
+    if (month < 0) {
+      month = 11;
+      year -= 1;
+    }
+  }
+  return `${year}-${month}-${effectiveDueDay(payment.dueDay, year, month)}`;
+};
+
+const calendarOrdinal = ({ year, month, day }: RecurringCycleDate): number =>
+  Date.UTC(year, month, day);
+
+const yearlyAnchorMonth = (
+  payment: RecurringPayment,
+  fallbackMonth: number,
+  timeZone: string,
+): number => {
+  if (!payment.createdAt) return fallbackMonth;
+  const createdAt = new Date(payment.createdAt);
+  return Number.isFinite(createdAt.getTime())
+    ? getZonedDateTimeParts(createdAt, timeZone).month
+    : fallbackMonth;
 };
 
 export const isRecurringCycleKeyForPayment = (
   payment: RecurringPayment,
   targetCycle: string,
+  timeZone: string = DEFAULT_RECURRING_TIME_ZONE,
 ): boolean => {
   const start = recurringCycleStart(targetCycle);
   if (!start) return false;
-  const year = start.getFullYear();
-  const month = start.getMonth();
-  if (start.getDate() !== effectiveDueDay(payment.dueDay, year, month)) return false;
+  const { year, month, day } = start;
+  if (day !== effectiveDueDay(payment.dueDay, year, month)) return false;
   return payment.frequency !== 'yearly'
-    || month === getYearlyAnchorMonth(payment, month);
+    || month === yearlyAnchorMonth(payment, month, timeZone);
 };
 
 /** One shared definition of a paid recurring cycle for UI, writers and monitors. */
@@ -36,6 +84,7 @@ export const recurringTransactionSatisfiesCycle = (
   payment: RecurringPayment,
   transaction: Transaction,
   reference: Date = new Date(),
+  timeZone: string = DEFAULT_RECURRING_TIME_ZONE,
 ): boolean => {
   if (
     !payment.id
@@ -48,7 +97,8 @@ export const recurringTransactionSatisfiesCycle = (
   return recurringTransactionSatisfiesCycleKey(
     payment,
     transaction,
-    cycleKey(payment, reference),
+    cycleKeyInTimeZone(payment, reference, timeZone),
+    timeZone,
   );
 };
 
@@ -56,6 +106,7 @@ export const recurringTransactionSatisfiesCycleKey = (
   payment: RecurringPayment,
   transaction: Transaction,
   targetCycle: string,
+  timeZone: string = DEFAULT_RECURRING_TIME_ZONE,
 ): boolean => {
   if (
     !payment.id
@@ -70,21 +121,26 @@ export const recurringTransactionSatisfiesCycleKey = (
   const transactionTime = new Date(transaction.date).getTime();
   if (!Number.isFinite(transactionTime)) return false;
   const start = recurringCycleStart(targetCycle);
-  if (!start || !isRecurringCycleKeyForPayment(payment, targetCycle)) return false;
-  const startYear = start.getFullYear();
-  const startMonth = start.getMonth();
+  if (!start || !isRecurringCycleKeyForPayment(payment, targetCycle, timeZone)) return false;
+  const transactionLocalDate = getZonedDateTimeParts(new Date(transactionTime), timeZone);
   const end = payment.frequency === 'yearly'
-    ? new Date(
-        startYear + 1,
-        startMonth,
-        effectiveDueDay(payment.dueDay, startYear + 1, startMonth),
-      )
-    : new Date(
-        startYear,
-        startMonth + 1,
-        effectiveDueDay(payment.dueDay, startYear, startMonth + 1),
-      );
-  return transactionTime >= start.getTime() && transactionTime < end.getTime();
+    ? {
+        year: start.year + 1,
+        month: start.month,
+        day: effectiveDueDay(payment.dueDay, start.year + 1, start.month),
+      }
+    : {
+        year: start.month === 11 ? start.year + 1 : start.year,
+        month: (start.month + 1) % 12,
+        day: effectiveDueDay(
+          payment.dueDay,
+          start.month === 11 ? start.year + 1 : start.year,
+          (start.month + 1) % 12,
+        ),
+      };
+  const transactionOrdinal = calendarOrdinal(transactionLocalDate);
+  return transactionOrdinal >= calendarOrdinal(start)
+    && transactionOrdinal < calendarOrdinal(end);
 };
 
 export const getRecurringLinkCandidates = (

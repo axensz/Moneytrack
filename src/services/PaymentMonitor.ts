@@ -1,175 +1,160 @@
-/**
- * PaymentMonitor - Monitors recurring payment due dates and generates reminders
- * Validates: Requirements 2.1, 2.2, 2.3, 2.4, 2.5, 14.2, 14.5
- */
-
 import { logger } from '../utils/logger';
 import { formatCurrency } from '../utils/formatters';
 import { calendarDayDifference, getScheduledDueDate } from '../utils/recurringDates';
-import { recurringTransactionSatisfiesCycle } from '../utils/recurringPayments';
-import type { RecurringPayment, Transaction, Notification } from '../types/finance';
+import {
+  DEFAULT_RECURRING_TIME_ZONE,
+  recurringTransactionSatisfiesCycle,
+  recurringTransactionSatisfiesCycleKey,
+} from '../utils/recurringPayments';
+import {
+  evaluateRecurringReminderCursor,
+  type RecurringReminderCursor,
+} from '../utils/recurringReminderCursor';
+import type { RecurringReminderCursorStore } from '../lib/recurringReminderCursorStore';
+import type { Notification, RecurringPayment, Transaction } from '../types/finance';
 import { viewActionUrl } from '../hooks/useViewRouting';
 
 interface PaymentMonitorDeps {
-    createNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => Promise<void>;
-    recurringPayments: RecurringPayment[];
-    transactions: Transaction[];
+  createNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => Promise<void>;
+  recurringPayments: RecurringPayment[];
+  transactions: Transaction[];
+  cursorStore?: RecurringReminderCursorStore;
+  timeZone?: string;
+  writerPrefix?: string;
+  authorityConfigVersion?: number;
 }
 
+const emptyCursorStore: RecurringReminderCursorStore = { read: () => undefined };
+
+const candidateCopy = (
+  payment: RecurringPayment,
+  cursor: RecurringReminderCursor,
+): Pick<Notification, 'title' | 'message' | 'severity' | 'stage' | 'stageWindow' | 'overdueOccurrence'> => {
+  if (cursor.stageWindow === 'd3') return {
+    title: `Recordatorio: ${payment.name}`,
+    message: `El pago de ${formatCurrency(payment.amount)} vence en 3 días`,
+    severity: 'info', stage: 'd3', stageWindow: 'd3',
+  };
+  if (cursor.stageWindow === 'd1') return {
+    title: `Pago vence mañana: ${payment.name}`,
+    message: `El pago de ${formatCurrency(payment.amount)} vence mañana`,
+    severity: 'warning', stage: 'd1', stageWindow: 'd1',
+  };
+  if (cursor.stageWindow === 'due') return {
+    title: `Pago vence hoy: ${payment.name}`,
+    message: `El pago de ${formatCurrency(payment.amount)} vence hoy`,
+    severity: 'warning', stage: 'due', stageWindow: 'due',
+  };
+  const occurrence = Number(/^overdue:(\d+)$/.exec(cursor.stageWindow ?? '')?.[1]);
+  const overdueDays = 1 + 7 * occurrence;
+  return {
+    title: `Pago vencido: ${payment.name}`,
+    message: `El pago de ${formatCurrency(payment.amount)} venció hace ${overdueDays} ${overdueDays === 1 ? 'día' : 'días'}`,
+    severity: 'error', stage: 'overdue', stageWindow: `overdue:${occurrence}`,
+    overdueOccurrence: occurrence,
+  };
+};
+
+export const buildRecurringReminderCandidate = ({
+  payment,
+  cursor,
+  writerPrefix,
+  authorityConfigVersion,
+}: {
+  payment: RecurringPayment;
+  cursor: RecurringReminderCursor;
+  writerPrefix: string;
+  authorityConfigVersion?: number;
+}): Omit<Notification, 'id' | 'createdAt'> => ({
+  type: 'recurring',
+  ...candidateCopy(payment, cursor),
+  schemaVersion: 2,
+  eventKey: `${writerPrefix}:recurring:${encodeURIComponent(payment.id!)}:${cursor.cycleKey}`,
+  lifecycleStatus: 'active',
+  isRead: false,
+  actionUrl: viewActionUrl('recurring'),
+  metadata: {
+    recurringPaymentId: payment.id!,
+    amount: payment.amount,
+    recurringCycle: cursor.cycleKey,
+    localDate: cursor.dueLocalDate,
+  },
+  ...(authorityConfigVersion === undefined ? {} : { authorityConfigVersion }),
+});
+
 export class PaymentMonitor {
-    public deps: PaymentMonitorDeps;
-    private lastCheckDate: Date | null = null;
-    private lastCheckState: string | null = null;
+  public deps: PaymentMonitorDeps;
+  private lastCheckState: string | null = null;
 
-    constructor(deps: PaymentMonitorDeps) {
-        this.deps = deps;
-    }
+  constructor(deps: PaymentMonitorDeps) {
+    this.deps = deps;
+  }
 
-    /**
-     * Check for upcoming payments and generate reminders
-     * Should be called daily on app initialization
-     */
-    async checkUpcomingPayments(): Promise<void> {
-        try {
-            const currentState = this.getCurrentState();
-            // Only run once per day
-            if (this.lastCheckDate) {
-                const today = new Date();
-                const lastCheck = this.lastCheckDate;
-                if (
-                    today.getDate() === lastCheck.getDate() &&
-                    today.getMonth() === lastCheck.getMonth() &&
-                    today.getFullYear() === lastCheck.getFullYear() &&
-                    this.lastCheckState === currentState
-                ) {
-                    logger.info('Payment check already run today, skipping');
-                    return;
-                }
-            }
+  async checkUpcomingPayments(): Promise<void> {
+    try {
+      const now = new Date();
+      const timeZone = this.deps.timeZone
+        ?? DEFAULT_RECURRING_TIME_ZONE;
+      const cursorStore = this.deps.cursorStore ?? emptyCursorStore;
+      const writerPrefix = this.deps.writerPrefix ?? 'foreground:compat';
+      const evaluations = this.deps.recurringPayments
+        .filter((payment) => payment.isActive && payment.id)
+        .map((payment) => ({
+          payment,
+          evaluation: evaluateRecurringReminderCursor({
+            payment,
+            now,
+            timeZone,
+            cursor: cursorStore.read(payment.id!),
+            isPaid: (targetCycle) => this.isAlreadyPaid(payment, targetCycle),
+          }),
+        }));
+      const currentState = JSON.stringify(evaluations.map(({ payment, evaluation }) => [
+        payment.id,
+        evaluation.nextCursor.cycleKey,
+        evaluation.activeStageWindow,
+        evaluation.resolvedCycleKey,
+      ]));
+      if (this.lastCheckState === currentState) return;
 
-            const activePayments = this.deps.recurringPayments.filter((p) => p.isActive);
-
-            for (const payment of activePayments) {
-                if (!payment.id) continue;
-
-                const daysUntilDue = this.getDaysUntilDue(payment);
-                const isPaid = this.isAlreadyPaid(payment);
-
-                if (isPaid) {
-                    continue; // Skip if already paid for current period
-                }
-
-                // Cadencia aprobada: D-3, D-1, D0 y D+1/D+8/D+15.
-                if (daysUntilDue === 0) {
-                    // Due today
-                    await this.deps.createNotification({
-                        type: 'recurring',
-                        title: `Pago vence hoy: ${payment.name}`,
-                        message: `El pago de ${formatCurrency(payment.amount)} vence hoy`,
-                        severity: 'warning',
-                        isRead: false,
-                        actionUrl: viewActionUrl('recurring'),
-                        metadata: {
-                            recurringPaymentId: payment.id,
-                            amount: payment.amount,
-                        },
-                    });
-                } else if (daysUntilDue === 1) {
-                    // Due tomorrow
-                    await this.deps.createNotification({
-                        type: 'recurring',
-                        title: `Pago vence mañana: ${payment.name}`,
-                        message: `El pago de ${formatCurrency(payment.amount)} vence mañana`,
-                        severity: 'warning',
-                        isRead: false,
-                        actionUrl: viewActionUrl('recurring'),
-                        metadata: {
-                            recurringPaymentId: payment.id,
-                            amount: payment.amount,
-                        },
-                    });
-                } else if (daysUntilDue === 3) {
-                    // Due in 3 days
-                    await this.deps.createNotification({
-                        type: 'recurring',
-                        title: `Recordatorio: ${payment.name}`,
-                        message: `El pago de ${formatCurrency(payment.amount)} vence en 3 días`,
-                        severity: 'info',
-                        isRead: false,
-                        actionUrl: viewActionUrl('recurring'),
-                        metadata: {
-                            recurringPaymentId: payment.id,
-                            amount: payment.amount,
-                        },
-                    });
-                } else if ([-1, -8, -15].includes(daysUntilDue)) {
-                    const overdueDays = Math.abs(daysUntilDue);
-                    await this.deps.createNotification({
-                        type: 'recurring',
-                        title: `Pago vencido: ${payment.name}`,
-                        message: `El pago de ${formatCurrency(payment.amount)} venció hace ${overdueDays} ${overdueDays === 1 ? 'día' : 'días'}`,
-                        severity: 'error',
-                        isRead: false,
-                        actionUrl: viewActionUrl('recurring'),
-                        metadata: {
-                            recurringPaymentId: payment.id,
-                            amount: payment.amount,
-                        },
-                    });
-                }
-            }
-
-            this.lastCheckDate = new Date();
-            this.lastCheckState = currentState;
-            logger.info('Payment check completed', { paymentsChecked: activePayments.length });
-        } catch (error) {
-            logger.error('Payment monitor check failed', error);
+      for (const { payment, evaluation } of evaluations) {
+        const paymentId = payment.id!;
+        if (!evaluation.activeStageWindow) {
+          if (evaluation.resolvedCycleKey) cursorStore.removeGuest?.(paymentId);
+          continue;
         }
-    }
+        const cursor = evaluation.nextCursor;
+        await this.deps.createNotification(buildRecurringReminderCandidate({
+          payment, cursor, writerPrefix,
+          authorityConfigVersion: this.deps.authorityConfigVersion,
+        }));
+        cursorStore.persistGuest?.(paymentId, cursor);
+      }
 
-    /**
-     * Calculate days until payment is due
-     */
-    getDaysUntilDue(payment: RecurringPayment): number {
-        const today = new Date();
-        return calendarDayDifference(today, getScheduledDueDate(payment, today));
+      this.lastCheckState = currentState;
+      logger.info('Payment check completed', { paymentsChecked: evaluations.length });
+    } catch (error) {
+      logger.error('Payment monitor check failed', error);
     }
+  }
 
-    /**
-     * Check if payment has already been paid for the current billing cycle.
-     *
-     * Usa la ventana de ciclo [inicio, fin) del util compartido (en paridad con
-     * la vista): cuenta como pagado si alguna transacción del pago, con paid===true,
-     * cae dentro de la ventana del ciclo actual. Así un pago anticipado o atrasado
-     * cuenta para el ciclo correcto (no por mes calendario).
-     */
-    isAlreadyPaid(payment: RecurringPayment): boolean {
-        if (!payment.id) return false;
+  /** Kept for callers that display the legacy calendar-day distance. */
+  getDaysUntilDue(payment: RecurringPayment): number {
+    const today = new Date();
+    return calendarDayDifference(today, getScheduledDueDate(payment, today));
+  }
 
-        return this.deps.transactions.some((transaction) => (
-            recurringTransactionSatisfiesCycle(payment, transaction)
-        ));
-    }
+  isAlreadyPaid(payment: RecurringPayment, targetCycle?: string): boolean {
+    if (!payment.id) return false;
+    const timeZone = this.deps.timeZone
+      ?? DEFAULT_RECURRING_TIME_ZONE;
+    return this.deps.transactions.some((transaction) =>
+      targetCycle
+        ? recurringTransactionSatisfiesCycleKey(payment, transaction, targetCycle, timeZone)
+        : recurringTransactionSatisfiesCycle(payment, transaction, new Date(), timeZone));
+  }
 
-    /** Solo los datos que cambian el estado de un recordatorio reabren el guard diario. */
-    private getCurrentState(): string {
-        return JSON.stringify({
-            payments: this.deps.recurringPayments.map(({ id, dueDay, frequency, isActive, createdAt }) => [
-                id, dueDay, frequency, isActive, createdAt ? new Date(createdAt).getTime() : null,
-            ]),
-            transactions: this.deps.transactions
-                .filter((t) => t.recurringPaymentId)
-                .map(({ id, recurringPaymentId, recurringCycle, paid, date }) => [
-                    id, recurringPaymentId, recurringCycle, paid, new Date(date).getTime(),
-                ]),
-        });
-    }
-
-    /**
-     * Reset last check date (useful for testing)
-     */
-    resetLastCheck(): void {
-        this.lastCheckDate = null;
-        this.lastCheckState = null;
-    }
+  resetLastCheck(): void {
+    this.lastCheckState = null;
+  }
 }

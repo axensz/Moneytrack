@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Transaction } from '../../types/finance';
+import type { Notification, Transaction } from '../../types/finance';
 
 type FakeDocument = {
   id: string;
@@ -37,6 +37,7 @@ vi.mock('firebase/firestore', () => ({
     constraints,
   }),
   orderBy: (field: string, direction: string) => ({ type: 'orderBy', field, direction }),
+  where: (field: string, operator: string, value: unknown) => ({ type: 'where', field, operator, value }),
   limit: (size: number) => ({ type: 'limit', size }),
   startAfter: (cursor: FakeDocument) => ({ type: 'startAfter', cursor }),
   onSnapshot: (
@@ -55,6 +56,7 @@ vi.mock('firebase/firestore', () => ({
 
 import { useFirestoreSubscriptions } from '../../hooks/firestore/useFirestoreSubscriptions';
 import { publishTransactionCacheMutation } from '../../hooks/firestore/transactionPaginationCache';
+import { createAuthenticatedRecurringReminderCursorStore } from '../../lib/recurringReminderCursorStore';
 
 const transactionDocument = (id: string, offsetDays: number): FakeDocument => ({
   id,
@@ -94,6 +96,57 @@ const findLatestListener = (suffix: string) => {
   return listener;
 };
 
+const findRecurringLifecycleListener = (latest = false) => {
+  const listeners = latest ? [...firestoreState.listeners].reverse() : firestoreState.listeners;
+  const listener = listeners.find(item => (
+    item.source.path.endsWith('/notifications')
+    && item.source.constraints?.some(constraint => (
+      constraint.type === 'where'
+      && constraint.field === 'type'
+      && constraint.value === 'recurring'
+    ))
+  ));
+  if (!listener) throw new Error('No se registró listener lifecycle recurrente');
+  return listener;
+};
+
+const findNotificationPreferencesListener = (latest = false) => (
+  latest
+    ? findLatestListener('/notificationPreferences/settings')
+    : findListener('/notificationPreferences/settings')
+);
+
+const notificationPreferencesSnapshot = (
+  timeZone: string,
+  exists = true,
+) => ({
+  docs: [],
+  metadata: { fromCache: false, hasPendingWrites: false },
+  exists: () => exists,
+  data: () => ({
+    schemaVersion: 2,
+    timeZone,
+    enabled: {},
+    leadTimes: {},
+  }),
+});
+
+const notificationDocument = (
+  id: string,
+  overrides: Record<string, unknown> = {},
+): FakeDocument => ({
+  id,
+  data: () => ({
+    type: 'info',
+    title: id,
+    message: id,
+    severity: 'info',
+    isRead: false,
+    createdAt: { toDate: () => new Date('2026-07-01T12:00:00.000Z') },
+    ...overrides,
+  }),
+});
+
 const emitCoreSnapshots = (transactionDocs: FakeDocument[]) => {
   findListener('/transactions').next(transactionSnapshot(transactionDocs));
   findListener('/accounts').next(transactionSnapshot([{
@@ -106,12 +159,131 @@ const emitCoreSnapshots = (transactionDocs: FakeDocument[]) => {
   }]));
 };
 
+const emitLatestCoreSnapshots = (transactionDocs: FakeDocument[]) => {
+  findLatestListener('/transactions').next(transactionSnapshot(transactionDocs));
+  findLatestListener('/accounts').next(transactionSnapshot([{
+    id: 'account-1',
+    data: () => ({ name: 'Cuenta', type: 'savings', initialBalance: 0 }),
+  }]));
+  findLatestListener('/categories').next(transactionSnapshot([{
+    id: 'category-1',
+    data: () => ({ name: 'Otros', type: 'expense' }),
+  }]));
+};
+
 beforeEach(() => {
   firestoreState.listeners.length = 0;
   firestoreState.getDocs.mockReset();
 });
 
 describe('useFirestoreSubscriptions — paginación', () => {
+  it('mantiene el centro en 100 pero expone el lifecycle recurrente detrás de 101 filas para reload/device', () => {
+    const newerPresentation = Array.from({ length: 101 }, (_, index) => (
+      notificationDocument(`newer-${index}`)
+    ));
+    const durableRecurring = notificationDocument('old-recurring-source', {
+      type: 'recurring',
+      schemaVersion: 2,
+      eventKey: 'foreground:v4:recurring:rent:2026-5-15',
+      revision: 4,
+      stage: 'overdue',
+      stageWindow: 'overdue:0',
+      lifecycleStatus: 'active',
+      authorityConfigVersion: 4,
+      metadata: {
+        recurringPaymentId: 'rent', recurringCycle: '2026-5-15', localDate: '2026-06-15',
+      },
+    });
+    const { result } = renderHook(() => useFirestoreSubscriptions('user-1'));
+    const presentationListener = firestoreState.listeners.find(item => (
+      item.source.path.endsWith('/notifications')
+      && item.source.constraints?.some(constraint => constraint.type === 'limit' && constraint.size === 100)
+    ));
+
+    act(() => {
+      presentationListener?.next(transactionSnapshot(newerPresentation.slice(0, 100)));
+      findRecurringLifecycleListener().next(transactionSnapshot([durableRecurring]));
+    });
+
+    const source = (result.current as typeof result.current & {
+      recurringNotificationLifecycles?: Notification[];
+    }).recurringNotificationLifecycles ?? [];
+    expect(result.current.notifications).toHaveLength(100);
+    expect(source.map(notification => notification.id)).toEqual(['old-recurring-source']);
+
+    const firstDevice = createAuthenticatedRecurringReminderCursorStore({
+      sourceNotifications: source, writerPrefix: 'foreground:v4', authorityConfigVersion: 4,
+    });
+    const reloadedDevice = createAuthenticatedRecurringReminderCursorStore({
+      sourceNotifications: source.map(notification => ({ ...notification })),
+      writerPrefix: 'foreground:v4', authorityConfigVersion: 4,
+    });
+    expect(reloadedDevice.read('rent')).toEqual(firstDevice.read('rent'));
+  });
+
+  it('no filtra lifecycle de la cuenta anterior durante switch ni acepta su callback tardío', () => {
+    const { result, rerender } = renderHook(
+      ({ userId }) => useFirestoreSubscriptions(userId),
+      { initialProps: { userId: 'user-1' as string | null } },
+    );
+    const staleListener = findRecurringLifecycleListener();
+    const firstUser = notificationDocument('user-1-recurring', { type: 'recurring' });
+    act(() => staleListener.next(transactionSnapshot([firstUser])));
+    expect((result.current as typeof result.current & {
+      recurringNotificationLifecycles?: Notification[];
+    }).recurringNotificationLifecycles?.map(notification => notification.id)).toEqual(['user-1-recurring']);
+
+    rerender({ userId: 'user-2' });
+    const currentSource = () => (result.current as typeof result.current & {
+      recurringNotificationLifecycles?: Notification[];
+    }).recurringNotificationLifecycles ?? [];
+    expect(currentSource()).toEqual([]);
+
+    act(() => staleListener.next(transactionSnapshot([notificationDocument('stale', { type: 'recurring' })])));
+    expect(currentSource()).toEqual([]);
+
+    act(() => findRecurringLifecycleListener(true).next(transactionSnapshot([
+      notificationDocument('user-2-recurring', { type: 'recurring' }),
+    ])));
+    expect(currentSource().map(notification => notification.id)).toEqual(['user-2-recurring']);
+  });
+
+  it('invalida lifecycle en error/retry y espera su callback fresco sin alterar loading core', () => {
+    const { result } = renderHook(() => useFirestoreSubscriptions('user-1'));
+    const staleListener = findRecurringLifecycleListener();
+    const initial = notificationDocument('initial-recurring', { type: 'recurring' });
+
+    act(() => staleListener.next(transactionSnapshot([initial])));
+    expect(result.current.recurringNotificationLifecyclesReady).toBe(true);
+    expect(result.current.loading).toBe(true);
+
+    act(() => staleListener.error(new Error('lifecycle offline')));
+    expect(result.current.recurringNotificationLifecycles).toEqual([]);
+    expect(result.current.recurringNotificationLifecyclesReady).toBe(false);
+    expect(result.current.loading).toBe(true);
+
+    act(() => result.current.retryLoad());
+    expect(result.current.recurringNotificationLifecycles).toEqual([]);
+    expect(result.current.recurringNotificationLifecyclesReady).toBe(false);
+
+    act(() => staleListener.next(transactionSnapshot([
+      notificationDocument('stale-after-retry', { type: 'recurring' }),
+    ])));
+    expect(result.current.recurringNotificationLifecycles).toEqual([]);
+
+    act(() => emitLatestCoreSnapshots([transactionDocument('server', 0)]));
+    expect(result.current.transactionsServerSettled).toBe(true);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.recurringNotificationLifecyclesReady).toBe(false);
+
+    act(() => findRecurringLifecycleListener(true).next(transactionSnapshot([
+      notificationDocument('fresh-recurring', { type: 'recurring' }),
+    ])));
+    expect(result.current.recurringNotificationLifecyclesReady).toBe(true);
+    expect(result.current.recurringNotificationLifecycles.map(item => item.id))
+      .toEqual(['fresh-recurring']);
+  });
+
   it('reporta filas inválidas del head sin mezclarlas con el ledger', () => {
     const invalid = transactionDocument('invalid', 1);
     const invalidData = invalid.data();
@@ -228,6 +400,41 @@ describe('useFirestoreSubscriptions — paginación', () => {
     rerender({ userId: 'user-2' });
     expect(result.current.transactionsServerSettled).toBe(false);
     expect(result.current.transactionsUnresolvedReason).toBe('cache');
+  });
+
+  it('cerca preferencias por cuenta y usa Bogotá hasta el snapshot fresco del nuevo usuario', () => {
+    const { result, rerender } = renderHook(
+      ({ userId }) => useFirestoreSubscriptions(userId),
+      { initialProps: { userId: 'user-a' as string | null } },
+    );
+    const staleUserAListener = findNotificationPreferencesListener();
+
+    expect(result.current.notificationPreferencesReady).toBe(false);
+    expect(result.current.notificationPreferences.timeZone).toBe('America/Bogota');
+
+    act(() => staleUserAListener.next(
+      notificationPreferencesSnapshot('Pacific/Kiritimati', false),
+    ));
+    expect(result.current.notificationPreferencesReady).toBe(true);
+    expect(result.current.notificationPreferences.timeZone).toBe('America/Bogota');
+
+    act(() => staleUserAListener.next(notificationPreferencesSnapshot('Pacific/Kiritimati')));
+    expect(result.current.notificationPreferencesReady).toBe(true);
+    expect(result.current.notificationPreferences.timeZone).toBe('Pacific/Kiritimati');
+
+    rerender({ userId: 'user-b' });
+    expect(result.current.notificationPreferencesReady).toBe(false);
+    expect(result.current.notificationPreferences.timeZone).toBe('America/Bogota');
+
+    act(() => staleUserAListener.next(notificationPreferencesSnapshot('UTC')));
+    expect(result.current.notificationPreferencesReady).toBe(false);
+    expect(result.current.notificationPreferences.timeZone).toBe('America/Bogota');
+
+    act(() => findNotificationPreferencesListener(true).next(
+      notificationPreferencesSnapshot('America/Los_Angeles'),
+    ));
+    expect(result.current.notificationPreferencesReady).toBe(true);
+    expect(result.current.notificationPreferences.timeZone).toBe('America/Los_Angeles');
   });
 
   it('actualiza y elimina elementos antiguos cargados sin que reaparezcan con el snapshot realtime', async () => {

@@ -1,3 +1,5 @@
+import { DEFAULT_TIME_ZONE } from '../config/constants';
+
 export type LedgerMutationKind =
   | 'create'
   | 'edit'
@@ -292,6 +294,10 @@ export interface Notification {
   stageWindow?: string;
   overdueOccurrence?: number;
   lifecycleStatus?: NotificationLifecycleStatus;
+  deliverySource?: 'backend';
+  authorityConfigVersion?: number;
+  authoritySupersededAt?: Date;
+  authoritySupersededByVersion?: number;
   /** La revisión previa resuelta cuando el documento canónico avanza. */
   resolvedRevision?: number;
   readRevision?: number;
@@ -299,6 +305,7 @@ export interface Notification {
   scheduledAt?: Date;
   resolvedAt?: Date;
   dismissedAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface NotificationMetadata {
@@ -358,7 +365,7 @@ export interface NotificationFilter {
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   schemaVersion: 2,
-  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Bogota',
+  timeZone: DEFAULT_TIME_ZONE,
   enabled: {
     budget: true,
     recurring: true,

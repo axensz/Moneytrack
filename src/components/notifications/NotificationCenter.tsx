@@ -6,9 +6,10 @@
  * Fix #12: Removed unused getSeverityColor
  */
 
+import { useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Bell, X, CheckCheck, Trash2, AlertCircle, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { showToast } from '../../utils/toastHelpers';
 import { useNotificationContext } from '../../contexts/NotificationContext';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -32,12 +33,59 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
     } = useNotificationContext();
     const { modalRef, onKeyDown } = useModalA11y({ isOpen, onClose });
 
+    // Mapa ID→botón "eliminar" para restaurar el foco tras una acción sin
+    // duplicar estado: es la única fuente para el foco next→prev→Cerrar.
+    const deleteButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
+    const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+
+    // El usuario pidió UNA navegación: no dejar que un fallo de "marcar leída"
+    // (best-effort) la bloquee. Se avisa el fallo pero la navegación y el cierre
+    // suceden igual, exactamente una vez.
     const handleNotificationClick = async (notification: Notification) => {
         if (!notification.isRead && notification.id) {
-            await markAsRead(notification.id);
+            try {
+                await markAsRead(notification.id);
+            } catch {
+                showToast.error('No se pudo marcar la notificación como leída.');
+            }
         }
         navigateToActionUrl(notification.actionUrl);
         onClose();
+    };
+
+    // Restaura el foco a la acción de la notificación vecina (siguiente, luego
+    // anterior) y, si no queda ninguna, a "Cerrar notificaciones".
+    const focusNeighborAfterRemoval = (removedId: string) => {
+        const order = notifications.map((n) => n.id).filter((id): id is string => Boolean(id));
+        const index = order.indexOf(removedId);
+        const nextId = order.slice(index + 1).find((id) => id !== removedId);
+        const prevId = [...order.slice(0, index)].reverse().find((id) => id !== removedId);
+        requestAnimationFrame(() => {
+            const refs = deleteButtonRefs.current;
+            const target =
+                (nextId ? refs.get(nextId) : null)
+                ?? (prevId ? refs.get(prevId) : null)
+                ?? closeButtonRef.current;
+            target?.focus();
+        });
+    };
+
+    const handleDelete = async (notification: Notification) => {
+        const id = notification.id;
+        if (!id) return;
+        // El store resuelve la revisión actual internamente: para eventos
+        // versionados descarta la revisión vigente, para legacy borra físicamente.
+        try {
+            await deleteNotification(id);
+            focusNeighborAfterRemoval(id);
+        } catch {
+            // El store ya hizo rollback (la fila reaparece). Avisar y devolver el
+            // foco a la acción de la misma notificación restaurada.
+            showToast.error('No se pudo eliminar la notificación.');
+            requestAnimationFrame(() => {
+                deleteButtonRefs.current.get(id)?.focus();
+            });
+        }
     };
 
     const getSeverityIcon = (severity: Notification['severity']) => {
@@ -90,6 +138,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                         </div>
                     </div>
                     <button
+                        ref={closeButtonRef}
                         type="button"
                         onClick={onClose}
                         className="p-2 text-muted-foreground hover:bg-muted rounded-xl transition-colors"
@@ -150,12 +199,16 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                                         </span>
                                     </button>
                                     <button
-                                        type="button"
-                                        onClick={() => {
-                                            if (notification.id) deleteNotification(notification.id);
+                                        ref={(element) => {
+                                            if (notification.id) {
+                                                if (element) deleteButtonRefs.current.set(notification.id, element);
+                                                else deleteButtonRefs.current.delete(notification.id);
+                                            }
                                         }}
+                                        type="button"
+                                        onClick={() => { void handleDelete(notification); }}
                                         className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-[opacity,background-color,color] flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                                        aria-label="Eliminar notificación"
+                                        aria-label={`Eliminar notificación: ${notification.title}`}
                                     >
                                         <X className="w-4 h-4" />
                                     </button>
@@ -175,9 +228,9 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                                 e.preventDefault();
                                 try {
                                     await markAllAsRead();
-                                    toast.success('Todas las notificaciones marcadas como leídas');
+                                    showToast.success('Todas las notificaciones marcadas como leídas');
                                 } catch {
-                                    toast.error('Error al marcar notificaciones como leídas');
+                                    showToast.error('No se pudieron marcar las notificaciones como leídas.');
                                 }
                             }}
                             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-foreground bg-card border border-border hover:bg-muted rounded-xl transition-[box-shadow,background-color] shadow-sm hover:shadow"
@@ -193,10 +246,12 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                                 e.preventDefault();
                                 try {
                                     await clearAll();
-                                    toast.success('Todas las notificaciones eliminadas');
+                                    showToast.success('Todas las notificaciones eliminadas');
                                     onClose();
                                 } catch {
-                                    toast.error('Error al eliminar notificaciones');
+                                    // El store hizo rollback; el panel sigue abierto con las
+                                    // filas restauradas y un único resumen accionable del fallo.
+                                    showToast.error('No se pudieron eliminar las notificaciones. Intenta de nuevo.');
                                 }
                             }}
                             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-destructive bg-destructive-muted hover:bg-destructive/10 rounded-xl transition-[box-shadow,background-color] shadow-sm hover:shadow"

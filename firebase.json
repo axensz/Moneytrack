@@ -2,5 +2,35 @@
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "notifications",
+      "runtime": "nodejs22",
+      "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"],
+      "ignore": [
+        "node_modules",
+        ".git",
+        "*.local",
+        ".env.*",
+        ".secret.local",
+        "coverage",
+        "test",
+        "src",
+        "scripts",
+        "*.ts",
+        "tsconfig.json",
+        "vitest.config.ts",
+        "eslint.config.mjs"
+      ]
+    }
+  ],
+  "emulators": {
+    "auth": { "port": 9099 },
+    "firestore": { "port": 8080 },
+    "functions": { "port": 5001 },
+    "ui": { "enabled": true },
+    "singleProjectMode": true
   }
 }

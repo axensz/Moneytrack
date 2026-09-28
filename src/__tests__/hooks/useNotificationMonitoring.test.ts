@@ -16,7 +16,7 @@ import { useNotificationMonitoring } from '../../hooks/useNotificationMonitoring
 import type { NotificationManager } from '../../services/NotificationManager';
 import { PaymentMonitor } from '../../services/PaymentMonitor';
 import { DebtMonitor } from '../../services/DebtMonitor';
-import type { Transaction } from '../../types/finance';
+import type { Account, Budget, Debt, RecurringPayment, Transaction } from '../../types/finance';
 
 const notificationManager = {
   deps: {
@@ -72,6 +72,10 @@ describe('useNotificationMonitoring — guard anti-flood por paginación', () =>
   });
   afterEach(() => {
     vi.useRealTimers();
+    // Aísla los spies de PaymentMonitor/DebtMonitor.prototype entre pruebas:
+    // sin esto, las llamadas de un test previo se acumulan en el método
+    // compartido y contaminan el conteo de las pruebas de fencing (Task 3).
+    vi.restoreAllMocks();
   });
 
   it('cargar transacciones ANTIGUAS por paginación NO dispara alertas individuales', async () => {
@@ -179,10 +183,42 @@ describe('useNotificationMonitoring — guard anti-flood por paginación', () =>
     expect(debtSpy).toHaveBeenCalled();
   });
 
+  it('reevalúa recurring/debt cada cinco minutos mientras la página sigue viva', async () => {
+    const paymentSpy = vi.spyOn(PaymentMonitor.prototype, 'checkUpcomingPayments').mockResolvedValue(undefined);
+    const debtSpy = vi.spyOn(DebtMonitor.prototype, 'checkOverdueDebts').mockResolvedValue(undefined);
+    mount([], true);
+    await act(async () => { await Promise.resolve(); });
+    expect(paymentSpy).toHaveBeenCalledTimes(1);
+    expect(debtSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(5 * 60 * 1000); });
+
+    expect(paymentSpy).toHaveBeenCalledTimes(2);
+    expect(debtSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('el timer de cinco minutos no evalúa placeholders antes de hidratación', async () => {
+    const paymentSpy = vi.spyOn(PaymentMonitor.prototype, 'checkUpcomingPayments').mockResolvedValue(undefined);
+    const debtSpy = vi.spyOn(DebtMonitor.prototype, 'checkOverdueDebts').mockResolvedValue(undefined);
+    mount([], false);
+    await act(async () => { await Promise.resolve(); });
+    paymentSpy.mockClear();
+    debtSpy.mockClear();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60 * 1000); });
+
+    expect(paymentSpy).not.toHaveBeenCalled();
+    expect(debtSpy).not.toHaveBeenCalled();
+  });
+
   it('espera la primera fuente hidratada y la evalúa una sola vez', async () => {
     const paymentSpy = vi.spyOn(PaymentMonitor.prototype, 'checkUpcomingPayments').mockResolvedValue(undefined);
     const debtSpy = vi.spyOn(DebtMonitor.prototype, 'checkOverdueDebts').mockResolvedValue(undefined);
     const { rerender } = mount([], false);
+
+    await act(async () => { await Promise.resolve(); });
+    paymentSpy.mockClear();
+    debtSpy.mockClear();
 
     expect(paymentSpy).not.toHaveBeenCalled();
     expect(debtSpy).not.toHaveBeenCalled();
@@ -192,6 +228,32 @@ describe('useNotificationMonitoring — guard anti-flood por paginación', () =>
     });
 
     expect(paymentSpy).toHaveBeenCalledTimes(1);
+    expect(debtSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('evalúa inmediatamente cuando llega el primer snapshot real de deudas', async () => {
+    const debtSpy = vi.spyOn(DebtMonitor.prototype, 'checkOverdueDebts').mockResolvedValue(undefined);
+    const transactions: Transaction[] = [];
+    const budgets: Budget[] = [];
+    const recurringPayments: RecurringPayment[] = [];
+    const accounts: Account[] = [];
+    const initialDebts: Debt[] = [];
+    const hydratedDebt: Debt = {
+      id: 'debt-1', personName: 'Ana', originalAmount: 100_000, remainingAmount: 100_000,
+      type: 'lent', dueDate: new Date(2026, 5, 8), isSettled: false,
+    };
+    const { rerender } = renderHook(
+      ({ debts }: { debts: Debt[] }) => useNotificationMonitoring({
+        userId: 'user1', transactions, budgets, recurringPayments, accounts,
+        debts, notificationManager, isHydrated: true,
+      }),
+      { initialProps: { debts: initialDebts } },
+    );
+    await act(async () => { await Promise.resolve(); });
+    debtSpy.mockClear();
+
+    await act(async () => { rerender({ debts: [hydratedDebt] }); });
+
     expect(debtSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -233,5 +295,66 @@ describe('useNotificationMonitoring — guard anti-flood por paginación', () =>
     });
 
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  // ── Task 3: fence recurring/debt daily checks by foreground authority ──
+
+  it('modo durable (foregroundWriterActive=false) NO evalúa recurring/debt', async () => {
+    const paymentSpy = vi.spyOn(PaymentMonitor.prototype, 'checkUpcomingPayments').mockResolvedValue(undefined);
+    const debtSpy = vi.spyOn(DebtMonitor.prototype, 'checkOverdueDebts').mockResolvedValue(undefined);
+    renderHook(() => useNotificationMonitoring({
+      userId: 'user1', transactions: [], budgets: [], recurringPayments: [], accounts: [], debts: [],
+      notificationManager, isHydrated: true, foregroundWriterActive: false,
+    } as Parameters<typeof useNotificationMonitoring>[0]));
+    await act(async () => { await Promise.resolve(); });
+
+    expect(paymentSpy).not.toHaveBeenCalled();
+    expect(debtSpy).not.toHaveBeenCalled();
+
+    // Ni siquiera el timer de cinco minutos evalúa mientras el escritor no sea foreground.
+    await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60 * 1000); });
+    expect(paymentSpy).not.toHaveBeenCalled();
+    expect(debtSpy).not.toHaveBeenCalled();
+  });
+
+  it('presupuesto/gasto/saldo por transacción siguen activos en modo durable', async () => {
+    const old = new Date(2026, 1, 1);
+    const initial = [tx(old)];
+    const { result, rerender } = renderHook(
+      ({ transactions }: { transactions: Transaction[] }) => useNotificationMonitoring({
+        userId: 'user1', transactions, budgets: [], recurringPayments: [], accounts: [], debts: [],
+        notificationManager, isHydrated: true, foregroundWriterActive: false,
+      } as Parameters<typeof useNotificationMonitoring>[0]),
+      { initialProps: { transactions: initial } },
+    );
+    const spending = result.current.monitors.spendingAnalyzer!;
+    const spy = vi.spyOn(spending, 'evaluateUnusualSpending').mockResolvedValue(undefined);
+    vi.spyOn(result.current.monitors.balanceMonitor!, 'evaluateBalanceAlerts').mockResolvedValue(undefined);
+    vi.spyOn(result.current.monitors.budgetMonitor!, 'evaluateBudgetAlerts').mockResolvedValue(undefined);
+
+    const fresh = tx(new Date(2026, 5, 9, 11, 59, 30));
+    await act(async () => { rerender({ transactions: [...initial, fresh] }); });
+
+    // Durable no silencia budget/spending/balance por transacción (siguen foreground-only).
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0][0].id).toBe(fresh.id);
+  });
+
+  it('reactiva recurring/debt cuando el escritor vuelve a ser foreground', async () => {
+    const paymentSpy = vi.spyOn(PaymentMonitor.prototype, 'checkUpcomingPayments').mockResolvedValue(undefined);
+    const debtSpy = vi.spyOn(DebtMonitor.prototype, 'checkOverdueDebts').mockResolvedValue(undefined);
+    const { rerender } = renderHook(
+      ({ active }: { active: boolean }) => useNotificationMonitoring({
+        userId: 'user1', transactions: [], budgets: [], recurringPayments: [], accounts: [], debts: [],
+        notificationManager, isHydrated: true, foregroundWriterActive: active,
+      } as Parameters<typeof useNotificationMonitoring>[0]),
+      { initialProps: { active: false } },
+    );
+    await act(async () => { await Promise.resolve(); });
+    expect(paymentSpy).not.toHaveBeenCalled();
+
+    await act(async () => { rerender({ active: true }); });
+    expect(paymentSpy).toHaveBeenCalledTimes(1);
+    expect(debtSpy).toHaveBeenCalledTimes(1);
   });
 });

@@ -232,6 +232,50 @@ describe('useBalanceTransactions — fuente de saldos bajo paginación', () => {
     expect(result.current.transactions).toEqual([recent]);
   });
 
+  it('reintenta un error terminal conservando filas confirmadas y cercando el listener anterior', async () => {
+    const head = Array.from({ length: 500 }, (_, index) => tx(`head-${index}`));
+    const row501 = tx('row-501', { date: new Date('2024-01-01') });
+    const { result, rerender } = renderHook(
+      ({ retryGeneration }) => useBalanceTransactions(
+        'user1',
+        head,
+        true,
+        false,
+        retryGeneration,
+      ),
+      { initialProps: { retryGeneration: 0 } },
+    );
+
+    emitSnapshot([...head, row501], { listenerIndex: 0 });
+    await waitFor(() => expect(result.current.currentServerSettled).toBe(true));
+
+    const terminalError = new Error('permission denied');
+    act(() => listeners[0].error(terminalError));
+
+    expect(result.current.error).toBe(terminalError);
+    expect(result.current.transactions.some(item => item.id === 'row-501')).toBe(true);
+    expect(result.current.ready).toBe(true);
+    expect(result.current.currentServerSettled).toBe(false);
+
+    rerender({ retryGeneration: 1 });
+    expect(subscriptionCount).toBe(2);
+    expect(unsubscribeCount).toBe(1);
+    expect(result.current.error).toBeNull();
+    expect(result.current.transactions.some(item => item.id === 'row-501')).toBe(true);
+    expect(result.current.currentServerSettled).toBe(false);
+
+    // Un callback tardío de la suscripción terminal no puede restaurar autoridad.
+    emitSnapshot([tx('stale-row')], { listenerIndex: 0 });
+    expect(result.current.transactions.some(item => item.id === 'row-501')).toBe(true);
+    expect(result.current.transactions.some(item => item.id === 'stale-row')).toBe(false);
+    expect(result.current.currentServerSettled).toBe(false);
+
+    emitSnapshot([...head, row501], { listenerIndex: 1 });
+    await waitFor(() => expect(result.current.currentServerSettled).toBe(true));
+    expect(result.current.error).toBeNull();
+    expect(subscriptionCount).toBe(2);
+  });
+
   it('un cambio del array live no resuscribe ni pisa el historial autoritativo', async () => {
     const recent = tx('t1');
     const { result, rerender } = renderHook(
@@ -267,6 +311,38 @@ describe('useBalanceTransactions — fuente de saldos bajo paginación', () => {
     expect(unsubscribeCount).toBe(0);
     expect(result.current.ready).toBe(true);
     expect(result.current.transactions).toHaveLength(500);
+  });
+
+  it('retiene fila 501 y listener cuando el head saturado pierde autoridad por metadata', async () => {
+    const head = Array.from({ length: 500 }, (_, index) => tx(`head-${index}`));
+    const row501 = tx('row-501', { date: new Date('2024-01-01') });
+    const { result, rerender } = renderHook(
+      ({ serverSettled }) => useBalanceTransactions(
+        'user1',
+        head,
+        serverSettled,
+        false,
+      ),
+      { initialProps: { serverSettled: true } },
+    );
+    emitSnapshot([...head, row501]);
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.transactions.some(item => item.id === 'row-501')).toBe(true);
+    expect(result.current.currentServerSettled).toBe(true);
+
+    // Cache y pending writes comparten el mismo gate false del head. Ninguno
+    // puede desmontar la fuente full ni truncar saldos ya confirmados.
+    rerender({ serverSettled: false });
+    expect(result.current.transactions.some(item => item.id === 'row-501')).toBe(true);
+    expect(result.current.ready).toBe(true);
+    expect(result.current.currentServerSettled).toBe(false);
+    expect(subscriptionCount).toBe(1);
+    expect(unsubscribeCount).toBe(0);
+
+    rerender({ serverSettled: true });
+    expect(result.current.currentServerSettled).toBe(true);
+    expect(subscriptionCount).toBe(1);
+    expect(unsubscribeCount).toBe(0);
   });
 
   it('cancela la suscripción completa cuando la ventana deja de estar saturada', async () => {

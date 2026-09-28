@@ -667,7 +667,8 @@ describe('service worker web push hardening', () => {
             });
             expect(h.openWindow).toHaveBeenCalledTimes(1);
             const opened = h.openWindow.mock.calls[0][0] as string;
-            expect(opened.startsWith(ORIGIN)).toBe(true);
+            const openedUrl = new URL(opened);
+            expect(openedUrl.origin).toBe(ORIGIN);
         });
 
         it('never navigates to a cross-origin url', async () => {
@@ -681,7 +682,8 @@ describe('service worker web push hardening', () => {
             });
             expect(h.openWindow).toHaveBeenCalledTimes(1);
             const opened = h.openWindow.mock.calls[0][0] as string;
-            expect(opened.startsWith(ORIGIN)).toBe(true);
+            const openedUrl = new URL(opened);
+            expect(openedUrl.origin).toBe(ORIGIN);
             expect(opened).not.toContain('evil.example.com');
         });
     });

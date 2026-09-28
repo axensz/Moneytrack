@@ -85,15 +85,18 @@ describeWithFirestoreEmulator('Durable notification rules contract', () => {
     await assertFails(deleteDoc(deviceRef()));
   });
 
-  it('denies client access to global endpoint bindings and rate limits', async () => {
+  it('denies client access to global endpoint bindings, rate limits, and delivery control', async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       await setDoc(doc(context.firestore(), 'endpointBindings', 'hash-1'), { uid: OWNER_ID, deviceId: 'device-1' });
       await setDoc(doc(context.firestore(), 'rateLimits', 'register%3Aowner'), { hits: [] });
+      await setDoc(doc(context.firestore(), 'notificationControl', 'delivery'), { enabled: false, version: 0, uids: [], digest: 'x' });
     });
     await assertFails(getDoc(bindingRef()));
     await assertFails(setDoc(bindingRef(), { uid: OWNER_ID }));
     await assertFails(getDoc(rateRef()));
     await assertFails(setDoc(rateRef(), { hits: [1] }));
+    await assertFails(getDoc(doc(ownerDb(), 'notificationControl', 'delivery')));
+    await assertFails(setDoc(doc(ownerDb(), 'notificationControl', 'delivery'), { enabled: true }));
   });
 
   it('lets the owner read a versioned inbox event but never create one', async () => {

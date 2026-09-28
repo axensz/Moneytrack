@@ -736,9 +736,39 @@ service cloud.firestore {
 
       // Notifications subcollection
       match /notifications/{notificationId} {
+        // A versioned (v2) event is backend-authored: it carries schemaVersion,
+        // eventKey, and a numeric revision. Clients may never create or delete
+        // these; the server owns their lifecycle.
+        function isVersionedResource(data) {
+          return 'schemaVersion' in data.keys()
+            && data.schemaVersion == 2
+            && 'eventKey' in data.keys()
+            && data.eventKey is string
+            && 'revision' in data.keys()
+            && data.revision is int;
+        }
+
+        // A client update on a versioned event may only change read-state and
+        // dismissal fields, and only to the CURRENT revision. Every other field
+        // (including the immutable backend marker) must stay unchanged.
+        function versionedReadDismissUpdateAllowed() {
+          return isVersionedResource(resource.data)
+            && request.resource.data.schemaVersion == resource.data.schemaVersion
+            && request.resource.data.eventKey == resource.data.eventKey
+            && request.resource.data.revision == resource.data.revision
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['isRead', 'readRevision', 'dismissedRevision', 'dismissedAt'])
+            && (!('readRevision' in request.resource.data.keys())
+                || request.resource.data.readRevision == resource.data.revision)
+            && (!('dismissedRevision' in request.resource.data.keys())
+                || request.resource.data.dismissedRevision == resource.data.revision);
+        }
+
         allow read: if isOwner(userId);
 
+        // Only legacy (non-versioned) events may be client-created.
         allow create: if isOwner(userId)
+          && !isVersionedResource(request.resource.data)
           && request.resource.data.type in ['budget', 'recurring', 'unusual_spending', 'low_balance', 'debt', 'info']
           && request.resource.data.title is string
           && request.resource.data.title.size() > 0
@@ -760,23 +790,56 @@ service cloud.firestore {
         //  - severity en el enum permitido.
         //  - isRead bool.
         allow update: if isOwner(userId)
-          && request.resource.data.type == resource.data.type
-          && request.resource.data.type in ['budget', 'recurring', 'unusual_spending', 'low_balance', 'debt', 'info']
-          && request.resource.data.title is string
-          && request.resource.data.title.size() > 0
-          && request.resource.data.title.size() <= 200
-          && request.resource.data.message is string
-          && request.resource.data.message.size() > 0
-          && request.resource.data.message.size() <= 500
-          && request.resource.data.severity in ['info', 'warning', 'error', 'success']
-          && request.resource.data.isRead is bool;
-        allow delete: if isOwner(userId);
+          && (
+            // Versioned events: only read/dismissal at the current revision.
+            (isVersionedResource(resource.data) && versionedReadDismissUpdateAllowed())
+            // Legacy events keep the existing hardened field validation.
+            || (
+              !isVersionedResource(resource.data)
+              && !isVersionedResource(request.resource.data)
+              && request.resource.data.type == resource.data.type
+              && request.resource.data.type in ['budget', 'recurring', 'unusual_spending', 'low_balance', 'debt', 'info']
+              && request.resource.data.title is string
+              && request.resource.data.title.size() > 0
+              && request.resource.data.title.size() <= 200
+              && request.resource.data.message is string
+              && request.resource.data.message.size() > 0
+              && request.resource.data.message.size() <= 500
+              && request.resource.data.severity in ['info', 'warning', 'error', 'success']
+              && request.resource.data.isRead is bool
+            )
+          );
+        // Only legacy events may be physically deleted; versioned events are
+        // dismissed (server-owned lifecycle), never removed by the client.
+        allow delete: if isOwner(userId)
+          && !isVersionedResource(resource.data);
       }
 
       // Notification Preferences document
       match /notificationPreferences/settings {
         allow read: if isOwner(userId);
         allow write: if isOwner(userId);
+      }
+
+      // Durable-delivery server-owned collections. Raw push capability material,
+      // schedules, deliveries, and test dedup records are written ONLY by the
+      // Admin SDK (which bypasses these rules). Clients are default-denied both
+      // read and write so endpoint/p256dh/auth never leave the backend.
+      match /notificationDevices/{deviceId} {
+        allow read, write: if false;
+      }
+      match /notificationSchedules/{scheduleId} {
+        allow read, write: if false;
+      }
+      match /notificationDeliveries/{deliveryId} {
+        allow read, write: if false;
+      }
+      match /notificationTests/{requestId} {
+        allow read, write: if false;
+      }
+      // Server-owned runtime authority state (generation, activation).
+      match /notificationRuntime/{docId} {
+        allow read, write: if false;
       }
 
       // Ajustes del usuario. Validados ESTRICTAMENTE por documento; cualquier otro
@@ -813,6 +876,16 @@ service cloud.firestore {
           && request.resource.data.items is list
           && request.resource.data.items.size() <= 50;
       }
+    }
+
+    // Global server-owned collections (Admin SDK only). The endpoint->owner
+    // binding maps a push endpoint hash to its device; rate-limit counters are
+    // backend-internal. Clients are default-denied.
+    match /endpointBindings/{endpointHash} {
+      allow read, write: if false;
+    }
+    match /rateLimits/{rateKey} {
+      allow read, write: if false;
     }
 
     // Deny all other access

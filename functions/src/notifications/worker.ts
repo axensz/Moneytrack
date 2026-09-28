@@ -23,6 +23,8 @@ export interface WorkerClock {
 export interface DispatchableDelivery {
   delivery: DeliveryDocument;
   device: DeviceDocument;
+  /** Owning user id (for per-user canary gating). */
+  uid: string;
   /** ISO instant of the delivery's first attempt (for the 24h window). */
   firstAttemptAt: string;
 }
@@ -64,8 +66,11 @@ export interface RunDeliveryPassConfig {
   leaseMs?: number;
   /** Max deliveries processed this pass. */
   pageSize?: number;
-  /** Delivery-enabled kill switch checked immediately before each dispatch. */
-  isDeliveryEnabled(): Promise<boolean>;
+  /**
+   * Delivery-enabled kill switch, checked immediately before each dispatch.
+   * Receives the owning uid + delivery so it can gate per-user (canary allowlist).
+   */
+  isDeliveryEnabled(context: { uid: string; delivery: DeliveryDocument }): Promise<boolean>;
 }
 
 export interface DeliveryPassSummary {
@@ -115,7 +120,7 @@ export const runDeliveryPass = async (config: RunDeliveryPassConfig): Promise<De
     summary.claimed += 1;
 
     // Kill switch is an external-I/O gate: re-check immediately before dispatch.
-    if (!(await config.isDeliveryEnabled())) {
+    if (!(await config.isDeliveryEnabled({ uid: item.uid, delivery: claimed }))) {
       await store.deferDelivery(item.delivery.deliveryId, new Date(now.getTime() + ROLLING_CEILING_BACKOFF_MS).toISOString(), now);
       summary.blocked += 1;
       continue;

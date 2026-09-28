@@ -887,6 +887,10 @@ service cloud.firestore {
     match /rateLimits/{rateKey} {
       allow read, write: if false;
     }
+    // Delivery kill switch + canary allowlist (Admin only).
+    match /notificationControl/{controlId} {
+      allow read, write: if false;
+    }
 
     // Deny all other access
     match /{document=**} {

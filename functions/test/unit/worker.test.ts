@@ -47,27 +47,30 @@ const sender = (statusCode: number | null): WorkerSender => ({ send: async () =>
 const clock = { now: () => NOW };
 const enabled = async () => true;
 const disabled = async () => false;
+const dispatchable = (o: Partial<DeliveryDocument> = {}): DispatchableDelivery => ({
+  delivery: delivery(o), device: device(), uid: 'u1', firstAttemptAt: NOW.toISOString(),
+});
 
 let store: FakeStore;
 beforeEach(() => { store = new FakeStore(); });
 
 describe('runDeliveryPass', () => {
   it('dispatches a due delivery and commits an accepted result', async () => {
-    store.due = [{ delivery: delivery(), device: device(), firstAttemptAt: NOW.toISOString() }];
+    store.due = [dispatchable()];
     const summary = await runDeliveryPass({ store, sender: sender(201), clock, worker: 'w1', isDeliveryEnabled: enabled });
     expect(summary.dispatched).toBe(1);
     expect(store.commits[0].patch.status).toBe('accepted');
   });
 
   it('skips a delivery that is not actually due', async () => {
-    store.due = [{ delivery: delivery({ notBefore: '2026-08-30T10:00:00.000Z' }), device: device(), firstAttemptAt: NOW.toISOString() }];
+    store.due = [dispatchable({ notBefore: '2026-08-30T10:00:00.000Z' })];
     const summary = await runDeliveryPass({ store, sender: sender(201), clock, worker: 'w1', isDeliveryEnabled: enabled });
     expect(summary.skipped).toBe(1);
     expect(store.commits).toHaveLength(0);
   });
 
   it('defers when the rolling-hour ceiling is reached', async () => {
-    store.due = [{ delivery: delivery(), device: device(), firstAttemptAt: NOW.toISOString() }];
+    store.due = [dispatchable()];
     store.recentAccepted = Array.from({ length: 60 }, () => NOW.toISOString());
     const summary = await runDeliveryPass({ store, sender: sender(201), clock, worker: 'w1', isDeliveryEnabled: enabled });
     expect(summary.deferred).toBe(1);
@@ -76,7 +79,7 @@ describe('runDeliveryPass', () => {
   });
 
   it('skips a delivery it cannot claim (another worker owns the lease)', async () => {
-    store.due = [{ delivery: delivery(), device: device(), firstAttemptAt: NOW.toISOString() }];
+    store.due = [dispatchable()];
     store.claimable = false;
     const summary = await runDeliveryPass({ store, sender: sender(201), clock, worker: 'w1', isDeliveryEnabled: enabled });
     expect(summary.claimed).toBe(0);
@@ -84,7 +87,7 @@ describe('runDeliveryPass', () => {
   });
 
   it('blocks dispatch and defers when the kill switch is off, after claiming', async () => {
-    store.due = [{ delivery: delivery(), device: device(), firstAttemptAt: NOW.toISOString() }];
+    store.due = [dispatchable()];
     const summary = await runDeliveryPass({ store, sender: sender(201), clock, worker: 'w1', isDeliveryEnabled: disabled });
     expect(summary.claimed).toBe(1);
     expect(summary.blocked).toBe(1);
@@ -93,7 +96,7 @@ describe('runDeliveryPass', () => {
   });
 
   it('records lost-lease when the result commit no longer owns the lease', async () => {
-    store.due = [{ delivery: delivery(), device: device(), firstAttemptAt: NOW.toISOString() }];
+    store.due = [dispatchable()];
     store.commitResult = 'lost-lease';
     const summary = await runDeliveryPass({ store, sender: sender(201), clock, worker: 'w1', isDeliveryEnabled: enabled });
     expect(summary.lostLease).toBe(1);
@@ -101,7 +104,7 @@ describe('runDeliveryPass', () => {
   });
 
   it('commits an ambiguous patch for a lost push result without claiming acceptance', async () => {
-    store.due = [{ delivery: delivery(), device: device(), firstAttemptAt: NOW.toISOString() }];
+    store.due = [dispatchable()];
     await runDeliveryPass({ store, sender: sender(null), clock, worker: 'w1', isDeliveryEnabled: enabled });
     expect(store.commits[0].patch.status).toBe('ambiguous');
     expect(store.commits[0].patch.acceptedAt).toBeNull();

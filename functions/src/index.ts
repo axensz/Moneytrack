@@ -31,6 +31,7 @@ import { createEndpointResolver } from './notifications/endpointResolver.js';
 import { createPushSender } from './notifications/pushSender.js';
 import { runDeliveryPass } from './notifications/worker.js';
 import { buildBudgetEventTag } from './notifications/tags.js';
+import { evaluateControl, type ControlDocument } from './notifications/deliveryControl.js';
 
 setGlobalOptions({ region: FUNCTIONS_REGION });
 
@@ -132,7 +133,14 @@ export const deliveryWorker = onSchedule(
       store: createWorkerStore(db()),
       clock: systemClock,
       worker: `worker-${randomUUID()}`,
-      isDeliveryEnabled: async () => DELIVERY_ENABLED.value(),
+      isDeliveryEnabled: async ({ uid }) => {
+        // Global kill switch first (fail-closed external-I/O gate).
+        if (!DELIVERY_ENABLED.value()) return false;
+        // Then the per-user canary allowlist, evaluated fail-closed.
+        const snap = await db().doc('notificationControl/delivery').get();
+        const control = snap.exists ? (snap.data() as ControlDocument) : null;
+        return evaluateControl(control).deliverTo(uid);
+      },
       sender: {
         async send(delivery, device) {
           return sender.send({

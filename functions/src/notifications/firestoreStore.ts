@@ -120,6 +120,7 @@ export const createWorkerStore = (db: Firestore): WorkerStore => ({
       items.push({
         delivery,
         device,
+        uid,
         firstAttemptAt: delivery.lastAttemptAt ?? nowIso,
       });
     }

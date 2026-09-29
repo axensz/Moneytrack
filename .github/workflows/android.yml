@@ -1,0 +1,42 @@
+name: Validate Android capture
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'android-capture/**'
+      - '.github/workflows/android.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'android-capture/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: android-capture
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Install Android SDK 37
+        run: sdkmanager "platforms;android-37.0"
+      - name: Test, lint and build debug
+        run: bash ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug

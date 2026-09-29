@@ -18,6 +18,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
+import * as firestore from 'firebase/firestore';
 import type { Transaction, Account } from '../../types/finance';
 import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../../config/constants';
 
@@ -312,6 +313,28 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
         mutationSource: 'ai',
       });
       expect(cacheMutations).toHaveLength(1);
+    });
+
+    it('does not charge credit twice when a stale idempotency read resumes after another commit', async () => {
+      seedAccount({ ...credit, usedCredit: 1_000 });
+      const crud = renderCRUD([]);
+      const operationId = 'ledger-mutation:ai:concurrent-create';
+      const draft = makeTx({ accountId: 'cc', amount: 100, operationId, mutationSource: 'ai' });
+      let resumeRead!: () => void;
+      const readPaused = new Promise<void>(resolve => { resumeRead = resolve; });
+      vi.spyOn(firestore, 'getDocFromServer').mockImplementationOnce(async () => {
+        await readPaused;
+        return { id: operationId, exists: () => false } as never;
+      });
+
+      const delayed = crud.current.addTransaction(draft);
+      await crud.current.addTransaction(draft);
+      resumeRead();
+      await delayed;
+
+      expect(mockState.store.get(acctKey('cc'))?.usedCredit).toBe(1_100);
+      expect(sets()).toHaveLength(1);
+      expect(updatesOn(acctKey('cc'))).toHaveLength(1);
     });
 
     it('rejects reuse of an AI operation ID with a different financial payload', async () => {
@@ -958,6 +981,146 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
         mutationKind: 'edit',
         mutationSource: 'ai',
       });
+    });
+  });
+
+  describe('debt-linked transaction edits', () => {
+    const seedDebt = (remainingAmount = 800) => mockState.store.set(debtKey('debt-1'), {
+      personName: 'Ana', type: 'lent', originalAmount: 1_000, remainingAmount,
+      isSettled: remainingAmount === 0, accountId: 'sav',
+      ...(remainingAmount === 0 ? { settledAt: new Date('2026-06-01') } : {}),
+    });
+
+    it.each([
+      ['payment', 'income', LOAN_PAYMENT_CATEGORY, 200, 300, 800, 1_000, 700],
+      ['principal', 'expense', LOAN_CATEGORY, 1_000, 1_200, 800, 1_200, 1_000],
+      ['settling payment', 'income', LOAN_PAYMENT_CATEGORY, 200, 1_000, 800, 1_000, 0],
+      ['reopened payment', 'income', LOAN_PAYMENT_CATEGORY, 1_000, 900, 0, 1_000, 100],
+    ] as const)('synchronizes a %s amount in the same commit', async (
+      _label, type, category, before, after, remaining, expectedOriginal, expectedRemaining,
+    ) => {
+      seedAccount(savings);
+      seedDebt(remaining);
+      seedTx('debt-row', { type, category, amount: before, debtId: 'debt-1' });
+      const crud = renderCRUD([]);
+
+      await crud.current.updateTransaction('debt-row', { amount: after });
+
+      expect(mockState.store.get(txKey('debt-row'))?.amount).toBe(after);
+      expect(mockState.store.get(debtKey('debt-1'))).toMatchObject({
+        originalAmount: expectedOriginal, remainingAmount: expectedRemaining,
+        isSettled: expectedRemaining === 0,
+      });
+      expect(mockState.batchCommits).toBe(1);
+      expect(updatesOn(debtKey('debt-1'))).toHaveLength(1);
+      expect(updatesOn(debtKey('debt-1'))[0].data?.settledAt).toEqual(
+        expectedRemaining === 0 ? new Date('2026-06-01') : { __deleteField: true },
+      );
+    });
+
+    it.each([
+      { category: 'Otros' }, { paid: false }, { debtId: 'another-debt' },
+      { accountId: 'cc' }, { amount: 1_100 }, { totalInterestAmount: 50 },
+    ])('rejects an incoherent debt edit before any write: %j', async updates => {
+      seedAccount(savings);
+      seedAccount(credit);
+      seedDebt();
+      seedTx('debt-row', { type: 'income', category: LOAN_PAYMENT_CATEGORY, amount: 200, debtId: 'debt-1' });
+      const crud = renderCRUD([]);
+
+      await expect(crud.current.updateTransaction('debt-row', updates)).rejects.toThrow();
+
+      expect(mockState.store.get(debtKey('debt-1'))?.remainingAmount).toBe(800);
+      expect(mockState.store.get(txKey('debt-row'))?.amount).toBe(200);
+      expect(mockState.writeLog).toHaveLength(0);
+    });
+
+    it.each([
+      { installments: 3 },
+      { hasInterest: true, interestRate: 23 },
+      { monthlyInstallmentAmount: 350, totalInterestAmount: 50 },
+    ])('rejects amount edits with existing financing data: %j', async financing => {
+      seedAccount(savings);
+      seedDebt();
+      seedTx('debt-row', {
+        type: 'expense', category: LOAN_CATEGORY, amount: 1_000,
+        debtId: 'debt-1', ...financing,
+      });
+
+      await expect(renderCRUD([]).current.updateTransaction('debt-row', { amount: 1_200 })).rejects.toThrow();
+
+      expect(mockState.store.get(txKey('debt-row'))?.amount).toBe(1_000);
+      expect(mockState.store.get(debtKey('debt-1'))?.remainingAmount).toBe(800);
+      expect(mockState.writeLog).toHaveLength(0);
+    });
+
+    it('updates debt and card authority together when editing a borrowed repayment', async () => {
+      seedAccount({ ...credit, usedCredit: 500 });
+      seedDebt();
+      mockState.store.set(debtKey('debt-1'), {
+        ...mockState.store.get(debtKey('debt-1')), type: 'borrowed', accountId: 'cc',
+      });
+      seedTx('debt-row', {
+        type: 'expense', accountId: 'cc', category: LOAN_PAYMENT_CATEGORY,
+        amount: 200, debtId: 'debt-1',
+      });
+
+      await renderCRUD([]).current.updateTransaction('debt-row', { amount: 300 });
+
+      expect(mockState.store.get(debtKey('debt-1'))?.remainingAmount).toBe(700);
+      expect(mockState.store.get(acctKey('cc'))?.usedCredit).toBe(600);
+      expect(mockState.batchCommits).toBe(1);
+    });
+
+    it.each([
+      { forgivenReason: 'gift', remainingAmount: 0, isSettled: true },
+      { remainingAmount: 1_100 },
+      { remainingAmount: Number.NaN },
+      { originalAmount: Number.POSITIVE_INFINITY },
+    ])('rejects financial edits against an invalid or forgiven debt: %j', async debtOverride => {
+      seedAccount(savings);
+      seedDebt();
+      mockState.store.set(debtKey('debt-1'), { ...mockState.store.get(debtKey('debt-1')), ...debtOverride });
+      seedTx('debt-row', { type: 'income', category: LOAN_PAYMENT_CATEGORY, amount: 200, debtId: 'debt-1' });
+
+      await expect(renderCRUD([]).current.updateTransaction('debt-row', { amount: 300 })).rejects.toThrow();
+
+      expect(mockState.writeLog).toHaveLength(0);
+    });
+
+    it('allows description edits without reopening a forgiven debt', async () => {
+      seedAccount(savings);
+      seedDebt(0);
+      mockState.store.set(debtKey('debt-1'), { ...mockState.store.get(debtKey('debt-1')), forgivenReason: 'gift' });
+      seedTx('debt-row', { type: 'expense', category: LOAN_CATEGORY, amount: 1_000, debtId: 'debt-1' });
+
+      await renderCRUD([]).current.updateTransaction('debt-row', { description: 'Regalo' });
+
+      expect(mockState.store.get(txKey('debt-row'))?.description).toBe('Regalo');
+      expect(mockState.store.get(debtKey('debt-1'))).toMatchObject({ remainingAmount: 0, isSettled: true });
+      expect(updatesOn(debtKey('debt-1'))).toHaveLength(0);
+    });
+
+    it('rejects reducing principal below the amount already collected', async () => {
+      seedAccount(savings);
+      seedDebt();
+      seedTx('debt-row', { type: 'expense', category: LOAN_CATEGORY, amount: 1_000, debtId: 'debt-1' });
+
+      await expect(renderCRUD([]).current.updateTransaction('debt-row', { amount: 100 })).rejects.toThrow();
+
+      expect(mockState.writeLog).toHaveLength(0);
+    });
+
+    it('preserves both the payment and debt when the commit is rejected', async () => {
+      seedAccount(savings);
+      seedDebt();
+      seedTx('debt-row', { type: 'income', category: LOAN_PAYMENT_CATEGORY, amount: 200, debtId: 'debt-1' });
+      mockState.failBatchCommit = true;
+
+      await expect(renderCRUD([]).current.updateTransaction('debt-row', { amount: 300 })).rejects.toThrow();
+
+      expect(mockState.store.get(debtKey('debt-1'))?.remainingAmount).toBe(800);
+      expect(mockState.store.get(txKey('debt-row'))?.amount).toBe(200);
     });
   });
 

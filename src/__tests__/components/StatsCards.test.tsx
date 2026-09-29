@@ -45,7 +45,7 @@ describe('StatsCards', () => {
 
     const pendingCard = screen.getByText('Pendiente').closest('div.col-span-2');
     expect(pendingCard).not.toBeNull();
-    expect(within(pendingCard as HTMLElement).getByLabelText('$0')).toBeInTheDocument();
+    expect(within(pendingCard as HTMLElement).getByText('$0')).toBeInTheDocument();
   });
 
   it('owns the global privacy action and masks every overview value immediately', () => {

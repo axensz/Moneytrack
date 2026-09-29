@@ -21,6 +21,7 @@ import { ensureDate } from '../utils/dateUtils';
 import { getAccountReferenceIds } from '../utils/accountTransactions';
 import { BalanceCalculator } from '../utils/balanceCalculator';
 import { planLedgerMutation } from '../utils/ledgerMutation';
+import { planDebtTransactionEdit } from '../utils/debtTransactionEdit';
 import { logger } from '../utils/logger';
 import {
   getTransactionRestorePolicy,
@@ -365,6 +366,10 @@ export function useTransactions(userId: string | null) {
         await mutateGuestLedger(draft => {
           const current = draft.transactions.find(candidate => candidate.id === id);
           if (!current) return;
+          planDebtTransactionEdit(
+            current, { ...current, paid: !current.paid },
+            draft.debts.find(debt => debt.id === current.debtId),
+          );
           draft.transactions = draft.transactions.map(item => (
             item.id === id || item.id === current.linkedTransactionId
               ? { ...item, paid: !current.paid }
@@ -381,6 +386,16 @@ export function useTransactions(userId: string | null) {
     } else {
       await mutateGuestLedger(draft => {
         const transaction = draft.transactions.find(t => t.id === id);
+        if (!transaction) return;
+        const debtUpdate = planDebtTransactionEdit(
+          transaction, { ...transaction, ...updates },
+          draft.debts.find(debt => debt.id === transaction.debtId),
+        );
+        if (debtUpdate) {
+          draft.debts = draft.debts.map(debt => debt.id === transaction.debtId
+            ? { ...debt, ...debtUpdate, settledAt: debtUpdate.settledAt ?? undefined }
+            : debt);
+        }
         if (!transaction?.linkedTransactionId) {
           draft.transactions = draft.transactions.map(t => t.id === id ? { ...t, ...updates } : t);
           return;

@@ -1,13 +1,13 @@
 [versions]
-agp = "9.3.0"
+agp = "9.4.1"
 google-services = "4.5.0"
-firebase-bom = "34.18.0"
-activity = "1.12.4"
+firebase-bom = "34.19.0"
+activity = "1.13.0"
 appcompat = "1.8.0"
-core = "1.16.0"
+core = "1.19.1"
 core-splashscreen = "1.2.0"
 credentials = "1.6.0"
-googleid = "1.1.1"
+googleid = "1.2.1"
 junit = "4.13.2"
 #noinspection NewerVersionAvailable
 json = "20250517"

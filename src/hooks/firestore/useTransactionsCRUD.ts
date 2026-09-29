@@ -17,7 +17,7 @@ import {
   SPECIAL_CATEGORIES,
   TRANSFER_CATEGORY,
 } from '../../config/constants';
-import type { Transaction, Account, RecurringPayment } from '../../types/finance';
+import type { Transaction, Account, Debt, RecurringPayment } from '../../types/finance';
 import { getAccountReferenceIds } from '../../utils/accountTransactions';
 import { ensureDate } from '../../utils/dateUtils';
 import { isOffline, stripUndefined } from '../../utils/firestoreHelpers';
@@ -29,6 +29,7 @@ import {
   normalizeLedgerAmount,
 } from '../../utils/ledgerMutation';
 import { validateTransactionUpdate } from '../../utils/transactionValidation';
+import { planDebtTransactionEdit } from '../../utils/debtTransactionEdit';
 import {
   DEFAULT_RECURRING_TIME_ZONE,
   isRecurringCycleKeyForPayment,
@@ -490,6 +491,24 @@ export function useTransactionsCRUD(
         const createdTransaction = await executeAuthenticatedLedgerMutation(
           userId,
           async ({ operationId, loadContext }) => {
+            // Una prelectura anterior al lease puede llegar después de otro commit.
+            if (callerOperationId) {
+              const committed = await loadCommittedOperation(
+                userId, transactionRef.id, callerOperationId, mutationKind, requestedTransaction,
+              );
+              if (committed) {
+                return {
+                  intent: {
+                    kind: mutationKind, before: [], after: [],
+                    metadata: { operationId, mutationSource: committed.mutationSource ?? 'manual' as const },
+                  },
+                  context: await loadContext([]),
+                  writeCount: 0,
+                  stage: () => undefined,
+                  result: committed,
+                };
+              }
+            }
             const draft = {
               ...persistedInput,
               amount,
@@ -1270,6 +1289,15 @@ export function useTransactionsCRUD(
               );
             }
 
+            const debtRef = oldData.debtId
+              ? doc(db, `users/${userId}/debts`, oldData.debtId)
+              : null;
+            const debtSnapshot = debtRef ? await getDocFromServer(debtRef) : null;
+            const debt = debtSnapshot?.exists()
+              ? { ...debtSnapshot.data(), id: oldData.debtId } as Debt
+              : undefined;
+            const debtUpdate = planDebtTransactionEdit(oldData, candidatePrimary, debt);
+
             const intent = {
               ...candidateIntent,
               after: [
@@ -1296,9 +1324,15 @@ export function useTransactionsCRUD(
             return {
               intent,
               context,
-              writeCount: 1 + (normalizedLinked ? 1 : 0) + creditChanges.length,
+              writeCount: 1 + (normalizedLinked ? 1 : 0) + creditChanges.length + (debtUpdate ? 1 : 0),
               stage: (batch) => {
                 batch.update(doc(db, `users/${userId}/transactions`, id), primaryWrite);
+                if (debtRef && debtUpdate) {
+                  batch.update(debtRef, {
+                    ...debtUpdate,
+                    settledAt: debtUpdate.settledAt ?? deleteField(),
+                  });
+                }
                 if (normalizedLinked) {
                   batch.update(
                     doc(db, `users/${userId}/transactions`, normalizedLinked.id!),

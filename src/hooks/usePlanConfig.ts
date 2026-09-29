@@ -4,7 +4,7 @@
  * Fallback a localStorage para modo guest.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebaseDb';
 import { useLocalStorage } from './useLocalStorage';
@@ -19,6 +19,9 @@ interface StoredPlanConfig {
 export function usePlanConfig(userId: string | null, authLoading = false) {
   const [config, setConfig] = useState<PlanConfig | null>(null);
   const [loading, setLoading] = useState(true);
+  const sessionVersion = useRef(0);
+
+  useEffect(() => () => { sessionVersion.current += 1; }, [userId]);
 
   // Fallback localStorage para modo guest
   const [localConfig, setLocalConfig] = useLocalStorage<StoredPlanConfig | null>('financialPlanConfig', null);
@@ -69,24 +72,30 @@ export function usePlanConfig(userId: string | null, authLoading = false) {
     setLoading(false);
   }, [userId, localConfig, authLoading]);
 
-  const saveConfig = useCallback(async (newConfig: PlanConfig) => {
-    setConfig(newConfig);
-    const data: StoredPlanConfig = { startMonth: newConfig.startMonth, declaredIncome: newConfig.declaredIncome };
-    if (userId) {
-      await setDoc(doc(db, `users/${userId}/settings/planConfig`), data);
-    } else {
-      setLocalConfig(data);
+  const saveConfig = useCallback(async (newConfig: PlanConfig | null) => {
+    const session = sessionVersion.current;
+    const data: StoredPlanConfig | null = newConfig
+      ? { startMonth: newConfig.startMonth, declaredIncome: newConfig.declaredIncome }
+      : null;
+    try {
+      if (userId) {
+        const docRef = doc(db, `users/${userId}/settings/planConfig`);
+        if (data) await setDoc(docRef, data);
+        else await deleteDoc(docRef);
+      } else {
+        setLocalConfig(data, { throwOnError: true });
+      }
+    } catch (error) {
+      if (session !== sessionVersion.current) return false;
+      throw error;
     }
+    // Una respuesta de una sesión anterior no cambia el plan ni anuncia éxito.
+    if (session !== sessionVersion.current) return false;
+    setConfig(data);
+    return true;
   }, [userId, setLocalConfig]);
 
-  const clearConfig = useCallback(async () => {
-    setConfig(null);
-    if (userId) {
-      await deleteDoc(doc(db, `users/${userId}/settings/planConfig`));
-    } else {
-      setLocalConfig(null);
-    }
-  }, [userId, setLocalConfig]);
+  const clearConfig = useCallback(() => saveConfig(null), [saveConfig]);
 
   return { config, loading, saveConfig, clearConfig };
 }

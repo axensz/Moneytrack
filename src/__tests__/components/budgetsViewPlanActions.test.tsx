@@ -1,7 +1,8 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Account, Budget, RecurringPayment, Transaction } from '../../types/finance';
 import type { BudgetStatus } from '../../hooks/useBudgets';
+import type { PlanConfig } from '../../hooks/useFinancialPlan';
 import { BudgetsView } from '../../components/views/budgets/BudgetsView';
 import { FinancialPlanView } from '../../components/views/financial-plan/FinancialPlanView';
 
@@ -11,6 +12,9 @@ const mocks = vi.hoisted(() => ({
   deleteBudget: vi.fn(),
   saveConfig: vi.fn(),
   clearConfig: vi.fn(),
+  errorToast: vi.fn(),
+  successToast: vi.fn(),
+  planConfig: { startMonth: '2026-06', declaredIncome: 1_000_000 } as PlanConfig | null,
   applyBudgetSuggestion: vi.fn(),
   draftApplied: vi.fn(),
   openPlan: vi.fn(),
@@ -71,7 +75,7 @@ vi.mock('../../hooks/useAuth', () => ({
 
 vi.mock('../../hooks/usePlanConfig', () => ({
   usePlanConfig: () => ({
-    config: { startMonth: '2026-06', declaredIncome: 1_000_000 },
+    config: mocks.planConfig,
     loading: false,
     saveConfig: mocks.saveConfig,
     clearConfig: mocks.clearConfig,
@@ -80,6 +84,10 @@ vi.mock('../../hooks/usePlanConfig', () => ({
 
 vi.mock('../../lib/gemini', () => ({
   isGeminiConfigured: () => false,
+}));
+
+vi.mock('../../utils/toastHelpers', () => ({
+  showToast: { error: mocks.errorToast, success: mocks.successToast },
 }));
 
 describe('FinancialPlanView — plan financiero accionable', () => {
@@ -91,6 +99,9 @@ describe('FinancialPlanView — plan financiero accionable', () => {
     mocks.budgetStatuses = [];
     mocks.recurringPayments = [];
     mocks.accounts = [];
+    mocks.planConfig = { startMonth: '2026-06', declaredIncome: 1_000_000 };
+    mocks.saveConfig.mockReset().mockResolvedValue(true);
+    mocks.clearConfig.mockReset().mockResolvedValue(true);
     mocks.transactions = [
       tx({ type: 'income', amount: 1_000_000, category: 'Salario' }),
       tx({ amount: 600_000, category: 'Alimentación' }),
@@ -154,6 +165,7 @@ describe('FinancialPlanView — plan financiero accionable', () => {
     render(<FinancialPlanView />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Editar sueldo' }));
+    expect(screen.getByText('Las metas y sugerencias se recalcularán con este sueldo.')).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: 'Sueldo mensual' }), { target: { value: '1200000' } });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
@@ -162,6 +174,53 @@ describe('FinancialPlanView — plan financiero accionable', () => {
 
     expect(mocks.saveConfig).toHaveBeenCalledWith({ startMonth: '2026-06', declaredIncome: 1_200_000 });
     expect(screen.queryByRole('textbox', { name: 'Sueldo mensual' })).not.toBeInTheDocument();
+  });
+
+  it.each(['start', 'income', 'clear'] as const)('conserva la edición y avisa si falla %s', async operation => {
+    if (operation === 'start') mocks.planConfig = null;
+    const persist = operation === 'clear' ? mocks.clearConfig : mocks.saveConfig;
+    persist.mockRejectedValueOnce(new Error('Permiso denegado'));
+    render(<FinancialPlanView />);
+
+    let submit: HTMLElement;
+    let editor: HTMLElement;
+    if (operation === 'start') {
+      fireEvent.click(screen.getByRole('button', { name: 'Iniciar plan' }));
+      editor = screen.getByPlaceholderText('Ej: 4.000.000');
+      fireEvent.change(editor, { target: { value: '1200000' } });
+      submit = screen.getByRole('button', { name: 'Iniciar' });
+    } else if (operation === 'income') {
+      fireEvent.click(screen.getByRole('button', { name: 'Editar sueldo' }));
+      editor = screen.getByRole('textbox', { name: 'Sueldo mensual' });
+      fireEvent.change(editor, { target: { value: '1200000' } });
+      submit = screen.getByRole('button', { name: 'Guardar' });
+    } else {
+      fireEvent.click(screen.getByRole('button', { name: 'Cerrar plan' }));
+      editor = screen.getByRole('dialog');
+      submit = within(editor).getByRole('button', { name: 'Cerrar plan' });
+    }
+
+    await act(async () => { fireEvent.click(submit); });
+
+    expect(editor).toBeInTheDocument();
+    expect(mocks.errorToast).toHaveBeenCalled();
+    expect(mocks.successToast).not.toHaveBeenCalled();
+  });
+
+  it('no cierra la edición ni anuncia éxito para un resultado de otra sesión', async () => {
+    mocks.saveConfig.mockResolvedValueOnce(false);
+    render(<FinancialPlanView />);
+    fireEvent.click(screen.getByRole('button', { name: 'Editar sueldo' }));
+    const editor = screen.getByRole('textbox', { name: 'Sueldo mensual' });
+    fireEvent.change(editor, { target: { value: '1200000' } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    });
+
+    expect(editor).toBeInTheDocument();
+    expect(mocks.errorToast).not.toHaveBeenCalled();
+    expect(mocks.successToast).not.toHaveBeenCalled();
   });
 
   it('oculta montos de brechas y acciones cuando balances ocultos esta activo', () => {

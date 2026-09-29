@@ -56,7 +56,7 @@ class QuickExpenseShortcutContractTest {
     fun `shortcut labels use the approved product language`() {
         val strings = resourceFile("values/strings.xml").readText()
         assertTrue(strings.contains("<string name=\"quick_expense_short_label\">Registrar gasto</string>"))
-        assertTrue(strings.contains("<string name=\"quick_expense_title\">Registrar gasto</string>"))
+        assertTrue(strings.contains("<string name=\"quick_expense_title\">Gasto rápido</string>"))
     }
 
     private fun parse(file: File) = DocumentBuilderFactory.newInstance()

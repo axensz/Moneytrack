@@ -293,6 +293,55 @@ describe('useBalanceTransactions — fuente de saldos bajo paginación', () => {
     expect(result.current.transactions).toEqual([recent]);
   });
 
+  it('mantiene el historial suscrito mientras una escritura espera confirmación', () => {
+    const recent = tx('recent');
+    const old = tx('old', { date: new Date('2024-01-01') });
+    const { result, rerender, unmount } = renderHook(
+      ({ serverSettled }) => useBalanceTransactions('user1', [recent], serverSettled, false),
+      { initialProps: { serverSettled: true } },
+    );
+    emitSnapshot([recent, old]);
+    expect(result.current.ready).toBe(true);
+
+    rerender({ serverSettled: false });
+
+    expect(result.current.ready).toBe(true);
+    expect(result.current.currentServerSettled).toBe(false);
+    expect(unsubscribeCount).toBe(0);
+    expect(result.current.transactions.map(transaction => transaction.id)).toEqual(['recent', 'old']);
+
+    rerender({ serverSettled: true });
+
+    expect(subscriptionCount).toBe(1);
+    expect(result.current.ready).toBe(true);
+    unmount();
+    expect(unsubscribeCount).toBe(1);
+  });
+
+  it('no conserva la activación del historial al cambiar de usuario durante una escritura pendiente', () => {
+    const privateTransaction = tx('user1-private');
+    const user2Transaction = tx('user2-recent');
+    const { result, rerender } = renderHook(
+      ({ userId, live, serverSettled }) => useBalanceTransactions(userId, live, serverSettled, false),
+      { initialProps: { userId: 'user1', live: [privateTransaction], serverSettled: true } },
+    );
+    emitSnapshot([privateTransaction]);
+    rerender({ userId: 'user1', live: [privateTransaction], serverSettled: false });
+
+    rerender({ userId: 'user2', live: [user2Transaction], serverSettled: false });
+    emitSnapshot([privateTransaction], { listenerIndex: 0 });
+
+    expect(unsubscribeCount).toBe(1);
+    expect(subscriptionCount).toBe(1);
+    expect(result.current.ready).toBe(false);
+    expect(result.current.transactions).toEqual([user2Transaction]);
+
+    rerender({ userId: 'user1', live: [], serverSettled: false });
+    expect(subscriptionCount).toBe(1);
+    expect(result.current.ready).toBe(false);
+    expect(result.current.transactions).toEqual([]);
+  });
+
   it('mantiene la suscripción al terminar de paginar un historial grande', async () => {
     const loadedHistory = Array.from(
       { length: 500 },

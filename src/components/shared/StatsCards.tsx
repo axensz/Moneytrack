@@ -2,7 +2,6 @@ import React, { memo } from 'react';
 import { TrendingUp, TrendingDown, Eye, EyeOff, Calendar, Info } from 'lucide-react';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 import { BalanceSettling } from './BalanceSettling';
-import { AnimateDigits } from '@/components/unlumen-ui/animate-digits';
 
 interface StatsCardsProps {
   totalBalance: number;
@@ -33,10 +32,6 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
   const privacyLabel = hideBalances ? 'Mostrar valores' : 'Ocultar valores';
 
   const displayValue = (value: number) => hideBalances ? '••••••' : formatCurrency(value);
-  const animatedValue = (value: number) => {
-    const display = displayValue(value);
-    return hideBalances ? display : <AnimateDigits value={display} />;
-  };
 
   return (
     <section data-testid="ledger-overview" className="mb-4 sm:mb-5 md:mb-6" aria-labelledby="ledger-overview-title">
@@ -65,7 +60,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
             {balanceSettling ? (
               <BalanceSettling className="text-balance-accent-foreground" />
             ) : (
-              animatedValue(totalBalance)
+              displayValue(totalBalance)
             )}
           </div>
         </div>
@@ -79,7 +74,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
             </div>
           </div>
           <div className="text-lg sm:text-xl lg:text-2xl font-bold font-mono text-gray-900 dark:text-gray-100 break-words">
-            {animatedValue(totalIncome)}
+            {displayValue(totalIncome)}
           </div>
         </div>
 
@@ -92,7 +87,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
             </div>
           </div>
           <div className="text-lg sm:text-xl lg:text-2xl font-bold font-mono text-gray-900 dark:text-gray-100 break-words">
-            {animatedValue(totalExpenses)}
+            {displayValue(totalExpenses)}
           </div>
         </div>
 
@@ -111,7 +106,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
             </div>
           </div>
           <div className="text-lg sm:text-xl lg:text-2xl font-bold font-mono text-gray-900 dark:text-gray-100 break-words">
-            {animatedValue(pendingExpenses)}
+            {displayValue(pendingExpenses)}
           </div>
         </div>
       </div>

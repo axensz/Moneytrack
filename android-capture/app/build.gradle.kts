@@ -51,12 +51,12 @@ if (hasGoogleServices) {
 
 android {
     namespace = "com.moneytrack.capture"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.moneytrack.capture"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 4
         versionName = "0.2.2"
 

@@ -9,6 +9,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import type { Account, RecurringPayment, Transaction } from '../../types/finance';
+import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../../config/constants';
 
 const M = vi.hoisted(() => ({
   restoreTransaction: vi.fn(),
@@ -86,6 +87,75 @@ describe('useTransactions — ciclos recurrentes con zona configurada', () => {
       );
     },
   );
+});
+
+describe('guest debt transaction edits', () => {
+  const seedDebtPayment = () => {
+    localStorage.setItem('accounts', JSON.stringify([paymentAccounts[1]]));
+    localStorage.setItem('debts', JSON.stringify([{
+      id: 'debt-1', personName: 'Ana', type: 'lent', originalAmount: 1_000,
+      remainingAmount: 800, isSettled: false, accountId: 'sav',
+    }]));
+    localStorage.setItem('transactions', JSON.stringify([{
+      ...base, id: 'debt-row', type: 'income', amount: 200,
+      category: LOAN_PAYMENT_CATEGORY, accountId: 'sav', debtId: 'debt-1',
+    }]));
+  };
+
+  it('persists the edited payment and pending debt together', async () => {
+    seedDebtPayment();
+    const { result } = renderHook(() => useTransactions(null));
+
+    await act(async () => { await result.current.updateTransaction('debt-row', { amount: 300 }); });
+
+    const ledger = readGuestLedgerEnvelope().data;
+    expect(ledger.transactions[0].amount).toBe(300);
+    expect(ledger.debts[0].remainingAmount).toBe(700);
+  });
+
+  it('updates principal and pending debt by the same delta', async () => {
+    seedDebtPayment();
+    localStorage.setItem('transactions', JSON.stringify([{
+      ...base, id: 'debt-row', type: 'expense', amount: 1_000,
+      category: LOAN_CATEGORY, accountId: 'sav', debtId: 'debt-1',
+    }]));
+    const { result } = renderHook(() => useTransactions(null));
+
+    await act(async () => { await result.current.updateTransaction('debt-row', { amount: 1_200 }); });
+
+    expect(readGuestLedgerEnvelope().data.debts[0]).toMatchObject({
+      originalAmount: 1_200, remainingAmount: 1_000,
+    });
+  });
+
+  it('preserves a financed principal on amount rejection but allows descriptive edits', async () => {
+    seedDebtPayment();
+    localStorage.setItem('transactions', JSON.stringify([{
+      ...base, id: 'debt-row', type: 'expense', amount: 1_000,
+      category: LOAN_CATEGORY, accountId: 'sav', debtId: 'debt-1',
+      installments: 3, hasInterest: true, totalInterestAmount: 50, monthlyInstallmentAmount: 350,
+    }]));
+    const { result } = renderHook(() => useTransactions(null));
+
+    await expect(result.current.updateTransaction('debt-row', { amount: 1_200 })).rejects.toThrow();
+    expect(readGuestLedgerEnvelope().data.debts[0].remainingAmount).toBe(800);
+    await act(async () => { await result.current.updateTransaction('debt-row', { description: 'Corregido' }); });
+    expect(readGuestLedgerEnvelope().data.transactions[0]).toMatchObject({
+      amount: 1_000, totalInterestAmount: 50, monthlyInstallmentAmount: 350, description: 'Corregido',
+    });
+  });
+
+  it('rejects changing the debt category or paid state through either entry point', async () => {
+    seedDebtPayment();
+    const { result } = renderHook(() => useTransactions(null));
+
+    await expect(result.current.updateTransaction('debt-row', { category: 'Otros' })).rejects.toThrow();
+    await expect(result.current.togglePaid('debt-row')).rejects.toThrow();
+
+    expect(readGuestLedgerEnvelope().data.transactions[0]).toMatchObject({
+      category: LOAN_PAYMENT_CATEGORY, paid: true,
+    });
+  });
 });
 
 describe('useTransactions.addCreditPaymentAtomic — modo invitado (#tx-1)', () => {

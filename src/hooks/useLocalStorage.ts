@@ -116,7 +116,10 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
     return () => window.removeEventListener('storage', handleStorage);
   }, [key]); // initialValueRef es un ref → no provoca re-registro
 
-  const setStoredValue = useCallback((newValue: T | ((prev: T) => T)) => {
+  const setStoredValue = useCallback((
+    newValue: T | ((prev: T) => T),
+    options?: { throwOnError?: boolean },
+  ) => {
     // Resolver contra el espejo síncrono (pendingValueRef), que ya incorpora
     // cualquier update anterior del mismo tick → así se encadenan correctamente
     // varios updates funcionales sobre la misma key (el segundo ve el resultado
@@ -125,20 +128,19 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
       newValue instanceof Function
         ? (newValue as (prev: T) => T)(pendingValueRef.current)
         : newValue;
-    pendingValueRef.current = valueToStore;
-
-    // Pasamos el valor ya resuelto a setValue (no un updater que vuelva a leer
-    // `prev`), porque el encadenamiento ya lo garantiza pendingValueRef y así el
-    // estado coincide exactamente con lo que se persiste.
-    setValue(valueToStore);
-
     try {
       localStorage.setItem(key, JSON.stringify(valueToStore));
+      // Solo publicar datos persistidos: un fallo conserva también el espejo
+      // usado por el siguiente update funcional y las otras instancias.
+      pendingValueRef.current = valueToStore;
+      setValue(valueToStore);
       publishSameTabValue(key, valueToStore);
       // Guardado exitoso → rearmar el aviso de cuota para futuros eventos.
       quotaToastShown.current = false;
     } catch (error) {
       logger.error(`Error saving to localStorage key "${key}"`, error);
+      // Los flujos que esperan confirmación presentan su propio error.
+      if (options?.throwOnError) throw error;
 
       // Cuota llena: los datos NO persistieron. Avisar al usuario para que
       // no pierda información (ej. iniciando sesión). Mostramos un solo toast

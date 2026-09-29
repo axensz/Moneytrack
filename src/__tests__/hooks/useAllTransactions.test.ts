@@ -130,6 +130,30 @@ describe('useAllTransactions — historial realtime completo', () => {
     expect(subscriptionCount).toBe(1);
   });
 
+  it('confirma metadatos sin volver a decodificar el historial que ya recibió', () => {
+    const document = documentFor(tx({ id: 'confirmed' }));
+    const readData = vi.spyOn(document, 'data');
+    const { result } = renderHook(() => useAllTransactionsWithStatus('user1', []));
+    const snapshot: FakeSnapshot = {
+      docs: [document],
+      metadata: { fromCache: true, hasPendingWrites: false },
+      docChanges: () => [],
+    };
+
+    act(() => listeners[0].next(snapshot));
+    expect(result.current.settled).toBe(false);
+    expect(readData).toHaveBeenCalledTimes(1);
+
+    act(() => listeners[0].next({
+      ...snapshot,
+      metadata: { fromCache: false, hasPendingWrites: false },
+    }));
+
+    expect(result.current.settled).toBe(true);
+    expect(result.current.transactions.map(transaction => transaction.id)).toEqual(['confirmed']);
+    expect(readData).toHaveBeenCalledTimes(1);
+  });
+
   it('conserva evidencia de filas inválidas sin exponerlas como transacciones', () => {
     const valid = tx({ id: 'valid' });
     const invalid = documentFor(tx({ id: 'invalid' }));

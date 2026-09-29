@@ -86,6 +86,25 @@ describe('useLocalStorage', () => {
     expect(JSON.parse(localStorage.getItem('same-tab-key')!)).toEqual([1, 2, 3]);
   });
 
+  it('keeps the persisted value in every instance and functional update after a failed write', () => {
+    const first = renderHook(() => useLocalStorage<number[]>('failed-write-key', []));
+    const second = renderHook(() => useLocalStorage<number[]>('failed-write-key', []));
+    act(() => first.result.current[1]([1]));
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => {
+      throw new DOMException('blocked', 'SecurityError');
+    });
+
+    act(() => first.result.current[1](previous => [...previous, 2]));
+    expect(first.result.current[0]).toEqual([1]);
+    expect(second.result.current[0]).toEqual([1]);
+    expect(JSON.parse(localStorage.getItem('failed-write-key')!)).toEqual([1]);
+
+    act(() => first.result.current[1](previous => [...previous, 3]));
+    expect(first.result.current[0]).toEqual([1, 3]);
+    expect(second.result.current[0]).toEqual([1, 3]);
+    expect(JSON.parse(localStorage.getItem('failed-write-key')!)).toEqual([1, 3]);
+  });
+
   // S11 — cross-tab sync
   // #29 — QuotaExceededError no debe tragarse silenciosamente
   describe('QuotaExceededError (#29)', () => {

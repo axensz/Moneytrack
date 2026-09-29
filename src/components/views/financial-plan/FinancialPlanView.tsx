@@ -134,18 +134,26 @@ export const FinancialPlanView: React.FC<FinancialPlanViewProps> = ({ onUseBudge
   const handleSetupSubmit = async () => {
     const income = parseCurrency(setupForm.income);
     if (isNaN(income) || income <= 0) { showToast.error('Ingresa tu ingreso mensual'); return; }
-    await saveConfig({ startMonth: setupForm.startMonth, declaredIncome: income });
-    setShowSetup(false);
-    setShowCloseConfirm(false);
-    showToast.success('Plan financiero iniciado');
+    try {
+      if (!await saveConfig({ startMonth: setupForm.startMonth, declaredIncome: income })) return;
+      setShowSetup(false);
+      setShowCloseConfirm(false);
+      showToast.success('Plan financiero iniciado');
+    } catch {
+      showToast.error('No se pudo iniciar el plan. Intenta de nuevo.');
+    }
   };
 
   const handleClosePlan = async () => {
-    await clearConfig();
-    setShowCloseConfirm(false);
-    setShowSetup(false);
-    setShowIncomeEditor(false);
-    showToast.success('Plan financiero cerrado');
+    try {
+      if (!await clearConfig()) return;
+      setShowCloseConfirm(false);
+      setShowSetup(false);
+      setShowIncomeEditor(false);
+      showToast.success('Plan financiero cerrado');
+    } catch {
+      showToast.error('No se pudo cerrar el plan. Intenta de nuevo.');
+    }
   };
 
   const handleOpenIncomeEditor = () => {
@@ -161,9 +169,13 @@ export const FinancialPlanView: React.FC<FinancialPlanViewProps> = ({ onUseBudge
       showToast.error('Ingresa un sueldo mensual v\u00e1lido');
       return;
     }
-    await saveConfig({ ...planConfig, declaredIncome: income });
-    setShowIncomeEditor(false);
-    showToast.success('Sueldo mensual actualizado');
+    try {
+      if (!await saveConfig({ ...planConfig, declaredIncome: income })) return;
+      setShowIncomeEditor(false);
+      showToast.success('Sueldo mensual actualizado');
+    } catch {
+      showToast.error('No se pudo actualizar el sueldo. Intenta de nuevo.');
+    }
   };
 
   const handleUseRecommendation = (category: string, suggestedLimit: number) => {
@@ -206,7 +218,7 @@ export const FinancialPlanView: React.FC<FinancialPlanViewProps> = ({ onUseBudge
           </button>
         </div>
       </div>
-      <p className="mt-2 text-[11px] text-muted-foreground">Las metas y sugerencias se recalcular\u00e1n con este sueldo.</p>
+      <p className="mt-2 text-[11px] text-muted-foreground">Las metas y sugerencias se recalcularán con este sueldo.</p>
     </form>
   ) : null;
 

@@ -107,6 +107,18 @@ export function useAllTransactionsWithStatus(
         const settledFromServer = !snapshot.metadata.fromCache;
         const currentServerSettled = settledFromServer
           && !snapshot.metadata.hasPendingWrites;
+        const changes = initialized ? snapshot.docChanges() : [];
+        if (initialized && changes.length === 0) {
+          setFullHistory((current) => {
+            if (!current || current.userId !== userId) return current;
+            const settled = current.settled || settledFromServer;
+            return settled === current.settled
+              && currentServerSettled === current.currentServerSettled
+              ? current
+              : { ...current, settled, currentServerSettled };
+          });
+          return;
+        }
         const decodedSnapshot = collectDecodedTransactions(snapshot.docs);
 
         if (!initialized) {
@@ -119,8 +131,6 @@ export function useAllTransactionsWithStatus(
           });
           return;
         }
-
-        const changes = snapshot.docChanges();
 
         // El listener completo también es la fuente remota de verdad para las
         // páginas antiguas ya cargadas. Solo propagamos cambios confirmados:
@@ -166,13 +176,6 @@ export function useAllTransactionsWithStatus(
           }
 
           const settled = current.settled || settledFromServer;
-          if (changes.length === 0) {
-            return settled === current.settled
-              && currentServerSettled === current.currentServerSettled
-              ? current
-              : { ...current, settled, currentServerSettled };
-          }
-
           return { userId, ...decodedSnapshot, settled, currentServerSettled };
         });
       },

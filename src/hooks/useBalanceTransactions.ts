@@ -22,18 +22,16 @@ export function useBalanceTransactions(
     && !transactionsHeadExhaustive;
   const [fullHistoryUserId, setFullHistoryUserId] = useState<string | null>(null);
   const requiresFullHistory = !!userId
+    && !(transactionsServerSettled && transactionsHeadExhaustive)
     && (confirmedNeedsFullHistory || fullHistoryUserId === userId);
+  const historyUserId = requiresFullHistory ? userId : null;
 
   useEffect(() => {
-    if (!userId || (transactionsServerSettled && transactionsHeadExhaustive)) {
-      setFullHistoryUserId(null);
-    } else if (confirmedNeedsFullHistory) {
-      setFullHistoryUserId(userId);
-    }
-  }, [userId, transactionsServerSettled, transactionsHeadExhaustive, confirmedNeedsFullHistory]);
+    setFullHistoryUserId(historyUserId);
+  }, [historyUserId]);
 
   const { transactions, settled, currentServerSettled, error } = useAllTransactionsWithStatus(
-    requiresFullHistory ? userId : null,
+    historyUserId,
     liveTransactions,
     retryGeneration,
   );

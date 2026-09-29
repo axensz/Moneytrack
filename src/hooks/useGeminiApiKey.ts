@@ -104,14 +104,17 @@ export function useGeminiApiKey(userId: string | null): UseGeminiApiKeyResult {
     const ref = doc(db, `users/${userId}/settings/ai`);
     const unsubscribe = onSnapshot(
       ref,
+      { includeMetadataChanges: true },
       (snap) => {
-        const remote = (snap.data()?.geminiApiKey as string | undefined)?.trim() ?? '';
-        if (remote) {
-          // La nube manda: sincroniza estado + módulo en memoria.
+        const storedKey = snap.data()?.geminiApiKey;
+        const remote = typeof storedKey === 'string' ? storedKey.trim() : '';
+        const confirmed = !snap.metadata.fromCache && !snap.metadata.hasPendingWrites;
+        if (remote || confirmed) {
+          // Un borrado confirmado también debe revocar la key en otras sesiones.
           setApiKeyState(remote);
           setGeminiApiKey(remote);
         }
-        // Si la nube está vacía, mantenemos el estado actual en memoria.
+        // Una caché vacía o escritura pendiente no prueba un borrado remoto.
 
         // Consentimiento: solo si el campo existe explícitamente (bool) la nube
         // manda; si está ausente (usuarios previos), conservamos el local.

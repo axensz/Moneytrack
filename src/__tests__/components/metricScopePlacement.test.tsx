@@ -117,6 +117,6 @@ describe('ledger overview placement', () => {
 
     const pendingCard = screen.getByText('Pendiente').closest('div.col-span-2');
     expect(pendingCard).not.toBeNull();
-    expect(within(pendingCard as HTMLElement).getByLabelText('$200')).toBeInTheDocument();
+    expect(within(pendingCard as HTMLElement).getByText('$200')).toBeInTheDocument();
   });
 });

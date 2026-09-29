@@ -154,6 +154,7 @@ ui-debug.log
 
 # Android capture companion (local/generated/secrets)
 android-capture/.gradle/
+android-capture/.kotlin/
 android-capture/**/build/
 android-capture/local.properties
 android-capture/app/google-services.json

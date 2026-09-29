@@ -12,7 +12,7 @@ movimiento en el libro.
 
 ## Requisitos locales
 
-- Android Studio y Android SDK Platform 36 con licencias aceptadas.
+- Android Studio y Android SDK Platform 37 con licencias aceptadas.
 - Android SDK mínimo del dispositivo: API 26.
 - JBR incluido con Android Studio o JDK 17 o superior. En este repositorio se
   verificó `C:\Program Files\Android\Android Studio\jbr`.
@@ -29,7 +29,7 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 .\android-capture\gradlew.bat -p android-capture --version
 ```
 
-El resultado debe mostrar Gradle 9.5.0 y Java 17 o superior. Si Gradle no puede
+El resultado debe mostrar Gradle 9.8.0 y Java 17 o superior. Si Gradle no puede
 ubicar el SDK, crea el archivo local e ignorado `android-capture/local.properties`:
 
 ```properties

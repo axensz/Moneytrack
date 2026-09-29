@@ -4,11 +4,12 @@ import { HelpSectionStats } from '../../components/modals/help/HelpSectionStats'
 import { HelpSectionTransactions } from '../../components/modals/help/HelpSectionTransactions';
 
 describe('metric-scope help', () => {
-  it('states that Transaction filters apply to list and CSV, not Statistics or the overview', () => {
+  it('explains that the account filter also scopes balance and pending debt in the overview', () => {
     render(<><HelpSectionTransactions /><HelpSectionStats /></>);
 
     expect(screen.getByText(/lista.*CSV/i)).toBeInTheDocument();
-    expect(screen.getByText(/no cambian el resumen general ni las estad\u00edsticas/i)).toBeInTheDocument();
+    expect(screen.getByText(/filtro de cuenta tambi\u00e9n cambia Saldo actual y Pendiente/i)).toBeInTheDocument();
+    expect(screen.getByText(/Los dem\u00e1s filtros no cambian el Resumen general ni las Estad\u00edsticas/i)).toBeInTheDocument();
     expect(screen.getByText(/historial completo/i)).toBeInTheDocument();
     expect(screen.queryByText('Estado')).not.toBeInTheDocument();
   });

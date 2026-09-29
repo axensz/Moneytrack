@@ -5,6 +5,7 @@ import { TabNavigation } from '../../components/layout/TabNavigation';
 import { FinanceViewRouter } from '../../components/layout/FinanceViewRouter';
 import { TransactionsView } from '../../components/views/transactions/TransactionsView';
 import { UIPreferencesProvider } from '../../contexts/UIPreferencesContext';
+import { BalanceCalculator } from '../../utils/balanceCalculator';
 import type { Account, Transaction, ViewType } from '../../types/finance';
 
 const mockFinanceState = vi.hoisted(() => ({
@@ -18,7 +19,15 @@ vi.mock('../../hooks/useFinanceSelectors', () => ({
     transactions: mockFinanceState.transactions, balanceTransactions: mockFinanceState.transactions, deleteTransaction: vi.fn(), updateTransaction: vi.fn(),
     hasMoreTransactions: false, loadingMoreTransactions: false, loadMoreTransactions: vi.fn(),
   }),
-  useAccountDomain: () => ({ accounts: mockFinanceState.accounts, balancesReady: true, totalBalance: mockFinanceState.totalBalance }),
+  useAccountDomain: () => ({
+    accounts: mockFinanceState.accounts,
+    balancesReady: true,
+    totalBalance: mockFinanceState.totalBalance,
+    getAccountBalance: (id: string) => {
+      const account = mockFinanceState.accounts.find((account) => account.id === id);
+      return account ? BalanceCalculator.calculateAccountBalance(account, mockFinanceState.transactions) : 0;
+    },
+  }),
   useBeneficiaryDomain: () => ({ beneficiaries: [] }),
   useCategoryDomain: () => ({ categories: { income: [], expense: [] } }),
   useRecurringDomain: () => ({ recurringPayments: [] }),
@@ -118,5 +127,39 @@ describe('ledger overview placement', () => {
     const pendingCard = screen.getByText('Pendiente').closest('div.col-span-2');
     expect(pendingCard).not.toBeNull();
     expect(within(pendingCard as HTMLElement).getByText('$200')).toBeInTheDocument();
+  });
+
+  it('sums every account balance and switches to the selected account using complete history', () => {
+    mockFinanceState.accounts = [
+      { id: 'bank', name: 'Banco', type: 'savings', initialBalance: 1_000, isDefault: true },
+      { id: 'cash', name: 'Efectivo', type: 'cash', initialBalance: 50, isDefault: false },
+      { id: 'visa', name: 'Visa', type: 'credit', initialBalance: 0, isDefault: false, creditLimit: 1_000, usedCredit: 200 },
+      { id: 'mastercard', name: 'Mastercard', type: 'credit', initialBalance: 0, isDefault: false, creditLimit: 2_000, usedCredit: 350 },
+    ];
+    mockFinanceState.transactions = [
+      { id: 'old-income', type: 'income', amount: 500, category: 'Salario', description: '', date: new Date(2025, 0, 1), paid: true, accountId: 'bank' },
+      { id: 'expense', type: 'expense', amount: 25, category: 'Compras', description: '', date: new Date(), paid: true, accountId: 'bank' },
+    ];
+    mockFinanceState.totalBalance = 1_525;
+
+    const { rerender } = render(<FinanceShell initialView="transactions" />);
+    const balanceCard = () => within(screen.getByText('Saldo actual').closest('.card-balance') as HTMLElement);
+    expect(balanceCard().getByText('$3975')).toBeInTheDocument();
+
+    for (const [filterAccount, expected] of [
+      ['visa', '$800'], ['mastercard', '$1650'], ['bank', '$1475'],
+      ['cash', '$50'], ['missing', '$0'], ['all', '$3975'],
+    ]) {
+      rerender(<FinanceShell initialView="transactions" filterAccount={filterAccount} />);
+      expect(balanceCard().getByText(expected)).toBeInTheDocument();
+    }
+
+    mockFinanceState.accounts = mockFinanceState.accounts.map((account) =>
+      account.id === 'visa' ? { ...account, usedCredit: 325 } : account,
+    );
+    rerender(<FinanceShell initialView="transactions" filterAccount="visa" />);
+    expect(balanceCard().getByText('$675')).toBeInTheDocument();
+    rerender(<FinanceShell initialView="transactions" />);
+    expect(balanceCard().getByText('$3850')).toBeInTheDocument();
   });
 });

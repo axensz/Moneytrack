@@ -130,7 +130,7 @@ export const HelpSectionTransactions: React.FC = () => (
                Presets de fecha: Hoy, Esta semana, Este mes, Mes anterior, Este año, Año anterior, o rango personalizado.
             </p>
             <p className="text-xs text-muted-foreground mt-3">
-               Estos filtros cambian la lista y el CSV exportado; no cambian el Resumen general ni las Estadísticas.
+               Estos filtros cambian la lista y el CSV exportado. El filtro de cuenta también cambia Saldo actual y Pendiente del Resumen general; sin filtro, suman todas las cuentas. En tarjetas de crédito, Saldo actual muestra el cupo disponible. Los demás filtros no cambian el Resumen general ni las Estadísticas.
             </p>
          </div>
       </div>

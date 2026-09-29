@@ -54,7 +54,10 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
         {/* Balance Card - Morado Premium (reusa .card-balance, no duplica el degradado) */}
         <div className="card-balance min-w-0 col-span-2 lg:col-span-1 hover:shadow-lg">
           <div className="mb-1.5 sm:mb-2">
-            <span className="text-xs sm:text-sm font-medium text-balance-foreground">Saldo actual</span>
+            <span
+              className="text-xs sm:text-sm font-medium text-balance-foreground"
+              title="Saldo de la cuenta seleccionada o suma de todas tus cuentas. En tarjetas de crédito se incluye el cupo disponible."
+            >Saldo actual</span>
           </div>
           <div className="text-lg sm:text-xl lg:text-2xl font-bold font-mono text-balance-value break-words">
             {balanceSettling ? (

@@ -11,6 +11,7 @@ import { useTransactionDomain, useAccountDomain, useBeneficiaryDomain, useCatego
 import { useLedgerOverview } from '../../../hooks/useGlobalStats';
 
 import { DATE_PRESETS } from '../../../utils/dateUtils';
+import { roundMoney } from '../../../utils/formatters';
 
 // Componentes
 import { NoAccountsMessage } from './components/NoAccountsMessage';
@@ -78,7 +79,13 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     loadMoreTransactions,
     balanceTransactions,
   } = useTransactionDomain();
-  const { accounts, balancesReady, totalBalance } = useAccountDomain();
+  const { accounts, balancesReady, getAccountBalance } = useAccountDomain();
+  const totalBalance = useMemo(
+    () => filterAccount === 'all'
+      ? roundMoney(accounts.reduce((sum, account) => sum + getAccountBalance(account.id || ''), 0))
+      : getAccountBalance(filterAccount),
+    [accounts, filterAccount, getAccountBalance],
+  );
   const overview = useLedgerOverview(balanceTransactions, accounts, totalBalance, filterAccount);
   const { recurringPayments } = useRecurringDomain();
   const { categories } = useCategoryDomain();

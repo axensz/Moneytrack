@@ -48,14 +48,14 @@ export type ActionReason =
 export type StableDeviceState =
     | { kind: 'active'; accountScope: string; timeZone: string }
     | { kind: 'action-required'; reason: ActionReason }
-    | { kind: 'unavailable'; reason: 'unsupported' | 'insecure-context' };
+    | { kind: 'unavailable'; reason: 'unsupported' | 'insecure-context' | 'not-configured' };
 
 export type CurrentDeviceState =
     | { kind: 'guest' }
     | { kind: 'checking' }
     | { kind: 'active'; accountScope: string; timeZone: string }
     | { kind: 'action-required'; reason: ActionReason }
-    | { kind: 'unavailable'; reason: 'unsupported' | 'insecure-context' }
+    | { kind: 'unavailable'; reason: 'unsupported' | 'insecure-context' | 'not-configured' }
     | { kind: 'check-failed'; previous?: StableDeviceState };
 
 export type DeviceActionResult =
@@ -213,7 +213,7 @@ function createDefaultDeps(
     getPreferenceBrowserEnabled: () => boolean,
 ): CurrentDeviceDeps {
     return {
-        configuredVapidKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? '',
+        configuredVapidKey: process.env.NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY ?? '',
         deviceApi: defaultDeviceApi,
         webPush: {
             inspectNativePush: defaultInspectNativePush,
@@ -290,6 +290,12 @@ export function useCurrentDeviceNotifications(
         setState(next);
     }, []);
 
+    const ensurePushConfigured = useCallback(() => {
+        if (depsRef.current.configuredVapidKey.trim()) return true;
+        setDeviceState({ kind: 'unavailable', reason: 'not-configured' });
+        return false;
+    }, [setDeviceState]);
+
     // ---- backend-confirmed marker helpers -----------------------------------
     const isBackendConfirmed = useCallback((uid: string): boolean => {
         return readConfirmedSet(depsRef.current.storage).includes(uid);
@@ -344,6 +350,7 @@ export function useCurrentDeviceNotifications(
             setDeviceState({ kind: 'guest' });
             return;
         }
+        if (!ensurePushConfigured()) return;
 
         const previous = lastStableRef.current;
 
@@ -478,7 +485,7 @@ export function useCurrentDeviceNotifications(
             logger.error('Current-device reconcile failed', error);
             setState({ kind: 'check-failed', previous });
         }
-    }, [initTimeZoneIfMissing, markBackendConfirmed, registerDevice, setDeviceState, writeOwner]);
+    }, [ensurePushConfigured, initTimeZoneIfMissing, markBackendConfirmed, registerDevice, setDeviceState, writeOwner]);
 
     const reconcile = useCallback(async (): Promise<void> => {
         if (!userIdRef.current) {
@@ -505,6 +512,7 @@ export function useCurrentDeviceNotifications(
         const d = depsRef.current;
         const uid = userIdRef.current;
         if (!uid) return;
+        if (!ensurePushConfigured()) return;
         setPendingAction('activate');
         try {
             const inspection = await d.webPush.inspectNativePush(d.configuredVapidKey);
@@ -534,7 +542,7 @@ export function useCurrentDeviceNotifications(
         } finally {
             setPendingAction(null);
         }
-    }, [initTimeZoneIfMissing, registerDevice, runReconcile, setDeviceState, writeOwner]);
+    }, [ensurePushConfigured, initTimeZoneIfMissing, registerDevice, runReconcile, setDeviceState, writeOwner]);
 
     const disable = useCallback(async (): Promise<void> => {
         const d = depsRef.current;
@@ -563,6 +571,7 @@ export function useCurrentDeviceNotifications(
         const d = depsRef.current;
         const uid = userIdRef.current;
         if (!uid) return;
+        if (!ensurePushConfigured()) return;
         setPendingAction('test');
         try {
             const deviceId = d.webPush.getOrCreateDeviceId();
@@ -580,7 +589,7 @@ export function useCurrentDeviceNotifications(
         } finally {
             setPendingAction(null);
         }
-    }, []);
+    }, [ensurePushConfigured]);
 
     const updateTimeZone = useCallback(async (): Promise<void> => {
         const d = depsRef.current;

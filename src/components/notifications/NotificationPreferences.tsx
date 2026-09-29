@@ -477,7 +477,7 @@ function badgeForState(state: CurrentDeviceState): BadgeSpec {
         case 'action-required':
             return { label: 'Requiere acción', className: 'bg-warning-muted text-warning' };
         case 'unavailable':
-            return { label: 'No disponible', className: 'bg-muted text-muted-foreground' };
+            return { label: state.reason === 'not-configured' ? 'Desactivadas' : 'No disponible', className: 'bg-muted text-muted-foreground' };
         case 'checking':
             return { label: 'Comprobando...', className: 'bg-info-muted text-info' };
         case 'check-failed':
@@ -611,7 +611,9 @@ function DeviceStatusCard({
 
                 {state.kind === 'unavailable' && (
                     <p className="text-sm text-muted-foreground">
-                        {state.reason === 'unsupported'
+                        {state.reason === 'not-configured'
+                            ? 'Las notificaciones push están desactivadas por ahora.'
+                            : state.reason === 'unsupported'
                             ? 'Este navegador no admite notificaciones push. No es posible activarlas en este dispositivo.'
                             : 'Las notificaciones push requieren una conexión segura (HTTPS). No es posible activarlas aquí.'}
                     </p>

@@ -199,6 +199,15 @@ describe('NotificationPreferences — device status surface', () => {
         expect(screen.queryByRole('button', { name: /Enviar notificación de prueba/i })).not.toBeInTheDocument();
     });
 
+    it('shows Web Push disabled when it is not configured and offers no activation or test', () => {
+        setDevice({ kind: 'unavailable', reason: 'not-configured' });
+        render(<NotificationPreferences />);
+
+        expect(within(statusRegion()).getByText('Desactivadas')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /^Activar$/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Enviar notificación de prueba/i })).not.toBeInTheDocument();
+    });
+
     it('check-failed (with previous stable): "No se pudo comprobar" + Reintentar → reconcile', () => {
         const device = setDevice({
             kind: 'check-failed',

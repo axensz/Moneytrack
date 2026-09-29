@@ -202,6 +202,31 @@ describe('useCurrentDeviceNotifications — guest', () => {
     });
 });
 
+describe('useCurrentDeviceNotifications — Web Push not configured', () => {
+    it('keeps Web Push unavailable without permission, subscription or backend calls', async () => {
+        const { deps, deviceApi, webPush, requestPermission } = makeDeps({
+            backendConfirmed: ['user-1'], legacyEnabled: true, permissionGranted: true,
+        });
+        deps.configuredVapidKey = ' ';
+        const { result } = renderHook(() => useCurrentDeviceNotifications('user-1', deps));
+
+        await act(async () => {
+            await result.current.reconcile();
+            await result.current.activate();
+            await result.current.sendTest();
+        });
+
+        expect(result.current.state).toEqual({ kind: 'unavailable', reason: 'not-configured' });
+        expect(result.current.canShowBrowserNotification()).toBe(false);
+        expect(deviceApi.status).not.toHaveBeenCalled();
+        expect(deviceApi.register).not.toHaveBeenCalled();
+        expect(deviceApi.sendTest).not.toHaveBeenCalled();
+        expect(webPush.inspectNativePush).not.toHaveBeenCalled();
+        expect(webPush.subscribeCurrentDevice).not.toHaveBeenCalled();
+        expect(requestPermission).not.toHaveBeenCalled();
+    });
+});
+
 describe('useCurrentDeviceNotifications — backend-confirmation bootstrap', () => {
     it('runtime-absent + never-confirmed: keeps legacy gate, creates nothing (no sub/register)', async () => {
         const { deps, deviceApi, webPush } = makeDeps({

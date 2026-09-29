@@ -125,11 +125,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-      - name: Require production Web Push public key
+      - name: Validate optional production Web Push public key
         run: |
           if [ -z "$NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY" ]; then
-            echo "::error::NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY repository variable is required for a production build."
-            exit 1
+            echo "::notice::Web Push is not configured; publishing with Web Push disabled."
+            exit 0
           fi
           # VAPID public keys are 65-byte base64url (87 chars, no padding).
           if ! printf '%s' "$NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY" | grep -Eq '^[A-Za-z0-9_-]{87}$'; then
@@ -179,6 +179,7 @@ jobs:
       - name: Build with Next.js
         run: ${{ steps.detect-package-manager.outputs.runner }} next build
       - name: Verify Web Push public key is embedded in the artifact
+        if: ${{ env.NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY != '' }}
         run: |
           if ! grep -rqF "$NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY" ./out; then
             echo "::error::The Web Push public key was not embedded in the built artifact."

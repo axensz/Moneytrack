@@ -29,6 +29,7 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.NEXT_PUBLIC_FIREBASE_API_KEY }}
@@ -66,8 +67,6 @@ jobs:
         run: npm --prefix functions run typecheck
       - name: Backend unit tests
         run: npm --prefix functions test
-      - name: Validate Firestore rules
-        run: npm run test:rules
       # Notification emulator contracts. The demo VAPID public key is generated
       # in its OWN step and written to $GITHUB_ENV; later steps consume it. The
       # private key stays only in functions/.secret.local (git-ignored) and is
@@ -77,8 +76,11 @@ jobs:
         run: |
           npm --prefix functions run build
           npm --prefix functions run notifications:prepare-emulator -- --project demo-moneytrack --github-env "$GITHUB_ENV"
-      - name: Notification emulator contracts (rules + functions integration)
-        run: npx --yes firebase-tools@15.24.0 emulators:exec --only auth,firestore,functions --project demo-moneytrack "npm run test:rules:run && npm --prefix functions run test:integration"
+      # These contracts call the Firestore SDK directly; they do not invoke
+      # deployed functions or require the Auth/Functions emulators.
+      - name: Firestore rules and notification store integration
+        timeout-minutes: 5
+        run: npm run test:notifications:emulator
       - name: Lint
         run: npm run lint
       - name: Typecheck
@@ -101,6 +103,7 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: validate
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       pages: write
@@ -193,6 +196,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: build
     permissions:
       pages: write

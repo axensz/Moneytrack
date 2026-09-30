@@ -1,0 +1,74 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '31 5 * * 3'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+          - language: java-kotlin
+            build-mode: manual
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # Java/SDK toolchain solo para el análisis de Android (java-kotlin).
+      # Replica el entorno validado en android.yml: JDK 21 + SDK 37.
+      - name: Setup Java
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+          cache-dependency-path: android-capture
+
+      - name: Install Android SDK 37
+        if: matrix.language == 'java-kotlin'
+        run: sdkmanager "platforms;android-37.0"
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      # Build manual acotado a la variante debug del módulo Android.
+      # Evita `assemble` (que dispararía assembleRelease y fallaría por el
+      # guard de firma que exige las credenciales MONEYTRACK_ANDROID_*).
+      - name: Build Android (debug)
+        if: matrix.language == 'java-kotlin'
+        working-directory: android-capture
+        run: bash ./gradlew --no-daemon assembleDebug
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}

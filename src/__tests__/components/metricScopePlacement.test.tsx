@@ -129,7 +129,7 @@ describe('ledger overview placement', () => {
     expect(within(pendingCard as HTMLElement).getByText('$200')).toBeInTheDocument();
   });
 
-  it('sums every account balance and switches to the selected account using complete history', () => {
+  it('shows the asset-only total for all accounts (excludes credit cards) and switches to the selected account using complete history', () => {
     mockFinanceState.accounts = [
       { id: 'bank', name: 'Banco', type: 'savings', initialBalance: 1_000, isDefault: true },
       { id: 'cash', name: 'Efectivo', type: 'cash', initialBalance: 50, isDefault: false },
@@ -144,22 +144,25 @@ describe('ledger overview placement', () => {
 
     const { rerender } = render(<FinanceShell initialView="transactions" />);
     const balanceCard = () => within(screen.getByText('Saldo actual').closest('.card-balance') as HTMLElement);
-    expect(balanceCard().getByText('$3975')).toBeInTheDocument();
+    // "Todas las cuentas" muestra solo activos (banco + efectivo); las TC quedan excluidas.
+    expect(balanceCard().getByText('$1525')).toBeInTheDocument();
 
     for (const [filterAccount, expected] of [
       ['visa', '$800'], ['mastercard', '$1650'], ['bank', '$1475'],
-      ['cash', '$50'], ['missing', '$0'], ['all', '$3975'],
+      ['cash', '$50'], ['missing', '$0'], ['all', '$1525'],
     ]) {
       rerender(<FinanceShell initialView="transactions" filterAccount={filterAccount} />);
       expect(balanceCard().getByText(expected)).toBeInTheDocument();
     }
 
+    // Cambiar el crédito usado de una TC no altera el saldo actual de "todas las cuentas":
+    // las TC no cuentan como activo.
     mockFinanceState.accounts = mockFinanceState.accounts.map((account) =>
       account.id === 'visa' ? { ...account, usedCredit: 325 } : account,
     );
     rerender(<FinanceShell initialView="transactions" filterAccount="visa" />);
     expect(balanceCard().getByText('$675')).toBeInTheDocument();
     rerender(<FinanceShell initialView="transactions" />);
-    expect(balanceCard().getByText('$3850')).toBeInTheDocument();
+    expect(balanceCard().getByText('$1525')).toBeInTheDocument();
   });
 });

@@ -56,7 +56,7 @@ export const StatsCards: React.FC<StatsCardsProps> = memo(({
           <div className="mb-1.5 sm:mb-2">
             <span
               className="text-xs sm:text-sm font-medium text-balance-foreground"
-              title="Saldo de la cuenta seleccionada o suma de todas tus cuentas. En tarjetas de crédito se incluye el cupo disponible."
+              title="Saldo de la cuenta seleccionada o suma de tus cuentas de activo (ahorro y efectivo). Las tarjetas de crédito no cuentan como saldo; al filtrar una TC se muestra su cupo disponible."
             >Saldo actual</span>
           </div>
           <div className="text-lg sm:text-xl lg:text-2xl font-bold font-mono text-balance-value break-words">

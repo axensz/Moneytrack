@@ -50,6 +50,10 @@ jobs:
           cache: gradle
           cache-dependency-path: android-capture
 
+      - name: Setup Android SDK
+        if: matrix.language == 'java-kotlin'
+        uses: android-actions/setup-android@v3
+
       - name: Install Android SDK 37
         if: matrix.language == 'java-kotlin'
         run: sdkmanager "platforms;android-37.0"

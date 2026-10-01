@@ -50,13 +50,15 @@ jobs:
           cache: gradle
           cache-dependency-path: android-capture
 
-      - name: Setup Android SDK
-        if: matrix.language == 'java-kotlin'
-        uses: android-actions/setup-android@v3
-
+      # El runner ubuntu-24.04 ya trae el Android SDK en $ANDROID_SDK_ROOT.
+      # Invocamos sdkmanager por ruta completa (no está en el PATH) y
+      # aceptamos licencias de forma no interactiva.
       - name: Install Android SDK 37
         if: matrix.language == 'java-kotlin'
-        run: sdkmanager "platforms;android-37.0"
+        run: |
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" "platforms;android-37.0"
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4

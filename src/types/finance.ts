@@ -124,6 +124,11 @@ export interface Debt {
   dueDate?: Date; // Fecha de vencimiento opcional
   expectedPaymentDay?: number; // Día aproximado del mes para el próximo pago recurrente (1-31)
   nextPaymentDate?: Date; // Próximo pago directo o excepción puntual del mes
+  // 🆕 Préstamo con pagos periódicos (cuota fija mensual). Retrocompatible:
+  // ausentes = préstamo normal (comportamiento histórico). El día de la cuota es
+  // expectedPaymentDay; aquí guardamos si está activo y el monto de la cuota.
+  isRecurringPayment?: boolean; // Si el préstamo se paga en cuotas periódicas
+  recurringPaymentAmount?: number; // Monto de la cuota periódica (>0)
   createdAt?: Date;
   settledAt?: Date; // Fecha en que se saldó
   forgivenReason?: 'unpaid' | 'gift' | 'other'; // Presente = deuda condonada (no pagada / regalo / otro)

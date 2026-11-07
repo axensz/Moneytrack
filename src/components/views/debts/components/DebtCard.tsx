@@ -63,6 +63,7 @@ export const DebtCard: React.FC<DebtCardProps> = React.memo(({
     : 0;
 
   const isLent = debt.type === 'lent';
+  const isRecurringPayment = Boolean(debt.isRecurringPayment);
 
   // Antigüedad y vencimiento
   const lentSource = debt.lentDate ?? debt.createdAt;
@@ -154,6 +155,28 @@ export const DebtCard: React.FC<DebtCardProps> = React.memo(({
               </span>
             )}
           </div>
+
+          {/* Préstamo con pagos periódicos: muestra la cuota y permite marcarla
+              pagada en un paso (sin generar historial redundante). */}
+          {isRecurringPayment && typeof debt.recurringPaymentAmount === 'number' && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-md bg-primary/5 px-1.5 py-0.5 text-xs font-medium text-primary">
+                Cuota {formatCurrency(debt.recurringPaymentAmount)}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBalanceModifier(null);
+                  setShowForgive(null);
+                  setShowPaymentScheduleForm(null);
+                  onOpenPayment(debt);
+                }}
+                className="inline-flex min-h-11 items-center rounded-lg border border-border-accent bg-primary/5 px-3 text-xs font-semibold text-primary hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                Marcar cuota pagada
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex w-full flex-wrap items-center justify-end gap-1 border-t border-gray-100 pt-2 dark:border-gray-700 sm:ml-2 sm:w-auto sm:border-t-0 sm:pt-0">

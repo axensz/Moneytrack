@@ -6,6 +6,7 @@ import { useDebtsDomain, useAccountDomain, useTransactionDomain } from '../../..
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { formatCurrency, parseCurrency, parseDateFromInput } from '../../../utils/formatters';
 import { compareDebtsByNextPayment } from '../../../utils/debtPaymentSchedule';
+import { debtCycleKey } from '../../../utils/debtRecurringCycle';
 import { showToast } from '../../../utils/toastHelpers';
 import { ConfirmDialog } from '../../modals/ConfirmDialog';
 import { ACTION_ICONS, sectionTitle, UI_TEXT } from '../../../config/ui';
@@ -38,6 +39,7 @@ export const DebtsView: React.FC = () => {
     reassignDebtAccount,
     registerDebtPayment,
     linkDebtPayment,
+    payDebtCycle,
     modifyDebtBalance,
     forgiveDebt,
     debtStats,
@@ -466,7 +468,8 @@ export const DebtsView: React.FC = () => {
         )}
       </div>
 
-      {/* Modal de pago: registrar nuevo o enlazar una transacción existente */}
+      {/* Modal de pago: registrar nuevo o enlazar una transacción existente.
+          Si la deuda es periódica, opera en modo cuota (payDebtCycle del ciclo actual). */}
       <LinkDebtPaymentModal
         isOpen={!!debtToPay}
         debt={debtToPay}
@@ -475,6 +478,9 @@ export const DebtsView: React.FC = () => {
         onClose={() => setDebtToPay(null)}
         onRegister={registerDebtPayment}
         onLinkExisting={linkDebtPayment}
+        recurringCycle={debtToPay?.isRecurringPayment ? debtCycleKey(debtToPay) : null}
+        recurringPaymentAmount={debtToPay?.recurringPaymentAmount}
+        onPayCycle={payDebtCycle}
       />
 
       {/* Modal confirmación eliminar */}

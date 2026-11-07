@@ -161,6 +161,21 @@ export async function loadServerLedgerTransactionsByRecurringPayment(
   );
 }
 
+export async function loadServerLedgerTransactionsByDebt(
+  userId: string,
+  debtId: string
+): Promise<Transaction[]> {
+  const snapshot = await getDocsFromServer(
+    query(
+      collection(db, `users/${userId}/transactions`),
+      where('debtId', '==', debtId)
+    )
+  );
+  return snapshot.docs.map(document =>
+    decodeTransaction(document as unknown as ServerDocumentSnapshot)
+  );
+}
+
 export const collectLedgerMutationAccountIds = (
   intent: LedgerMutationIntent
 ): string[] => [...new Set(

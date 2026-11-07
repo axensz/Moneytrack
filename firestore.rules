@@ -493,7 +493,15 @@ service cloud.firestore {
                   && data.expectedPaymentDay >= 1
                   && data.expectedPaymentDay <= 31))
         && (!('nextPaymentDate' in data.keys())
-              || data.nextPaymentDate is timestamp);
+              || data.nextPaymentDate is timestamp)
+        // Préstamo con pagos periódicos (cuota fija mensual). Solo añade
+        // validaciones nuevas; no afloja nada de lo anterior.
+        && (!('isRecurringPayment' in data.keys())
+              || data.isRecurringPayment is bool)
+        && (!('recurringPaymentAmount' in data.keys())
+              || (data.recurringPaymentAmount is number
+                  && data.recurringPaymentAmount > 0
+                  && data.recurringPaymentAmount <= 1000000000));
     }
 
     // User data collections

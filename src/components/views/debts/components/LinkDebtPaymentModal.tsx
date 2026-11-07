@@ -19,7 +19,16 @@ interface LinkDebtPaymentModalProps {
   /** Crea un pago nuevo y reduce el saldo (camino de hoy). */
   onRegister: (debtId: string, amount: number) => Promise<void>;
   /** Enlaza una transacción existente como el pago del préstamo. */
-  onLinkExisting: (debtId: string, transactionId: string) => Promise<void>;
+  onLinkExisting: (debtId: string, transactionId: string, recurringCycle?: string) => Promise<void>;
+  /**
+   * Cuota periódica a saldar (opcional). Si está presente, el modal opera en
+   * modo cuota: "Registrar" paga la cuota del ciclo con payDebtCycle y "Enlazar"
+   * estampa ese recurringCycle. Ausente = pago normal (monto libre).
+   */
+  recurringCycle?: string | null;
+  recurringPaymentAmount?: number;
+  /** Paga la cuota del ciclo en un paso (crea movimiento + reduce saldo). */
+  onPayCycle?: (debtId: string, recurringCycle: string) => Promise<void>;
 }
 
 type Mode = 'choose' | 'register' | 'link';
@@ -40,7 +49,11 @@ export const LinkDebtPaymentModal: React.FC<LinkDebtPaymentModalProps> = ({
   onClose,
   onRegister,
   onLinkExisting,
+  recurringCycle,
+  recurringPaymentAmount,
+  onPayCycle,
 }) => {
+  const isRecurringMode = Boolean(recurringCycle && onPayCycle);
   const [mode, setMode] = useState<Mode>('choose');
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
@@ -79,6 +92,11 @@ export const LinkDebtPaymentModal: React.FC<LinkDebtPaymentModalProps> = ({
 
   const handleRegister = () => {
     if (!debt?.id) return;
+    // Modo cuota: paga la cuota del ciclo en un paso (monto = cuota fija).
+    if (isRecurringMode && recurringCycle && onPayCycle) {
+      run(() => onPayCycle(debt.id!, recurringCycle), 'Cuota registrada');
+      return;
+    }
     const parsed = parseCurrency(amount);
     if (isNaN(parsed) || parsed <= 0) {
       showToast.error('El monto debe ser mayor a 0');
@@ -141,25 +159,34 @@ export const LinkDebtPaymentModal: React.FC<LinkDebtPaymentModalProps> = ({
           {/* ── Registrar pago nuevo ── */}
           {mode === 'register' && (
             <div className="mt-5 space-y-4">
-              <div>
-                <label htmlFor="ldp-amount" className="label-base">¿Cuánto pagaste?</label>
-                <input
-                  id="ldp-amount"
-                  type="text"
-                  inputMode="numeric"
-                  value={formatNumberForInput(amount)}
-                  onChange={(e) => setAmount(unformatNumber(e.target.value))}
-                  placeholder="Monto del pago"
-                  className="input-base"
-                  autoFocus
-                />
-              </div>
+              {isRecurringMode ? (
+                <div className="rounded-lg border border-border bg-muted p-3">
+                  <span className="block text-xs text-muted-foreground">Cuota a registrar</span>
+                  <span className="block text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    {formatCurrency(Math.min(recurringPaymentAmount ?? 0, debt.remainingAmount))}
+                  </span>
+                </div>
+              ) : (
+                <div>
+                  <label htmlFor="ldp-amount" className="label-base">¿Cuánto pagaste?</label>
+                  <input
+                    id="ldp-amount"
+                    type="text"
+                    inputMode="numeric"
+                    value={formatNumberForInput(amount)}
+                    onChange={(e) => setAmount(unformatNumber(e.target.value))}
+                    placeholder="Monto del pago"
+                    className="input-base"
+                    autoFocus
+                  />
+                </div>
+              )}
               <button
                 onClick={handleRegister}
                 disabled={busy}
                 className={`btn-submit w-full ${busy ? 'opacity-70 cursor-not-allowed' : ''}`}
               >
-                {busy ? 'Guardando...' : 'Registrar pago'}
+                {busy ? 'Guardando...' : isRecurringMode ? 'Registrar cuota' : 'Registrar pago'}
               </button>
             </div>
           )}
@@ -176,7 +203,7 @@ export const LinkDebtPaymentModal: React.FC<LinkDebtPaymentModalProps> = ({
                   {candidates.map((t) => (
                     <button
                       key={t.id}
-                      onClick={() => run(() => onLinkExisting(debt.id!, t.id!), 'Transacción enlazada')}
+                      onClick={() => run(() => onLinkExisting(debt.id!, t.id!, recurringCycle ?? undefined), 'Transacción enlazada')}
                       disabled={busy}
                       className="w-full min-h-11 flex items-center justify-between gap-3 p-3 rounded-lg border border-border hover:border-border-accent hover:bg-primary/5 transition-colors text-left disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     >

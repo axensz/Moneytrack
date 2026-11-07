@@ -8,7 +8,7 @@
  */
 
 import { setGlobalOptions } from 'firebase-functions/v2';
-import { onCall, HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
+import { onCall, onRequest, HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineSecret, defineString, defineBoolean } from 'firebase-functions/params';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -32,6 +32,19 @@ import { createPushSender } from './notifications/pushSender.js';
 import { runDeliveryPass } from './notifications/worker.js';
 import { buildBudgetEventTag } from './notifications/tags.js';
 import { evaluateControl, type ControlDocument } from './notifications/deliveryControl.js';
+import { FieldValue } from 'firebase-admin/firestore';
+import {
+  parseIngestRequest,
+  ingestBatchCore,
+  IngestError,
+  generateApiKey as generateRawApiKey,
+  hashApiKey,
+} from './ingest/ingestCore.js';
+import {
+  createAccountLookup,
+  createCandidateStore,
+  resolveApiKey,
+} from './ingest/ingestAdapters.js';
 
 setGlobalOptions({ region: FUNCTIONS_REGION });
 
@@ -158,3 +171,94 @@ export const deliveryWorker = onSchedule(
     });
   },
 );
+
+// ── Transaction ingestion HTTP endpoint ──────────────────────────────────────
+/**
+ * POST /ingestTransactions. Auth via the `X-MoneyTrack-Api-Key` header; the uid
+ * is resolved from the key (never the payload). Writes shortcut candidates with
+ * the Admin SDK and returns the contract JSON. The contract only defines
+ * 400/401/413 errors, so an invalid method or content-type maps to 400.
+ */
+export const ingestTransactions = onRequest(async (req, res) => {
+  const sendError = (status: number, code: string, message: string): void => {
+    res.status(status).json({ error: { code, message } });
+  };
+
+  try {
+    if (req.method !== 'POST') {
+      sendError(400, 'bad-request', 'Only POST is supported');
+      return;
+    }
+    const contentType = req.get('content-type') ?? '';
+    if (!contentType.toLowerCase().includes('application/json')) {
+      sendError(400, 'bad-request', 'Content-Type must be application/json');
+      return;
+    }
+
+    const rawKey = req.get('x-moneytrack-api-key');
+    if (typeof rawKey !== 'string' || rawKey.length === 0) {
+      sendError(401, 'unauthorized', 'Missing X-MoneyTrack-Api-Key header');
+      return;
+    }
+
+    const uid = await resolveApiKey(db(), rawKey);
+    if (uid === null) {
+      sendError(401, 'unauthorized', 'Invalid or revoked API key');
+      return;
+    }
+
+    const parsed = parseIngestRequest(req.body);
+    const result = await ingestBatchCore(
+      parsed,
+      {
+        accounts: createAccountLookup(db(), uid),
+        store: createCandidateStore(db(), uid),
+        clock: systemClock,
+      },
+      uid,
+    );
+    res.status(200).json(result);
+  } catch (error) {
+    if (error instanceof IngestError) {
+      sendError(error.status, error.code, error.message);
+      return;
+    }
+    sendError(400, 'bad-request', 'Unexpected error');
+  }
+});
+
+// ── API key generation (authenticated callable) ──────────────────────────────
+/**
+ * Generates an API key for the caller. The clear key is returned EXACTLY once
+ * and never persisted or logged: only its sha256 hash is stored as the doc-id
+ * in the global `apiKeys/` collection (plus a per-user mirror for listing).
+ */
+export const generateApiKey = onCall(async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) {
+    throw new HttpsError('unauthenticated', 'Authentication required');
+  }
+
+  const label = typeof request.data?.label === 'string' ? request.data.label : undefined;
+  const rawKey = generateRawApiKey();
+  const hash = hashApiKey(rawKey);
+
+  const database = db();
+  const batch = database.batch();
+  batch.set(database.doc(`apiKeys/${hash}`), {
+    uid,
+    createdAt: FieldValue.serverTimestamp(),
+    revoked: false,
+    ...(label !== undefined ? { label } : {}),
+  });
+  batch.set(database.doc(`users/${uid}/apiKeys/${hash}`), {
+    hash,
+    createdAt: FieldValue.serverTimestamp(),
+    revoked: false,
+    ...(label !== undefined ? { label } : {}),
+  });
+  await batch.commit();
+
+  // The clear key is surfaced only here, once.
+  return { apiKey: rawKey };
+});

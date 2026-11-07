@@ -8,10 +8,13 @@ import {
   Smartphone,
   Trash2,
 } from 'lucide-react';
-import type { Account, Categories } from '../../../../types/finance';
+import type { Account, Categories, Transaction } from '../../../../types/finance';
 import type { PendingTransactionImportCandidate } from '../../../../types/transactionImport';
 import { usePaymentInstruments } from '../../../../hooks/firestore/usePaymentInstruments';
 import { useTransactionImportCandidates } from '../../../../hooks/firestore/useTransactionImportCandidates';
+import { useAutoConfirmImportCandidates } from '../../../../hooks/firestore/useAutoConfirmImportCandidates';
+import { useAutoConfirmPreference } from '../../../../hooks/useAutoConfirmImportPreference';
+import type { AutoConfirmReason } from '../../../../utils/autoConfirmImport';
 import { formatCurrency, formatDate } from '../../../../utils/formatters';
 import { matchPaymentInstrument } from '../../../../utils/paymentInstrumentMatching';
 import {
@@ -25,8 +28,17 @@ interface TransactionImportInboxProps {
   userId: string | null;
   accounts: readonly Account[];
   categories: Categories;
+  transactions: readonly Transaction[];
   isOnline: boolean;
 }
+
+// Copy en español para el motivo por el que un candidato queda en revisión.
+const REVIEW_REASON_LABEL: Record<AutoConfirmReason, string> = {
+  'datos-faltantes': 'Faltan datos',
+  'cuenta-sin-match': 'Sin cuenta que coincida',
+  'cuenta-ambigua': 'Cuenta ambigua',
+  'sin-categoria-confiable': 'Sin categoría confiable',
+};
 
 interface OwnedReviewCandidate {
   ownerUserId: string;
@@ -37,6 +49,7 @@ export function TransactionImportInbox({
   userId,
   accounts,
   categories,
+  transactions,
   isOnline,
 }: TransactionImportInboxProps) {
   const [reviewRequest, setReviewRequest] = useState<AndroidReviewRequest>({
@@ -56,6 +69,21 @@ export function TransactionImportInbox({
     dismissCandidate,
   } = useTransactionImportCandidates(userId, requestedCandidateId);
   const { instruments } = usePaymentInstruments(userId);
+  // Preferencia (default activado) + orquestación de auto-confirmación en cliente.
+  // Decisión de diseño explícita del usuario: los candidatos inequívocos entran
+  // solos al libro; los dudosos quedan aquí para revisión manual.
+  const { enabled: autoConfirmEnabled, setEnabled: setAutoConfirmEnabled } =
+    useAutoConfirmPreference(userId);
+  const { getReviewReason } = useAutoConfirmImportCandidates({
+    userId,
+    enabled: autoConfirmEnabled,
+    isOnline,
+    candidates,
+    instruments,
+    accounts,
+    transactions,
+    categories,
+  });
   const [expanded, setExpanded] = useState(false);
   const [reviewSelection, setReviewSelection] = useState<OwnedReviewCandidate | null>(null);
   const [dismissingId, setDismissingId] = useState<string | null>(null);
@@ -205,8 +233,29 @@ export function TransactionImportInbox({
       {expanded && (
         <div id="transaction-import-inbox-content" className="border-t border-border px-4 py-4">
           <p className="text-sm text-muted-foreground">
-            Cada captura necesita tu confirmación y todavía no afecta saldos ni estadísticas.
+            {autoConfirmEnabled
+              ? 'Las compras inequívocas entran solas al libro; aquí solo quedan las que necesitan tu revisión.'
+              : 'Cada captura necesita tu confirmación y todavía no afecta saldos ni estadísticas.'}
           </p>
+
+          <label className="mt-3 flex min-h-[44px] cursor-pointer items-start gap-3 rounded-lg border border-border px-3 py-2">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--primary)]"
+              checked={autoConfirmEnabled}
+              onChange={event => setAutoConfirmEnabled(event.target.checked)}
+            />
+            <span className="min-w-0 text-sm">
+              <span className="block font-semibold text-foreground">
+                Confirmar automáticamente las compras inequívocas
+              </span>
+              <span className="block text-xs text-muted-foreground">
+                Activado, las compras con cuenta única y categoría confiable entran
+                solas al libro y solo las dudosas quedan en revisión. Desactívalo
+                para volver al modo 100% manual.
+              </span>
+            </span>
+          </label>
 
           {(error || actionError) && (
             <p role="alert" className="mt-3 rounded-lg bg-destructive-muted px-3 py-2 text-sm font-medium text-destructive">
@@ -238,6 +287,11 @@ export function TransactionImportInbox({
                   : match.status === 'matched'
                     ? accounts.find(current => current.id === match.accountId)
                     : undefined;
+                // Si la auto-confirmación está activa, mostrar por qué este
+                // candidato sigue aquí (no calificó para entrar solo al libro).
+                const reviewReason = autoConfirmEnabled
+                  ? getReviewReason(candidate)
+                  : null;
 
                 return (
                   <article key={candidate.id} className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
@@ -256,6 +310,11 @@ export function TransactionImportInbox({
                         <span>Android</span>
                         {account && <><span aria-hidden="true"> · </span><span>{account.name}</span></>}
                       </p>
+                      {reviewReason && (
+                        <p className="mt-1 text-xs font-medium text-warning">
+                          En revisión: {REVIEW_REASON_LABEL[reviewReason]}
+                        </p>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-2 md:justify-end">
                       <button

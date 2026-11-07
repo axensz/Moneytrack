@@ -37,6 +37,13 @@ infantil, experto sin abrumar. El color comunica estado (verde +, rojo −,
 
 - **The Confident Ledger** — la cifra es la verdad; el diseño la respalda, no
   la disfraza.
+  - _Nota (cambio de diseño explícito del usuario):_ para reducir trabajo
+    manual, la app web ahora puede **auto-confirmar en el cliente** los
+    candidatos de importación **inequívocos** (cuenta única por instrumento +
+    categoría confiable por historial o regla de patrón). Esto rompe a propósito
+    la regla original de que solo la confirmación manual crea la transacción y
+    mueve saldo. Los candidatos dudosos siguen requiriendo confirmación manual, y
+    un interruptor permite volver al modo 100% manual.
 - **El color es estado, no adorno** — verde/rojo/ámbar para estado, violet
   para marca; el tipo se distingue por icono, no por color.
 - **Cálido sin perder rigor** — al des-saturar no colapsar a gris; conservar

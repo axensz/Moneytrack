@@ -69,6 +69,10 @@ vi.mock('../../hooks/useFinanceSelectors', () => ({
   useFormatCurrency: () => (amount: number) => `$${amount}`,
 }));
 
+vi.mock('../../contexts/UIPreferencesContext', () => ({
+  useUIPreferences: () => ({ hideBalances: false }),
+}));
+
 vi.mock('../../hooks/useCardPaymentSchedule', () => ({
   useCardPaymentSchedule: () => [],
 }));

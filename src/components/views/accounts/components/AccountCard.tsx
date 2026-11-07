@@ -1,10 +1,11 @@
 'use client';
 
-import React, { memo, useMemo } from 'react';
-import { Edit2, Trash2, GripVertical, ChevronUp, ChevronDown, Wallet, CreditCard, Banknote, Combine, AlertTriangle, Smartphone, Archive, ArchiveRestore } from 'lucide-react';
+import React, { memo, useMemo, useRef, useState, useCallback } from 'react';
+import { Edit2, Trash2, GripVertical, ChevronUp, ChevronDown, Wallet, CreditCard, Banknote, Combine, AlertTriangle, Smartphone, Archive, ArchiveRestore, MoreHorizontal, Star } from 'lucide-react';
 import type { Account } from '../../../../types/finance';
 import { getCreditAuthorityState } from '../../../../utils/creditAuthority';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
+import { useDismissable } from '@/hooks/useDismissable';
 import { BalanceSettling } from '@/components/shared/BalanceSettling';
 import { UI_LABELS } from '@/config/constants';
 import {
@@ -221,11 +222,11 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
             </div>
 
             {/* Type badge */}
-            <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-full font-medium bg-primary/10 text-primary">
+            <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-full font-medium bg-primary/10 text-primary-on-surface">
               {accountTypeInfo?.label}
             </span>
             {parentAccountName && (
-              <span className="ml-2 text-xs text-primary">
+              <span className="ml-2 text-xs text-primary-on-surface">
                 • {parentAccountName}
               </span>
             )}
@@ -270,11 +271,14 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
           />
         )}
 
-        {/* Action buttons */}
-        <div className="flex flex-wrap gap-2 mt-4">
+        {/* Acciones: Editar y Medios de pago quedan visibles (las de uso
+            frecuente); el resto (Unificar, Marcar principal, Archivar,
+            Desarchivar, Eliminar) se agrupan en un menú "⋯" para bajar el ruido
+            por fila sin quitar ninguna acción. */}
+        <div className="flex flex-wrap items-center gap-2 mt-4">
           <button
             onClick={onEdit}
-            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/15 border border-primary/40 hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary-on-surface bg-card border border-border-accent hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <Edit2 size={14} />
             Editar
@@ -293,63 +297,17 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
             </button>
           )}
 
-          {isCredit && onMerge && (
-            <button
-              onClick={onMerge}
-              disabled={!creditAuthority.ready}
-              aria-describedby={!creditAuthority.ready ? authorityMessageId : undefined}
-              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/15 border border-primary/40 hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Combine size={14} />
-              Unificar
-            </button>
-          )}
-
-          {/* Desarchivar: acción primaria de una cuenta archivada. */}
-          {account.archived && onUnarchive && (
-            <button
-              onClick={onUnarchive}
-              aria-label={`Desarchivar ${account.name}`}
-              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/15 border border-primary/40 hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            >
-              <ArchiveRestore size={14} />
-              Desarchivar
-            </button>
-          )}
-
-          {!account.isDefault && (
-            <>
-              {/* "Marcar como principal" solo tiene sentido en cuentas activas. */}
-              {!account.archived && (
-                <button
-                  onClick={onSetDefault}
-                  className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/15 border border-primary/40 hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                >
-                  Marcar como principal
-                </button>
-              )}
-              {/* Archivar: alternativa no destructiva a eliminar (conserva historial). */}
-              {!account.archived && onArchive && (
-                <button
-                  onClick={onArchive}
-                  aria-label={`Archivar ${account.name}`}
-                  className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/15 border border-primary/40 hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                >
-                  <Archive size={14} />
-                  Archivar
-                </button>
-              )}
-              <button
-                onClick={onDelete}
-                aria-label={`Eliminar ${account.name}`}
-                disabled={isCredit && !creditAuthority.ready}
-                aria-describedby={isCredit && !creditAuthority.ready ? authorityMessageId : undefined}
-                className="flex items-center justify-center p-2 min-h-[44px] min-w-[44px] text-muted-foreground hover:text-destructive hover:bg-destructive-muted rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Trash2 size={16} />
-              </button>
-            </>
-          )}
+          <AccountCardActionsMenu
+            account={account}
+            isCredit={isCredit}
+            authorityReady={creditAuthority.ready}
+            authorityMessageId={authorityMessageId}
+            onMerge={onMerge}
+            onSetDefault={onSetDefault}
+            onArchive={onArchive}
+            onUnarchive={onUnarchive}
+            onDelete={onDelete}
+          />
         </div>
       </div>
     </div>
@@ -357,6 +315,163 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
 });
 
 AccountCard.displayName = 'AccountCard';
+
+// ─── Menú de acciones secundarias ("⋯") ──────────────────────────────────
+// Agrupa las acciones de uso poco frecuente para que la fila respire, SIN
+// quitar ninguna. Se despliega como disclosure en el flujo normal de la card
+// (no absoluto): así no lo recorta el `overflow-hidden` del contenedor y no
+// necesita portal. Cierra con clic fuera / Escape (useDismissable, WCAG 2.1.2)
+// y devuelve el foco al disparador.
+interface AccountCardActionsMenuProps {
+  account: Account;
+  isCredit: boolean;
+  authorityReady: boolean;
+  authorityMessageId: string;
+  onMerge?: () => void;
+  onSetDefault: () => void;
+  onArchive?: () => void;
+  onUnarchive?: () => void;
+  onDelete: () => void;
+}
+
+const AccountCardActionsMenu: React.FC<AccountCardActionsMenuProps> = ({
+  account,
+  isCredit,
+  authorityReady,
+  authorityMessageId,
+  onMerge,
+  onSetDefault,
+  onArchive,
+  onUnarchive,
+  onDelete,
+}) => {
+  const [open, setOpen] = useState(false);
+  // Posición del panel en coordenadas de viewport. El panel se renderiza con
+  // `position: fixed` para escapar del `overflow-hidden` de la card (si no, se
+  // recortaría). Se recalcula al abrir.
+  const [coords, setCoords] = useState<{ top: number; right: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  const close = useCallback(() => setOpen(false), []);
+  useDismissable({ isOpen: open, onClose: close, ref: menuRef, triggerRef });
+
+  const openMenu = useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) {
+      setCoords({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
+    }
+    setOpen(true);
+  }, []);
+
+  // Envuelve cada acción para cerrar el menú tras ejecutarla.
+  const run = (fn?: () => void) => () => {
+    close();
+    fn?.();
+  };
+
+  // ¿Hay algo que mostrar? Si no, no renderizamos el disparador.
+  const showMerge = isCredit && !!onMerge;
+  const showUnarchive = !!account.archived && !!onUnarchive;
+  const showSetDefault = !account.isDefault && !account.archived;
+  const showArchive = !account.isDefault && !account.archived && !!onArchive;
+  const showDelete = !account.isDefault;
+  const hasAnyAction = showMerge || showUnarchive || showSetDefault || showArchive || showDelete;
+  if (!hasAnyAction) return null;
+
+  const menuItemClass =
+    'flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm font-medium transition-colors min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50';
+
+  return (
+    <div className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => (open ? close() : openMenu())}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Más acciones para ${account.name}`}
+        className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-border p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        <MoreHorizontal size={18} aria-hidden="true" />
+      </button>
+
+      {open && coords && (
+        <div
+          ref={menuRef}
+          role="menu"
+          aria-label={`Acciones de ${account.name}`}
+          style={{ position: 'fixed', top: coords.top, right: coords.right }}
+          className="z-50 w-56 overflow-hidden rounded-lg border border-border bg-card py-1 text-card-foreground shadow-lg animate-in fade-in zoom-in-95 duration-150"
+        >
+          {showMerge && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={run(onMerge)}
+              disabled={!authorityReady}
+              aria-describedby={!authorityReady ? authorityMessageId : undefined}
+              className={`${menuItemClass} text-foreground hover:bg-muted`}
+            >
+              <Combine size={16} className="text-primary" aria-hidden="true" />
+              Unificar tarjetas
+            </button>
+          )}
+
+          {showUnarchive && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={run(onUnarchive)}
+              className={`${menuItemClass} text-foreground hover:bg-muted`}
+            >
+              <ArchiveRestore size={16} className="text-primary" aria-hidden="true" />
+              Desarchivar
+            </button>
+          )}
+
+          {showSetDefault && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={run(onSetDefault)}
+              className={`${menuItemClass} text-foreground hover:bg-muted`}
+            >
+              <Star size={16} className="text-primary" aria-hidden="true" />
+              Marcar como principal
+            </button>
+          )}
+
+          {showArchive && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={run(onArchive)}
+              className={`${menuItemClass} text-foreground hover:bg-muted`}
+            >
+              <Archive size={16} className="text-muted-foreground" aria-hidden="true" />
+              Archivar
+            </button>
+          )}
+
+          {showDelete && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={run(onDelete)}
+              disabled={isCredit && !authorityReady}
+              aria-describedby={isCredit && !authorityReady ? authorityMessageId : undefined}
+              className={`${menuItemClass} text-destructive hover:bg-destructive-muted`}
+            >
+              <Trash2 size={16} aria-hidden="true" />
+              Eliminar cuenta
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 // Sub-componente para info de tarjeta de crédito
 interface CreditCardInfoProps {
@@ -443,7 +558,7 @@ const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
             {nextPayment ? nextPayment.toLocaleDateString('es-CO') : 'Sin definir'}
           </span>
         </div>
-        {interestRate && interestRate > 0 && (
+        {!!interestRate && interestRate > 0 && (
           <div>
             <span className="text-muted-foreground">Tasa E.A.: </span>
             <span className="font-medium font-mono text-foreground">
@@ -451,7 +566,9 @@ const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
             </span>
           </div>
         )}
-        {monthlySpendingLimit && monthlySpendingLimit > 0 && (
+        {/* Guarda con !! para no filtrar un 0 literal cuando el tope es 0
+            (React renderiza `0 && <JSX>` como "0"). */}
+        {!!monthlySpendingLimit && monthlySpendingLimit > 0 && (
           <div>
             <span className="text-muted-foreground">Tope manual: </span>
             <span className="font-medium font-mono text-foreground">

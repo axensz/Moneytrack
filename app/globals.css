@@ -18,6 +18,7 @@
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary-solid: var(--primary-solid);
+  --color-primary-on-surface: var(--primary-on-surface);
 
   --color-success: var(--success);
   --color-success-muted: var(--success-muted);
@@ -27,6 +28,7 @@
 
   --color-warning: var(--warning);
   --color-warning-muted: var(--warning-muted);
+  --color-warning-solid: var(--warning-solid);
 
   --color-info: var(--info);
   --color-info-muted: var(--info-muted);

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Wallet, CreditCard, Banknote, Receipt, Sparkles, Archive, ChevronDown, ChevronRight } from 'lucide-react';
+import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { UI_LABELS } from '../../../config/constants';
 import { ACTION_ICONS, sectionTitle, UI_TEXT } from '../../../config/ui';
 import { showToast } from '../../../utils/toastHelpers';
@@ -22,6 +23,7 @@ import { CardStatementsModal } from './components/CardStatementsModal';
 import { useCardPaymentSchedule } from '../../../hooks/useCardPaymentSchedule';
 import { buildCreditCardUsagePlans } from '../../../utils/creditCardOptimizer';
 import { PaymentInstrumentsSection } from './components/PaymentInstrumentsSection';
+import { AccountSection } from './components/AccountSection';
 
 const ACCOUNT_TYPES = [
   { value: 'savings' as const, label: UI_LABELS.accountTypes.savings, icon: Wallet },
@@ -62,6 +64,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
   const { recurringPayments } = useRecurringDomain();
   const { debts } = useDebtsDomain();
   const formatCurrency = useFormatCurrency();
+  const { hideBalances } = useUIPreferences();
   const [showStatements, setShowStatements] = useState(false);
   const [showOptimizer, setShowOptimizer] = useState(false);
   const [paymentInstrumentsSelection, setPaymentInstrumentsSelection] = useState<{
@@ -404,11 +407,172 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
     .filter((account) => account.type !== 'credit' || !account.bankAccountId || !accounts.some((a) => a.id === account.bankAccountId))
     .sort((a, b) => (a.order || 0) - (b.order || 0));
 
+  // ─── Agrupado por naturaleza del dinero (cambio central del rediseño) ──────
+  // "Disponible" = ahorro + efectivo; "Crédito" = tarjetas. El drag & drop y el
+  // reordenado por teclado operan DENTRO de cada grupo (canMoveUp/Down se
+  // calculan contra el índice del grupo), así el orden se mantiene coherente.
+  const availableAccounts = mainAccounts.filter(
+    (account) => account.type === 'savings' || account.type === 'cash'
+  );
+  const creditMainAccounts = mainAccounts.filter((account) => account.type === 'credit');
+
+  // Subtotal "Disponible": suma de saldos de ahorro/efectivo (presentación, no
+  // recálculo de saldos: getAccountBalance es el mismo accesor del dominio).
+  const availableSubtotal = availableAccounts.reduce(
+    (sum, account) => sum + getAccountBalance(account.id!),
+    0
+  );
+  // Subtotal "Crédito" = deuda total consolidada (mismo total que la vista
+  // consolidada de tarjetas: incluye tarjetas asociadas, no solo las principales).
+  const creditDebtTotal = creditCardSummary.totalUsed;
+  // Patrimonio neto (disponible − deuda). Se muestra como dato secundario, NO
+  // como héroe: hoy puede ser negativo y no debe dominar la vista.
+  const netWorth = availableSubtotal - creditDebtTotal;
+
+  const displayAnchor = (amount: number) => (hideBalances ? '••••••' : formatCurrency(amount));
+
   // Cuentas archivadas: se gestionan en una sección colapsable aparte para poder
   // desarchivarlas. Incluye TC archivadas aunque tuvieran banco asociado.
   const archivedAccounts = accounts
     .filter((account) => account.archived)
     .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+  // Render de una cuenta principal + sus tarjetas asociadas anidadas.
+  // Reutilizado por ambas secciones (Disponible / Crédito) para no duplicar el
+  // extenso bloque de props de AccountCard. `groupIndex`/`groupLength` acotan el
+  // reordenado por teclado al grupo: así "subir/bajar" solo mueve dentro de la
+  // sección y la jerarquía principal + asociadas se conserva.
+  const renderAccountWithCards = (
+    account: Account,
+    groupIndex: number,
+    groupLength: number,
+  ) => {
+    const balance = getAccountBalance(account.id!);
+    const creditUsed = getCreditUsed(account.id!);
+    const nextCutoff = getNextCutoffDate(account);
+    const nextPayment = getNextPaymentDate(account);
+
+    // Tarjetas asociadas (se excluyen las archivadas: van a su sección).
+    const associatedCards = accounts
+      .filter((acc) => acc.type === 'credit' && acc.bankAccountId === account.id && !acc.archived)
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    return (
+      <div key={account.id}>
+        {/* Cuenta principal */}
+        <AccountCard
+          account={account}
+          balance={balance}
+          balanceSettling={!balancesReady}
+          creditUsed={creditUsed}
+          nextCutoff={nextCutoff}
+          nextPayment={nextPayment}
+          isDragging={dragDrop.draggedAccountId === account.id}
+          isDragOver={dragDrop.dragOverAccountId === account.id}
+          touchTransform={
+            dragDrop.draggedAccountId === account.id &&
+              dragDrop.touchCurrentY &&
+              dragDrop.touchStartY
+              ? `translateY(${dragDrop.touchCurrentY - dragDrop.touchStartY}px)`
+              : undefined
+          }
+          formatCurrency={formatCurrency}
+          onEdit={() => accountForm.openEditForm(account)}
+          onManagePaymentInstruments={userId
+            ? () => setPaymentInstrumentsSelection({
+                ownerId: userId,
+                accountId: account.id!,
+              })
+            : undefined}
+          onArchive={() => handleArchiveAccount(account)}
+          onSetDefault={() => setDefaultAccount(account.id!)}
+          onDelete={() =>
+            setDeleteConfirm({
+              accountId: account.id!,
+              name: account.name,
+              confirmName: '',
+              confirmTransactions: false,
+            })
+          }
+          onMerge={account.type === 'credit' && account.bankAccountId && creditCards.some(c => c.id !== account.id && c.bankAccountId === account.bankAccountId) ? () => openMergeCreditCardsModal(account) : undefined}
+          onMoveUp={() => dragDrop.moveAccount(account.id!, 'up')}
+          onMoveDown={() => dragDrop.moveAccount(account.id!, 'down')}
+          canMoveUp={groupIndex > 0}
+          canMoveDown={groupIndex < groupLength - 1}
+          onDragStart={(e) => dragDrop.handleDragStart(e, account.id!)}
+          onDragOver={(e) => dragDrop.handleDragOver(e, account.id!)}
+          onDragLeave={dragDrop.handleDragLeave}
+          onDrop={(e) => dragDrop.handleDrop(e, account.id!)}
+          onDragEnd={dragDrop.handleDragEnd}
+          onTouchStart={(e) => dragDrop.handleTouchStart(e, account.id!)}
+          onTouchMove={dragDrop.handleTouchMove}
+          onTouchEnd={dragDrop.handleTouchEnd}
+        />
+
+        {/* Tarjetas asociadas */}
+        {associatedCards.length > 0 && (
+          <div
+            className={`ml-4 sm:ml-8 mt-3 space-y-3 border-l-2 border-border-accent pl-4 transition-opacity duration-200 ${dragDrop.draggedAccountId === account.id ? 'opacity-50' : ''
+              }`}
+          >
+            {associatedCards.map((card, cardIndex) => (
+              <AccountCard
+                key={card.id}
+                account={card}
+                balance={getAccountBalance(card.id!)}
+                balanceSettling={!balancesReady}
+                creditUsed={getCreditUsed(card.id!)}
+                nextCutoff={getNextCutoffDate(card)}
+                nextPayment={getNextPaymentDate(card)}
+                parentAccountName={account.name}
+                isAssociated
+                isDragging={dragDrop.draggedAccountId === card.id}
+                isDragOver={dragDrop.dragOverAccountId === card.id}
+                touchTransform={
+                  dragDrop.draggedAccountId === card.id &&
+                    dragDrop.touchCurrentY &&
+                    dragDrop.touchStartY
+                    ? `translateY(${dragDrop.touchCurrentY - dragDrop.touchStartY}px)`
+                    : undefined
+                }
+                formatCurrency={formatCurrency}
+                onEdit={() => accountForm.openEditForm(card)}
+                onManagePaymentInstruments={userId
+                  ? () => setPaymentInstrumentsSelection({
+                      ownerId: userId,
+                      accountId: card.id!,
+                    })
+                  : undefined}
+                onArchive={() => handleArchiveAccount(card)}
+                onSetDefault={() => setDefaultAccount(card.id!)}
+                onDelete={() =>
+                  setDeleteConfirm({
+                    accountId: card.id!,
+                    name: card.name,
+                    confirmName: '',
+                    confirmTransactions: false,
+                  })
+                }
+                onMerge={card.bankAccountId && creditCards.some(c => c.id !== card.id && c.bankAccountId === card.bankAccountId) ? () => openMergeCreditCardsModal(card) : undefined}
+                onMoveUp={() => dragDrop.moveAccount(card.id!, 'up')}
+                onMoveDown={() => dragDrop.moveAccount(card.id!, 'down')}
+                canMoveUp={cardIndex > 0}
+                canMoveDown={cardIndex < associatedCards.length - 1}
+                onDragStart={(e) => dragDrop.handleDragStart(e, card.id!)}
+                onDragOver={(e) => dragDrop.handleDragOver(e, card.id!)}
+                onDragLeave={dragDrop.handleDragLeave}
+                onDrop={(e) => dragDrop.handleDrop(e, card.id!)}
+                onDragEnd={dragDrop.handleDragEnd}
+                onTouchStart={(e) => dragDrop.handleTouchStart(e, card.id!)}
+                onTouchMove={dragDrop.handleTouchMove}
+                onTouchEnd={dragDrop.handleTouchEnd}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="card animate-in fade-in slide-in-from-bottom-2 duration-500">
@@ -429,7 +593,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
               <button
                 type="button"
                 onClick={() => setShowOptimizer(true)}
-                className="flex items-center gap-2 rounded-lg border border-border-accent bg-primary/10 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary min-h-[44px]"
+                className="flex items-center gap-2 rounded-lg border border-border-accent bg-primary/10 px-4 py-2 text-sm font-medium text-primary-on-surface transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary min-h-[44px]"
               >
                 <Sparkles size={18} />
                 Próxima compra
@@ -438,7 +602,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
               <button
                 type="button"
                 onClick={() => setShowStatements(true)}
-                className="flex items-center gap-2 rounded-lg border border-border-accent bg-primary/10 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary min-h-[44px]"
+                className="flex items-center gap-2 rounded-lg border border-border-accent bg-primary/10 px-4 py-2 text-sm font-medium text-primary-on-surface transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary min-h-[44px]"
               >
                 <Receipt size={18} />
                 Extractos
@@ -515,15 +679,6 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
         isDeleting={isDeletingAccount}
       />
 
-      <CreditCardsConsolidatedSummary
-        cards={creditCardSummary.cards}
-        totalLimit={creditCardSummary.totalLimit}
-        totalUsed={creditCardSummary.totalUsed}
-        totalAvailable={creditCardSummary.totalAvailable}
-        usagePercentage={creditCardSummary.usagePercentage}
-        formatCurrency={formatCurrency}
-      />
-
       <CreditCardOptimizerModal
         isOpen={showOptimizer}
         onClose={() => setShowOptimizer(false)}
@@ -561,7 +716,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
         onClose={closeMergeCreditCardsModal}
       />
 
-      {/* Lista de cuentas */}
+      {/* Lista de cuentas agrupada por naturaleza del dinero */}
       {mainAccounts.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-12 text-center">
           <div className="rounded-full bg-primary/10 p-3 text-primary">
@@ -575,135 +730,80 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
           </div>
         </div>
       ) : (
-      <div className="space-y-4">
-        {mainAccounts.map((account, mainIndex) => {
-          const balance = getAccountBalance(account.id!);
-          const creditUsed = getCreditUsed(account.id!);
-          const nextCutoff = getNextCutoffDate(account);
-          const nextPayment = getNextPaymentDate(account);
-
-          // Tarjetas asociadas (se excluyen las archivadas: van a su sección).
-          const associatedCards = accounts
-            .filter((acc) => acc.type === 'credit' && acc.bankAccountId === account.id && !acc.archived)
-            .sort((a, b) => (a.order || 0) - (b.order || 0));
-
-          return (
-            <div key={account.id}>
-              {/* Cuenta principal */}
-              <AccountCard
-                account={account}
-                balance={balance}
-                balanceSettling={!balancesReady}
-                creditUsed={creditUsed}
-                nextCutoff={nextCutoff}
-                nextPayment={nextPayment}
-                isDragging={dragDrop.draggedAccountId === account.id}
-                isDragOver={dragDrop.dragOverAccountId === account.id}
-                touchTransform={
-                  dragDrop.draggedAccountId === account.id &&
-                    dragDrop.touchCurrentY &&
-                    dragDrop.touchStartY
-                    ? `translateY(${dragDrop.touchCurrentY - dragDrop.touchStartY}px)`
-                    : undefined
-                }
-                formatCurrency={formatCurrency}
-                onEdit={() => accountForm.openEditForm(account)}
-                onManagePaymentInstruments={userId
-                  ? () => setPaymentInstrumentsSelection({
-                      ownerId: userId,
-                      accountId: account.id!,
-                    })
-                  : undefined}
-                onArchive={() => handleArchiveAccount(account)}
-                onSetDefault={() => setDefaultAccount(account.id!)}
-                onDelete={() =>
-                  setDeleteConfirm({
-                    accountId: account.id!,
-                    name: account.name,
-                    confirmName: '',
-                    confirmTransactions: false,
-                  })
-                }
-                onMerge={account.type === 'credit' && account.bankAccountId && creditCards.some(c => c.id !== account.id && c.bankAccountId === account.bankAccountId) ? () => openMergeCreditCardsModal(account) : undefined}
-                onMoveUp={() => dragDrop.moveAccount(account.id!, 'up')}
-                onMoveDown={() => dragDrop.moveAccount(account.id!, 'down')}
-                canMoveUp={mainIndex > 0}
-                canMoveDown={mainIndex < mainAccounts.length - 1}
-                onDragStart={(e) => dragDrop.handleDragStart(e, account.id!)}
-                onDragOver={(e) => dragDrop.handleDragOver(e, account.id!)}
-                onDragLeave={dragDrop.handleDragLeave}
-                onDrop={(e) => dragDrop.handleDrop(e, account.id!)}
-                onDragEnd={dragDrop.handleDragEnd}
-                onTouchStart={(e) => dragDrop.handleTouchStart(e, account.id!)}
-                onTouchMove={dragDrop.handleTouchMove}
-                onTouchEnd={dragDrop.handleTouchEnd}
-              />
-
-              {/* Tarjetas asociadas */}
-              {associatedCards.length > 0 && (
-                <div
-                  className={`ml-4 sm:ml-8 mt-3 space-y-3 border-l-2 border-border-accent pl-4 transition-opacity duration-200 ${dragDrop.draggedAccountId === account.id ? 'opacity-50' : ''
-                    }`}
-                >
-                  {associatedCards.map((card, cardIndex) => (
-                    <AccountCard
-                      key={card.id}
-                      account={card}
-                      balance={getAccountBalance(card.id!)}
-                      balanceSettling={!balancesReady}
-                      creditUsed={getCreditUsed(card.id!)}
-                      nextCutoff={getNextCutoffDate(card)}
-                      nextPayment={getNextPaymentDate(card)}
-                      parentAccountName={account.name}
-                      isAssociated
-                      isDragging={dragDrop.draggedAccountId === card.id}
-                      isDragOver={dragDrop.dragOverAccountId === card.id}
-                      touchTransform={
-                        dragDrop.draggedAccountId === card.id &&
-                          dragDrop.touchCurrentY &&
-                          dragDrop.touchStartY
-                          ? `translateY(${dragDrop.touchCurrentY - dragDrop.touchStartY}px)`
-                          : undefined
-                      }
-                      formatCurrency={formatCurrency}
-                      onEdit={() => accountForm.openEditForm(card)}
-                      onManagePaymentInstruments={userId
-                        ? () => setPaymentInstrumentsSelection({
-                            ownerId: userId,
-                            accountId: card.id!,
-                          })
-                        : undefined}
-                      onArchive={() => handleArchiveAccount(card)}
-                      onSetDefault={() => setDefaultAccount(card.id!)}
-                      onDelete={() =>
-                        setDeleteConfirm({
-                          accountId: card.id!,
-                          name: card.name,
-                          confirmName: '',
-                          confirmTransactions: false,
-                        })
-                      }
-                      onMerge={card.bankAccountId && creditCards.some(c => c.id !== card.id && c.bankAccountId === card.bankAccountId) ? () => openMergeCreditCardsModal(card) : undefined}
-                      onMoveUp={() => dragDrop.moveAccount(card.id!, 'up')}
-                      onMoveDown={() => dragDrop.moveAccount(card.id!, 'down')}
-                      canMoveUp={cardIndex > 0}
-                      canMoveDown={cardIndex < associatedCards.length - 1}
-                      onDragStart={(e) => dragDrop.handleDragStart(e, card.id!)}
-                      onDragOver={(e) => dragDrop.handleDragOver(e, card.id!)}
-                      onDragLeave={dragDrop.handleDragLeave}
-                      onDrop={(e) => dragDrop.handleDrop(e, card.id!)}
-                      onDragEnd={dragDrop.handleDragEnd}
-                      onTouchStart={(e) => dragDrop.handleTouchStart(e, card.id!)}
-                      onTouchMove={dragDrop.handleTouchMove}
-                      onTouchEnd={dragDrop.handleTouchEnd}
-                    />
-                  ))}
-                </div>
-              )}
+        <>
+          {/* Ancla de "dinero disponible": cifra que importa, sin ser un
+              hero-metric decorativo. El patrimonio neto se muestra como dato
+              secundario (puede ser negativo; no debe dominar). */}
+          <div className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Dinero disponible</p>
+              <p className="mt-0.5 font-mono text-3xl font-bold text-success sm:text-4xl">
+                {displayAnchor(availableSubtotal)}
+              </p>
             </div>
-          );
-        })}
-      </div>
+            {creditMainAccounts.length > 0 && (
+              <p className="text-sm text-muted-foreground">
+                Patrimonio neto{' '}
+                <span className={`font-mono font-semibold ${netWorth < 0 ? 'text-destructive' : 'text-foreground'}`}>
+                  {displayAnchor(netWorth)}
+                </span>
+              </p>
+            )}
+          </div>
+
+          {/* Dos columnas en escritorio (Disponible | Crédito), una sola
+              apilada en móvil. Mismos componentes; responsive estructural. Si
+              solo existe un grupo, ocupa todo el ancho (sin columna vacía). */}
+          <div
+            className={`grid grid-cols-1 gap-x-8 gap-y-10 ${
+              availableAccounts.length > 0 && creditMainAccounts.length > 0
+                ? 'lg:grid-cols-2'
+                : ''
+            }`}
+          >
+            {availableAccounts.length > 0 && (
+              <AccountSection
+                icon={Wallet}
+                title="Disponible"
+                subtotalLabel="Saldo disponible"
+                subtotalValue={displayAnchor(availableSubtotal)}
+                tone="success"
+                count={availableAccounts.length}
+                headingId="accounts-section-available"
+              >
+                {availableAccounts.map((account, index) =>
+                  renderAccountWithCards(account, index, availableAccounts.length)
+                )}
+              </AccountSection>
+            )}
+
+            {creditMainAccounts.length > 0 && (
+              <AccountSection
+                icon={CreditCard}
+                title="Crédito"
+                subtotalLabel="Deuda total"
+                subtotalValue={displayAnchor(creditDebtTotal)}
+                tone="destructive"
+                count={creditMainAccounts.length}
+                headingId="accounts-section-credit"
+                summarySlot={
+                  <CreditCardsConsolidatedSummary
+                    cards={creditCardSummary.cards}
+                    totalLimit={creditCardSummary.totalLimit}
+                    totalUsed={creditCardSummary.totalUsed}
+                    totalAvailable={creditCardSummary.totalAvailable}
+                    usagePercentage={creditCardSummary.usagePercentage}
+                    formatCurrency={formatCurrency}
+                  />
+                }
+              >
+                {creditMainAccounts.map((account, index) =>
+                  renderAccountWithCards(account, index, creditMainAccounts.length)
+                )}
+              </AccountSection>
+            )}
+          </div>
+        </>
       )}
 
       {/* Sección de cuentas archivadas (colapsable). Permite desarchivar y

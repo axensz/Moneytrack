@@ -20,15 +20,22 @@ sólido-sobre-muted.
 | Muted / fg | `#f5f4f1` / `#6b6b6b` | `#262626` / `#a3a3a3` |
 | **Primary (marca)** | `#7c3aed` | `#8b5cf6` |
 | Primary solid (botón AA) | `#7c3aed` | `#6d28d9` |
+| Primary on-surface (texto AA) | `#6d28d9` | `#c4b5fd` |
 | Success | `#047857` / muted `#ecfdf5` | `#10b981` / `#03291c` |
-| Destructive | `#c81e1e` / muted `#fef2f2` | `#ef4444` / `#3a0808` |
-| Warning | `#b45309` / muted `#fffbeb` | `#f59e0b` / `#4a2308` |
-| Info | `#2563eb` / muted `#eff6ff` | `#3b82f6` / `#0d1733` |
+| Destructive | `#c81e1e` / muted `#fef2f2` | `#f56565` / `#3a0808` |
+| Warning | `#b45309` / muted `#fffbeb` · solid `#b45309` | `#f59e0b` / `#4a2308` · solid `#b45309` |
+| Info | `#2563eb` / muted `#eff6ff` | `#60a5fa` / `#0d1733` |
 | Balance | accent `#f3e8ff`, value `#7c3aed` | accent `#581c87`, value `#c4b5fd` |
 | Border / accent | `#e5e5e5` / `#ddd6fe` | `#4c1d95` / `#6d28d9` |
 
 Rellenos sólidos con texto blanco usan `--primary-solid` (no `--primary`) para
-cumplir AA en dark. `--primary` queda para texto, borde y foco.
+cumplir AA en dark. `--primary` queda para borde, foco e iconos (umbral 3:1 de
+componente). El violet de marca como **texto pequeño** sobre card o tinte
+`primary/10` usa `--primary-on-surface` (`text-primary-on-surface`): `#6d28d9`
+en claro, `#c4b5fd` en oscuro, ambos ≥4.5:1 (badges de tipo, nombre de cuenta
+padre, botones de acción violet, cifras violet del resumen de tarjetas). Esto
+corrige el fallo AA de `--primary` como texto en superficies oscuras
+(`#8b5cf6` daba ~3.1–3.5:1).
 
 ## Typography
 

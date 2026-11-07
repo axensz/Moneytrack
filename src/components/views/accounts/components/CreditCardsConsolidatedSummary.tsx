@@ -60,7 +60,7 @@ export const CreditCardsConsolidatedSummary: React.FC<CreditCardsConsolidatedSum
               <h3 className="text-lg font-bold text-foreground">
                 Vista consolidada de tarjetas
               </h3>
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary-on-surface">
                 {cards.length} tarjeta{cards.length !== 1 ? 's' : ''}
               </span>
             </div>
@@ -78,7 +78,7 @@ export const CreditCardsConsolidatedSummary: React.FC<CreditCardsConsolidatedSum
         )}
       </div>
 
-      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-5 grid grid-cols-2 gap-3">
         <SummaryMetric label="Cupo total" value={displayAmount(totalLimit)} tone="primary" />
         <SummaryMetric label="Cupo utilizado" value={displayAmount(totalUsed)} tone={isHighUsage ? 'warning' : 'foreground'} />
         <SummaryMetric label="Disponible total" value={displayAmount(totalAvailable)} tone={totalAvailable > 0 ? 'success' : 'warning'} />
@@ -125,18 +125,19 @@ interface SummaryMetricProps {
 }
 
 const toneClasses: Record<SummaryMetricProps['tone'], string> = {
-  primary: 'text-primary',
+  // Violet de marca como TEXTO sobre card: token AA en claro y oscuro.
+  primary: 'text-primary-on-surface',
   success: 'text-success',
   warning: 'text-warning',
   foreground: 'text-foreground',
 };
 
 const SummaryMetric: React.FC<SummaryMetricProps> = ({ label, value, tone }) => (
-  <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
+  <div className="min-w-0 rounded-xl border border-border bg-card p-3 shadow-sm">
     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
       {label}
     </p>
-    <p className={`mt-1 text-lg font-bold font-mono ${toneClasses[tone]}`}>
+    <p className={`mt-1 break-words text-base font-bold font-mono sm:text-lg ${toneClasses[tone]}`}>
       {value}
     </p>
   </div>

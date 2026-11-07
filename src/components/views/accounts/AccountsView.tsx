@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Wallet, CreditCard, Banknote, Receipt, Sparkles } from 'lucide-react';
+import { Wallet, CreditCard, Banknote, Receipt, Sparkles, Archive, ChevronDown, ChevronRight } from 'lucide-react';
 import { UI_LABELS } from '../../../config/constants';
 import { ACTION_ICONS, sectionTitle, UI_TEXT } from '../../../config/ui';
 import { showToast } from '../../../utils/toastHelpers';
@@ -48,6 +48,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
     addAccount,
     updateAccount,
     deleteAccount,
+    archiveAccount,
+    unarchiveAccount,
     mergeCreditCards: mergeCreditCardsDomain,
     setDefaultAccount,
     getAccountBalance,
@@ -165,6 +167,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
   // (la acción es destructiva en cascada); el state deshabilita el botón (#accounts-8).
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const isDeletingAccountRef = useRef(false);
+  // Sección colapsable de cuentas archivadas (colapsada por defecto: no estorban).
+  const [showArchived, setShowArchived] = useState(false);
 
   // Inicializar order si no existe
   // AUDIT-FIX (MEDIO-01): deps correctas para evitar stale closures
@@ -177,8 +181,9 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accounts.length]);
 
-  // Filtrar cuentas de ahorro para asociación con TC
-  const savingsAccounts = accounts.filter((acc) => acc.type === 'savings');
+  // Filtrar cuentas de ahorro para asociación con TC. Se EXCLUYEN las archivadas:
+  // al crear/editar una TC no debe poder asociarse a un banco archivado.
+  const savingsAccounts = accounts.filter((acc) => acc.type === 'savings' && !acc.archived);
 
   const creditCards = accounts.filter((acc) => acc.type === 'credit' && acc.id);
   const cardsNeedingStatementConfig = creditCards
@@ -372,9 +377,37 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
     }
   };
 
-  // Cuentas principales (no asociadas o cuya cuenta bancaria asociada ya no existe)
+  // Archivar/desarchivar: delegan en el dominio (updateAccount con archived).
+  // Conservan el historial; no borran nada. Toast consistente con el resto.
+  const handleArchiveAccount = async (account: Account) => {
+    try {
+      await archiveAccount(account.id!);
+      showToast.success(`Cuenta "${account.name}" archivada`);
+    } catch (error) {
+      showToast.error(`Error: ${(error as Error).message || 'Error desconocido'}`);
+    }
+  };
+
+  const handleUnarchiveAccount = async (account: Account) => {
+    try {
+      await unarchiveAccount(account.id!);
+      showToast.success(`Cuenta "${account.name}" desarchivada`);
+    } catch (error) {
+      showToast.error(`Error: ${(error as Error).message || 'Error desconocido'}`);
+    }
+  };
+
+  // Cuentas principales (no asociadas o cuya cuenta bancaria asociada ya no existe).
+  // Se EXCLUYEN las archivadas: no aparecen en la lista principal (comportamiento A).
   const mainAccounts = accounts
+    .filter((account) => !account.archived)
     .filter((account) => account.type !== 'credit' || !account.bankAccountId || !accounts.some((a) => a.id === account.bankAccountId))
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+  // Cuentas archivadas: se gestionan en una sección colapsable aparte para poder
+  // desarchivarlas. Incluye TC archivadas aunque tuvieran banco asociado.
+  const archivedAccounts = accounts
+    .filter((account) => account.archived)
     .sort((a, b) => (a.order || 0) - (b.order || 0));
 
   return (
@@ -549,9 +582,9 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
           const nextCutoff = getNextCutoffDate(account);
           const nextPayment = getNextPaymentDate(account);
 
-          // Tarjetas asociadas
+          // Tarjetas asociadas (se excluyen las archivadas: van a su sección).
           const associatedCards = accounts
-            .filter((acc) => acc.type === 'credit' && acc.bankAccountId === account.id)
+            .filter((acc) => acc.type === 'credit' && acc.bankAccountId === account.id && !acc.archived)
             .sort((a, b) => (a.order || 0) - (b.order || 0));
 
           return (
@@ -581,6 +614,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
                       accountId: account.id!,
                     })
                   : undefined}
+                onArchive={() => handleArchiveAccount(account)}
                 onSetDefault={() => setDefaultAccount(account.id!)}
                 onDelete={() =>
                   setDeleteConfirm({
@@ -639,6 +673,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
                             accountId: card.id!,
                           })
                         : undefined}
+                      onArchive={() => handleArchiveAccount(card)}
                       onSetDefault={() => setDefaultAccount(card.id!)}
                       onDelete={() =>
                         setDeleteConfirm({
@@ -669,6 +704,72 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
           );
         })}
       </div>
+      )}
+
+      {/* Sección de cuentas archivadas (colapsable). Permite desarchivar y
+          conserva el historial: estas cuentas siguen contando en estadísticas. */}
+      {archivedAccounts.length > 0 && (
+        <div className="mt-8 border-t border-border pt-6">
+          <button
+            type="button"
+            onClick={() => setShowArchived((prev) => !prev)}
+            aria-expanded={showArchived}
+            className="flex w-full items-center gap-2 rounded-lg px-1 py-2 text-left text-sm font-semibold text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary min-h-[44px]"
+          >
+            {showArchived
+              ? <ChevronDown size={18} className="text-muted-foreground" aria-hidden="true" />
+              : <ChevronRight size={18} className="text-muted-foreground" aria-hidden="true" />}
+            <Archive size={16} className="text-muted-foreground" aria-hidden="true" />
+            Cuentas archivadas
+            <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+              {archivedAccounts.length}
+            </span>
+          </button>
+
+          {showArchived && (
+            <>
+              <p className="mt-1 mb-3 px-1 text-sm text-muted-foreground">
+                No aparecen en la lista principal ni en los selectores, pero su
+                historial sigue contando en saldos y estadísticas.
+              </p>
+              <div className="space-y-3">
+                {archivedAccounts.map((account) => (
+                  <AccountCard
+                    key={account.id}
+                    account={account}
+                    balance={getAccountBalance(account.id!)}
+                    balanceSettling={!balancesReady}
+                    creditUsed={getCreditUsed(account.id!)}
+                    nextCutoff={getNextCutoffDate(account)}
+                    nextPayment={getNextPaymentDate(account)}
+                    isDragging={false}
+                    isDragOver={false}
+                    formatCurrency={formatCurrency}
+                    onEdit={() => accountForm.openEditForm(account)}
+                    onUnarchive={() => handleUnarchiveAccount(account)}
+                    onSetDefault={() => setDefaultAccount(account.id!)}
+                    onDelete={() =>
+                      setDeleteConfirm({
+                        accountId: account.id!,
+                        name: account.name,
+                        confirmName: '',
+                        confirmTransactions: false,
+                      })
+                    }
+                    onDragStart={() => {}}
+                    onDragOver={() => {}}
+                    onDragLeave={() => {}}
+                    onDrop={() => {}}
+                    onDragEnd={() => {}}
+                    onTouchStart={() => {}}
+                    onTouchMove={() => {}}
+                    onTouchEnd={() => {}}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       )}
 
       <PaymentInstrumentsSection

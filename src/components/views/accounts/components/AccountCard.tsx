@@ -1,7 +1,7 @@
 'use client';
 
 import React, { memo, useMemo } from 'react';
-import { Edit2, Trash2, GripVertical, ChevronUp, ChevronDown, Wallet, CreditCard, Banknote, Combine, AlertTriangle, Smartphone } from 'lucide-react';
+import { Edit2, Trash2, GripVertical, ChevronUp, ChevronDown, Wallet, CreditCard, Banknote, Combine, AlertTriangle, Smartphone, Archive, ArchiveRestore } from 'lucide-react';
 import type { Account } from '../../../../types/finance';
 import { getCreditAuthorityState } from '../../../../utils/creditAuthority';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
@@ -42,6 +42,10 @@ interface AccountCardProps {
   onDelete: () => void;
   onMerge?: () => void;
   onManagePaymentInstruments?: () => void;
+  /** Archivar la cuenta (ocúltala de lista/selectores, conserva historial). Ausente = sin acción. */
+  onArchive?: () => void;
+  /** Desarchivar la cuenta (vuelve a mostrarla). Ausente = sin acción. */
+  onUnarchive?: () => void;
   /** Alternativa de teclado a drag & drop (WCAG 2.1.1). Opcional para no romper otros usos. */
   onMoveUp?: () => void;
   onMoveDown?: () => void;
@@ -79,6 +83,8 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
   onDelete,
   onMerge,
   onManagePaymentInstruments,
+  onArchive,
+  onUnarchive,
   onMoveUp,
   onMoveDown,
   canMoveUp = false,
@@ -205,6 +211,12 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
                     Principal
                   </span>
                 )}
+                {account.archived && (
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground px-2 py-0.5 rounded-full font-medium bg-muted">
+                    <Archive size={12} aria-hidden="true" />
+                    Archivada
+                  </span>
+                )}
               </div>
             </div>
 
@@ -293,14 +305,40 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
             </button>
           )}
 
+          {/* Desarchivar: acción primaria de una cuenta archivada. */}
+          {account.archived && onUnarchive && (
+            <button
+              onClick={onUnarchive}
+              aria-label={`Desarchivar ${account.name}`}
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/15 border border-primary/40 hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <ArchiveRestore size={14} />
+              Desarchivar
+            </button>
+          )}
+
           {!account.isDefault && (
             <>
-              <button
-                onClick={onSetDefault}
-                className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/15 border border-primary/40 hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                Marcar como principal
-              </button>
+              {/* "Marcar como principal" solo tiene sentido en cuentas activas. */}
+              {!account.archived && (
+                <button
+                  onClick={onSetDefault}
+                  className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/15 border border-primary/40 hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  Marcar como principal
+                </button>
+              )}
+              {/* Archivar: alternativa no destructiva a eliminar (conserva historial). */}
+              {!account.archived && onArchive && (
+                <button
+                  onClick={onArchive}
+                  aria-label={`Archivar ${account.name}`}
+                  className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/15 border border-primary/40 hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <Archive size={14} />
+                  Archivar
+                </button>
+              )}
               <button
                 onClick={onDelete}
                 aria-label={`Eliminar ${account.name}`}

@@ -185,6 +185,13 @@ export interface Account {
   createdAt?: Date;
   order?: number; // Orden de visualización
 
+  // 🆕 Archivado (comportamiento A): una cuenta archivada se OCULTA de la lista
+  // principal y de los selectores al crear transacciones/medios de pago, PERO sus
+  // transacciones históricas SIGUEN contando en saldos, estadísticas y reportes.
+  // Archivar NO borra nada y es reversible. Retrocompatible: ausente = no archivada.
+  archived?: boolean;
+  archivedAt?: Date; // Momento en que se archivó (opcional, para auditoría)
+
   // 🆕 Tasa de interés para TC
   interestRate?: number; // Tasa de Interés Efectiva Anual (E.A.) en porcentaje (ej: 23.99)
 

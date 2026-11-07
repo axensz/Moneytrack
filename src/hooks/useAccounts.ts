@@ -201,6 +201,30 @@ export function useAccounts(
     }
   };
 
+  // Archivar una cuenta (comportamiento A): se implementa como un updateAccount
+  // que marca archived=true (NUNCA como delete). Oculta la cuenta de la lista
+  // principal y de los selectores al crear, pero conserva intactas sus
+  // transacciones históricas y su peso en saldos/estadísticas. Reversible vía
+  // unarchiveAccount. No se permite archivar la cuenta por defecto: igual que
+  // con el borrado, primero hay que reasignar la cuenta principal a otra.
+  const archiveAccount = async (id: string) => {
+    const account = accounts.find(a => a.id === id);
+    if (!account) throw new Error('La cuenta ya no existe');
+    if (account.isDefault) {
+      throw new Error('No puedes archivar la cuenta por defecto. Marca otra cuenta como principal primero.');
+    }
+    await updateAccount(id, { archived: true, archivedAt: new Date() });
+  };
+
+  // Desarchivar: vuelve a mostrar la cuenta en la lista principal y en los
+  // selectores. Solo togglea archived=false; archivedAt se conserva como dato de
+  // auditoría (el comportamiento depende únicamente del flag `archived`).
+  const unarchiveAccount = async (id: string) => {
+    const account = accounts.find(a => a.id === id);
+    if (!account) throw new Error('La cuenta ya no existe');
+    await updateAccount(id, { archived: false });
+  };
+
   const deleteAccount = async (id: string, options: { preserveTransactions?: boolean; allowDefaultDelete?: boolean } = {}) => {
     const account = accounts.find(a => a.id === id);
     if (userId && account?.isDefault && !options.allowDefaultDelete) {
@@ -506,6 +530,8 @@ export function useAccounts(
     addAccount,
     updateAccount,
     deleteAccount,
+    archiveAccount,
+    unarchiveAccount,
     mergeCreditCards,
     setDefaultAccount,
     getAccountBalance,

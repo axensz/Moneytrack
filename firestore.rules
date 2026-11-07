@@ -407,6 +407,14 @@ service cloud.firestore {
         );
     }
 
+    // Archivado de cuentas (comportamiento A): `archived` opcional (bool) y
+    // `archivedAt` opcional (timestamp). Ausentes = cuenta activa (retrocompatible).
+    // Mantiene el patrón endurecido: si están presentes, se validan los tipos.
+    function hasValidArchivedFields(data) {
+      return (!('archived' in data.keys()) || data.archived is bool)
+        && (!('archivedAt' in data.keys()) || data.archivedAt is timestamp);
+    }
+
     function hasValidTransferReferences(userId, data) {
       let sourcePath = /databases/$(database)/documents/users/$(userId)/accounts/$(data.accountId);
       return data.type != 'transfer'
@@ -580,15 +588,19 @@ service cloud.firestore {
           && request.resource.data.initialBalance is number
           && request.resource.data.initialBalance >= -1000000000
           && request.resource.data.initialBalance <= 1000000000
-          && hasValidCreditAuthority(request.resource.data);
+          && hasValidCreditAuthority(request.resource.data)
+          && hasValidArchivedFields(request.resource.data);
 
-        // AUDIT-FIX: update valida que type sea inmutable y name sea válido
+        // AUDIT-FIX: update valida que type sea inmutable y name sea válido.
+        // Admite setear/limpiar archived (bool) y archivedAt (timestamp) sin
+        // aflojar las validaciones existentes.
         allow update: if isOwner(userId)
           && accountOperationAllowsWrite(userId)
           && request.resource.data.type == resource.data.type
           && request.resource.data.name is string
           && request.resource.data.name.size() > 0
-          && hasValidCreditAuthority(request.resource.data);
+          && hasValidCreditAuthority(request.resource.data)
+          && hasValidArchivedFields(request.resource.data);
 
         allow delete: if isOwner(userId)
           && accountOperationAllowsWrite(userId);

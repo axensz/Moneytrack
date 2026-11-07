@@ -125,6 +125,10 @@ export interface FinanceContextValue {
     options?: AccountUpdateOptions
   ) => Promise<void>;
   deleteAccount: (id: string, options?: { preserveTransactions?: boolean; allowDefaultDelete?: boolean }) => Promise<void>;
+  /** Archiva una cuenta (comportamiento A): la oculta de lista/selectores, conserva historial. */
+  archiveAccount: (id: string) => Promise<void>;
+  /** Revierte el archivado: vuelve a mostrar la cuenta en lista y selectores. */
+  unarchiveAccount: (id: string) => Promise<void>;
   mergeCreditCards: (params: MergeCreditCardsParams) => Promise<void>;
   setDefaultAccount: (id: string) => Promise<void>;
   getAccountBalance: (id: string) => number;
@@ -276,6 +280,8 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     addAccount,
     updateAccount,
     deleteAccount,
+    archiveAccount,
+    unarchiveAccount,
     mergeCreditCards,
     setDefaultAccount,
     getAccountBalance,
@@ -442,6 +448,8 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     addAccount,
     updateAccount,
     deleteAccount,
+    archiveAccount,
+    unarchiveAccount,
     mergeCreditCards,
     setDefaultAccount,
     getAccountBalance,
@@ -504,7 +512,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     firestoreError, retryLoad,
     addTransaction, addCreditPaymentAtomic, addRecurringTransactionAtomic, linkRecurringTransactionAtomic,
     restoreTransactionWithDebtSync, deleteTransactionWithDebtSync, updateTransaction,
-    addAccount, updateAccount, deleteAccount, mergeCreditCards, setDefaultAccount,
+    addAccount, updateAccount, deleteAccount, archiveAccount, unarchiveAccount, mergeCreditCards, setDefaultAccount,
     getAccountBalance, getCreditUsed, getTransactionCountForAccount,
     addCategory, deleteCategory, addTransactionBeneficiary, deleteTransactionBeneficiary,
     addRecurringPayment, updateRecurringPayment, deleteRecurringPayment,

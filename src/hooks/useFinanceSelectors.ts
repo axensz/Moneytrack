@@ -76,6 +76,8 @@ const selectAccountDomain = (s: FinanceContextValue) => ({
   addAccount: s.addAccount,
   updateAccount: s.updateAccount,
   deleteAccount: s.deleteAccount,
+  archiveAccount: s.archiveAccount,
+  unarchiveAccount: s.unarchiveAccount,
   mergeCreditCards: s.mergeCreditCards,
   setDefaultAccount: s.setDefaultAccount,
   getAccountBalance: s.getAccountBalance,

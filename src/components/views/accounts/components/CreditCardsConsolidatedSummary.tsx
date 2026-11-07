@@ -20,6 +20,12 @@ interface CreditCardsConsolidatedSummaryProps {
   totalAvailable: number;
   usagePercentage: number;
   formatCurrency: (amount: number) => string;
+  /**
+   * Variante COMPACTA para el layout móvil: 3 líneas (cupo/utilizado/disponible)
+   * + barra de uso, en lugar de la rejilla 2x2. Reduce la densidad encima de las
+   * tarjetas billetera. Por defecto 'full' (el layout de escritorio existente).
+   */
+  variant?: 'full' | 'compact';
 }
 
 /**
@@ -33,6 +39,7 @@ export const CreditCardsConsolidatedSummary: React.FC<CreditCardsConsolidatedSum
   totalAvailable,
   usagePercentage,
   formatCurrency,
+  variant = 'full',
 }) => {
   const { hideBalances } = useUIPreferences();
 
@@ -47,6 +54,66 @@ export const CreditCardsConsolidatedSummary: React.FC<CreditCardsConsolidatedSum
   const highestUsageCard = [...cards]
     .filter((card) => card.creditLimit > 0 && card.used > 0)
     .sort((a, b) => b.usagePercentage - a.usagePercentage)[0];
+
+  // ─── Variante COMPACTA (móvil) ───────────────────────────────────────────
+  // Tres líneas clave + barra de uso. Mismos totales que la variante completa;
+  // solo cambia la densidad. Sustituye la rejilla 2x2 apretada en móvil.
+  if (variant === 'compact') {
+    return (
+      <section className="mb-5 rounded-2xl border border-border bg-primary/5 p-4 shadow-sm">
+        <div className="mb-3 flex items-center gap-2">
+          <div className="rounded-lg bg-primary/10 p-1.5 text-primary">
+            <CreditCard size={16} />
+          </div>
+          <h3 className="text-sm font-bold text-foreground">Vista consolidada</h3>
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary-on-surface">
+            {cards.length} tarjeta{cards.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+
+        <dl className="space-y-1.5 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-muted-foreground">Cupo total</dt>
+            <dd className="font-mono font-semibold text-primary-on-surface">{displayAmount(totalLimit)}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-muted-foreground">Cupo utilizado</dt>
+            <dd className={`font-mono font-semibold ${isHighUsage ? 'text-warning' : 'text-foreground'}`}>
+              {displayAmount(totalUsed)}
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-muted-foreground">Disponible total</dt>
+            <dd className={`font-mono font-semibold ${totalAvailable > 0 ? 'text-success' : 'text-warning'}`}>
+              {displayAmount(totalAvailable)}
+            </dd>
+          </div>
+        </dl>
+
+        <div className="mt-3">
+          <div className="mb-1.5 flex justify-between text-xs">
+            <span className="text-muted-foreground">Uso consolidado</span>
+            <span className="font-mono font-semibold text-foreground">
+              {totalLimit > 0 ? displayPercent(usagePercentage) : 'Sin cupo'}
+            </span>
+          </div>
+          <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className={`h-full transition-[width] ${isHighUsage ? 'bg-warning' : 'bg-primary'}`}
+              style={{ width: hideBalances ? '0%' : `${usagePercentage}%` }}
+            />
+          </div>
+        </div>
+
+        {isHighUsage && (
+          <div className="mt-3 flex items-start gap-2 rounded-xl bg-warning-muted px-3 py-2 text-xs text-warning">
+            <AlertTriangle size={15} className="mt-0.5 flex-shrink-0" />
+            <span>Uso consolidado alto. Revisa pagos o cupos antes de asumir más deuda.</span>
+          </div>
+        )}
+      </section>
+    );
+  }
 
   return (
     <section className="mb-6 rounded-2xl border border-border bg-primary/5 p-4 sm:p-5 shadow-sm">

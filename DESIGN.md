@@ -65,6 +65,33 @@ es oscuro a propósito para que el texto blanco cumpla WCAG AA en toda la rampa
 Mode-invariante (luce igual en claro y oscuro). Justificación: la recomendación
 es la jerarquía máxima del modal y necesita destacarse como héroe, no como una
 tarjeta más de la rejilla.
+
+### Excepción de gradiente: `.card-wallet` (tarjetas billetera, SOLO móvil)
+
+El rediseño MÓVIL de Cuentas presenta cada tarjeta de crédito como una "tarjeta
+física" con el gradiente del color de **marca de esa tarjeta** y texto blanco
+encima (clase `.card-wallet` en `components.css`). Es una excepción de diseño
+intencional, al nivel de `.btn-primary`, `.card-balance` y `.card-recommend-hero`:
+el único gradiente nuevo fuera de esos y del shell.
+
+A diferencia del violet único que es la identidad GENERAL del producto, aquí el
+color identifica a **cada tarjeta** (p. ej. Nu violet, RappiCard cian). Los dos
+stops del gradiente (`--wallet-from`/`--wallet-to`) los inyecta `WalletCreditCard`
+por tarjeta desde `src/components/views/accounts/utils/accountBrandColors.ts`,
+donde se mapea el nombre de la cuenta a una marca (con fallback determinista por
+hash, nunca gris plano).
+
+Contraste: el texto de la tarjeta va en **blanco** sobre todo el gradiente, así
+que ambos stops se eligieron **oscuros** para cumplir WCAG AA (blanco ≥4.5:1
+sobre `from` y sobre `to`). Las marcas claras se oscurecen a propósito: el cian
+de RappiCard usa `#0e7490` (5,23:1) como `to` y `#155e75` (6,80:1) como `from`,
+no el cian brillante `#0891b2` (3,98:1, que fallaría). Los ratios están
+verificados en `accountBrandColors.ts` y cubiertos por
+`src/__tests__/utils/accountBrandColors.test.ts`.
+
+El color de marca solo se permite en dos lugares del layout móvil: el gradiente
+de `.card-wallet` y el segmento/leyenda del anillo de distribución
+(`AvailableDistributionRing`). El resto de la app conserva el violet único.
 - **Inputs:** `.input-base`, `rounded-lg`, `min-height` 48px móvil / 44px ≥sm,
   `font-size` 16px móvil (evita zoom iOS), foco anillo violet.
 - **Botones:** `.btn-primary` degradado violet (`--btn-primary-from/to`),
@@ -76,5 +103,6 @@ tarjeta más de la rejilla.
 - Bordes `xl`/`lg`, sombras suaves escaladas por modo.
 - **Motion CSS-first**, sin librerías. Toda animación respeta
   `prefers-reduced-motion`.
-- Degradados confinados a `.btn-primary`, `.card-balance`, el shell y
-  RecurringStatsCards (intencionales).
+- Degradados confinados a `.btn-primary`, `.card-balance`, `.card-recommend-hero`,
+  `.card-wallet` (tarjetas billetera, solo móvil), el shell y RecurringStatsCards
+  (intencionales).

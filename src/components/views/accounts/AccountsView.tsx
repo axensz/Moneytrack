@@ -17,6 +17,9 @@ import { MergeCreditCardsModal } from './components/MergeCreditCardsModal';
 import { CreditCardsConsolidatedSummary } from './components/CreditCardsConsolidatedSummary';
 import { CreditCardOptimizerModal } from './components/CreditCardOptimizerModal';
 import { AccountCard } from './components/AccountCard';
+import { AccountRow } from './components/AccountRow';
+import { WalletCreditCard } from './components/WalletCreditCard';
+import { AvailableDistributionRing } from './components/AvailableDistributionRing';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
 import { useAccountForm } from './hooks/useAccountForm';
 import { CardStatementsModal } from './components/CardStatementsModal';
@@ -110,7 +113,10 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
 
   const creditCardSummary = useMemo(() => {
     const cards = accounts
-      .filter((account) => account.type === 'credit' && account.id)
+      // REGLA TRANSVERSAL: las cuentas archivadas NO participan en resúmenes
+      // activos. Se excluyen del consolidado (cupo total/utilizado/disponible y
+      // el conteo "N tarjetas") para que coincida con el resto de la vista.
+      .filter((account) => account.type === 'credit' && account.id && !account.archived)
       .map((account) => {
         const creditLimit = account.creditLimit || 0;
         const used = creditUsedMap.get(account.id!) ?? 0;
@@ -431,6 +437,15 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
 
   const displayAnchor = (amount: number) => (hideBalances ? '••••••' : formatCurrency(amount));
 
+  // Segmentos del anillo de distribución (móvil): una entrada por cuenta de
+  // ahorro/efectivo ACTIVA (las archivadas ya quedaron fuera de availableAccounts).
+  // Solo presentación: el saldo viene del accesor del dominio.
+  const distributionSegments = availableAccounts.map((account) => ({
+    id: account.id!,
+    name: account.name,
+    value: getAccountBalance(account.id!),
+  }));
+
   // Cuentas archivadas: se gestionan en una sección colapsable aparte para poder
   // desarchivarlas. Incluye TC archivadas aunque tuvieran banco asociado.
   const archivedAccounts = accounts
@@ -566,6 +581,97 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
                 onTouchStart={(e) => dragDrop.handleTouchStart(e, card.id!)}
                 onTouchMove={dragDrop.handleTouchMove}
                 onTouchEnd={dragDrop.handleTouchEnd}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ─── Render MÓVIL: fila limpia de ahorro/efectivo ──────────────────────────
+  // Reutiliza props/handlers; solo cambia la presentación (fila vs card). El
+  // reordenado por teclado se acota al grupo igual que en escritorio.
+  const renderMobileAvailableRow = (
+    account: Account,
+    groupIndex: number,
+    groupLength: number,
+  ) => (
+    <AccountRow
+      key={account.id}
+      account={account}
+      balance={getAccountBalance(account.id!)}
+      balanceSettling={!balancesReady}
+      formatCurrency={formatCurrency}
+      onEdit={() => accountForm.openEditForm(account)}
+      onManagePaymentInstruments={userId
+        ? () => setPaymentInstrumentsSelection({ ownerId: userId, accountId: account.id! })
+        : undefined}
+      onArchive={() => handleArchiveAccount(account)}
+      onSetDefault={() => setDefaultAccount(account.id!)}
+      onDelete={() =>
+        setDeleteConfirm({
+          accountId: account.id!,
+          name: account.name,
+          confirmName: '',
+          confirmTransactions: false,
+        })
+      }
+      onMoveUp={() => dragDrop.moveAccount(account.id!, 'up')}
+      onMoveDown={() => dragDrop.moveAccount(account.id!, 'down')}
+      canMoveUp={groupIndex > 0}
+      canMoveDown={groupIndex < groupLength - 1}
+    />
+  );
+
+  // ─── Render MÓVIL: tarjeta billetera de crédito + asociadas anidadas ────────
+  const renderMobileWalletCard = (
+    account: Account,
+    groupIndex: number,
+    groupLength: number,
+  ) => {
+    const associatedCards = accounts
+      .filter((acc) => acc.type === 'credit' && acc.bankAccountId === account.id && !acc.archived)
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    const walletProps = (card: Account, idx: number, len: number, parentName?: string) => ({
+      account: card,
+      creditUsed: getCreditUsed(card.id!),
+      nextCutoff: getNextCutoffDate(card),
+      nextPayment: getNextPaymentDate(card),
+      parentAccountName: parentName,
+      formatCurrency,
+      onEdit: () => accountForm.openEditForm(card),
+      onManagePaymentInstruments: userId
+        ? () => setPaymentInstrumentsSelection({ ownerId: userId, accountId: card.id! })
+        : undefined,
+      onMerge: card.bankAccountId && creditCards.some((c) => c.id !== card.id && c.bankAccountId === card.bankAccountId)
+        ? () => openMergeCreditCardsModal(card)
+        : undefined,
+      onArchive: () => handleArchiveAccount(card),
+      onSetDefault: () => setDefaultAccount(card.id!),
+      onDelete: () =>
+        setDeleteConfirm({
+          accountId: card.id!,
+          name: card.name,
+          confirmName: '',
+          confirmTransactions: false,
+        }),
+      onMoveUp: () => dragDrop.moveAccount(card.id!, 'up'),
+      onMoveDown: () => dragDrop.moveAccount(card.id!, 'down'),
+      canMoveUp: idx > 0,
+      canMoveDown: idx < len - 1,
+    });
+
+    return (
+      <div key={account.id}>
+        <WalletCreditCard {...walletProps(account, groupIndex, groupLength)} />
+        {associatedCards.length > 0 && (
+          <div className="ml-4 mt-3 space-y-3 border-l-2 border-border-accent pl-3">
+            {associatedCards.map((card, cardIndex) => (
+              <WalletCreditCard
+                key={card.id}
+                {...walletProps(card, cardIndex, associatedCards.length, account.name)}
               />
             ))}
           </div>
@@ -731,10 +837,107 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
         </div>
       ) : (
         <>
+          {/* ════════════════════════════════════════════════════════════════
+              LAYOUT MÓVIL (base, sin lg:) — rediseño aprobado por el usuario.
+              Anillo de distribución + filas limpias (Disponible) + tarjetas
+              billetera (Crédito). El layout de escritorio (lg+) queda intacto
+              más abajo con `hidden lg:...`.
+             ════════════════════════════════════════════════════════════════ */}
+          <div className="lg:hidden">
+            {/* 1. Anillo de distribución del dinero disponible (ancla visual). */}
+            {availableAccounts.length > 0 && (
+              <div className="mb-6">
+                <AvailableDistributionRing
+                  segments={distributionSegments}
+                  total={availableSubtotal}
+                  formatCurrency={formatCurrency}
+                  hideBalances={hideBalances}
+                />
+              </div>
+            )}
+
+            {/* Patrimonio neto como dato secundario (puede ser negativo). */}
+            {creditMainAccounts.length > 0 && (
+              <p className="mb-6 text-center text-sm text-muted-foreground">
+                Patrimonio neto{' '}
+                <span className={`font-mono font-semibold ${netWorth < 0 ? 'text-destructive' : 'text-foreground'}`}>
+                  {displayAnchor(netWorth)}
+                </span>
+              </p>
+            )}
+
+            {/* 2. Sección Disponible: subtotal verde + filas limpias. */}
+            {availableAccounts.length > 0 && (
+              <section aria-labelledby="accounts-mobile-available" className="mb-8">
+                <header className="mb-2 flex items-end justify-between gap-3 border-b border-border pb-2">
+                  <div className="flex items-center gap-2">
+                    <Wallet size={18} className="text-primary" aria-hidden="true" />
+                    <h3 id="accounts-mobile-available" className="text-base font-bold text-foreground">
+                      Disponible
+                    </h3>
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                      {availableAccounts.length}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-medium text-muted-foreground">Saldo disponible</p>
+                    <p className="font-mono text-lg font-bold text-success">{displayAnchor(availableSubtotal)}</p>
+                  </div>
+                </header>
+                <div className="divide-y divide-border">
+                  {availableAccounts.map((account, index) =>
+                    renderMobileAvailableRow(account, index, availableAccounts.length)
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* 3. Sección Crédito: subtotal rojo + consolidado compacto + billeteras. */}
+            {creditMainAccounts.length > 0 && (
+              <section aria-labelledby="accounts-mobile-credit">
+                <header className="mb-4 flex items-end justify-between gap-3 border-b border-border pb-2">
+                  <div className="flex items-center gap-2">
+                    <CreditCard size={18} className="text-primary" aria-hidden="true" />
+                    <h3 id="accounts-mobile-credit" className="text-base font-bold text-foreground">
+                      Crédito
+                    </h3>
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                      {creditMainAccounts.length}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-medium text-muted-foreground">Deuda total</p>
+                    <p className="font-mono text-lg font-bold text-destructive">{displayAnchor(creditDebtTotal)}</p>
+                  </div>
+                </header>
+
+                <CreditCardsConsolidatedSummary
+                  variant="compact"
+                  cards={creditCardSummary.cards}
+                  totalLimit={creditCardSummary.totalLimit}
+                  totalUsed={creditCardSummary.totalUsed}
+                  totalAvailable={creditCardSummary.totalAvailable}
+                  usagePercentage={creditCardSummary.usagePercentage}
+                  formatCurrency={formatCurrency}
+                />
+
+                <div className="space-y-5">
+                  {creditMainAccounts.map((account, index) =>
+                    renderMobileWalletCard(account, index, creditMainAccounts.length)
+                  )}
+                </div>
+              </section>
+            )}
+          </div>
+
+          {/* ════════════════════════════════════════════════════════════════
+              LAYOUT ESCRITORIO (lg+) — v1 existente, NO se toca (solo se oculta
+              en móvil con `hidden lg:...`).
+             ════════════════════════════════════════════════════════════════ */}
           {/* Ancla de "dinero disponible": cifra que importa, sin ser un
               hero-metric decorativo. El patrimonio neto se muestra como dato
               secundario (puede ser negativo; no debe dominar). */}
-          <div className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+          <div className="mb-6 hidden flex-wrap items-end justify-between gap-x-6 gap-y-2 lg:flex">
             <div>
               <p className="text-sm font-medium text-muted-foreground">Dinero disponible</p>
               <p className="mt-0.5 font-mono text-3xl font-bold text-success sm:text-4xl">
@@ -751,11 +954,11 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
             )}
           </div>
 
-          {/* Dos columnas en escritorio (Disponible | Crédito), una sola
-              apilada en móvil. Mismos componentes; responsive estructural. Si
-              solo existe un grupo, ocupa todo el ancho (sin columna vacía). */}
+          {/* Dos columnas en escritorio (Disponible | Crédito). Oculto en móvil
+              (`hidden lg:grid`): el móvil usa el bloque de arriba. Si solo
+              existe un grupo, ocupa todo el ancho (sin columna vacía). */}
           <div
-            className={`grid grid-cols-1 gap-x-8 gap-y-10 ${
+            className={`hidden grid-cols-1 gap-x-8 gap-y-10 lg:grid ${
               availableAccounts.length > 0 && creditMainAccounts.length > 0
                 ? 'lg:grid-cols-2'
                 : ''

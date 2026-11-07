@@ -29,8 +29,10 @@ infantil, experto sin abrumar. El color comunica estado (verde +, rojo −,
 
 - **No** un dashboard SaaS genérico: nada de hero-metrics con degradado,
   rejillas de tarjetas idénticas, ni glassmorphism decorativo.
-- Los degradados se confinan a `.btn-primary` y `.card-balance`; el degradado
-  violet del shell y los de RecurringStatsCards son intencionales y by-design.
+- Los degradados se confinan a `.btn-primary`, `.card-balance`,
+  `.card-recommend-hero` y `.card-wallet` (tarjetas billetera, solo móvil); el
+  degradado violet del shell y los de RecurringStatsCards son intencionales y
+  by-design (ver DESIGN.md para las excepciones documentadas).
 - Sin librerías de motion (Framer Motion): animación CSS-first.
 
 ## Design Principles

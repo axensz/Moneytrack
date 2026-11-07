@@ -14,11 +14,7 @@ const EditIcon = ACTION_ICONS.edit;
 export interface DebtCardProps {
   debt: Debt;
   formatCurrency: (n: number) => string;
-  showPaymentForm: string | null;
-  setShowPaymentForm: (id: string | null) => void;
-  paymentAmount: string;
-  setPaymentAmount: (v: string) => void;
-  onPayment: (id: string) => void;
+  onOpenPayment: (debt: Debt) => void;
   onDelete: (debt: Debt) => void;
   onChangeAccount: (debt: Debt) => void;
   showBalanceModifier: string | null;
@@ -42,11 +38,7 @@ export interface DebtCardProps {
 export const DebtCard: React.FC<DebtCardProps> = React.memo(({
   debt,
   formatCurrency,
-  showPaymentForm,
-  setShowPaymentForm,
-  paymentAmount,
-  setPaymentAmount,
-  onPayment,
+  onOpenPayment,
   onDelete,
   onChangeAccount,
   showBalanceModifier,
@@ -200,13 +192,10 @@ export const DebtCard: React.FC<DebtCardProps> = React.memo(({
           </button>
           <button
             onClick={() => {
-              if (showPaymentForm === debt.id) {
-                setShowPaymentForm(null);
-              } else {
-                setShowPaymentForm(debt.id!);
-                setPaymentAmount('');
-                setShowPaymentScheduleForm(null);
-              }
+              setShowBalanceModifier(null);
+              setShowForgive(null);
+              setShowPaymentScheduleForm(null);
+              onOpenPayment(debt);
             }}
             className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-green-600 dark:text-green-400 hover:bg-green-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:hover:bg-green-900/30"
             aria-label={`Registrar pago de ${debt.personName}`}
@@ -257,33 +246,6 @@ export const DebtCard: React.FC<DebtCardProps> = React.memo(({
             className="btn-submit w-full text-sm"
           >
             Guardar fecha
-          </button>
-        </div>
-      )}
-
-      {/* Payment form */}
-      {showPaymentForm === debt.id && (
-        <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2">
-          <input
-            type="text"
-            inputMode="numeric"
-            value={formatNumberForInput(paymentAmount)}
-            onChange={e => setPaymentAmount(unformatNumber(e.target.value))}
-            placeholder="Monto del pago"
-            className="input-base min-w-0 text-sm"
-            autoFocus
-          />
-          <button
-            onClick={() => onPayment(debt.id!)}
-            className="btn-submit text-sm px-3"
-          >
-            Pagar
-          </button>
-          <button
-            onClick={() => setShowPaymentForm(null)}
-            className="p-2 text-muted-foreground hover:text-foreground"
-          >
-            <X size={16} />
           </button>
         </div>
       )}

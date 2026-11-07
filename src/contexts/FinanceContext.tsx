@@ -161,6 +161,7 @@ export interface FinanceContextValue {
   deleteDebt: (id: string) => Promise<void>;
   reassignDebtAccount: (debtId: string, nextAccountId?: string) => Promise<void>;
   registerDebtPayment: (debtId: string, amount: number) => Promise<void>;
+  linkDebtPayment: (debtId: string, transactionId: string) => Promise<void>;
   modifyDebtBalance: (debtId: string, amount: number, operation: 'add' | 'subtract') => Promise<void>;
   forgiveDebt: (debtId: string, reason: 'unpaid' | 'gift' | 'other') => Promise<void>;
   getDebtTransactions: (debtId: string) => Transaction[];
@@ -330,6 +331,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     deleteDebt,
     reassignDebtAccount,
     registerDebtPayment,
+    linkDebtPayment,
     restoreDebtPayment,
     modifyDebtBalance,
     forgiveDebt,
@@ -481,6 +483,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     deleteDebt,
     reassignDebtAccount,
     registerDebtPayment,
+    linkDebtPayment,
     modifyDebtBalance,
     forgiveDebt,
     getDebtTransactions,
@@ -517,7 +520,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     addCategory, deleteCategory, addTransactionBeneficiary, deleteTransactionBeneficiary,
     addRecurringPayment, updateRecurringPayment, deleteRecurringPayment,
     isPaidForMonth, getNextDueDate, getDaysUntilDue, getDaysOverdue, isOverdue, getPaymentHistory, recurringStats,
-    debts, addDebt, updateDebt, deleteDebt, reassignDebtAccount, registerDebtPayment, modifyDebtBalance, forgiveDebt,
+    debts, addDebt, updateDebt, deleteDebt, reassignDebtAccount, registerDebtPayment, linkDebtPayment, modifyDebtBalance, forgiveDebt,
     getDebtTransactions, debtStats,
     budgets, addBudget, updateBudget, deleteBudget, budgetStatuses, budgetStats,
     savingsGoals, addGoal, updateGoal, deleteGoal, addSavings, goalStatuses, goalStats,

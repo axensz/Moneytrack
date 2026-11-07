@@ -2,7 +2,7 @@
 
 import React, { useRef, useState } from 'react';
 import { HandCoins, Users, CheckCircle2, ArrowDownLeft, ArrowUpRight, Ban, Trash2, WalletCards } from 'lucide-react';
-import { useDebtsDomain, useAccountDomain } from '../../../hooks/useFinanceSelectors';
+import { useDebtsDomain, useAccountDomain, useTransactionDomain } from '../../../hooks/useFinanceSelectors';
 import { useUIPreferences } from '../../../contexts/UIPreferencesContext';
 import { formatCurrency, parseCurrency, parseDateFromInput } from '../../../utils/formatters';
 import { compareDebtsByNextPayment } from '../../../utils/debtPaymentSchedule';
@@ -11,6 +11,7 @@ import { ConfirmDialog } from '../../modals/ConfirmDialog';
 import { ACTION_ICONS, sectionTitle, UI_TEXT } from '../../../config/ui';
 import type { Debt } from '../../../types/finance';
 import { DebtCard } from './components/DebtCard';
+import { LinkDebtPaymentModal } from './components/LinkDebtPaymentModal';
 import { DebtAccountDialog } from './components/DebtAccountDialog';
 import { NewDebtForm, type DebtFormErrors } from './components/NewDebtForm';
 import { FORGIVEN_LABELS } from './constants';
@@ -36,18 +37,19 @@ export const DebtsView: React.FC = () => {
     deleteDebt,
     reassignDebtAccount,
     registerDebtPayment,
+    linkDebtPayment,
     modifyDebtBalance,
     forgiveDebt,
     debtStats,
   } = useDebtsDomain();
   const { accounts } = useAccountDomain();
+  const { balanceTransactions } = useTransactionDomain();
   const { hideBalances } = useUIPreferences();
 
   const [showForm, setShowForm] = useState(false);
   const [debtToDelete, setDebtToDelete] = useState<Debt | null>(null);
   const [debtToReassign, setDebtToReassign] = useState<Debt | null>(null);
-  const [showPaymentForm, setShowPaymentForm] = useState<string | null>(null);
-  const [paymentAmount, setPaymentAmount] = useState('');
+  const [debtToPay, setDebtToPay] = useState<Debt | null>(null);
   const [showPaymentScheduleForm, setShowPaymentScheduleForm] = useState<string | null>(null);
   const [paymentScheduleForm, setPaymentScheduleForm] = useState<PaymentScheduleFormState>(createEmptyPaymentScheduleForm());
   const [showSettled, setShowSettled] = useState(false);
@@ -138,32 +140,6 @@ export const DebtsView: React.FC = () => {
     }
   };
 
-  const handlePayment = async (debtId: string) => {
-    const amount = parseCurrency(paymentAmount);
-    if (isNaN(amount) || amount <= 0) {
-      showToast.error('El monto debe ser mayor a 0');
-      return;
-    }
-
-    // #24: No permitir registrar un pago mayor al saldo pendiente. El hook clampa
-    // el monto efectivo, pero avisamos en el form para que el usuario no crea que
-    // movió más dinero del que la deuda justifica.
-    const debt = debts.find(d => d.id === debtId);
-    if (debt && amount > debt.remainingAmount) {
-      showToast.error(`El pago no puede superar el saldo pendiente (${formatCurrency(debt.remainingAmount)})`);
-      return;
-    }
-
-    try {
-      await registerDebtPayment(debtId, amount);
-      showToast.success('Pago registrado');
-      setPaymentAmount('');
-      setShowPaymentForm(null);
-    } catch (error) {
-      showToast.error(error instanceof Error ? error.message : 'No se pudo registrar el pago');
-    }
-  };
-
   const handleModifyBalance = async (debtId: string, operation: 'add' | 'subtract') => {
     const amount = parseCurrency(modifierAmount);
     if (isNaN(amount) || amount <= 0) {
@@ -200,7 +176,7 @@ export const DebtsView: React.FC = () => {
 
     setPaymentScheduleForm(createPaymentScheduleFormFromDebt(debt));
     setShowPaymentScheduleForm(debt.id!);
-    setShowPaymentForm(null);
+    setDebtToPay(null);
     setShowBalanceModifier(null);
     setShowForgive(null);
   };
@@ -360,11 +336,7 @@ export const DebtsView: React.FC = () => {
                   key={debt.id}
                   debt={debt}
                   formatCurrency={formatCurrency}
-                  showPaymentForm={showPaymentForm}
-                  setShowPaymentForm={setShowPaymentForm}
-                  paymentAmount={paymentAmount}
-                  setPaymentAmount={setPaymentAmount}
-                  onPayment={handlePayment}
+                  onOpenPayment={setDebtToPay}
                   onDelete={handleDelete}
                   onChangeAccount={setDebtToReassign}
                   showBalanceModifier={showBalanceModifier}
@@ -402,11 +374,7 @@ export const DebtsView: React.FC = () => {
                   key={debt.id}
                   debt={debt}
                   formatCurrency={formatCurrency}
-                  showPaymentForm={showPaymentForm}
-                  setShowPaymentForm={setShowPaymentForm}
-                  paymentAmount={paymentAmount}
-                  setPaymentAmount={setPaymentAmount}
-                  onPayment={handlePayment}
+                  onOpenPayment={setDebtToPay}
                   onDelete={handleDelete}
                   onChangeAccount={setDebtToReassign}
                   showBalanceModifier={showBalanceModifier}
@@ -497,6 +465,17 @@ export const DebtsView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Modal de pago: registrar nuevo o enlazar una transacción existente */}
+      <LinkDebtPaymentModal
+        isOpen={!!debtToPay}
+        debt={debtToPay}
+        transactions={balanceTransactions}
+        formatCurrency={formatCurrency}
+        onClose={() => setDebtToPay(null)}
+        onRegister={registerDebtPayment}
+        onLinkExisting={linkDebtPayment}
+      />
 
       {/* Modal confirmación eliminar */}
       <DebtAccountDialog

@@ -50,6 +50,16 @@
   --info: #2563eb;
   --info-muted: #eff6ff;
 
+  /* HÉROE DE RECOMENDACIÓN — gradiente violet OSCURO con texto blanco.
+     Excepción de diseño intencional (documentada en DESIGN.md): el único
+     gradiente nuevo fuera de .btn-primary / .card-balance / shell. A diferencia
+     de .card-balance (gradiente CLARO para texto violet oscuro), este es oscuro
+     a propósito para que el texto blanco del héroe cumpla WCAG AA: blanco sobre
+     el stop más claro #7c3aed = 5.7:1 y sobre #6d28d9 = 7.1:1 (ambos ≥4.5:1).
+     Mode-invariante: el violet oscuro luce igual de bien en claro y oscuro. */
+  --hero-recommend-from: #6d28d9;
+  --hero-recommend-to: #7c3aed;
+
   /* BALANCE (Morado especial - más vibrante) */
   --balance-accent: #f3e8ff;
   --balance-accent-foreground: #7c3aed;

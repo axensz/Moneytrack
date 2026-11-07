@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { AlertTriangle, CheckCircle2, Sparkles } from 'lucide-react';
+import { AlertTriangle, CalendarClock, CheckCircle2, CreditCard, Sparkles } from 'lucide-react';
 import { BaseModal } from '../../../modals/BaseModal';
 import { useUIPreferences } from '../../../../contexts/UIPreferencesContext';
 import {
@@ -16,10 +16,20 @@ interface CreditCardOptimizerModalProps {
   formatCurrency: (amount: number) => string;
 }
 
-interface OptimizerMetricProps {
-  label: string;
-  value: string;
-  detail?: string;
+/** Salud de uso de cupo por tarjeta, derivada SOLO de la presentación
+ *  (no se toca la lógica de recomendación): verde = sano, ámbar = atención,
+ *  gris = analizando/sin historial suficiente. */
+type CardHealth = 'healthy' | 'attention' | 'analyzing';
+
+const HIGH_MONTHLY_USAGE_RATIO = 0.8;
+
+/** Decide la salud visible de una tarjeta a partir de datos ya calculados. */
+function getCardHealth(plan: CreditCardUsagePlan): CardHealth {
+  // Sin tope mensual o sin ratio => no hay base para pintar salud real.
+  if (plan.monthlyUsageRatio == null || plan.monthlyLimit <= 0) return 'analyzing';
+  const hasBlockingWarning = plan.warnings.some((warning) => warning.severity !== 'info');
+  if (plan.monthlyUsageRatio > HIGH_MONTHLY_USAGE_RATIO || hasBlockingWarning) return 'attention';
+  return 'healthy';
 }
 
 export const CreditCardOptimizerModal: React.FC<CreditCardOptimizerModalProps> = ({
@@ -30,13 +40,14 @@ export const CreditCardOptimizerModal: React.FC<CreditCardOptimizerModalProps> =
 }) => {
   const { hideBalances } = useUIPreferences();
   const recommended = getRecommendedCreditCardUsagePlan(plans);
+  // Alertas clave: severidad distinta de 'info', máximo 2 (igual que antes).
   const priorityWarnings = plans
     .flatMap((plan) => plan.warnings.map((warning) => ({ ...warning, cardName: plan.cardName })))
     .filter((warning) => warning.severity !== 'info')
     .slice(0, 2);
 
   const formatDate = (date: Date) => date.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
-  const displayAmount = (amount: number) => hideBalances ? '••••••' : formatCurrency(amount);
+  const displayAmount = (amount: number) => (hideBalances ? '••••••' : formatCurrency(amount));
   const formatPercent = (ratio: number | null) => {
     if (ratio == null) return 'Analizando';
     return hideBalances ? '••••••' : `${Math.round(ratio * 100)}%`;
@@ -63,106 +74,33 @@ export const CreditCardOptimizerModal: React.FC<CreditCardOptimizerModalProps> =
           </div>
         </div>
       ) : (
-        <div className="space-y-4">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0">
-              {recommended ? (
-                <>
-                  <p className="text-lg font-bold text-foreground">
-                    Próxima compra: usa {recommended.cardName}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Corte {formatDate(recommended.nextCutoff)} - pago {formatDate(recommended.paymentDueDate)} - {recommended.daysUntilPayment} días de margen.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="text-lg font-bold text-foreground">Sin tarjeta recomendada</p>
-                  <p className="text-sm text-muted-foreground">
-                    Todas están fuera de tope o siguen en observación.
-                  </p>
-                </>
-              )}
-            </div>
-
-            {priorityWarnings.length > 0 ? (
-              <div className="w-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-100 lg:max-w-md">
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <AlertTriangle size={16} aria-hidden="true" />
-                  Alertas clave
-                </div>
-                <div className="mt-2 space-y-1.5">
-                  {priorityWarnings.map((warning, index) => (
-                    <p key={`${warning.cardName}-${index}`} className="text-xs leading-snug">
-                      <span className="font-semibold">{warning.cardName}: </span>
-                      {warning.message}
-                    </p>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="w-full rounded-lg border border-success/30 bg-success/10 p-3 text-success lg:max-w-sm">
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <CheckCircle2 size={16} aria-hidden="true" />
-                  Uso dentro de rangos sanos
-                </div>
-              </div>
-            )}
+        <div className="space-y-5">
+          {/* ── Fila superior: HÉROE de recomendación + panel de ALERTAS ──
+              2 columnas en escritorio (héroe 3fr / alertas 2fr), apiladas en móvil. */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+            <RecommendationHero
+              recommended={recommended}
+              formatDate={formatDate}
+            />
+            <AlertsPanel priorityWarnings={priorityWarnings} />
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {plans.map((plan) => {
-              const cycleCapDetail = plan.monthlyLimit > 0
-                ? hideBalances
-                  ? '••••••'
-                  : `${formatCurrency(plan.currentStatementTotal)} / ${formatCurrency(plan.monthlyLimit)}`
-                : 'Sin historial suficiente';
-
-              return (
-                <div
+          {/* ── COMPARATIVA de tarjetas con barra de salud de cupo ── */}
+          <div>
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Comparativa de tarjetas
+            </h4>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {plans.map((plan) => (
+                <CardHealthTile
                   key={plan.cardId}
-                  className={`rounded-lg border p-3 ${plan.isRecommended ? 'border-primary bg-card' : 'border-border bg-card/70'}`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-foreground">{plan.cardName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Corte en {plan.daysUntilCutoff} días - pago en {plan.daysUntilPayment}
-                      </p>
-                    </div>
-                    {plan.isRecommended && (
-                      <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
-                        Mejor opción
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                    <OptimizerMetric
-                      label="Disponible"
-                      value={displayAmount(plan.availableCredit)}
-                    />
-                    <OptimizerMetric
-                      label="Uso cupo"
-                      value={formatPercent(plan.creditUsageRatio)}
-                      detail={displayAmount(plan.usedCredit)}
-                    />
-                    <OptimizerMetric
-                      label="Tope ciclo"
-                      value={formatPercent(plan.monthlyUsageRatio)}
-                      detail={cycleCapDetail}
-                    />
-                    {plan.futureInstallmentTotal > 0 && (
-                      <OptimizerMetric
-                        label="Cuotas futuras"
-                        value={displayAmount(plan.futureInstallmentTotal)}
-                        detail={`${plan.futureInstallmentCycles} ciclo${plan.futureInstallmentCycles === 1 ? '' : 's'}`}
-                      />
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                  plan={plan}
+                  health={getCardHealth(plan)}
+                  displayAmount={displayAmount}
+                  formatPercent={formatPercent}
+                />
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -170,14 +108,219 @@ export const CreditCardOptimizerModal: React.FC<CreditCardOptimizerModalProps> =
   );
 };
 
-function OptimizerMetric({ label, value, detail }: OptimizerMetricProps) {
+/** HÉROE: recomendación destacada en gradiente violet (excepción de diseño,
+ *  ver DESIGN.md). Texto blanco con contraste AA sobre toda la rampa. */
+function RecommendationHero({
+  recommended,
+  formatDate,
+}: {
+  recommended: CreditCardUsagePlan | null;
+  formatDate: (date: Date) => string;
+}) {
+  if (!recommended) {
+    // Estado equivalente cuando ninguna tarjeta es recomendable.
+    return (
+      <section className="card-recommend-hero lg:col-span-3">
+        <div className="flex items-center gap-2 text-sm font-medium text-white/85">
+          <Sparkles size={16} aria-hidden="true" />
+          Próxima compra
+        </div>
+        <p className="mt-2 text-2xl font-bold leading-tight">Sin tarjeta recomendada</p>
+        <p className="mt-1.5 text-sm text-white/85">
+          Todas están fuera de tope o siguen en observación. Revisa las alertas
+          y la comparativa para elegir con criterio.
+        </p>
+      </section>
+    );
+  }
+
   return (
-    <div className="min-w-0">
-      <span className="block text-[11px] font-medium text-muted-foreground">{label}</span>
-      <span className="mt-0.5 block truncate text-sm font-semibold text-foreground">{value}</span>
-      {detail && (
-        <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{detail}</span>
-      )}
-    </div>
+    <section className="card-recommend-hero lg:col-span-3">
+      <div className="flex items-center gap-2 text-sm font-medium text-white/85">
+        <Sparkles size={16} aria-hidden="true" />
+        Próxima compra
+      </div>
+      <p className="mt-2 flex items-center gap-2 text-2xl font-bold leading-tight sm:text-3xl">
+        <CreditCard size={26} aria-hidden="true" className="shrink-0" />
+        <span className="min-w-0 truncate">Usa {recommended.cardName}</span>
+      </p>
+      <p className="mt-1.5 text-sm text-white/85">
+        Mayor margen de pago y cupo sano frente a las demás.
+      </p>
+      <div className="mt-3 inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-white/15 px-3 py-2 text-sm font-medium">
+        <span className="inline-flex items-center gap-1.5">
+          <CalendarClock size={16} aria-hidden="true" />
+          {recommended.daysUntilPayment} días de margen
+        </span>
+        <span className="text-white/70">·</span>
+        <span className="text-white/90">
+          Corte {formatDate(recommended.nextCutoff)} · pago {formatDate(recommended.paymentDueDate)}
+        </span>
+      </div>
+    </section>
+  );
+}
+
+/** Panel de ALERTAS clave (ámbar sólido con texto blanco) o estado "sano". */
+function AlertsPanel({
+  priorityWarnings,
+}: {
+  priorityWarnings: Array<{ severity: string; message: string; cardName: string }>;
+}) {
+  if (priorityWarnings.length === 0) {
+    return (
+      <section className="flex flex-col justify-center rounded-xl border border-success/40 bg-success/10 p-4 text-success lg:col-span-2">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <CheckCircle2 size={18} aria-hidden="true" />
+          Uso dentro de rangos sanos
+        </div>
+        <p className="mt-1.5 text-xs leading-snug text-success/90">
+          No hay topes ni cupos en riesgo. Puedes comprar con tranquilidad.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    // Fondo ámbar sólido (--warning-solid #b45309) con texto blanco: 5.02:1 (AA)
+    // en claro y oscuro. NO usamos bg-amber-* crudo (fallaría en dark).
+    <section className="rounded-xl border border-[var(--warning-solid)] bg-[var(--warning-solid)] p-4 text-white lg:col-span-2">
+      <div className="flex items-center gap-2 text-sm font-semibold">
+        <AlertTriangle size={18} aria-hidden="true" />
+        Alertas clave
+      </div>
+      <ul className="mt-2 space-y-2">
+        {priorityWarnings.map((warning, index) => (
+          <li key={`${warning.cardName}-${index}`} className="text-xs leading-snug">
+            <span className="font-semibold">{warning.cardName}: </span>
+            {warning.message}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+const HEALTH_BAR_CLASSES: Record<CardHealth, string> = {
+  healthy: 'bg-success',
+  attention: 'bg-[var(--warning-solid)]',
+  analyzing: 'bg-muted-foreground/40',
+};
+
+const HEALTH_LABELS: Record<CardHealth, string> = {
+  healthy: 'Cupo sano',
+  attention: 'Atención al tope',
+  analyzing: 'Analizando historial',
+};
+
+/** Tarjeta de la comparativa con barra de salud de uso de cupo. */
+function CardHealthTile({
+  plan,
+  health,
+  displayAmount,
+  formatPercent,
+}: {
+  plan: CreditCardUsagePlan;
+  health: CardHealth;
+  displayAmount: (amount: number) => string;
+  formatPercent: (ratio: number | null) => string;
+}) {
+  const analyzing = health === 'analyzing';
+  // Proporción de llenado de la barra (0–1). En "analizando" no hay base real.
+  const fillRatio = analyzing ? 0 : Math.min(1, Math.max(0, plan.monthlyUsageRatio ?? 0));
+  const fillPercent = Math.round(fillRatio * 100);
+  const usageLabel = formatPercent(plan.monthlyUsageRatio);
+
+  const cycleCapDetail = plan.monthlyLimit > 0
+    ? displayAmount(plan.currentStatementTotal) === '••••••'
+      ? '••••••'
+      : `${displayAmount(plan.currentStatementTotal)} / ${displayAmount(plan.monthlyLimit)}`
+    : 'Sin historial suficiente';
+
+  return (
+    <article
+      className={`flex flex-col gap-3 rounded-xl border p-4 ${
+        plan.isRecommended
+          ? 'border-primary bg-card shadow-md'
+          : 'border-border bg-card'
+      }`}
+    >
+      {/* Cabecera: nombre + ventana de corte/pago + pill "Mejor opción" */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-foreground">{plan.cardName}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Corte en {plan.daysUntilCutoff} días · pago en {plan.daysUntilPayment}
+          </p>
+        </div>
+        {plan.isRecommended && (
+          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary-on-surface">
+            Mejor opción
+          </span>
+        )}
+      </div>
+
+      {/* Disponible como cifra destacada */}
+      <div>
+        <span className="block text-[11px] font-medium text-muted-foreground">Disponible</span>
+        <span className="mt-0.5 block truncate text-xl font-bold text-foreground">
+          {displayAmount(plan.availableCredit)}
+        </span>
+      </div>
+
+      {/* Barra de salud de uso de cupo */}
+      <div>
+        <div className="mb-1 flex items-center justify-between gap-2 text-[11px]">
+          <span className={`font-medium ${analyzing ? 'italic text-muted-foreground/80' : 'text-muted-foreground'}`}>
+            {HEALTH_LABELS[health]}
+          </span>
+          <span className={`font-semibold tabular-nums ${analyzing ? 'italic text-muted-foreground/80' : 'text-foreground'}`}>
+            {usageLabel}
+          </span>
+        </div>
+        <div
+          className="h-2 w-full overflow-hidden rounded-full bg-muted"
+          role="progressbar"
+          aria-valuenow={analyzing ? undefined : fillPercent}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Uso de cupo de ${plan.cardName}: ${HEALTH_LABELS[health]}`}
+        >
+          {analyzing ? (
+            // Estado tenue: franja diagonal sutil, claramente "sin dato real".
+            <div
+              className="h-full w-full bg-[repeating-linear-gradient(45deg,var(--muted-foreground)_0,var(--muted-foreground)_2px,transparent_2px,transparent_6px)] opacity-25"
+              aria-hidden="true"
+            />
+          ) : (
+            <div
+              className={`h-full rounded-full transition-[width] ${HEALTH_BAR_CLASSES[health]}`}
+              style={{ width: `${Math.max(fillPercent, 4)}%` }}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Pie: tope del ciclo y cuotas futuras (si las hay) */}
+      <dl className="mt-auto space-y-1 border-t border-border pt-2 text-[11px]">
+        <div className="flex items-center justify-between gap-2">
+          <dt className="text-muted-foreground">Tope ciclo</dt>
+          <dd className={`truncate text-right font-medium ${plan.monthlyLimit > 0 ? 'text-foreground' : 'italic text-muted-foreground/80'}`}>
+            {cycleCapDetail}
+          </dd>
+        </div>
+        {plan.futureInstallmentTotal > 0 && (
+          <div className="flex items-center justify-between gap-2">
+            <dt className="text-muted-foreground">Cuotas futuras</dt>
+            <dd className="truncate text-right font-medium text-foreground">
+              {displayAmount(plan.futureInstallmentTotal)}
+              <span className="ml-1 font-normal text-muted-foreground">
+                · {plan.futureInstallmentCycles} ciclo{plan.futureInstallmentCycles === 1 ? '' : 's'}
+              </span>
+            </dd>
+          </div>
+        )}
+      </dl>
+    </article>
   );
 }

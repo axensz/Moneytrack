@@ -41,6 +41,19 @@
     background: var(--balance-accent);
   }
 
+  /* ─── Héroe de recomendación (Optimizador de tarjetas) ───
+     Gradiente violet OSCURO con texto blanco. Excepción de diseño intencional
+     (ver DESIGN.md): único gradiente nuevo fuera de .btn-primary/.card-balance/
+     shell. Es oscuro —al revés que .card-balance— para que el texto blanco
+     cumpla AA sobre toda la rampa (5.7:1 → 7.1:1). Mode-invariante. */
+  .card-recommend-hero {
+    @apply rounded-xl border p-4 sm:p-5;
+    background: linear-gradient(135deg, var(--hero-recommend-from) 0%, var(--hero-recommend-to) 100%);
+    border-color: var(--hero-recommend-from);
+    color: var(--primary-foreground);
+    box-shadow: 0 10px 20px -8px rgba(109, 40, 217, 0.45);
+  }
+
   .card-stat {
     @apply p-3 sm:p-4 md:p-5 rounded-xl border transition-[box-shadow,border-color];
     background-color: var(--card);

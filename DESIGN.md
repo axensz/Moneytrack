@@ -49,7 +49,22 @@ corrige el fallo AA de `--primary` como texto en superficies oscuras
 
 - **Cards:** `rounded-xl` (12px), borde 1px, `--shadow-md`, padding fluido
   `p-3 → p-5`. Variantes: `.card`, `.card-stat` (hover sube sombra),
-  `.card-balance` (degradado violet permitido).
+  `.card-balance` (degradado violet claro permitido),
+  `.card-recommend-hero` (degradado violet **oscuro**, ver excepción abajo).
+
+### Excepción de gradiente: `.card-recommend-hero`
+
+El héroe de recomendación del **Optimizador de tarjetas** (modal "Próxima
+compra" en Cuentas) usa un gradiente violet **oscuro**
+(`--hero-recommend-from #6d28d9` → `--hero-recommend-to #7c3aed`) con texto
+blanco. Es una excepción de diseño intencional, al nivel de `.btn-primary` y
+`.card-balance`: el único gradiente nuevo fuera de esos y del shell. A
+diferencia de `.card-balance` (gradiente claro para texto violet oscuro), este
+es oscuro a propósito para que el texto blanco cumpla WCAG AA en toda la rampa
+— blanco sobre el stop más claro `#7c3aed` = 5.7:1 y sobre `#6d28d9` = 7.1:1.
+Mode-invariante (luce igual en claro y oscuro). Justificación: la recomendación
+es la jerarquía máxima del modal y necesita destacarse como héroe, no como una
+tarjeta más de la rejilla.
 - **Inputs:** `.input-base`, `rounded-lg`, `min-height` 48px móvil / 44px ≥sm,
   `font-size` 16px móvil (evita zoom iOS), foco anillo violet.
 - **Botones:** `.btn-primary` degradado violet (`--btn-primary-from/to`),

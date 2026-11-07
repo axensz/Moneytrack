@@ -31,7 +31,8 @@ describe('CreditCardOptimizerModal privacy', () => {
   it('muestra importes y porcentajes cuando los valores estan visibles', () => {
     render(<CreditCardOptimizerModal isOpen onClose={() => {}} plans={[plan]} formatCurrency={formatCurrency} />);
     expect(screen.getByText('$ 4.000.000')).toBeInTheDocument();
-    expect(screen.getByText('20%')).toBeInTheDocument();
+    // La barra de salud muestra el uso del tope mensual (monthlyUsageRatio = 0.25 => 25%).
+    expect(screen.getByText('25%')).toBeInTheDocument();
     expect(screen.getByText('$ 1.100.000')).toBeInTheDocument();
   });
 

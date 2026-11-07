@@ -885,6 +885,16 @@ service cloud.firestore {
         allow write: if isOwner(userId);
       }
 
+      // Ingest API keys (espejo). El hash de cada API key del usuario se escribe
+      // AQUÍ y en la colección global `apiKeys` SOLO por el Admin SDK (endpoint
+      // de ingesta / generación de key). El dueño puede LEER para listar/rotar
+      // sus keys desde la app; nunca escribir: crear o revocar una key pasa por
+      // el backend. Nunca se guarda la key en claro, solo su hash sha256.
+      match /apiKeys/{keyHash} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+
       // Durable-delivery server-owned collections. Raw push capability material,
       // schedules, deliveries, and test dedup records are written ONLY by the
       // Admin SDK (which bypasses these rules). Clients are default-denied both
@@ -945,6 +955,14 @@ service cloud.firestore {
     // Global server-owned collections (Admin SDK only). The endpoint->owner
     // binding maps a push endpoint hash to its device; rate-limit counters are
     // backend-internal. Clients are default-denied.
+
+    // Ingest API keys: apiKeys/{sha256hex} -> { uid, createdAt, label?, revoked }.
+    // Lookup hash->owner del endpoint de ingesta, escrito SOLO por el Admin SDK.
+    // Denegado por completo a clientes: el hash nunca debe ser enumerable ni
+    // escribible desde el navegador (el espejo por-usuario cubre listar/rotar).
+    match /apiKeys/{keyHash} {
+      allow read, write: if false;
+    }
     match /endpointBindings/{endpointHash} {
       allow read, write: if false;
     }

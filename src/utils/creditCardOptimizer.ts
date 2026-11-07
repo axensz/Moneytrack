@@ -270,7 +270,11 @@ export function buildCreditCardUsagePlans(
 ): CreditCardUsagePlan[] {
   const purchaseDate = options.date ?? new Date();
   const amount = Math.max(0, roundMoney(options.amount ?? 0));
-  const creditAccounts = accounts.filter((account) => account.type === 'credit' && account.id && account.cutoffDay && account.paymentDay);
+  // Las cuentas ARCHIVADAS quedan fuera de toda recomendación/acción activa:
+  // una tarjeta cerrada (p. ej. Gold tras cancelarla) no debe proponerse para la
+  // próxima compra ni contar en los planes del optimizador. Su historial sigue
+  // contando en estadísticas pasadas (comportamiento A), pero NO aquí.
+  const creditAccounts = accounts.filter((account) => account.type === 'credit' && account.id && account.cutoffDay && account.paymentDay && !account.archived);
   const analysisInputs = creditAccounts.map((account) => ({
     account,
     manualMonthlyLimit: Math.max(0, roundMoney(account.monthlySpendingLimit || 0)),

@@ -54,7 +54,12 @@ const VAPID_PUBLIC_KEY = defineString('WEB_PUSH_VAPID_PUBLIC_KEY');
 const VAPID_SUBJECT = defineString('WEB_PUSH_VAPID_SUBJECT', { default: 'mailto:ops@moneytrack.app' });
 const DELIVERY_ENABLED = defineBoolean('DELIVERY_ENABLED', { default: false });
 // Clave secreta del servidor (pepper) para el HMAC de las API keys de ingesta.
-// Debe definirse antes de desplegar: `firebase functions:secrets:set INGEST_API_KEY_PEPPER`.
+// Solo se usa cuando estas Functions estan DESPLEGADAS (requiere plan Blaze:
+// Secret Manager no esta disponible en Spark). El flujo actual de ingesta es
+// por scripts locales que escriben a Firestore directo y NO pasan por este
+// endpoint, asi que el pepper no interviene hoy. Al desplegar en Blaze,
+// definirlo una vez con `firebase functions:secrets:set INGEST_API_KEY_PEPPER`.
+// Para el emulador local hay un valor dummy en functions/.env.demo-moneytrack.
 const INGEST_API_KEY_PEPPER = defineSecret('INGEST_API_KEY_PEPPER');
 
 const db = () => getFirestore(getAdminApp());

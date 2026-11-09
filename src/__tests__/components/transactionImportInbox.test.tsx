@@ -69,6 +69,14 @@ vi.mock('../../components/views/transactions/components/TransactionImportReviewM
   }) => candidate ? <div role="dialog">Revisando {candidate.merchant}</div> : null,
 }));
 
+const AUTO = vi.hoisted(() => ({
+  getReviewReason: vi.fn(() => null as string | null),
+}));
+
+vi.mock('../../hooks/firestore/useAutoConfirmImportCandidates', () => ({
+  useAutoConfirmImportCandidates: () => ({ getReviewReason: AUTO.getReviewReason }),
+}));
+
 import { TransactionImportInbox } from '../../components/views/transactions/components/TransactionImportInbox';
 
 const accounts: Account[] = [{
@@ -140,7 +148,9 @@ beforeEach(() => {
   H.requestedIds = [];
   H.instruments = [];
   window.history.replaceState({}, '', '/');
+  localStorage.clear();
   vi.clearAllMocks();
+  AUTO.getReviewReason.mockReturnValue(null);
 });
 
 describe('TransactionImportInbox', () => {
@@ -151,6 +161,7 @@ describe('TransactionImportInbox', () => {
         userId="owner"
         accounts={accounts}
         categories={categories}
+        transactions={[]}
         isOnline
       />,
     );
@@ -167,6 +178,7 @@ describe('TransactionImportInbox', () => {
         userId="owner"
         accounts={accounts}
         categories={categories}
+        transactions={[]}
         isOnline
       />,
     );
@@ -197,6 +209,7 @@ describe('TransactionImportInbox', () => {
         userId="owner"
         accounts={accounts}
         categories={categories}
+        transactions={[]}
         isOnline
       />,
     );
@@ -210,7 +223,7 @@ describe('TransactionImportInbox', () => {
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('Mercado Central')).toBeInTheDocument();
-    expect(screen.getByText(/todavía no afecta saldos ni estadísticas/i)).toBeInTheDocument();
+    expect(screen.getByText(/las compras inequívocas entran solas al libro/i)).toBeInTheDocument();
     expect(screen.getAllByText('Android')).toHaveLength(2);
     expect(screen.getByText('TC principal')).toBeInTheDocument();
     expect(screen.queryByText('Oro')).not.toBeInTheDocument();
@@ -225,6 +238,7 @@ describe('TransactionImportInbox', () => {
         userId="owner"
         accounts={accounts}
         categories={categories}
+        transactions={[]}
         isOnline
       />,
     );
@@ -238,6 +252,7 @@ describe('TransactionImportInbox', () => {
         userId="owner"
         accounts={accounts}
         categories={categories}
+        transactions={[]}
         isOnline
       />,
     );
@@ -260,6 +275,7 @@ describe('TransactionImportInbox', () => {
         userId="owner"
         accounts={accounts}
         categories={categories}
+        transactions={[]}
         isOnline
       />,
     );
@@ -286,6 +302,7 @@ describe('TransactionImportInbox', () => {
         userId="owner"
         accounts={accounts}
         categories={categories}
+        transactions={[]}
         isOnline
       />,
     );
@@ -316,6 +333,7 @@ describe('TransactionImportInbox', () => {
         userId="owner"
         accounts={accounts}
         categories={categories}
+        transactions={[]}
         isOnline
       />,
     );
@@ -330,6 +348,7 @@ describe('TransactionImportInbox', () => {
         userId="owner"
         accounts={accounts}
         categories={categories}
+        transactions={[]}
         isOnline
       />,
     );
@@ -354,6 +373,7 @@ describe('TransactionImportInbox', () => {
         userId="owner-a"
         accounts={accounts}
         categories={categories}
+        transactions={[]}
         isOnline
       />,
     );
@@ -365,6 +385,7 @@ describe('TransactionImportInbox', () => {
         userId="owner-b"
         accounts={accounts}
         categories={categories}
+        transactions={[]}
         isOnline
       />,
     );
@@ -376,6 +397,7 @@ describe('TransactionImportInbox', () => {
         userId="owner-b"
         accounts={accounts}
         categories={categories}
+        transactions={[]}
         isOnline
       />,
     );
@@ -388,6 +410,7 @@ describe('TransactionImportInbox', () => {
         userId="owner-a"
         accounts={accounts}
         categories={categories}
+        transactions={[]}
         isOnline
       />,
     );
@@ -400,6 +423,7 @@ describe('TransactionImportInbox', () => {
         userId="owner-b"
         accounts={accounts}
         categories={categories}
+        transactions={[]}
         isOnline
       />,
     );
@@ -410,6 +434,7 @@ describe('TransactionImportInbox', () => {
         userId="owner-a"
         accounts={accounts}
         categories={categories}
+        transactions={[]}
         isOnline
       />,
     );
@@ -428,6 +453,7 @@ describe('TransactionImportInbox', () => {
         userId="owner"
         accounts={accounts}
         categories={categories}
+        transactions={[]}
         isOnline
       />,
     );
@@ -461,6 +487,7 @@ describe('TransactionImportInbox', () => {
         userId="owner"
         accounts={accounts}
         categories={categories}
+        transactions={[]}
         isOnline
       />,
     );
@@ -478,9 +505,48 @@ describe('TransactionImportInbox', () => {
         userId={null}
         accounts={accounts}
         categories={categories}
+        transactions={[]}
         isOnline
       />,
     );
     expect(screen.queryByText(/compras del celular/i)).not.toBeInTheDocument();
+  });
+
+  it('muestra el motivo de revisión cuando la auto-confirmación está activa', () => {
+    AUTO.getReviewReason.mockReturnValue('cuenta-ambigua');
+    render(
+      <TransactionImportInbox
+        userId="owner"
+        accounts={accounts}
+        categories={categories}
+        transactions={[]}
+        isOnline
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /compras del celular/i }));
+    expect(screen.getAllByText(/en revisión: cuenta ambigua/i).length).toBeGreaterThan(0);
+  });
+
+  it('el interruptor alterna la preferencia y oculta los motivos cuando queda apagado', () => {
+    AUTO.getReviewReason.mockReturnValue('cuenta-ambigua');
+    render(
+      <TransactionImportInbox
+        userId="owner"
+        accounts={accounts}
+        categories={categories}
+        transactions={[]}
+        isOnline
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /compras del celular/i }));
+    const toggle = screen.getByRole('checkbox', {
+      name: /confirmar automáticamente las compras inequívocas/i,
+    });
+    expect(toggle).toBeChecked();
+    expect(screen.getAllByText(/en revisión: cuenta ambigua/i).length).toBeGreaterThan(0);
+
+    fireEvent.click(toggle);
+    expect(toggle).not.toBeChecked();
+    expect(screen.queryByText(/en revisión:/i)).not.toBeInTheDocument();
   });
 });

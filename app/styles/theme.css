@@ -21,6 +21,13 @@
   --primary-foreground: #ffffff;
   /* Relleno sólido para botones/badges con texto blanco. En claro = --primary. */
   --primary-solid: #7c3aed;
+  /* Violet de marca para TEXTO pequeño sobre superficie (card/tinte primary/10).
+     --primary (#7c3aed/#8b5cf6) no llega a AA como texto normal sobre esas
+     superficies (especialmente en dark: #8b5cf6 da ~3.1-3.5:1). Este token sí:
+     en claro #6d28d9 ≥5:1 sobre card y tinte; en dark #c4b5fd ≥6:1. Úsalo para
+     badges de tipo, nombre de cuenta padre, botones de acción violet y cifras
+     violet de resumen. --primary se reserva para borde/foco/relleno. */
+  --primary-on-surface: #6d28d9;
 
   /* SUCCESS (Verde) — fg oscurecido para WCAG AA (5.21:1 sobre muted) */
   --success: #047857;
@@ -33,16 +40,49 @@
   /* WARNING (Amarillo/Naranja) — fg oscurecido para WCAG AA (4.84:1 sobre muted) */
   --warning: #b45309;
   --warning-muted: #fffbeb;
+  /* Relleno SÓLIDO de warning con texto blanco (botón "Crear primera cuenta").
+     Mode-invariante a propósito: #b45309 + blanco = 5.02:1 (AA) en claro Y oscuro.
+     NO usar --warning como fondo: en dark --warning es #f59e0b (ámbar brillante)
+     y con blanco da 2.15:1 (falla). Este token es el fondo; --warning es el texto. */
+  --warning-solid: #b45309;
 
   /* INFO (Azul) */
   --info: #2563eb;
   --info-muted: #eff6ff;
+
+  /* HÉROE DE RECOMENDACIÓN — gradiente violet OSCURO con texto blanco.
+     Excepción de diseño intencional (documentada en DESIGN.md): el único
+     gradiente nuevo fuera de .btn-primary / .card-balance / shell. A diferencia
+     de .card-balance (gradiente CLARO para texto violet oscuro), este es oscuro
+     a propósito para que el texto blanco del héroe cumpla WCAG AA: blanco sobre
+     el stop más claro #7c3aed = 5.7:1 y sobre #6d28d9 = 7.1:1 (ambos ≥4.5:1).
+     Mode-invariante: el violet oscuro luce igual de bien en claro y oscuro. */
+  --hero-recommend-from: #6d28d9;
+  --hero-recommend-to: #7c3aed;
 
   /* BALANCE (Morado especial - más vibrante) */
   --balance-accent: #f3e8ff;
   --balance-accent-foreground: #7c3aed;
   --balance-foreground: #6b21a8;
   --balance-value: #7c3aed;
+
+  /* ANILLO DE DISTRIBUCIÓN (AvailableDistributionRing, SOLO móvil) ───────────
+     Rampa de segmentos DENTRO del sistema de diseño. A diferencia de las
+     tarjetas billetera (donde el color es la MARCA de cada tarjeta y puede ser
+     ajeno al violet), el anillo es un gráfico del producto y por tanto se limita
+     a derivados de los tokens de marca/estado del sistema: violet (--primary),
+     azul (--info), verde (--success), un violet claro de la rampa balance y dos
+     tonos intermedios coherentes (índigo y teal-info). NADA de naranjas/ámbar ni
+     colores crudos fuera de paleta. Los seis tonos se eligieron con suficiente
+     salto de hue/lightness para distinguirse entre sí y contra la pista
+     (--muted). El texto de la leyenda NO usa estos colores (va en --foreground),
+     así que son puramente gráficos (umbral de componente, no de texto). */
+  --ring-seg-1: #7c3aed; /* violet (marca) */
+  --ring-seg-2: #2563eb; /* azul (info) */
+  --ring-seg-3: #0e7490; /* teal-info (cian oscuro del sistema) */
+  --ring-seg-4: #047857; /* verde (success) */
+  --ring-seg-5: #4f46e5; /* índigo (puente violet↔azul) */
+  --ring-seg-6: #9333ea; /* violet claro (rampa balance) */
 
   /* TEXTO/SUPERFICIE SEMÁNTICOS — alias de la capa "*-text"/surface usada por el
      manual (HelpSection*). Apuntan a tokens YA afinados AA: los *-text son los
@@ -104,6 +144,10 @@
      (blanco sobre #6d28d9 = 7.1:1; #8b5cf6 daba 4.23:1). NO se toca --primary,
      que también sirve como texto/borde/foco sobre fondo oscuro. */
   --primary-solid: #6d28d9;
+  /* Violet de texto sobre superficie en dark — aclarado para AA (#c4b5fd sobre
+     card #1f2937 ≈7:1, sobre tinte primary/10 ≈6:1). Reusa el violet claro de
+     la paleta balance, que ya cumple AA como texto en oscuro. */
+  --primary-on-surface: #c4b5fd;
   /* Gradiente .btn-primary en dark: ambos stops ≥4.5:1 con blanco. */
   --btn-primary-from: #6d28d9;
   --btn-primary-to: #7c3aed;
@@ -120,16 +164,20 @@
   --success: #10b981;
   --success-muted: #03291c;
 
-  /* DESTRUCTIVE DARK — muted profundizado para WCAG AA (4.58:1 con fg) */
-  --destructive: #ef4444;
+  /* DESTRUCTIVE DARK — aclarado a #f56565 para WCAG AA como TEXTO sobre card
+     (#ef4444 daba 3.9:1 sobre card #1f2937, fallaba). #f56565 = 4.85:1 sobre card
+     y 5.69:1 sobre destructive-muted. Cubre el monto de gasto en filas (bg-card). */
+  --destructive: #f56565;
   --destructive-muted: #3a0808;
 
   /* WARNING DARK — muted profundizado para WCAG AA (6.37:1 con fg) */
   --warning: #f59e0b;
   --warning-muted: #4a2308;
 
-  /* INFO DARK — muted profundizado para WCAG AA (4.81:1 con fg) */
-  --info: #3b82f6;
+  /* INFO DARK — aclarado a #60a5fa para WCAG AA como TEXTO sobre card
+     (#3b82f6 daba 3.99:1 sobre card #1f2937, fallaba). #60a5fa = 5.77:1 sobre card
+     y 6.96:1 sobre info-muted. Cubre el monto de transferencia en filas (bg-card). */
+  --info: #60a5fa;
   --info-muted: #0d1733;
 
   /* BALANCE DARK */
@@ -137,6 +185,18 @@
   --balance-accent-foreground: #c4b5fd;
   --balance-foreground: #d8b4fe;
   --balance-value: #c4b5fd;
+
+  /* ANILLO DE DISTRIBUCIÓN DARK — mismos roles que en claro, aclarados para
+     que resalten sobre la pista oscura (--muted #262626) y entre sí. Siguen
+     dentro del sistema: violet, azul, cian, verde, índigo y violet claro, todos
+     tomados de los tokens *-dark de marca/estado (p. ej. --primary #8b5cf6,
+     --info #60a5fa, --success #10b981). Son gráficos, no texto. */
+  --ring-seg-1: #a78bfa; /* violet claro (marca dark) */
+  --ring-seg-2: #60a5fa; /* azul (info dark) */
+  --ring-seg-3: #22d3ee; /* cian */
+  --ring-seg-4: #34d399; /* verde (success dark) */
+  --ring-seg-5: #818cf8; /* índigo */
+  --ring-seg-6: #c084fc; /* violet claro (rampa balance) */
 
   /* BORDERS & INPUTS DARK */
   --border: #4c1d95;

@@ -29,6 +29,21 @@ const makeExpense = (overrides: Partial<Transaction>): Transaction => ({
 });
 
 describe('creditCardOptimizer', () => {
+  it('excluye las tarjetas ARCHIVADAS de los planes y de la recomendación', () => {
+    const plans = buildCreditCardUsagePlans([
+      makeCard({ id: 'activa', name: 'Nu', creditLimit: 3_000_000, monthlySpendingLimit: 0 }),
+      makeCard({ id: 'gold-archivada', name: 'Gold', archived: true, creditLimit: 9_000_000, monthlySpendingLimit: 0 }),
+    ], [], {
+      amount: 100_000,
+      date: new Date('2026-07-11T12:00:00'),
+    });
+
+    // La archivada no aparece como plan; solo la activa participa.
+    expect(plans.map((plan) => plan.cardId)).toEqual(['activa']);
+    expect(getRecommendedCreditCardUsagePlan(plans)?.cardId).not.toBe('gold-archivada');
+  });
+
+
   it('recommends the card with the longer payment window when it can cover the purchase', () => {
     const cards = [
       makeCard({ id: 'near-cutoff', name: 'Corta pronto', cutoffDay: 13, paymentDay: 1 }),

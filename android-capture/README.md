@@ -228,6 +228,15 @@ antes de abrir el formulario.
 8. Revisa en la web el monto y la cuenta o tarjeta sugerida. La confirmación
    manual es el único paso que crea la transacción y actualiza el saldo.
 
+   > **Cambio de diseño explícito del usuario:** por decisión consciente para
+   > reducir trabajo manual, la app web puede **auto-confirmar en el cliente**
+   > los candidatos **inequívocos** (cuenta única por instrumento registrado +
+   > categoría confiable por historial o regla de patrón). En ese caso la
+   > transacción entra sola al libro sin paso manual. Los candidatos dudosos
+   > (cuenta ambigua, sin cuenta que coincida, sin categoría confiable o con
+   > datos faltantes) siguen requiriendo confirmación manual. Un interruptor en
+   > la bandeja permite volver al modo 100% manual.
+
 El botón **Abrir Moneytrack web** usa `https://axensz.github.io/Moneytrack/`, definido
 en `app/src/main/res/values/strings.xml`. Verifica ese destino contra el entorno
 que se vaya a usar y actualiza el recurso en otro cambio si el despliegue oficial
@@ -249,8 +258,11 @@ tiene un host diferente.
   detiene antes de leer contenido.
 
 Para detener nuevas capturas, desactiva el interruptor, revoca el acceso a
-notificaciones o desinstala la aplicación. Los candidatos pendientes nunca
-cambian saldos por sí solos.
+notificaciones o desinstala la aplicación. Los candidatos pendientes no cambian
+saldos por sí solos **salvo** que, con la auto-confirmación activada (default) en
+la app web, el candidato sea inequívoco (cuenta única + categoría confiable); en
+ese caso entra solo al libro. Desactiva ese interruptor en la bandeja web para
+volver al modo 100% manual.
 
 ## Evidencia del canario
 

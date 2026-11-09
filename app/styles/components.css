@@ -41,6 +41,40 @@
     background: var(--balance-accent);
   }
 
+  /* ─── Héroe de recomendación (Optimizador de tarjetas) ───
+     Gradiente violet OSCURO con texto blanco. Excepción de diseño intencional
+     (ver DESIGN.md): único gradiente nuevo fuera de .btn-primary/.card-balance/
+     shell. Es oscuro —al revés que .card-balance— para que el texto blanco
+     cumpla AA sobre toda la rampa (5.7:1 → 7.1:1). Mode-invariante. */
+  .card-recommend-hero {
+    @apply rounded-xl border p-4 sm:p-5;
+    background: linear-gradient(135deg, var(--hero-recommend-from) 0%, var(--hero-recommend-to) 100%);
+    border-color: var(--hero-recommend-from);
+    color: var(--primary-foreground);
+    box-shadow: 0 10px 20px -8px rgba(109, 40, 217, 0.45);
+  }
+
+  /* ─── Tarjeta billetera (crédito, SOLO layout móvil) ───
+     Cada TC se presenta como una "tarjeta física" con un gradiente del color de
+     MARCA de esa tarjeta y texto blanco encima. Excepción de diseño intencional
+     (ver DESIGN.md): es el único gradiente nuevo además de .btn-primary /
+     .card-balance / .card-recommend-hero / shell. A diferencia del violet único
+     de la marca del producto, aquí el color identifica a CADA tarjeta.
+     Los stops (`--wallet-from`/`--wallet-to`) los inyecta WalletCreditCard por
+     tarjeta desde `accountBrandColors`, donde todos los tonos se eligieron
+     oscuros para que el texto blanco cumpla WCAG AA (≥4.5:1 sobre ambos stops).
+     Fallback a violet oscuro si no se inyectan variables. */
+  .card-wallet {
+    @apply relative overflow-hidden rounded-2xl p-5;
+    background: linear-gradient(
+      135deg,
+      var(--wallet-from, #6d28d9) 0%,
+      var(--wallet-to, #7c3aed) 100%
+    );
+    color: var(--primary-foreground);
+    box-shadow: 0 10px 20px -8px rgba(0, 0, 0, 0.35);
+  }
+
   .card-stat {
     @apply p-3 sm:p-4 md:p-5 rounded-xl border transition-[box-shadow,border-color];
     background-color: var(--card);

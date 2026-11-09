@@ -186,6 +186,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
         userId={userId}
         accounts={accounts}
         categories={categories}
+        transactions={transactions}
         isOnline={isOnline}
       />
       <div className="card">

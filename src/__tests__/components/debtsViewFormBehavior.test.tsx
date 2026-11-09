@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   deleteDebt: vi.fn(),
   reassignDebtAccount: vi.fn(),
   registerDebtPayment: vi.fn(),
+  linkDebtPayment: vi.fn(),
+  payDebtCycle: vi.fn(),
   modifyDebtBalance: vi.fn(),
   forgiveDebt: vi.fn(),
   toastError: vi.fn(),
@@ -25,12 +27,17 @@ vi.mock('../../hooks/useFinanceSelectors', () => ({
     deleteDebt: mocks.deleteDebt,
     reassignDebtAccount: mocks.reassignDebtAccount,
     registerDebtPayment: mocks.registerDebtPayment,
+    linkDebtPayment: mocks.linkDebtPayment,
+    payDebtCycle: mocks.payDebtCycle,
     modifyDebtBalance: mocks.modifyDebtBalance,
     forgiveDebt: mocks.forgiveDebt,
     debtStats: { totalLent: 0, totalBorrowed: 0, activeLentCount: 0, activeBorrowedCount: 0, settledCount: 0 },
   }),
   useAccountDomain: () => ({
     accounts: mocks.accounts,
+  }),
+  useTransactionDomain: () => ({
+    balanceTransactions: [],
   }),
 }));
 
@@ -183,7 +190,7 @@ describe('DebtsView - formulario nuevo', () => {
     expect(mocks.toastError).toHaveBeenCalledWith('Firestore rechazó el borrado');
   });
 
-  it('mantiene el formulario de pago abierto si guardar el pago falla', async () => {
+  it('mantiene el modal de pago abierto si guardar el pago falla', async () => {
     mocks.debts = [{
       id: 'active-1',
       personName: 'Laura',
@@ -199,11 +206,15 @@ describe('DebtsView - formulario nuevo', () => {
     const openPayment = screen.getByRole('button', { name: /registrar pago de laura/i });
     expect(openPayment).toHaveClass('h-11', 'w-11');
     fireEvent.click(openPayment);
+
+    // El modal abre en el paso de elección; elegimos "Registrar pago ahora".
+    fireEvent.click(screen.getByRole('button', { name: /registrar pago ahora/i }));
     fireEvent.change(screen.getByPlaceholderText('Monto del pago'), { target: { value: '100000' } });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /^pagar$/i }));
+      fireEvent.click(screen.getByRole('button', { name: /^registrar pago$/i }));
     });
 
+    expect(mocks.registerDebtPayment).toHaveBeenCalledWith('active-1', 100000);
     expect(screen.getByPlaceholderText('Monto del pago')).toHaveValue('100.000');
     expect(mocks.toastError).toHaveBeenCalledWith('No se pudo registrar el pago');
   });

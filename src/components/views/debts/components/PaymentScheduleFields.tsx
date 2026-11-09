@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatNumberForInput, unformatNumber } from '../../../../utils/formatters';
 import { PAYMENT_SCHEDULE_MODES, type PaymentScheduleFormState } from '../utils/paymentScheduleForm';
 
 interface PaymentScheduleFieldsProps {
@@ -31,15 +32,43 @@ export const PaymentScheduleFields: React.FC<PaymentScheduleFieldsProps> = ({ va
       </div>
 
       {value.mode === 'monthly' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <label className="space-y-1">
-            <span className="block text-xs text-gray-500 dark:text-gray-400">Día aprox.</span>
-            <input type="number" min={1} max={31} value={value.expectedPaymentDay} onChange={event => setField({ expectedPaymentDay: event.target.value })} className="input-base text-sm" />
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label className="space-y-1">
+              <span className="block text-xs text-gray-500 dark:text-gray-400">Día aprox.</span>
+              <input type="number" min={1} max={31} value={value.expectedPaymentDay} onChange={event => setField({ expectedPaymentDay: event.target.value })} className="input-base text-sm" />
+            </label>
+            <label className="space-y-1">
+              <span className="block text-xs text-gray-500 dark:text-gray-400">Esta vez</span>
+              <input type="date" value={value.nextPaymentDate} onChange={event => setField({ nextPaymentDate: event.target.value })} className="input-base text-sm" />
+            </label>
+          </div>
+
+          {/* Cuota periódica: marca el préstamo como pagable en cuotas fijas y
+              habilita "Marcar cuota pagada" en un paso (sin historial redundante). */}
+          <label className="flex min-h-11 items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input
+              type="checkbox"
+              checked={value.isRecurringPayment}
+              onChange={event => setField({ isRecurringPayment: event.target.checked })}
+              className="h-4 w-4 rounded border-border text-primary focus-visible:ring-2 focus-visible:ring-primary"
+            />
+            Con pagos periódicos (cuota fija)
           </label>
-          <label className="space-y-1">
-            <span className="block text-xs text-gray-500 dark:text-gray-400">Esta vez</span>
-            <input type="date" value={value.nextPaymentDate} onChange={event => setField({ nextPaymentDate: event.target.value })} className="input-base text-sm" />
-          </label>
+
+          {value.isRecurringPayment && (
+            <label className="space-y-1 block">
+              <span className="block text-xs text-gray-500 dark:text-gray-400">Monto de la cuota</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={formatNumberForInput(value.recurringPaymentAmount)}
+                onChange={event => setField({ recurringPaymentAmount: unformatNumber(event.target.value) })}
+                placeholder="Monto de la cuota"
+                className="input-base text-sm"
+              />
+            </label>
+          )}
         </div>
       )}
 

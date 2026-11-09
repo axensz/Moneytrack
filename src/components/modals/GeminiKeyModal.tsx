@@ -1,15 +1,20 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Sparkles, ExternalLink, Trash2, ShieldCheck, Eye, EyeOff } from 'lucide-react';
+import { Sparkles, ExternalLink, Trash2, ShieldCheck, Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
 import { BaseModal } from './BaseModal';
 import { useGeminiKey } from '../../contexts/GeminiKeyContext';
 import { showToast } from '../../utils/toastHelpers';
 import {
-  GEMINI_MODEL_OPTIONS,
-  getGeminiModelOption,
+  DEFAULT_GEMINI_MODEL,
   type GeminiModelId,
 } from '../../lib/geminiConfig';
+import {
+  loadGeminiModels,
+  findModelOption,
+  FALLBACK_GEMINI_MODELS,
+  type GeminiModelOption,
+} from '../../lib/geminiModels';
 
 interface GeminiKeyModalProps {
   isOpen: boolean;
@@ -30,7 +35,20 @@ export function GeminiKeyModal({ isOpen, onClose }: GeminiKeyModalProps) {
   const [draft, setDraft] = useState('');
   const [draftModel, setDraftModel] = useState<GeminiModelId>(selectedModel);
   const [showKey, setShowKey] = useState(false);
-  const modelDetails = getGeminiModelOption(draftModel);
+
+  // MODELOS DINÁMICOS: lista cargada en vivo desde ListModels con la key del
+  // usuario. Arranca con el respaldo estático para que el selector nunca quede
+  // vacío mientras carga o si la consulta falla.
+  const [models, setModels] = useState<GeminiModelOption[]>(FALLBACK_GEMINI_MODELS);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState(false);
+
+  // Detalles del modelo elegido. Si el modelo guardado ya no aparece en la
+  // lista dinámica (Google lo retiró), degradamos: lo mostramos como no
+  // disponible y usamos el primer modelo de la lista para los límites.
+  const selectedOption = findModelOption(models, draftModel);
+  const modelDetails = selectedOption ?? models[0] ?? FALLBACK_GEMINI_MODELS[0];
+  const modelRetired = !selectedOption;
 
   const handleToggleConsent = (value: boolean) => {
     setConsent(value);
@@ -44,6 +62,43 @@ export function GeminiKeyModal({ isOpen, onClose }: GeminiKeyModalProps) {
       setDraftModel(selectedModel);
     }
   }, [isOpen, apiKey, selectedModel]);
+
+  // Al abrir con una key configurada, cargar los modelos dinámicos. ListModels
+  // solo lee metadatos (no envía datos financieros), así que basta con la key
+  // configurada — NO exige consentimiento (ese es el chokepoint de envío de
+  // datos en getGeminiClient). Si no hay key, se queda con el respaldo estático.
+  useEffect(() => {
+    if (!isOpen || !isConfigured) {
+      setModels(FALLBACK_GEMINI_MODELS);
+      setModelsError(false);
+      setModelsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setModelsLoading(true);
+    setModelsError(false);
+    loadGeminiModels()
+      .then((list) => {
+        if (cancelled) return;
+        setModels(list);
+        // Si solo tenemos el respaldo estático pese a haber key, la consulta
+        // probablemente falló: señalamos el error de forma discreta.
+        setModelsError(list === FALLBACK_GEMINI_MODELS);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setModels(FALLBACK_GEMINI_MODELS);
+        setModelsError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setModelsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, isConfigured, apiKey]);
 
   const handleSave = () => {
     const trimmed = draft.trim();
@@ -131,31 +186,61 @@ export function GeminiKeyModal({ isOpen, onClose }: GeminiKeyModalProps) {
           <label htmlFor="gemini-model" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
             Modelo Gemini
           </label>
+          {modelsLoading && (
+            <p className="mb-1.5 inline-flex items-center gap-1 text-xs text-muted-foreground" aria-live="polite">
+              <Loader2 size={12} className="animate-spin" aria-hidden="true" /> Cargando modelos…
+            </p>
+          )}
           <select
             id="gemini-model"
             value={draftModel}
             onChange={(event) => setDraftModel(event.target.value as GeminiModelId)}
-            className="control-target-44 w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary"
+            className="control-target-44 w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
           >
-            {GEMINI_MODEL_OPTIONS.map((model) => (
+            {/* Si el modelo guardado ya no está en la lista dinámica, lo mostramos
+                igual (marcado como no disponible) para no romper la selección. */}
+            {modelRetired && (
+              <option value={draftModel}>
+                {draftModel} — no disponible
+              </option>
+            )}
+            {models.map((model) => (
               <option key={model.id} value={model.id}>
-                {model.label}{model.id === 'gemini-3.5-flash' ? ' — Predeterminado' : ''}
+                {model.label}{model.id === DEFAULT_GEMINI_MODEL ? ' — Predeterminado' : ''}
               </option>
             ))}
           </select>
+          {modelsError && (
+            <p className="mt-1.5 flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+              <AlertCircle size={12} aria-hidden="true" />
+              No se pudo cargar la lista en vivo; se muestran los modelos básicos.
+            </p>
+          )}
+          {modelRetired && !modelsLoading && (
+            <p className="mt-1.5 flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+              <AlertCircle size={12} aria-hidden="true" />
+              El modelo guardado ya no está disponible. Elige otro para seguir usando la IA.
+            </p>
+          )}
           <div className="mt-2 rounded-xl border border-border bg-muted p-3 text-xs text-muted-foreground">
-            <p className="font-medium text-foreground">{modelDetails.description}</p>
+            {modelDetails.description && (
+              <p className="font-medium text-foreground">{modelDetails.description}</p>
+            )}
             <dl className="mt-2 grid grid-cols-2 gap-3">
               <div>
                 <dt>Contexto máximo</dt>
                 <dd className="mt-0.5 font-mono font-semibold text-foreground">
-                  {modelDetails.inputTokenLimit.toLocaleString('es-CO')} tokens
+                  {modelDetails.inputTokenLimit > 0
+                    ? `${modelDetails.inputTokenLimit.toLocaleString('es-CO')} tokens`
+                    : '—'}
                 </dd>
               </div>
               <div>
                 <dt>Respuesta máxima</dt>
                 <dd className="mt-0.5 font-mono font-semibold text-foreground">
-                  {modelDetails.outputTokenLimit.toLocaleString('es-CO')} tokens
+                  {modelDetails.outputTokenLimit > 0
+                    ? `${modelDetails.outputTokenLimit.toLocaleString('es-CO')} tokens`
+                    : '—'}
                 </dd>
               </div>
             </dl>

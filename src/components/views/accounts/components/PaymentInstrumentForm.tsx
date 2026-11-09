@@ -143,11 +143,16 @@ export function PaymentInstrumentForm({
           onChange={event => setAccountId(event.target.value)}
         >
           <option value="">Selecciona una cuenta</option>
-          {accounts.filter(account => account.id).map(account => (
-            <option key={account.id} value={account.id}>
-              {account.name}
-            </option>
-          ))}
+          {/* Se excluyen las cuentas archivadas al vincular un medio de pago.
+              Excepción: si el medio ya apunta a una archivada (edición), se
+              conserva para no romper la selección existente. */}
+          {accounts
+            .filter(account => account.id && (!account.archived || account.id === accountId))
+            .map(account => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
         </select>
       </div>
 

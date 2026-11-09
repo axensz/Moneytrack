@@ -125,6 +125,10 @@ export interface FinanceContextValue {
     options?: AccountUpdateOptions
   ) => Promise<void>;
   deleteAccount: (id: string, options?: { preserveTransactions?: boolean; allowDefaultDelete?: boolean }) => Promise<void>;
+  /** Archiva una cuenta (comportamiento A): la oculta de lista/selectores, conserva historial. */
+  archiveAccount: (id: string) => Promise<void>;
+  /** Revierte el archivado: vuelve a mostrar la cuenta en lista y selectores. */
+  unarchiveAccount: (id: string) => Promise<void>;
   mergeCreditCards: (params: MergeCreditCardsParams) => Promise<void>;
   setDefaultAccount: (id: string) => Promise<void>;
   getAccountBalance: (id: string) => number;
@@ -157,6 +161,8 @@ export interface FinanceContextValue {
   deleteDebt: (id: string) => Promise<void>;
   reassignDebtAccount: (debtId: string, nextAccountId?: string) => Promise<void>;
   registerDebtPayment: (debtId: string, amount: number) => Promise<void>;
+  linkDebtPayment: (debtId: string, transactionId: string, recurringCycle?: string) => Promise<void>;
+  payDebtCycle: (debtId: string, recurringCycle: string) => Promise<void>;
   modifyDebtBalance: (debtId: string, amount: number, operation: 'add' | 'subtract') => Promise<void>;
   forgiveDebt: (debtId: string, reason: 'unpaid' | 'gift' | 'other') => Promise<void>;
   getDebtTransactions: (debtId: string) => Transaction[];
@@ -276,6 +282,8 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     addAccount,
     updateAccount,
     deleteAccount,
+    archiveAccount,
+    unarchiveAccount,
     mergeCreditCards,
     setDefaultAccount,
     getAccountBalance,
@@ -324,6 +332,8 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     deleteDebt,
     reassignDebtAccount,
     registerDebtPayment,
+    linkDebtPayment,
+    payDebtCycle,
     restoreDebtPayment,
     modifyDebtBalance,
     forgiveDebt,
@@ -442,6 +452,8 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     addAccount,
     updateAccount,
     deleteAccount,
+    archiveAccount,
+    unarchiveAccount,
     mergeCreditCards,
     setDefaultAccount,
     getAccountBalance,
@@ -473,6 +485,8 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     deleteDebt,
     reassignDebtAccount,
     registerDebtPayment,
+    linkDebtPayment,
+    payDebtCycle,
     modifyDebtBalance,
     forgiveDebt,
     getDebtTransactions,
@@ -504,12 +518,12 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     firestoreError, retryLoad,
     addTransaction, addCreditPaymentAtomic, addRecurringTransactionAtomic, linkRecurringTransactionAtomic,
     restoreTransactionWithDebtSync, deleteTransactionWithDebtSync, updateTransaction,
-    addAccount, updateAccount, deleteAccount, mergeCreditCards, setDefaultAccount,
+    addAccount, updateAccount, deleteAccount, archiveAccount, unarchiveAccount, mergeCreditCards, setDefaultAccount,
     getAccountBalance, getCreditUsed, getTransactionCountForAccount,
     addCategory, deleteCategory, addTransactionBeneficiary, deleteTransactionBeneficiary,
     addRecurringPayment, updateRecurringPayment, deleteRecurringPayment,
     isPaidForMonth, getNextDueDate, getDaysUntilDue, getDaysOverdue, isOverdue, getPaymentHistory, recurringStats,
-    debts, addDebt, updateDebt, deleteDebt, reassignDebtAccount, registerDebtPayment, modifyDebtBalance, forgiveDebt,
+    debts, addDebt, updateDebt, deleteDebt, reassignDebtAccount, registerDebtPayment, linkDebtPayment, payDebtCycle, modifyDebtBalance, forgiveDebt,
     getDebtTransactions, debtStats,
     budgets, addBudget, updateBudget, deleteBudget, budgetStatuses, budgetStats,
     savingsGoals, addGoal, updateGoal, deleteGoal, addSavings, goalStatuses, goalStats,

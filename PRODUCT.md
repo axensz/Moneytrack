@@ -29,14 +29,23 @@ infantil, experto sin abrumar. El color comunica estado (verde +, rojo −,
 
 - **No** un dashboard SaaS genérico: nada de hero-metrics con degradado,
   rejillas de tarjetas idénticas, ni glassmorphism decorativo.
-- Los degradados se confinan a `.btn-primary` y `.card-balance`; el degradado
-  violet del shell y los de RecurringStatsCards son intencionales y by-design.
+- Los degradados se confinan a `.btn-primary`, `.card-balance`,
+  `.card-recommend-hero` y `.card-wallet` (tarjetas billetera, solo móvil); el
+  degradado violet del shell y los de RecurringStatsCards son intencionales y
+  by-design (ver DESIGN.md para las excepciones documentadas).
 - Sin librerías de motion (Framer Motion): animación CSS-first.
 
 ## Design Principles
 
 - **The Confident Ledger** — la cifra es la verdad; el diseño la respalda, no
   la disfraza.
+  - _Nota (cambio de diseño explícito del usuario):_ para reducir trabajo
+    manual, la app web ahora puede **auto-confirmar en el cliente** los
+    candidatos de importación **inequívocos** (cuenta única por instrumento +
+    categoría confiable por historial o regla de patrón). Esto rompe a propósito
+    la regla original de que solo la confirmación manual crea la transacción y
+    mueve saldo. Los candidatos dudosos siguen requiriendo confirmación manual, y
+    un interruptor permite volver al modo 100% manual.
 - **El color es estado, no adorno** — verde/rojo/ámbar para estado, violet
   para marca; el tipo se distingue por icono, no por color.
 - **Cálido sin perder rigor** — al des-saturar no colapsar a gris; conservar

@@ -61,8 +61,12 @@ import {
 import { publishTransactionCacheMutation } from './firestore/transactionPaginationCache';
 import {
   executeAuthenticatedLedgerMutation,
+  loadServerLedgerTransaction,
+  loadServerLedgerTransactionsByDebt,
   planCreditAuthorityChanges,
+  validateLedgerMutationOperationId,
 } from './firestore/ledgerMutationOrchestration';
+import { debtTransactionSatisfiesCycle } from '../utils/debtRecurringCycle';
 import { buildDebtAccountReassignmentPlan } from '../utils/debtAccountReassignment';
 import { transactionMatchesRestoreSnapshot } from '../utils/transactionRestorePolicy';
 import { requireDecodedTransaction } from '../utils/transactionDecoder';
@@ -396,7 +400,12 @@ export function useDebts(
       }
 
       const cleanUpdates = stripUndefined(updates);
-      const clearablePaymentFields = ['expectedPaymentDay', 'nextPaymentDate'] as const;
+      const clearablePaymentFields = [
+        'expectedPaymentDay',
+        'nextPaymentDate',
+        'isRecurringPayment',
+        'recurringPaymentAmount',
+      ] as const;
       const deletedPaymentFields = Object.fromEntries(
         clearablePaymentFields
           .filter(field => Object.prototype.hasOwnProperty.call(updates, field) && updates[field] === undefined)
@@ -916,6 +925,534 @@ export function useDebts(
     }, { operationId });
   }, [userId, mutateGuestLedger, assertGuestLedgerMutation]);
 
+  // Enlaza una transacción EXISTENTE como el pago de un préstamo, SIN crear un
+  // movimiento nuevo (evita duplicar el gasto/ingreso que el usuario ya registró
+  // suelto). Análogo a linkRecurringTransactionAtomic: reusa autoridad confirmada
+  // del servidor, marca la transacción (debtId/category/mutationSource) y reduce
+  // remainingAmount con auto-settle. El type NO se toca: las reglas lo exigen
+  // inmutable y además ya debe coincidir con la dirección del préstamo.
+  const linkDebtPayment = useCallback(async (
+    debtId: string,
+    transactionId: string,
+    recurringCycle?: string,
+  ) => {
+    if (!debtId || !transactionId) return;
+
+    if (userId) {
+      if (!checkNetworkConnection()) {
+        throw new Error('Sin conexión a internet');
+      }
+
+      const operationId = createAccountOperationId('ledger-mutation');
+      const linkedTransaction = await safeFirestoreOperation(
+        async () => {
+          // Dedupe por recibo: si un intento anterior ya confirmó este enlace con
+          // el mismo operationId, reusamos la transacción persistida sin reaplicar.
+          const observedDebt = await getDocFromServer(
+            doc(db, `users/${userId}/debts`, debtId)
+          );
+          if (observedDebt.exists()) {
+            const observedReceipts = readDebtPaymentReceipts(
+              (observedDebt.data() as Record<string, unknown>).recentPaymentOperations
+            );
+            const committedReceipt = observedReceipts.find(
+              receipt => receipt.operationId === operationId
+            );
+            if (committedReceipt) {
+              return loadCommittedDebtTransaction(userId, debtId, committedReceipt);
+            }
+          }
+
+          return executeAuthenticatedLedgerMutation(
+            userId,
+            async ({ loadContext }) => {
+              const debtRef = doc(db, `users/${userId}/debts`, debtId);
+              const [debtSnapshot, transaction] = await Promise.all([
+                getDocFromServer(debtRef),
+                loadServerLedgerTransaction(userId, transactionId),
+              ]);
+              if (!debtSnapshot.exists()) {
+                throw new Error('El préstamo cambió o ya no existe. Actualiza e intenta de nuevo.');
+              }
+              if (!transaction) {
+                throw new Error('La transacción ya no existe. Actualiza e intenta de nuevo.');
+              }
+
+              const persistedDebt = {
+                ...(debtSnapshot.data() as Omit<Debt, 'id'>),
+                id: debtId,
+              } as Debt;
+              const paymentReceipts = readDebtPaymentReceipts(
+                persistedDebt.recentPaymentOperations
+              );
+              const committedReceipt = paymentReceipts.find(
+                receipt => receipt.operationId === operationId
+              );
+              if (committedReceipt) {
+                const committedTransaction = await loadCommittedDebtTransaction(
+                  userId,
+                  debtId,
+                  committedReceipt,
+                );
+                const context = await loadContext([]);
+                return {
+                  intent: {
+                    kind: 'edit' as const,
+                    before: [],
+                    after: [],
+                    metadata: { operationId, mutationSource: 'debt' as const },
+                  },
+                  context,
+                  writeCount: 0,
+                  stage: () => undefined,
+                  result: committedTransaction,
+                };
+              }
+
+              // Idempotencia: ya enlazada a ESTE préstamo → no-op (no reaplica saldo).
+              if (transaction.debtId === debtId) {
+                const context = await loadContext([]);
+                return {
+                  intent: {
+                    kind: 'edit' as const,
+                    before: [],
+                    after: [],
+                    metadata: { operationId, mutationSource: 'debt' as const },
+                  },
+                  context,
+                  writeCount: 0,
+                  stage: () => undefined,
+                  result: transaction,
+                };
+              }
+
+              // Rechazos: enlazada a otra deuda, a un periódico, o mitad de par TC.
+              if (transaction.debtId) {
+                throw new Error('La transacción ya pertenece a otro préstamo.');
+              }
+              if (transaction.recurringPaymentId) {
+                throw new Error('La transacción ya pertenece a un pago periódico.');
+              }
+              if (transaction.linkedTransactionId) {
+                throw new Error('La transacción ya forma parte de un pago vinculado.');
+              }
+              if (transaction.paid !== true) {
+                throw new Error('Solo una transacción pagada puede enlazarse como pago del préstamo.');
+              }
+              if (!persistedDebt.accountId) {
+                throw new Error('El préstamo no tiene una cuenta asociada para enlazar un movimiento.');
+              }
+              if (transaction.accountId !== persistedDebt.accountId) {
+                throw new Error('La transacción debe pertenecer a la cuenta del préstamo.');
+              }
+              // El type ya debe coincidir con la dirección del préstamo; no se
+              // cambia porque las reglas exigen type inmutable al actualizar.
+              const expectedType = persistedDebt.type === 'lent' ? 'income' : 'expense';
+              if (transaction.type !== expectedType) {
+                throw new Error('El tipo de la transacción no corresponde a la dirección del préstamo.');
+              }
+              if (persistedDebt.isSettled || persistedDebt.remainingAmount <= 0) {
+                throw new Error('El préstamo ya está saldado.');
+              }
+
+              const persistedRemaining = normalizeLedgerAmount(persistedDebt.remainingAmount);
+              const effectiveAmount = normalizeLedgerAmount(transaction.amount);
+              if (effectiveAmount <= 0) {
+                throw new Error('El monto de la transacción no es válido.');
+              }
+              if (effectiveAmount > persistedRemaining) {
+                throw new Error('El monto de la transacción supera el saldo pendiente del préstamo.');
+              }
+
+              const newRemaining = Math.max(0, roundMoney(persistedRemaining - effectiveAmount));
+              const isSettled = newRemaining === 0;
+
+              // El movimiento ya existe: al enlazar solo cambian metadatos (debtId,
+              // category, mutationSource), no el impacto financiero. El plan de
+              // crédito debe ser neutro (before === after) y por eso lo verificamos.
+              const linkedTransaction = {
+                ...transaction,
+                debtId,
+                category: LOAN_PAYMENT_CATEGORY,
+                operationId,
+                mutationSource: 'debt' as const,
+                // Estampa el ciclo cuando se enlaza una cuota periódica, para fijar
+                // qué ciclo salda esta transacción (igual que los pagos periódicos).
+                ...(recurringCycle ? { recurringCycle } : {}),
+              } as Transaction;
+              const context = await loadContext([transaction.accountId]);
+              const intent = {
+                kind: 'edit' as const,
+                before: [transaction],
+                after: [linkedTransaction],
+                metadata: { operationId, mutationSource: 'debt' as const },
+              };
+              const creditChanges = planCreditAuthorityChanges(intent, context);
+              if (creditChanges.length > 0) {
+                throw new Error('Enlazar esta transacción alteraría la autoridad de la tarjeta; requiere reconciliación.');
+              }
+              const nextPaymentReceipts = appendDebtPaymentReceipt(
+                paymentReceipts,
+                {
+                  operationId,
+                  amount: effectiveAmount,
+                  transactionId,
+                },
+              );
+
+              return {
+                intent,
+                context,
+                writeCount: 2,
+                stage: (batch) => {
+                  batch.update(
+                    doc(db, `users/${userId}/transactions`, transactionId),
+                    {
+                      debtId,
+                      category: LOAN_PAYMENT_CATEGORY,
+                      operationId,
+                      mutationSource: 'debt',
+                      ...(recurringCycle ? { recurringCycle } : {}),
+                    }
+                  );
+                  batch.update(debtRef, {
+                    remainingAmount: newRemaining,
+                    isSettled,
+                    ...(isSettled ? { settledAt: new Date() } : {}),
+                    recentPaymentOperations: nextPaymentReceipts,
+                  });
+                },
+                result: linkedTransaction,
+              };
+            },
+            { operationId },
+          );
+        },
+        'linkDebtPayment',
+        { maxRetries: 2, retryRecoverableErrors: true }
+      );
+
+      if (linkedTransaction) {
+        publishTransactionCacheMutation({
+          userId,
+          type: 'update',
+          transactions: [linkedTransaction],
+        });
+      }
+      return;
+    }
+
+    const operationId = `guest-debt-link:${debtId}:${transactionId}`;
+    await mutateGuestLedger(draft => {
+      const debt = draft.debts.find(candidate => candidate.id === debtId);
+      if (!debt) throw new Error('Préstamo no encontrado');
+      const transaction = draft.transactions.find(candidate => candidate.id === transactionId);
+      if (!transaction) throw new Error('La transacción ya no existe.');
+
+      // Idempotencia: ya enlazada a este préstamo → no reaplicar.
+      if (transaction.debtId === debtId) return;
+
+      if (transaction.debtId) {
+        throw new Error('La transacción ya pertenece a otro préstamo.');
+      }
+      if (transaction.recurringPaymentId) {
+        throw new Error('La transacción ya pertenece a un pago periódico.');
+      }
+      if (transaction.linkedTransactionId) {
+        throw new Error('La transacción ya forma parte de un pago vinculado.');
+      }
+      if (transaction.paid !== true) {
+        throw new Error('Solo una transacción pagada puede enlazarse como pago del préstamo.');
+      }
+      if (!debt.accountId) {
+        throw new Error('El préstamo no tiene una cuenta asociada para enlazar un movimiento.');
+      }
+      if (transaction.accountId !== debt.accountId) {
+        throw new Error('La transacción debe pertenecer a la cuenta del préstamo.');
+      }
+      const expectedType = debt.type === 'lent' ? 'income' : 'expense';
+      if (transaction.type !== expectedType) {
+        throw new Error('El tipo de la transacción no corresponde a la dirección del préstamo.');
+      }
+      if (debt.isSettled || debt.remainingAmount <= 0) {
+        throw new Error('El préstamo ya está saldado.');
+      }
+
+      const remainingAmount = normalizeLedgerAmount(debt.remainingAmount);
+      const effectiveAmount = normalizeLedgerAmount(transaction.amount);
+      if (effectiveAmount <= 0) {
+        throw new Error('El monto de la transacción no es válido.');
+      }
+      if (effectiveAmount > remainingAmount) {
+        throw new Error('El monto de la transacción supera el saldo pendiente del préstamo.');
+      }
+      const newRemaining = Math.max(0, roundMoney(remainingAmount - effectiveAmount));
+      const isSettled = newRemaining === 0;
+
+      draft.transactions = draft.transactions.map(candidate => (
+        candidate.id === transactionId
+          ? {
+              ...candidate,
+              debtId,
+              category: LOAN_PAYMENT_CATEGORY,
+              mutationSource: 'debt',
+              ...(recurringCycle ? { recurringCycle } : {}),
+            }
+          : candidate
+      ));
+      draft.debts = draft.debts.map(candidate => (
+        candidate.id === debtId
+          ? {
+              ...candidate,
+              remainingAmount: newRemaining,
+              isSettled,
+              settledAt: isSettled ? new Date() : candidate.settledAt,
+            }
+          : candidate
+      ));
+    }, { operationId });
+  }, [userId, mutateGuestLedger]);
+
+  // Marca la cuota periódica de un préstamo como pagada EN UN PASO: crea el
+  // movimiento de la cuota (acotado al saldo pendiente) y reduce remainingAmount,
+  // enlazados por debtId + recurringCycle, en un único commit atómico y sin
+  // duplicar. Idempotente por ciclo: si ya existe una transacción del préstamo
+  // con ese recurringCycle, es no-op (devuelve esa transacción). El operationId
+  // determinista ('ledger-mutation:debt:<debtId>:<cycle>') protege ante reintentos.
+  const payDebtCycle = useCallback(async (debtId: string, recurringCycle: string) => {
+    if (!debtId || !recurringCycle) return;
+
+    if (userId) {
+      if (!checkNetworkConnection()) {
+        throw new Error('Sin conexión a internet');
+      }
+
+      const operationId = validateLedgerMutationOperationId(
+        `ledger-mutation:debt:${debtId}:${recurringCycle}`
+      );
+      const createdAt = new Date();
+      const transactionRef = doc(
+        db,
+        `users/${userId}/transactions`,
+        operationId,
+      );
+      const createdTransaction = await safeFirestoreOperation(
+        async () => {
+          return executeAuthenticatedLedgerMutation(
+            userId,
+            async ({ loadContext }) => {
+              const debtRef = doc(db, `users/${userId}/debts`, debtId);
+              const [debtSnapshot, debtTransactions] = await Promise.all([
+                getDocFromServer(debtRef),
+                loadServerLedgerTransactionsByDebt(userId, debtId),
+              ]);
+              if (!debtSnapshot.exists()) {
+                throw new Error('El préstamo cambió o ya no existe. Actualiza e intenta de nuevo.');
+              }
+
+              const persistedDebt = {
+                ...(debtSnapshot.data() as Omit<Debt, 'id'>),
+                id: debtId,
+              } as Debt;
+
+              // Idempotencia por ciclo: si ya hay una transacción del préstamo que
+              // salda este ciclo → no-op (devolvemos esa transacción sin reaplicar).
+              const alreadyPaid = debtTransactions.find(transaction =>
+                debtTransactionSatisfiesCycle(persistedDebt, transaction, recurringCycle)
+              );
+              if (alreadyPaid) {
+                const context = await loadContext([]);
+                return {
+                  intent: {
+                    kind: 'create' as const,
+                    before: [],
+                    after: [],
+                    metadata: { operationId, mutationSource: 'debt' as const },
+                  },
+                  context,
+                  writeCount: 0,
+                  stage: () => undefined,
+                  result: alreadyPaid,
+                };
+              }
+
+              if (persistedDebt.isSettled || persistedDebt.remainingAmount <= 0) {
+                throw new Error('El préstamo ya está saldado.');
+              }
+              const configuredAmount = persistedDebt.recurringPaymentAmount;
+              if (
+                typeof configuredAmount !== 'number'
+                || !Number.isFinite(configuredAmount)
+                || configuredAmount <= 0
+              ) {
+                throw new Error('El préstamo no tiene una cuota periódica configurada.');
+              }
+              const recurringPaymentAmount = normalizeLedgerAmount(configuredAmount);
+
+              const persistedRemaining = normalizeLedgerAmount(persistedDebt.remainingAmount);
+              const effectiveAmount = Math.min(recurringPaymentAmount, persistedRemaining);
+              const newRemaining = Math.max(0, roundMoney(persistedRemaining - effectiveAmount));
+              const isSettled = newRemaining === 0;
+
+              const transactionData = persistedDebt.accountId
+                ? {
+                    type: persistedDebt.type === 'lent' ? 'income' as const : 'expense' as const,
+                    amount: effectiveAmount,
+                    category: LOAN_PAYMENT_CATEGORY,
+                    description: persistedDebt.type === 'lent'
+                      ? `Cobro de ${persistedDebt.personName}`
+                      : `Pago a ${persistedDebt.personName}`,
+                    date: createdAt,
+                    paid: true,
+                    accountId: persistedDebt.accountId,
+                    debtId,
+                    recurringCycle,
+                    operationId,
+                    mutationKind: 'create' as const,
+                    mutationSource: 'debt' as const,
+                  }
+                : null;
+              const context = await loadContext(
+                transactionData ? [transactionData.accountId] : []
+              );
+              const transactionWithMetadata = transactionData
+                ? {
+                    id: transactionRef.id,
+                    ...transactionData,
+                    createdAt,
+                  } as Transaction
+                : null;
+              const intent = {
+                kind: 'create' as const,
+                before: [],
+                after: transactionWithMetadata ? [transactionWithMetadata] : [],
+                metadata: { operationId, mutationSource: 'debt' as const },
+              };
+              const creditChanges = planCreditAuthorityChanges(intent, context);
+              const paymentReceipts = readDebtPaymentReceipts(
+                persistedDebt.recentPaymentOperations
+              );
+              const nextPaymentReceipts = appendDebtPaymentReceipt(
+                paymentReceipts,
+                {
+                  operationId,
+                  amount: effectiveAmount,
+                  ...(transactionWithMetadata ? { transactionId: transactionRef.id } : {}),
+                },
+              );
+
+              return {
+                intent,
+                context,
+                writeCount: 1 + (transactionWithMetadata ? 1 : 0) + creditChanges.length,
+                stage: (batch) => {
+                  batch.update(debtRef, {
+                    remainingAmount: newRemaining,
+                    isSettled,
+                    ...(isSettled ? { settledAt: createdAt } : {}),
+                    recentPaymentOperations: nextPaymentReceipts,
+                  });
+                  if (transactionWithMetadata) {
+                    const persistedTransaction = { ...transactionWithMetadata };
+                    delete persistedTransaction.id;
+                    batch.set(transactionRef, persistedTransaction);
+                  }
+                  creditChanges.forEach(({ accountId, delta }) => {
+                    batch.update(
+                      doc(db, `users/${userId}/accounts`, accountId),
+                      { usedCredit: increment(delta) }
+                    );
+                  });
+                },
+                result: transactionWithMetadata,
+              };
+            },
+            { operationId },
+          );
+        },
+        'payDebtCycle',
+        { maxRetries: 2, retryRecoverableErrors: true }
+      );
+
+      if (createdTransaction) {
+        publishTransactionCacheMutation({
+          userId,
+          type: 'update',
+          transactions: [createdTransaction],
+        });
+      }
+      return;
+    }
+
+    const operationId = `guest-debt-cycle:${debtId}:${recurringCycle}`;
+    const transactionId = generateId();
+    const paidAt = new Date();
+    await mutateGuestLedger(draft => {
+      const debt = draft.debts.find(candidate => candidate.id === debtId);
+      if (!debt) throw new Error('Préstamo no encontrado');
+
+      // Idempotencia por ciclo: ya saldado este ciclo → no reaplicar.
+      const alreadyPaid = draft.transactions.some(transaction =>
+        debtTransactionSatisfiesCycle(debt, transaction, recurringCycle)
+      );
+      if (alreadyPaid) return;
+
+      if (debt.isSettled || debt.remainingAmount <= 0) {
+        throw new Error('El préstamo ya está saldado.');
+      }
+      const configuredAmount = debt.recurringPaymentAmount;
+      if (
+        typeof configuredAmount !== 'number'
+        || !Number.isFinite(configuredAmount)
+        || configuredAmount <= 0
+      ) {
+        throw new Error('El préstamo no tiene una cuota periódica configurada.');
+      }
+      const recurringPaymentAmount = normalizeLedgerAmount(configuredAmount);
+
+      const remainingAmount = normalizeLedgerAmount(debt.remainingAmount);
+      const effectiveAmount = Math.min(recurringPaymentAmount, remainingAmount);
+      const newRemaining = Math.max(0, roundMoney(remainingAmount - effectiveAmount));
+      const isSettled = newRemaining === 0;
+
+      if (debt.accountId && effectiveAmount > 0) {
+        const isLent = debt.type === 'lent';
+        const transaction = assertGuestLedgerMutation({
+          type: isLent ? 'income' : 'expense',
+          amount: effectiveAmount,
+          category: LOAN_PAYMENT_CATEGORY,
+          description: isLent
+            ? `Cobro de ${debt.personName}`
+            : `Pago a ${debt.personName}`,
+          date: paidAt,
+          paid: true,
+          accountId: debt.accountId,
+          debtId,
+          recurringCycle,
+          operationId,
+          mutationKind: 'create',
+          mutationSource: 'debt',
+        }, draft.accounts, draft.transactions);
+        draft.transactions.unshift({
+          ...transaction,
+          id: transactionId,
+          createdAt: paidAt,
+        });
+      }
+
+      draft.debts = draft.debts.map(candidate => (
+        candidate.id === debtId
+          ? {
+              ...candidate,
+              remainingAmount: newRemaining,
+              isSettled,
+              settledAt: isSettled ? paidAt : candidate.settledAt,
+            }
+          : candidate
+      ));
+    }, { operationId });
+  }, [userId, mutateGuestLedger, assertGuestLedgerMutation]);
+
   const restoreDebtPayment = useCallback(async (transaction: Transaction) => {
     if (
       !transaction.id
@@ -1287,6 +1824,8 @@ export function useDebts(
     deleteDebt,
     reassignDebtAccount,
     registerDebtPayment,
+    linkDebtPayment,
+    payDebtCycle,
     restoreDebtPayment,
     modifyDebtBalance,
     forgiveDebt,

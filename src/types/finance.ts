@@ -124,6 +124,11 @@ export interface Debt {
   dueDate?: Date; // Fecha de vencimiento opcional
   expectedPaymentDay?: number; // Día aproximado del mes para el próximo pago recurrente (1-31)
   nextPaymentDate?: Date; // Próximo pago directo o excepción puntual del mes
+  // 🆕 Préstamo con pagos periódicos (cuota fija mensual). Retrocompatible:
+  // ausentes = préstamo normal (comportamiento histórico). El día de la cuota es
+  // expectedPaymentDay; aquí guardamos si está activo y el monto de la cuota.
+  isRecurringPayment?: boolean; // Si el préstamo se paga en cuotas periódicas
+  recurringPaymentAmount?: number; // Monto de la cuota periódica (>0)
   createdAt?: Date;
   settledAt?: Date; // Fecha en que se saldó
   forgivenReason?: 'unpaid' | 'gift' | 'other'; // Presente = deuda condonada (no pagada / regalo / otro)
@@ -184,6 +189,13 @@ export interface Account {
   mergedAccountIds?: string[]; // IDs históricos fusionados en esta cuenta
   createdAt?: Date;
   order?: number; // Orden de visualización
+
+  // 🆕 Archivado (comportamiento A): una cuenta archivada se OCULTA de la lista
+  // principal y de los selectores al crear transacciones/medios de pago, PERO sus
+  // transacciones históricas SIGUEN contando en saldos, estadísticas y reportes.
+  // Archivar NO borra nada y es reversible. Retrocompatible: ausente = no archivada.
+  archived?: boolean;
+  archivedAt?: Date; // Momento en que se archivó (opcional, para auditoría)
 
   // 🆕 Tasa de interés para TC
   interestRate?: number; // Tasa de Interés Efectiva Anual (E.A.) en porcentaje (ej: 23.99)

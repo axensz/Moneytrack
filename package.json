@@ -16,7 +16,10 @@
     "test:notifications:emulator": "npx --yes firebase-tools@15.24.0 emulators:exec --only firestore --project demo-moneytrack \"npm run test:rules:run && npm --prefix functions run test:integration\"",
     "test:notifications": "npm run test:notifications:unit && npm run test:notifications:emulator",
     "prepare": "husky || exit 0",
-    "test:coverage": "vitest run --config vitest.config.mjs --configLoader runner --coverage"
+    "test:coverage": "vitest run --config vitest.config.mjs --configLoader runner --coverage",
+    "audit:a11y": "playwright test",
+    "audit:lighthouse": "node scripts/audit-lighthouse.mjs",
+    "audit:ui": "npm run audit:a11y && npm run audit:lighthouse"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",
@@ -32,8 +35,10 @@
     "recharts": "^3.6.0"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
+    "@axe-core/playwright": "4.14.0",
     "@firebase/rules-unit-testing": "^5.0.1",
+    "@playwright/test": "1.65.0",
+    "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^20",
@@ -46,6 +51,7 @@
     "fast-check": "^3.23.2",
     "husky": "^9.1.7",
     "jsdom": "^28.0.0",
+    "lighthouse": "13.6.0",
     "tailwindcss": "^4.1.18",
     "typescript": "^5",
     "vitest": "^4.1.11"
@@ -56,6 +62,9 @@
     "uuid": "^11.1.1",
     "esbuild": "^0.28.1",
     "undici": "^7.28.0",
-    "@grpc/grpc-js": "^1.13.6"
+    "@grpc/grpc-js": "^1.13.6",
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.1"
+    }
   }
 }

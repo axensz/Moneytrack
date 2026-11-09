@@ -9,6 +9,8 @@ const baseForm: PaymentScheduleFormState = {
   expectedPaymentDay: '15',
   nextPaymentDate: '',
   monthsFromNow: '1',
+  isRecurringPayment: false,
+  recurringPaymentAmount: '',
 };
 
 describe('buildPaymentScheduleUpdates', () => {
@@ -18,7 +20,12 @@ describe('buildPaymentScheduleUpdates', () => {
 
   it('limpia la programación cuando el modo es sin fecha', () => {
     expect(buildPaymentScheduleUpdates(baseForm)).toEqual({
-      updates: { expectedPaymentDay: undefined, nextPaymentDate: undefined },
+      updates: {
+        expectedPaymentDay: undefined,
+        nextPaymentDate: undefined,
+        isRecurringPayment: undefined,
+        recurringPaymentAmount: undefined,
+      },
     });
   });
 
@@ -41,6 +48,31 @@ describe('buildPaymentScheduleUpdates', () => {
 
     expect(result.updates?.expectedPaymentDay).toBe(31);
     expect(result.updates?.nextPaymentDate).toEqual(new Date(2026, 1, 28));
+    expect(result.updates?.isRecurringPayment).toBeUndefined();
+    expect(result.updates?.recurringPaymentAmount).toBeUndefined();
+  });
+
+  it('persiste la cuota periódica en modo mensual con el toggle activo', () => {
+    const result = buildPaymentScheduleUpdates({
+      ...baseForm,
+      mode: 'monthly',
+      expectedPaymentDay: '10',
+      isRecurringPayment: true,
+      recurringPaymentAmount: '200000',
+    });
+
+    expect(result.updates?.expectedPaymentDay).toBe(10);
+    expect(result.updates?.isRecurringPayment).toBe(true);
+    expect(result.updates?.recurringPaymentAmount).toBe(200000);
+  });
+
+  it('rechaza una cuota periódica con monto <= 0', () => {
+    expect(buildPaymentScheduleUpdates({
+      ...baseForm,
+      mode: 'monthly',
+      isRecurringPayment: true,
+      recurringPaymentAmount: '0',
+    })).toEqual({ error: 'La cuota periódica debe ser mayor a 0' });
   });
 
   it('requiere una fecha válida para el modo fecha', () => {
@@ -51,7 +83,12 @@ describe('buildPaymentScheduleUpdates', () => {
 
   it('programa una fecha única y elimina el día mensual', () => {
     expect(buildPaymentScheduleUpdates({ ...baseForm, mode: 'date', nextPaymentDate: '2026-07-30' })).toEqual({
-      updates: { expectedPaymentDay: undefined, nextPaymentDate: new Date(2026, 6, 30) },
+      updates: {
+        expectedPaymentDay: undefined,
+        nextPaymentDate: new Date(2026, 6, 30),
+        isRecurringPayment: undefined,
+        recurringPaymentAmount: undefined,
+      },
     });
   });
 
@@ -63,7 +100,12 @@ describe('buildPaymentScheduleUpdates', () => {
       error: 'Los meses deben estar entre 1 y 120',
     });
     expect(buildPaymentScheduleUpdates({ ...baseForm, mode: 'months', monthsFromNow: '1' })).toEqual({
-      updates: { expectedPaymentDay: undefined, nextPaymentDate: new Date(2026, 1, 28) },
+      updates: {
+        expectedPaymentDay: undefined,
+        nextPaymentDate: new Date(2026, 1, 28),
+        isRecurringPayment: undefined,
+        recurringPaymentAmount: undefined,
+      },
     });
   });
 });

@@ -20,6 +20,12 @@ interface CreditCardsConsolidatedSummaryProps {
   totalAvailable: number;
   usagePercentage: number;
   formatCurrency: (amount: number) => string;
+  /**
+   * Variante COMPACTA para el layout móvil: 3 líneas (cupo/utilizado/disponible)
+   * + barra de uso, en lugar de la rejilla 2x2. Reduce la densidad encima de las
+   * tarjetas billetera. Por defecto 'full' (el layout de escritorio existente).
+   */
+  variant?: 'full' | 'compact';
 }
 
 /**
@@ -33,6 +39,7 @@ export const CreditCardsConsolidatedSummary: React.FC<CreditCardsConsolidatedSum
   totalAvailable,
   usagePercentage,
   formatCurrency,
+  variant = 'full',
 }) => {
   const { hideBalances } = useUIPreferences();
 
@@ -48,6 +55,66 @@ export const CreditCardsConsolidatedSummary: React.FC<CreditCardsConsolidatedSum
     .filter((card) => card.creditLimit > 0 && card.used > 0)
     .sort((a, b) => b.usagePercentage - a.usagePercentage)[0];
 
+  // ─── Variante COMPACTA (móvil) ───────────────────────────────────────────
+  // Tres líneas clave + barra de uso. Mismos totales que la variante completa;
+  // solo cambia la densidad. Sustituye la rejilla 2x2 apretada en móvil.
+  if (variant === 'compact') {
+    return (
+      <section className="mb-5 rounded-2xl border border-border bg-primary/5 p-4 shadow-sm">
+        <div className="mb-3 flex items-center gap-2">
+          <div className="rounded-lg bg-primary/10 p-1.5 text-primary">
+            <CreditCard size={16} />
+          </div>
+          <h3 className="text-sm font-bold text-foreground">Vista consolidada</h3>
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary-on-surface">
+            {cards.length} tarjeta{cards.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+
+        <dl className="space-y-1.5 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-muted-foreground">Cupo total</dt>
+            <dd className="font-mono font-semibold text-primary-on-surface">{displayAmount(totalLimit)}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-muted-foreground">Cupo utilizado</dt>
+            <dd className={`font-mono font-semibold ${isHighUsage ? 'text-warning' : 'text-foreground'}`}>
+              {displayAmount(totalUsed)}
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-muted-foreground">Disponible total</dt>
+            <dd className={`font-mono font-semibold ${totalAvailable > 0 ? 'text-success' : 'text-warning'}`}>
+              {displayAmount(totalAvailable)}
+            </dd>
+          </div>
+        </dl>
+
+        <div className="mt-3">
+          <div className="mb-1.5 flex justify-between text-xs">
+            <span className="text-muted-foreground">Uso consolidado</span>
+            <span className="font-mono font-semibold text-foreground">
+              {totalLimit > 0 ? displayPercent(usagePercentage) : 'Sin cupo'}
+            </span>
+          </div>
+          <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className={`h-full transition-[width] ${isHighUsage ? 'bg-warning' : 'bg-primary'}`}
+              style={{ width: hideBalances ? '0%' : `${usagePercentage}%` }}
+            />
+          </div>
+        </div>
+
+        {isHighUsage && (
+          <div className="mt-3 flex items-start gap-2 rounded-xl bg-warning-muted px-3 py-2 text-xs text-warning">
+            <AlertTriangle size={15} className="mt-0.5 flex-shrink-0" />
+            <span>Uso consolidado alto. Revisa pagos o cupos antes de asumir más deuda.</span>
+          </div>
+        )}
+      </section>
+    );
+  }
+
   return (
     <section className="mb-6 rounded-2xl border border-border bg-primary/5 p-4 sm:p-5 shadow-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -60,7 +127,7 @@ export const CreditCardsConsolidatedSummary: React.FC<CreditCardsConsolidatedSum
               <h3 className="text-lg font-bold text-foreground">
                 Vista consolidada de tarjetas
               </h3>
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary-on-surface">
                 {cards.length} tarjeta{cards.length !== 1 ? 's' : ''}
               </span>
             </div>
@@ -78,7 +145,7 @@ export const CreditCardsConsolidatedSummary: React.FC<CreditCardsConsolidatedSum
         )}
       </div>
 
-      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-5 grid grid-cols-2 gap-3">
         <SummaryMetric label="Cupo total" value={displayAmount(totalLimit)} tone="primary" />
         <SummaryMetric label="Cupo utilizado" value={displayAmount(totalUsed)} tone={isHighUsage ? 'warning' : 'foreground'} />
         <SummaryMetric label="Disponible total" value={displayAmount(totalAvailable)} tone={totalAvailable > 0 ? 'success' : 'warning'} />
@@ -125,18 +192,19 @@ interface SummaryMetricProps {
 }
 
 const toneClasses: Record<SummaryMetricProps['tone'], string> = {
-  primary: 'text-primary',
+  // Violet de marca como TEXTO sobre card: token AA en claro y oscuro.
+  primary: 'text-primary-on-surface',
   success: 'text-success',
   warning: 'text-warning',
   foreground: 'text-foreground',
 };
 
 const SummaryMetric: React.FC<SummaryMetricProps> = ({ label, value, tone }) => (
-  <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
+  <div className="min-w-0 rounded-xl border border-border bg-card p-3 shadow-sm">
     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
       {label}
     </p>
-    <p className={`mt-1 text-lg font-bold font-mono ${toneClasses[tone]}`}>
+    <p className={`mt-1 break-words text-base font-bold font-mono sm:text-lg ${toneClasses[tone]}`}>
       {value}
     </p>
   </div>

@@ -39,6 +39,16 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
   // Obtener cuenta seleccionada para validar restricciones
   const selectedAccount = accounts.find(acc => acc.id === newTransaction.accountId) || defaultAccount;
   const isCreditCard = selectedAccount?.type === 'credit';
+  // Cuentas seleccionables al crear una transacción: se EXCLUYEN las archivadas
+  // (comportamiento A). Excepción: si la transacción ya apunta a una cuenta
+  // archivada (p. ej. al editar un movimiento histórico), esa cuenta se conserva
+  // en la lista para no romper su visualización ni forzar un cambio de cuenta.
+  const selectableAccounts = useMemo(() => {
+    const keepIds = new Set(
+      [newTransaction.accountId, newTransaction.toAccountId].filter(Boolean)
+    );
+    return accounts.filter(acc => !acc.archived || (acc.id && keepIds.has(acc.id)));
+  }, [accounts, newTransaction.accountId, newTransaction.toAccountId]);
   const supportsForeignCurrency = isCreditCard && newTransaction.type === 'expense';
   const selectedCurrency = newTransaction.currency || 'COP';
   const typedAmount = parseCurrency(String(newTransaction.amount || ''));
@@ -240,7 +250,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                 onChange={(e) => setNewTransaction({ ...newTransaction, accountId: e.target.value })}
                 className="input-base"
               >
-                {accounts.map(acc => (
+                {selectableAccounts.map(acc => (
                   <option key={acc.id} value={acc.id}>
                     {acc.name} {acc.isDefault ? UI_LABELS.forms.defaultAccount : ''}
                   </option>
@@ -370,10 +380,10 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                   className="input-base"
                 >
                   <option value="">{UI_LABELS.forms.selectDestination}</option>
-                  {accounts.filter(acc => acc.id !== newTransaction.accountId).length === 0 ? (
+                  {selectableAccounts.filter(acc => acc.id !== newTransaction.accountId).length === 0 ? (
                     <option value="" disabled>No hay otras cuentas disponibles</option>
                   ) : (
-                    accounts
+                    selectableAccounts
                       .filter(acc => acc.id !== newTransaction.accountId)
                       .map(acc => (
                         <option key={acc.id} value={acc.id}>{acc.name}</option>
@@ -388,7 +398,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                   className="input-base"
                 >
                   <option value="">Pago externo (sin cuenta origen)</option>
-                  {accounts
+                  {selectableAccounts
                     .filter(acc => acc.id !== newTransaction.accountId && acc.type !== 'credit')
                     .map(acc => (
                       <option key={acc.id} value={acc.id}>{acc.name}</option>

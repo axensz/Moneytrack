@@ -3,6 +3,7 @@ import { doc, onSnapshot, setDoc, deleteField } from 'firebase/firestore';
 import { isFirebaseConfigured } from '../lib/firebase';
 import { db } from '../lib/firebaseDb';
 import { setGeminiApiKey } from '../lib/geminiClient';
+import { clearGeminiModelsCache } from '../lib/geminiModels';
 import { setAiConsent } from '../lib/aiConsent';
 import {
   DEFAULT_GEMINI_MODEL,
@@ -148,6 +149,7 @@ export function useGeminiApiKey(userId: string | null): UseGeminiApiKeyResult {
 
   const clearApiKey = useCallback(() => {
     apply('');
+    clearGeminiModelsCache();
     if (userId && isFirebaseConfigured) {
       setDoc(doc(db, `users/${userId}/settings/ai`), { geminiApiKey: deleteField() }, { merge: true })
         .catch((err) => logger.error('No se pudo eliminar la API key en la nube', err));

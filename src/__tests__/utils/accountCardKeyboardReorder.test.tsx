@@ -75,7 +75,12 @@ describe('AccountCard alternativa de teclado (WCAG 2.1.1)', () => {
     const onDelete = vi.fn();
     renderCard({ onDelete });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Eliminar Cuenta Ahorros' }));
+    // Las acciones secundarias (eliminar, unificar, archivar, principal) viven
+    // ahora en el menú "⋯" para bajar el ruido por fila; se abre primero. El
+    // contexto de la cuenta lo da el aria-label del menú ("Acciones de …").
+    fireEvent.click(screen.getByRole('button', { name: 'Más acciones para Cuenta Ahorros' }));
+    expect(screen.getByRole('menu', { name: 'Acciones de Cuenta Ahorros' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Eliminar cuenta' }));
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
@@ -131,8 +136,12 @@ describe('AccountCard autoridad de tarjeta', () => {
     expect(screen.getByRole('status')).toHaveTextContent(/requiere conciliación/i);
     expect(screen.getByText(/por conciliar/i)).toBeInTheDocument();
     expect(screen.queryByText(/cupo utilizado/i)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /unificar/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /eliminar visa/i })).toBeDisabled();
+
+    // Unificar y Eliminar están en el menú "⋯"; siguen deshabilitadas cuando la
+    // autoridad de la tarjeta no está lista.
+    fireEvent.click(screen.getByRole('button', { name: /más acciones para/i }));
+    expect(screen.getByRole('menuitem', { name: /unificar/i })).toBeDisabled();
+    expect(screen.getByRole('menuitem', { name: /eliminar cuenta/i })).toBeDisabled();
   });
 
   it('muestra la autoridad normal y habilita acciones cuando usedCredit es válido', () => {
@@ -145,7 +154,9 @@ describe('AccountCard autoridad de tarjeta', () => {
 
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(screen.getByText(/cupo utilizado/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /unificar/i })).toBeEnabled();
-    expect(screen.getByRole('button', { name: /eliminar visa/i })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: /más acciones para/i }));
+    expect(screen.getByRole('menuitem', { name: /unificar/i })).toBeEnabled();
+    expect(screen.getByRole('menuitem', { name: /eliminar cuenta/i })).toBeEnabled();
   });
 });

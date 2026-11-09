@@ -28,13 +28,30 @@ export const GEMINI_MODEL_OPTIONS = [
   },
 ] as const;
 
-export type GeminiModelId = (typeof GEMINI_MODEL_OPTIONS)[number]['id'];
+/**
+ * Id de modelo Gemini.
+ *
+ * Antes era un union de los 3 literales hardcodeados; ahora es `string` para
+ * admitir MODELOS DINÁMICOS: cualquier id que Google exponga vía ListModels
+ * (p. ej. `gemini-4-argon` o los que saquen en el futuro) debe poder elegirse
+ * y persistirse sin tocar código. El type guard `isGeminiModelId` sigue
+ * validando que el valor tenga forma de id de Gemini, no que esté en la lista
+ * estática.
+ */
+export type GeminiModelId = string;
 
 let currentModel: GeminiModelId = DEFAULT_GEMINI_MODEL;
 
+/**
+ * Forma esperada de un id de modelo Gemini: empieza por `gemini` y sigue con
+ * letras/dígitos/puntos/guiones. Acepta modelos dinámicos (no exige que estén
+ * en `GEMINI_MODEL_OPTIONS`), pero rechaza basura (undefined, cadenas vacías,
+ * ids de otras familias).
+ */
+const GEMINI_MODEL_ID_PATTERN = /^gemini[a-z0-9.\-]+$/i;
+
 export function isGeminiModelId(value: unknown): value is GeminiModelId {
-  return typeof value === 'string'
-    && GEMINI_MODEL_OPTIONS.some((option) => option.id === value);
+  return typeof value === 'string' && GEMINI_MODEL_ID_PATTERN.test(value);
 }
 
 export function normalizeGeminiModel(value: unknown): GeminiModelId {

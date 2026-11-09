@@ -407,6 +407,14 @@ service cloud.firestore {
         );
     }
 
+    // Archivado de cuentas (comportamiento A): `archived` opcional (bool) y
+    // `archivedAt` opcional (timestamp). Ausentes = cuenta activa (retrocompatible).
+    // Mantiene el patrón endurecido: si están presentes, se validan los tipos.
+    function hasValidArchivedFields(data) {
+      return (!('archived' in data.keys()) || data.archived is bool)
+        && (!('archivedAt' in data.keys()) || data.archivedAt is timestamp);
+    }
+
     function hasValidTransferReferences(userId, data) {
       let sourcePath = /databases/$(database)/documents/users/$(userId)/accounts/$(data.accountId);
       return data.type != 'transfer'
@@ -485,7 +493,15 @@ service cloud.firestore {
                   && data.expectedPaymentDay >= 1
                   && data.expectedPaymentDay <= 31))
         && (!('nextPaymentDate' in data.keys())
-              || data.nextPaymentDate is timestamp);
+              || data.nextPaymentDate is timestamp)
+        // Préstamo con pagos periódicos (cuota fija mensual). Solo añade
+        // validaciones nuevas; no afloja nada de lo anterior.
+        && (!('isRecurringPayment' in data.keys())
+              || data.isRecurringPayment is bool)
+        && (!('recurringPaymentAmount' in data.keys())
+              || (data.recurringPaymentAmount is number
+                  && data.recurringPaymentAmount > 0
+                  && data.recurringPaymentAmount <= 1000000000));
     }
 
     // User data collections
@@ -580,15 +596,19 @@ service cloud.firestore {
           && request.resource.data.initialBalance is number
           && request.resource.data.initialBalance >= -1000000000
           && request.resource.data.initialBalance <= 1000000000
-          && hasValidCreditAuthority(request.resource.data);
+          && hasValidCreditAuthority(request.resource.data)
+          && hasValidArchivedFields(request.resource.data);
 
-        // AUDIT-FIX: update valida que type sea inmutable y name sea válido
+        // AUDIT-FIX: update valida que type sea inmutable y name sea válido.
+        // Admite setear/limpiar archived (bool) y archivedAt (timestamp) sin
+        // aflojar las validaciones existentes.
         allow update: if isOwner(userId)
           && accountOperationAllowsWrite(userId)
           && request.resource.data.type == resource.data.type
           && request.resource.data.name is string
           && request.resource.data.name.size() > 0
-          && hasValidCreditAuthority(request.resource.data);
+          && hasValidCreditAuthority(request.resource.data)
+          && hasValidArchivedFields(request.resource.data);
 
         allow delete: if isOwner(userId)
           && accountOperationAllowsWrite(userId);
@@ -885,6 +905,16 @@ service cloud.firestore {
         allow write: if isOwner(userId);
       }
 
+      // Ingest API keys (espejo). El hash de cada API key del usuario se escribe
+      // AQUÍ y en la colección global `apiKeys` SOLO por el Admin SDK (endpoint
+      // de ingesta / generación de key). El dueño puede LEER para listar/rotar
+      // sus keys desde la app; nunca escribir: crear o revocar una key pasa por
+      // el backend. Nunca se guarda la key en claro, solo su hash sha256.
+      match /apiKeys/{keyHash} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+
       // Durable-delivery server-owned collections. Raw push capability material,
       // schedules, deliveries, and test dedup records are written ONLY by the
       // Admin SDK (which bypasses these rules). Clients are default-denied both
@@ -918,12 +948,19 @@ service cloud.firestore {
         // settings/ai — clave BYOK de Gemini + consentimiento de IA (escritura con merge).
         allow create, update: if isOwner(userId)
           && settingId == 'ai'
-          && request.resource.data.keys().hasOnly(['geminiApiKey', 'aiConsent'])
+          && request.resource.data.keys().hasOnly(['geminiApiKey', 'aiConsent', 'geminiModel'])
           && (!('geminiApiKey' in request.resource.data.keys())
               || (request.resource.data.geminiApiKey is string
                   && request.resource.data.geminiApiKey.size() <= 200))
           && (!('aiConsent' in request.resource.data.keys())
-              || request.resource.data.aiConsent is bool);
+              || request.resource.data.aiConsent is bool)
+          // geminiModel: el modelo elegido (chat/filtros/plan). String acotado;
+          // el cliente ya lo normaliza contra la lista de IDs válidos, aquí solo
+          // se valida forma/tamaño para no bloquear la sincronización entre
+          // dispositivos (antes faltaba y el setDoc fallaba con permission-denied).
+          && (!('geminiModel' in request.resource.data.keys())
+              || (request.resource.data.geminiModel is string
+                  && request.resource.data.geminiModel.size() <= 60));
 
         // settings/planConfig — configuración del plan financiero.
         allow create, update: if isOwner(userId)
@@ -945,6 +982,14 @@ service cloud.firestore {
     // Global server-owned collections (Admin SDK only). The endpoint->owner
     // binding maps a push endpoint hash to its device; rate-limit counters are
     // backend-internal. Clients are default-denied.
+
+    // Ingest API keys: apiKeys/{sha256hex} -> { uid, createdAt, label?, revoked }.
+    // Lookup hash->owner del endpoint de ingesta, escrito SOLO por el Admin SDK.
+    // Denegado por completo a clientes: el hash nunca debe ser enumerable ni
+    // escribible desde el navegador (el espejo por-usuario cubre listar/rotar).
+    match /apiKeys/{keyHash} {
+      allow read, write: if false;
+    }
     match /endpointBindings/{endpointHash} {
       allow read, write: if false;
     }

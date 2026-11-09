@@ -20,15 +20,22 @@ sólido-sobre-muted.
 | Muted / fg | `#f5f4f1` / `#6b6b6b` | `#262626` / `#a3a3a3` |
 | **Primary (marca)** | `#7c3aed` | `#8b5cf6` |
 | Primary solid (botón AA) | `#7c3aed` | `#6d28d9` |
+| Primary on-surface (texto AA) | `#6d28d9` | `#c4b5fd` |
 | Success | `#047857` / muted `#ecfdf5` | `#10b981` / `#03291c` |
-| Destructive | `#c81e1e` / muted `#fef2f2` | `#ef4444` / `#3a0808` |
-| Warning | `#b45309` / muted `#fffbeb` | `#f59e0b` / `#4a2308` |
-| Info | `#2563eb` / muted `#eff6ff` | `#3b82f6` / `#0d1733` |
+| Destructive | `#c81e1e` / muted `#fef2f2` | `#f56565` / `#3a0808` |
+| Warning | `#b45309` / muted `#fffbeb` · solid `#b45309` | `#f59e0b` / `#4a2308` · solid `#b45309` |
+| Info | `#2563eb` / muted `#eff6ff` | `#60a5fa` / `#0d1733` |
 | Balance | accent `#f3e8ff`, value `#7c3aed` | accent `#581c87`, value `#c4b5fd` |
 | Border / accent | `#e5e5e5` / `#ddd6fe` | `#4c1d95` / `#6d28d9` |
 
 Rellenos sólidos con texto blanco usan `--primary-solid` (no `--primary`) para
-cumplir AA en dark. `--primary` queda para texto, borde y foco.
+cumplir AA en dark. `--primary` queda para borde, foco e iconos (umbral 3:1 de
+componente). El violet de marca como **texto pequeño** sobre card o tinte
+`primary/10` usa `--primary-on-surface` (`text-primary-on-surface`): `#6d28d9`
+en claro, `#c4b5fd` en oscuro, ambos ≥4.5:1 (badges de tipo, nombre de cuenta
+padre, botones de acción violet, cifras violet del resumen de tarjetas). Esto
+corrige el fallo AA de `--primary` como texto en superficies oscuras
+(`#8b5cf6` daba ~3.1–3.5:1).
 
 ## Typography
 
@@ -42,7 +49,75 @@ cumplir AA en dark. `--primary` queda para texto, borde y foco.
 
 - **Cards:** `rounded-xl` (12px), borde 1px, `--shadow-md`, padding fluido
   `p-3 → p-5`. Variantes: `.card`, `.card-stat` (hover sube sombra),
-  `.card-balance` (degradado violet permitido).
+  `.card-balance` (degradado violet claro permitido),
+  `.card-recommend-hero` (degradado violet **oscuro**, ver excepción abajo).
+
+### Excepción de gradiente: `.card-recommend-hero`
+
+El héroe de recomendación del **Optimizador de tarjetas** (modal "Próxima
+compra" en Cuentas) usa un gradiente violet **oscuro**
+(`--hero-recommend-from #6d28d9` → `--hero-recommend-to #7c3aed`) con texto
+blanco. Es una excepción de diseño intencional, al nivel de `.btn-primary` y
+`.card-balance`: el único gradiente nuevo fuera de esos y del shell. A
+diferencia de `.card-balance` (gradiente claro para texto violet oscuro), este
+es oscuro a propósito para que el texto blanco cumpla WCAG AA en toda la rampa
+— blanco sobre el stop más claro `#7c3aed` = 5.7:1 y sobre `#6d28d9` = 7.1:1.
+Mode-invariante (luce igual en claro y oscuro). Justificación: la recomendación
+es la jerarquía máxima del modal y necesita destacarse como héroe, no como una
+tarjeta más de la rejilla.
+
+### Excepción de gradiente: `.card-wallet` (tarjetas billetera, SOLO móvil)
+
+El rediseño MÓVIL de Cuentas presenta cada tarjeta de crédito como una "tarjeta
+física" con el gradiente del color de **marca de esa tarjeta** y texto blanco
+encima (clase `.card-wallet` en `components.css`). Es una excepción de diseño
+intencional, al nivel de `.btn-primary`, `.card-balance` y `.card-recommend-hero`:
+el único gradiente nuevo fuera de esos y del shell.
+
+A diferencia del violet único que es la identidad GENERAL del producto, aquí el
+color identifica a **cada tarjeta** (p. ej. Nu violet, RappiCard cian). Los dos
+stops del gradiente (`--wallet-from`/`--wallet-to`) los inyecta `WalletCreditCard`
+por tarjeta desde `src/components/views/accounts/utils/accountBrandColors.ts`,
+donde se mapea el nombre de la cuenta a una marca (con fallback determinista por
+hash, nunca gris plano).
+
+Contraste: el texto de la tarjeta va en **blanco** sobre todo el gradiente, así
+que ambos stops se eligieron **oscuros** para cumplir WCAG AA (blanco ≥4.5:1
+sobre `from` y sobre `to`). Las marcas claras se oscurecen a propósito: el cian
+de RappiCard usa `#0e7490` (5,23:1) como `to` y `#155e75` (6,80:1) como `from`,
+no el cian brillante `#0891b2` (3,98:1, que fallaría). Los ratios están
+verificados en `accountBrandColors.ts` y cubiertos por
+`src/__tests__/utils/accountBrandColors.test.ts`.
+
+El color de marca solo se permite en **un** lugar del layout móvil: el gradiente
+de `.card-wallet` (cada TC con su marca). El resto de la app —incluido el
+**anillo de distribución** (`AvailableDistributionRing`)— conserva el sistema de
+diseño: el anillo usa una rampa de tokens semánticos (`--ring-seg-1..6` en
+`theme.css`: violet, azul, teal-info, verde, índigo y violet claro), nunca
+naranjas/ámbar ni colores crudos de marca. Las filas de ahorro/efectivo
+(`AccountRow`) usan el icono en violet del sistema (`bg-primary/10 text-primary`),
+no el color de marca de la cuenta.
+
+### Anillo de distribución (`--ring-seg-*`)
+
+Rampa de 6 tonos DENTRO del sistema para los segmentos/leyenda del anillo móvil.
+Mode-aware (claro/oscuro) y con suficiente salto de hue/lightness para
+distinguirse entre sí y contra la pista (`--muted`). La asignación es posicional
+(i-ésimo segmento visible → i-ésimo token, con wrap-around); solo participan las
+cuentas con saldo > 0 (las de saldo cero se ocultan del anillo y de la leyenda).
+El texto de la leyenda va en `--foreground` (AA sobre `--card`); los puntos de
+color son decorativos (`aria-hidden`).
+
+### Acciones integradas en `.card-wallet`
+
+La barra de acciones (Editar · Medios de pago · menú `⋯`) vive DENTRO de la
+tarjeta billetera, separada por un divisor `border-white/20` al pie. Sobre el
+gradiente oscuro usa la variante `wallet` de `AccountActionsBar`: botones con
+fondo **oscuro translúcido** (`bg-black/15`), borde `white/25` y texto/iconos
+blancos. El overlay oscuro (no blanco) garantiza WCAG AA: el blanco queda ≥6,4:1
+sobre el stop más claro de cualquier gradiente de marca (un overlay blanco bajaba
+a ~4:1 y fallaba). El panel del menú `⋯` sigue en `position: fixed` sobre `--card`
+(contraste de superficie normal) y se cierra al hacer scroll/resize.
 - **Inputs:** `.input-base`, `rounded-lg`, `min-height` 48px móvil / 44px ≥sm,
   `font-size` 16px móvil (evita zoom iOS), foco anillo violet.
 - **Botones:** `.btn-primary` degradado violet (`--btn-primary-from/to`),
@@ -54,5 +129,6 @@ cumplir AA en dark. `--primary` queda para texto, borde y foco.
 - Bordes `xl`/`lg`, sombras suaves escaladas por modo.
 - **Motion CSS-first**, sin librerías. Toda animación respeta
   `prefers-reduced-motion`.
-- Degradados confinados a `.btn-primary`, `.card-balance`, el shell y
-  RecurringStatsCards (intencionales).
+- Degradados confinados a `.btn-primary`, `.card-balance`, `.card-recommend-hero`,
+  `.card-wallet` (tarjetas billetera, solo móvil), el shell y RecurringStatsCards
+  (intencionales).

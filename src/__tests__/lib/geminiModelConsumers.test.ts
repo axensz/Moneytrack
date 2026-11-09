@@ -74,4 +74,18 @@ describe('selected Gemini model consumers', () => {
       expect.objectContaining({ model: 'gemini-3.8-flash' }),
     );
   });
+
+  // MODELOS DINÁMICOS: con el tipo GeminiModelId relajado a string, un modelo
+  // que NO está en la lista estática (p. ej. gemini-4-argon) debe aceptarse y
+  // propagarse a las tres superficies.
+  it('accepts a dynamic model id (gemini-4-argon) end to end', async () => {
+    setGeminiModel('gemini-4-argon');
+    clientMocks.generateContent.mockResolvedValue({ text: 'Listo', functionCalls: undefined });
+
+    await sendChatMessage('Hola', [], { transactions: [], accounts: [], categories: { income: [], expense: [] } });
+
+    expect(clientMocks.generateContent).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'gemini-4-argon' }),
+    );
+  });
 });

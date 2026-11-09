@@ -1,7 +1,7 @@
 'use client';
 
 import React, { memo, useMemo } from 'react';
-import { Edit2, Trash2, GripVertical, ChevronUp, ChevronDown, Wallet, CreditCard, Banknote, Combine, AlertTriangle, Smartphone } from 'lucide-react';
+import { GripVertical, Wallet, CreditCard, Banknote, AlertTriangle, Archive } from 'lucide-react';
 import type { Account } from '../../../../types/finance';
 import { getCreditAuthorityState } from '../../../../utils/creditAuthority';
 import { useUIPreferences } from '@/contexts/UIPreferencesContext';
@@ -12,6 +12,7 @@ import {
   PROGRESS_BAR_TONE_CLASSES,
   type CreditBreakdownPresentation,
 } from '../utils/accountBalancePresentation';
+import { AccountActionsBar, AccountReorderButtons } from './AccountActions';
 
 const ACCOUNT_TYPES = [
   { value: 'savings' as const, label: UI_LABELS.accountTypes.savings, icon: Wallet },
@@ -42,6 +43,10 @@ interface AccountCardProps {
   onDelete: () => void;
   onMerge?: () => void;
   onManagePaymentInstruments?: () => void;
+  /** Archivar la cuenta (ocúltala de lista/selectores, conserva historial). Ausente = sin acción. */
+  onArchive?: () => void;
+  /** Desarchivar la cuenta (vuelve a mostrarla). Ausente = sin acción. */
+  onUnarchive?: () => void;
   /** Alternativa de teclado a drag & drop (WCAG 2.1.1). Opcional para no romper otros usos. */
   onMoveUp?: () => void;
   onMoveDown?: () => void;
@@ -79,6 +84,8 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
   onDelete,
   onMerge,
   onManagePaymentInstruments,
+  onArchive,
+  onUnarchive,
   onMoveUp,
   onMoveDown,
   canMoveUp = false,
@@ -164,28 +171,13 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
                 className="text-muted-foreground cursor-grab active:cursor-grabbing flex-shrink-0"
                 aria-hidden="true"
               />
-              {(onMoveUp || onMoveDown) && (
-                <div className="flex flex-col flex-shrink-0" role="group" aria-label={`Reordenar ${account.name}`}>
-                  <button
-                    type="button"
-                    onClick={onMoveUp}
-                    disabled={!canMoveUp}
-                    aria-label={`Mover ${account.name} hacia arriba`}
-                    className="flex items-center justify-center h-5 w-6 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    <ChevronUp size={14} aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onMoveDown}
-                    disabled={!canMoveDown}
-                    aria-label={`Mover ${account.name} hacia abajo`}
-                    className="flex items-center justify-center h-5 w-6 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    <ChevronDown size={14} aria-hidden="true" />
-                  </button>
-                </div>
-              )}
+              <AccountReorderButtons
+                accountName={account.name}
+                onMoveUp={onMoveUp}
+                onMoveDown={onMoveDown}
+                canMoveUp={canMoveUp}
+                canMoveDown={canMoveDown}
+              />
               <div className="p-1.5 rounded-lg flex-shrink-0 bg-primary/10">
                 {accountTypeInfo &&
                   React.createElement(accountTypeInfo.icon, {
@@ -205,15 +197,21 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
                     Principal
                   </span>
                 )}
+                {account.archived && (
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground px-2 py-0.5 rounded-full font-medium bg-muted">
+                    <Archive size={12} aria-hidden="true" />
+                    Archivada
+                  </span>
+                )}
               </div>
             </div>
 
             {/* Type badge */}
-            <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-full font-medium bg-primary/10 text-primary">
+            <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-full font-medium bg-primary/10 text-primary-on-surface">
               {accountTypeInfo?.label}
             </span>
             {parentAccountName && (
-              <span className="ml-2 text-xs text-primary">
+              <span className="ml-2 text-xs text-primary-on-surface">
                 • {parentAccountName}
               </span>
             )}
@@ -258,60 +256,25 @@ export const AccountCard: React.FC<AccountCardProps> = memo(({
           />
         )}
 
-        {/* Action buttons */}
-        <div className="flex flex-wrap gap-2 mt-4">
-          <button
-            onClick={onEdit}
-            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/15 border border-primary/40 hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            <Edit2 size={14} />
-            Editar
-          </button>
-
-          {onManagePaymentInstruments && (
-            <button
-              type="button"
-              onClick={onManagePaymentInstruments}
-              aria-label={`Gestionar medios de pago de ${account.name}`}
-              aria-haspopup="dialog"
-              title="Medios de pago"
-              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-border p-2 text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            >
-              <Smartphone size={18} aria-hidden="true" />
-            </button>
-          )}
-
-          {isCredit && onMerge && (
-            <button
-              onClick={onMerge}
-              disabled={!creditAuthority.ready}
-              aria-describedby={!creditAuthority.ready ? authorityMessageId : undefined}
-              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/15 border border-primary/40 hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Combine size={14} />
-              Unificar
-            </button>
-          )}
-
-          {!account.isDefault && (
-            <>
-              <button
-                onClick={onSetDefault}
-                className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary bg-primary/15 border border-primary/40 hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                Marcar como principal
-              </button>
-              <button
-                onClick={onDelete}
-                aria-label={`Eliminar ${account.name}`}
-                disabled={isCredit && !creditAuthority.ready}
-                aria-describedby={isCredit && !creditAuthority.ready ? authorityMessageId : undefined}
-                className="flex items-center justify-center p-2 min-h-[44px] min-w-[44px] text-muted-foreground hover:text-destructive hover:bg-destructive-muted rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Trash2 size={16} />
-              </button>
-            </>
-          )}
+        {/* Acciones: Editar y Medios de pago quedan visibles (las de uso
+            frecuente); el resto (Unificar, Marcar principal, Archivar,
+            Desarchivar, Eliminar) se agrupan en un menú "⋯" para bajar el ruido
+            por fila sin quitar ninguna acción. Barra compartida con el layout
+            móvil (ver AccountActions). */}
+        <div className="mt-4">
+          <AccountActionsBar
+            account={account}
+            isCredit={isCredit}
+            authorityReady={creditAuthority.ready}
+            authorityMessageId={authorityMessageId}
+            onEdit={onEdit}
+            onManagePaymentInstruments={onManagePaymentInstruments}
+            onMerge={onMerge}
+            onSetDefault={onSetDefault}
+            onArchive={onArchive}
+            onUnarchive={onUnarchive}
+            onDelete={onDelete}
+          />
         </div>
       </div>
     </div>
@@ -405,7 +368,7 @@ const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
             {nextPayment ? nextPayment.toLocaleDateString('es-CO') : 'Sin definir'}
           </span>
         </div>
-        {interestRate && interestRate > 0 && (
+        {!!interestRate && interestRate > 0 && (
           <div>
             <span className="text-muted-foreground">Tasa E.A.: </span>
             <span className="font-medium font-mono text-foreground">
@@ -413,7 +376,9 @@ const CreditCardInfo: React.FC<CreditCardInfoProps> = memo(({
             </span>
           </div>
         )}
-        {monthlySpendingLimit && monthlySpendingLimit > 0 && (
+        {/* Guarda con !! para no filtrar un 0 literal cuando el tope es 0
+            (React renderiza `0 && <JSX>` como "0"). */}
+        {!!monthlySpendingLimit && monthlySpendingLimit > 0 && (
           <div>
             <span className="text-muted-foreground">Tope manual: </span>
             <span className="font-medium font-mono text-foreground">

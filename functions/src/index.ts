@@ -53,6 +53,9 @@ const VAPID_PRIVATE_KEY = defineSecret('WEB_PUSH_VAPID_PRIVATE_KEY');
 const VAPID_PUBLIC_KEY = defineString('WEB_PUSH_VAPID_PUBLIC_KEY');
 const VAPID_SUBJECT = defineString('WEB_PUSH_VAPID_SUBJECT', { default: 'mailto:ops@moneytrack.app' });
 const DELIVERY_ENABLED = defineBoolean('DELIVERY_ENABLED', { default: false });
+// Clave secreta del servidor (pepper) para el HMAC de las API keys de ingesta.
+// Debe definirse antes de desplegar: `firebase functions:secrets:set INGEST_API_KEY_PEPPER`.
+const INGEST_API_KEY_PEPPER = defineSecret('INGEST_API_KEY_PEPPER');
 
 const db = () => getFirestore(getAdminApp());
 const systemClock: Clock = { now: () => new Date() };
@@ -179,7 +182,7 @@ export const deliveryWorker = onSchedule(
  * the Admin SDK and returns the contract JSON. The contract only defines
  * 400/401/413 errors, so an invalid method or content-type maps to 400.
  */
-export const ingestTransactions = onRequest(async (req, res) => {
+export const ingestTransactions = onRequest({ secrets: [INGEST_API_KEY_PEPPER] }, async (req, res) => {
   const sendError = (status: number, code: string, message: string): void => {
     res.status(status).json({ error: { code, message } });
   };
@@ -201,7 +204,7 @@ export const ingestTransactions = onRequest(async (req, res) => {
       return;
     }
 
-    const uid = await resolveApiKey(db(), rawKey);
+    const uid = await resolveApiKey(db(), rawKey, INGEST_API_KEY_PEPPER.value());
     if (uid === null) {
       sendError(401, 'unauthorized', 'Invalid or revoked API key');
       return;
@@ -231,9 +234,10 @@ export const ingestTransactions = onRequest(async (req, res) => {
 /**
  * Generates an API key for the caller. The clear key is returned EXACTLY once
  * and never persisted or logged: only its sha256 hash is stored as the doc-id
- * in the global `apiKeys/` collection (plus a per-user mirror for listing).
+ * in the global `apiKeys/` collection (plus a per-user mirror for listing). The
+ * hash is a keyed HMAC-SHA256 with the server pepper, not a bare digest.
  */
-export const generateApiKey = onCall(async (request) => {
+export const generateApiKey = onCall({ secrets: [INGEST_API_KEY_PEPPER] }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) {
     throw new HttpsError('unauthenticated', 'Authentication required');
@@ -241,7 +245,7 @@ export const generateApiKey = onCall(async (request) => {
 
   const label = typeof request.data?.label === 'string' ? request.data.label : undefined;
   const rawKey = generateRawApiKey();
-  const hash = hashApiKey(rawKey);
+  const hash = hashApiKey(rawKey, INGEST_API_KEY_PEPPER.value());
 
   const database = db();
   const batch = database.batch();

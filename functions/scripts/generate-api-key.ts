@@ -5,9 +5,12 @@
  * injectable core (deps: generateKey, hashKey, writeDocs, log) + an
  * `isDirectRun()` entrypoint. The clear key is emitted to stdout EXACTLY once
  * and is NEVER persisted or logged beyond that single emission; only its
- * sha256 hash is stored.
+ * keyed HMAC-SHA256 hash (with the server pepper) is stored.
  *
- * Usage: node lib/scripts/generate-api-key.js --uid <uid> [--label <label>]
+ * El pepper se lee de INGEST_API_KEY_PEPPER (env) y DEBE coincidir con el
+ * secreto configurado en las Functions, o la key emitida no resolvera.
+ *
+ * Usage: INGEST_API_KEY_PEPPER=<pepper> node lib/scripts/generate-api-key.js --uid <uid> [--label <label>]
  */
 
 import { getAdminApp } from '../src/adminApp.js';
@@ -58,10 +61,14 @@ if (isDirectRun()) {
   const run = async (): Promise<void> => {
     const { getFirestore, FieldValue } = await import('firebase-admin/firestore');
     const db = getFirestore(getAdminApp());
+    const pepper = process.env.INGEST_API_KEY_PEPPER;
+    if (typeof pepper !== 'string' || pepper.length === 0) {
+      throw new Error('INGEST_API_KEY_PEPPER env var is required (must match the Functions secret)');
+    }
     await generateApiKeyCli({
       argv: process.argv.slice(2),
       generateKey: defaultGenerateApiKey,
-      hashKey: defaultHashApiKey,
+      hashKey: (raw) => defaultHashApiKey(raw, pepper),
       writeDocs: async (hash, uid, label) => {
         const batch = db.batch();
         batch.set(db.doc(`apiKeys/${hash}`), {

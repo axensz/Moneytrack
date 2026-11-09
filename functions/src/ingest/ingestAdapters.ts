@@ -10,8 +10,8 @@
  * surface):
  *   users/{uid}/accounts/{accountId}
  *   users/{uid}/transactionImportCandidates/{candidateId}
- *   apiKeys/{sha256hex}                       (global, maps hash -> owner)
- *   users/{uid}/apiKeys/{sha256hex}           (mirror so users can list/rotate)
+ *   apiKeys/{hmacHex}                         (global, maps keyed-hash -> owner)
+ *   users/{uid}/apiKeys/{hmacHex}             (mirror so users can list/rotate)
  *
  * El candidato escrito tiene el shape EXACTO del shortcut schemaVersion 3 que el
  * decoder/las reglas aceptan: `createdAt` es `FieldValue.serverTimestamp()`
@@ -76,11 +76,16 @@ interface ApiKeyDocument {
 }
 
 /**
- * Resolve the owning uid for a raw API key: hash with the core helper, look up
- * apiKeys/{hash} (O(1), no index). Missing or revoked => null.
+ * Resolve the owning uid for a raw API key: keyed-hash (HMAC) with the core
+ * helper + server pepper, look up apiKeys/{hash} (O(1), no index). Missing or
+ * revoked => null.
  */
-export const resolveApiKey = async (db: Firestore, rawKey: string): Promise<string | null> => {
-  const hash = hashApiKey(rawKey);
+export const resolveApiKey = async (
+  db: Firestore,
+  rawKey: string,
+  pepper: string,
+): Promise<string | null> => {
+  const hash = hashApiKey(rawKey, pepper);
   const snap = await db.doc(`apiKeys/${hash}`).get();
   if (!snap.exists) return null;
   const data = snap.data() as ApiKeyDocument;

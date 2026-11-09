@@ -9,6 +9,7 @@ import {
   buildShortcutCandidate,
   ingestBatchCore,
   hashApiKey,
+  apiKeyHashEquals,
   generateApiKey,
   IngestError,
   DEFAULT_SUGGESTED_CATEGORY,
@@ -322,9 +323,27 @@ describe('contract: built candidate passes the pipeline decoder', () => {
 });
 
 describe('API-key helpers', () => {
-  it('hashApiKey is a deterministic 64-char hex', () => {
-    expect(hashApiKey('secret')).toBe(hashApiKey('secret'));
-    expect(hashApiKey('secret')).toMatch(/^[0-9a-f]{64}$/);
+  const PEPPER = 'test-server-pepper';
+
+  it('hashApiKey is a deterministic 64-char hex for the same raw+pepper', () => {
+    expect(hashApiKey('secret', PEPPER)).toBe(hashApiKey('secret', PEPPER));
+    expect(hashApiKey('secret', PEPPER)).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('hashApiKey yields different hashes for different peppers (keyed)', () => {
+    expect(hashApiKey('secret', PEPPER)).not.toBe(hashApiKey('secret', 'other-pepper'));
+  });
+
+  it('hashApiKey throws when the pepper is missing (fail-closed)', () => {
+    expect(() => hashApiKey('secret', '')).toThrow(IngestError);
+  });
+
+  it('apiKeyHashEquals compares equal and unequal hashes safely', () => {
+    const h = hashApiKey('secret', PEPPER);
+    expect(apiKeyHashEquals(h, h)).toBe(true);
+    expect(apiKeyHashEquals(h, hashApiKey('other', PEPPER))).toBe(false);
+    // Distinta longitud no debe lanzar, solo devolver false.
+    expect(apiKeyHashEquals(h, 'abc')).toBe(false);
   });
 
   it('generateApiKey yields distinct base64url tokens', () => {

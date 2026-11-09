@@ -14,7 +14,7 @@
  * y lo inyecta en `ingestBatchCore`.
  */
 
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 // ── Error type mapped to an HTTP response by the adapter ────────────────────
 export type IngestErrorCode = 'bad-request' | 'unauthorized' | 'payload-too-large';
@@ -472,8 +472,34 @@ export const ingestBatchCore = async (
 };
 
 // ── API-key helpers (puras) ─────────────────────────────────────────────────
-/** sha256 hex del raw key; es el doc-id en la coleccion global apiKeys/. */
-export const hashApiKey = (raw: string): string => sha256(raw);
+/**
+ * Keyed hash (HMAC-SHA256) del raw key; el hex es el doc-id en la coleccion
+ * global apiKeys/. Lookup O(1) y determinista (mismo raw+pepper => mismo id).
+ *
+ * Por que HMAC y no sha256 desnudo: la raw key es un token aleatorio de 256
+ * bits (generateApiKey), asi que el riesgo de fuerza bruta es nulo; el valor de
+ * la clave secreta del servidor (pepper) es que, aunque alguien lea la
+ * coleccion apiKeys/, sin el pepper no puede correlacionar un token con su
+ * hash. Un hash sin clave permitia esa correlacion offline. El pepper es
+ * OBLIGATORIO: sin el no se puede resolver ni emitir una key (fail-closed), de
+ * modo que nunca caemos a un hash sin clave de forma silenciosa.
+ */
+export const hashApiKey = (raw: string, pepper: string): string => {
+  if (typeof pepper !== 'string' || pepper.length === 0) {
+    throw new IngestError('unauthorized', 'API key pepper is not configured');
+  }
+  return createHmac('sha256', pepper).update(raw, 'utf8').digest('hex');
+};
+
+/**
+ * Comparacion en tiempo constante de dos hashes hex del mismo tamano. Evita
+ * fugas por timing al comparar el hash entrante con el almacenado.
+ */
+export const apiKeyHashEquals = (a: string, b: string): boolean => {
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
+};
 
 /** Server-generated random 256-bit base64url API key (devuelta una sola vez). */
 export const generateApiKey = (): string => randomBytes(32).toString('base64url');

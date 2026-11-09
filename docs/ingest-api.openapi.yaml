@@ -59,9 +59,10 @@ components:
       in: header
       name: X-MoneyTrack-Api-Key
       description: >
-        API key del usuario. Se compara por su hash sha256 contra la coleccion
-        global `apiKeys/`. El valor en claro solo se devuelve una vez al
-        generarla; nunca se persiste en claro ni se loguea.
+        API key del usuario. Se compara por su hash con clave (HMAC-SHA256 con
+        un pepper del servidor) contra la coleccion global `apiKeys/`. El valor
+        en claro solo se devuelve una vez al generarla; nunca se persiste en
+        claro ni se loguea.
   schemas:
     IngestRequest:
       type: object

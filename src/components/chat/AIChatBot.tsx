@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 import { X, Send, Bot, User, Loader2, Trash2, Check, XCircle, Info, RefreshCw } from 'lucide-react';
-import { sendChatMessage, isGeminiConfigured, parseActionFromResponse, type ChatMessage, type ChatAction, type TokenUsage } from '../../lib/gemini';
+import { sendChatMessageStream, isGeminiConfigured, parseActionFromResponse, type ChatMessage, type ChatAction, type TokenUsage } from '../../lib/gemini';
 import { formatCurrency } from '../../utils/formatters';
 import { logger } from '../../utils/logger';
 import { useTransactionDomain, useAccountDomain, useCategoryDomain } from '../../hooks/useFinanceSelectors';
@@ -69,6 +69,11 @@ const createAiLedgerOperationId = (
 
 // Máximo de mensajes del historial enviados a la API para evitar exceder tokens
 const MAX_HISTORY_MESSAGES = 20;
+
+// Umbral tras el cual la espera pasa de "Pensando..." a "Razonando…": suficiente
+// para no dispararse en respuestas rápidas de Flash, pero corto para tranquilizar
+// en modelos thinking que emiten thoughts antes del texto.
+const REASONING_THRESHOLD_MS = 8_000;
 
 // Simple markdown renderer - converts markdown to React elements
 function renderMarkdown(text: string): React.ReactNode {
@@ -358,6 +363,14 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
   const [messages, setMessages] = useState<UIChatMessage[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  // Fase de espera: 'thinking' muestra "Pensando..." (respuestas rápidas);
+  // 'reasoning' refuerza el mensaje tras REASONING_THRESHOLD_MS para que los
+  // modelos de razonamiento no parezcan colgados. Es state-driven, sin animación.
+  const [waitPhase, setWaitPhase] = useState<'thinking' | 'reasoning'>('thinking');
+  // Indica que el mensaje placeholder en streaming ya tiene texto; mientras sea
+  // falso se muestra el loader, y al llegar el primer delta se oculta (el texto
+  // en vivo pasa a ser el feedback). Garantiza un único .animate-spin a la vez.
+  const [streamingHasContent, setStreamingHasContent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [failedRequest, setFailedRequest] = useState<PendingChatRequest | null>(null);
   const [executingAction, setExecutingAction] = useState<number | null>(null); // index of message with action being executed
@@ -365,6 +378,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const executingActionRef = useRef<string | null>(null);
+  const reasoningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const configured = isGeminiConfigured();
 
@@ -372,6 +386,11 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Limpiar el temporizador de "Razonando…" al desmontar.
+  useEffect(() => () => {
+    if (reasoningTimerRef.current !== null) clearTimeout(reasoningTimerRef.current);
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -389,37 +408,69 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
     categories,
   }), [balanceTransactions, accounts, categories]);
 
+  const clearReasoningTimer = useCallback(() => {
+    if (reasoningTimerRef.current !== null) {
+      clearTimeout(reasoningTimerRef.current);
+      reasoningTimerRef.current = null;
+    }
+  }, []);
+
   const performRequest = useCallback(async (request: PendingChatRequest) => {
     setIsLoading(true);
     setError(null);
     setFailedRequest(null);
+    setWaitPhase('thinking');
+    setStreamingHasContent(false);
+
+    // Tras el umbral, refuerza el mensaje de espera (B): modelos de razonamiento
+    // tardan en emitir texto y "Pensando..." se sentía colgado.
+    clearReasoningTimer();
+    reasoningTimerRef.current = setTimeout(() => setWaitPhase('reasoning'), REASONING_THRESHOLD_MS);
+
+    // Placeholder de modelo que se rellena token a token (C). Se finaliza con la
+    // acción + tokenUsage al resolver, o se elimina si falla.
+    const streamingId = nextMsgId();
+    const proposedAt = Date.now();
+    let sawDelta = false;
+    setMessages(prev => [...prev, { id: streamingId, role: 'model', content: '', proposedAt }]);
 
     try {
-      const { text: rawText, action: toolAction, tokenUsage } = await sendChatMessage(
+      const { text: rawText, action: toolAction, tokenUsage } = await sendChatMessageStream(
         request.text,
         request.history,
         financialData,
+        (fullText) => {
+          if (!fullText) return;
+          if (!sawDelta) {
+            sawDelta = true;
+            // Primer texto en vivo: ocultar el loader y dejar de reforzar la espera.
+            clearReasoningTimer();
+            setStreamingHasContent(true);
+          }
+          setMessages(prev => prev.map(m => (m.id === streamingId ? { ...m, content: fullText } : m)));
+        },
       );
 
+      clearReasoningTimer();
       // Preferir function calling; mantener el parser de bloques como fallback.
       const { text, action: textAction } = parseActionFromResponse(rawText);
       const action = toolAction ?? textAction;
-      setMessages(prev => [...prev, {
-        id: nextMsgId(),
-        role: 'model',
-        content: text,
-        action,
-        tokenUsage,
-        proposedAt: Date.now(),
-      }]);
+      setMessages(prev => prev.map(m => (m.id === streamingId
+        ? { ...m, content: text, action, tokenUsage, proposedAt }
+        : m)));
     } catch (err) {
       logger.error('[AIChatBot] Error sending message', err);
+      clearReasoningTimer();
+      // Quitar el placeholder para que un reintento conserve "mismos args, un
+      // solo mensaje de usuario" y no deje un globo vacío.
+      setMessages(prev => prev.filter(m => m.id !== streamingId));
       setError(getChatErrorMessage(err));
       setFailedRequest(request);
     } finally {
+      setStreamingHasContent(false);
       setIsLoading(false);
     }
-  }, [financialData]);
+  }, [financialData, clearReasoningTimer]);
 
   const sendMessage = useCallback(async (text: string) => {
     const trimmed = text.trim();
@@ -741,6 +792,9 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
       {/* Messages */}
       <div data-assistant-messages className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 space-y-3 scrollbar-thin">
         {messages.map((msg, i) => (
+          // No renderizar el placeholder de streaming aún vacío: el loader ya
+          // da feedback y así no aparece un globo vacío junto al spinner.
+          msg.role === 'model' && msg.content === '' && !msg.action ? null : (
           <React.Fragment key={msg.id}>
             <div
               className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in duration-200`}
@@ -786,9 +840,10 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
               </div>
             )}
           </React.Fragment>
+          )
         ))}
 
-        {isLoading && (
+        {isLoading && !streamingHasContent && (
           <div className="flex gap-2 justify-start animate-in fade-in duration-200">
             <div className="shrink-0 w-7 h-7 rounded-full bg-surface-primary text-primary-text flex items-center justify-center mt-1 border border-border-accent">
               <Bot size={14} />
@@ -796,8 +851,13 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
             <div className="bg-card text-card-foreground px-4 py-3 rounded-2xl rounded-bl-md shadow-sm border border-border">
               <div className="flex items-center gap-2">
                 <Loader2 size={16} className="animate-spin text-primary" />
-                <span className="text-xs text-muted-foreground">Pensando...</span>
+                <span className="text-xs text-muted-foreground">
+                  {waitPhase === 'reasoning' ? 'Razonando…' : 'Pensando...'}
+                </span>
               </div>
+              {waitPhase === 'reasoning' && (
+                <p className="mt-1 text-[11px] text-muted-foreground">Esto puede tardar un poco</p>
+              )}
             </div>
           </div>
         )}

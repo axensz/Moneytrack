@@ -113,6 +113,13 @@ export function useAutoConfirmImportCandidates(
         occurredAt: candidate.occurredAt,
         hasInterest: false,
         installments: 1,
+        // Pasar el instrumento que resolvió la cuenta: así el motor re-valida que
+        // el instrumento exista, esté activo, pertenezca a la cuenta y siga
+        // coincidiendo con el candidato (misma red de seguridad que el camino
+        // manual). Si la evaluación no trajo instrumentId, queda undefined.
+        ...(evaluation.instrumentId
+          ? { paymentInstrumentId: evaluation.instrumentId }
+          : {}),
         rememberInstrument: false,
       }).catch(error => {
         // Si falla, el candidato se queda en la bandeja para revisión manual. No

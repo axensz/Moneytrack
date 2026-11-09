@@ -54,7 +54,7 @@ describe('Header', () => {
     renderHeader({ onGoToTransactions });
 
     const brandHeading = screen.getByRole('heading', { name: 'MoneyTrack' });
-    const brandAction = screen.getByRole('button', { name: 'Ir a Transacciones' });
+    const brandAction = screen.getByRole('button', { name: 'MoneyTrack, ir a Transacciones' });
     expect(brandHeading).toHaveAttribute('aria-label', 'MoneyTrack');
     expect(brandHeading).toContainElement(brandAction);
     expect(brandAction).toHaveTextContent('MoneyTrack');
@@ -123,7 +123,7 @@ describe('Header', () => {
     const setIsAuthModalOpen = vi.fn();
     renderHeader({ user: null, showSettingsMenu: false, setIsAuthModalOpen });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Acceder, iniciar sesión' }));
 
     expect(setIsAuthModalOpen).toHaveBeenCalledWith(true);
     expect(screen.queryByRole('button', { name: /asistente IA/i })).not.toBeInTheDocument();
@@ -144,30 +144,14 @@ describe('Header', () => {
     expect(settingsTrigger).toHaveFocus();
   });
 
-  it('abre Integridad del libro desde ajustes conservando el retorno de foco', () => {
-    let activeElementWhenOpened: Element | null = null;
-    const onOpenLedgerReconciliation = vi.fn(() => {
-      activeElementWhenOpened = document.activeElement;
-    });
-    renderHeader({ showSettingsMenu: true, onOpenLedgerReconciliation });
-    const settingsTrigger = screen.getByRole('button', { name: 'Abrir menú de ajustes' });
-    const integrityItem = screen.getByRole('menuitem', { name: 'Integridad del libro' });
-
-    expect(integrityItem).toHaveClass('control-target-44');
-
-    fireEvent.click(integrityItem);
-
-    expect(onOpenLedgerReconciliation).toHaveBeenCalledTimes(1);
-    expect(activeElementWhenOpened).toBe(settingsTrigger);
-    expect(settingsTrigger).toHaveFocus();
-  });
+  // "Integridad del libro" se retiró del menú de ajustes (herramienta técnica,
+  // no de uso diario). El test de su botón se eliminó junto con el acceso.
 
   it('skips the responsive-hidden logout action during settings keyboard navigation', () => {
     renderHeader({ showSettingsMenu: true });
     const menu = screen.getByRole('menu', { name: 'Opciones de ajustes' });
     const notifications = screen.getByRole('menuitem', { name: 'Notificaciones' });
     const assistant = screen.getByRole('menuitem', { name: 'Asistente IA' });
-    const integrity = screen.getByRole('menuitem', { name: 'Integridad del libro' });
     const help = screen.getByRole('menuitem', { name: 'Ayuda' });
     const logout = screen.getByRole('menuitem', { name: 'Cerrar sesión' });
     logout.style.display = 'none';
@@ -176,8 +160,9 @@ describe('Header', () => {
     fireEvent.keyDown(menu, { key: 'ArrowDown' });
     expect(assistant).toHaveFocus();
 
+    // Tras Asistente IA, la siguiente opción ahora es Ayuda (Integridad se quitó).
     fireEvent.keyDown(menu, { key: 'ArrowDown' });
-    expect(integrity).toHaveFocus();
+    expect(help).toHaveFocus();
 
     fireEvent.keyDown(menu, { key: 'End' });
     expect(help).toHaveFocus();

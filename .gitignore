@@ -45,6 +45,12 @@ build/
 /.nyc_output
 .jest-cache/
 
+# Playwright (artefactos y servidor MCP local, no van al repo)
+.playwright-mcp/
+test-results/
+playwright-report/
+e2e/report/
+
 # ============================================================
 # TypeScript
 # ============================================================
@@ -182,8 +188,16 @@ skills-lock.json
 
 # ============================================================
 # Scripts locales de un solo uso (migraciones de datos manuales)
+# Herramientas personales que escriben a Firestore real y llevan el UID
+# del dueño embebido; no van al repo compartido.
 # ============================================================
 scripts/recategorize-*.mjs
+scripts/adjust-*.mjs
+scripts/fix-*.mjs
+scripts/import-*.mjs
+scripts/improve-categories-*.mjs
+scripts/audit-lighthouse.mjs
+scripts/ingest-ejemplo.json
 
 # ============================================================
 # Misc

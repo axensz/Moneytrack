@@ -9,7 +9,6 @@ import {
   LogIn,
   LogOut,
   Settings,
-  ShieldCheck,
   Tag,
   User as UserIcon,
 } from 'lucide-react';
@@ -47,7 +46,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenHelp,
   onOpenCategories,
   onOpenNotificationPreferences,
-  onOpenLedgerReconciliation,
+  // onOpenLedgerReconciliation: retirado del menú (ver nota abajo); el prop se
+  // mantiene en la interfaz para no romper a AuthenticatedApp y poder reactivarlo.
   onOpenAISettings,
   onGoToTransactions,
   onLogout,
@@ -141,7 +141,7 @@ export const Header: React.FC<HeaderProps> = ({
                 type="button"
                 onClick={onGoToTransactions}
                 className="inline-flex min-h-11 items-center rounded-lg transition-opacity hover:opacity-80 active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card"
-                aria-label="Ir a Transacciones"
+                aria-label="MoneyTrack, ir a Transacciones"
               >
                 <span className="text-primary">Money</span>
                 <span className="text-foreground">Track</span>
@@ -234,15 +234,11 @@ export const Header: React.FC<HeaderProps> = ({
                       </button>
                     </>
                   )}
-                  <button
-                    onClick={() => openSettingsModal(onOpenLedgerReconciliation)}
-                    className={menuItemClass}
-                    role="menuitem"
-                  >
-                    <ShieldCheck size={18} aria-hidden="true" />
-                    <span>Integridad del libro</span>
-                  </button>
-                  <div className="my-1 border-t border-border" aria-hidden="true" />
+                  {/* "Integridad del libro" retirado del menú por decisión del
+                      usuario: es una herramienta técnica de conciliación, no de
+                      uso diario. El modal y su lógica (onOpenLedgerReconciliation,
+                      LedgerReconciliationModal) se conservan intactos; solo se
+                      ocultó el acceso. Para reactivarlo, restaurar este botón. */}
                   <button
                     onClick={() => openSettingsModal(onOpenHelp)}
                     className={menuItemClass}
@@ -287,7 +283,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 onClick={() => setIsAuthModalOpen(true)}
                 className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-foreground text-background rounded-lg text-sm font-medium active:opacity-80 transition-opacity"
-                aria-label="Iniciar sesión"
+                aria-label="Acceder, iniciar sesión"
               >
                 <LogIn size={16} className="sm:w-[18px] sm:h-[18px]" aria-hidden="true" />
                 <span className="hidden sm:inline">Acceder</span>

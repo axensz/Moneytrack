@@ -27,7 +27,7 @@ export const NoAccountsMessage: React.FC<NoAccountsMessageProps> = ({ onCreateAc
         {onCreateAccount && (
           <button
             onClick={onCreateAccount}
-            className="mt-3 inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
+            className="mt-3 inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-warning-solid text-white rounded-lg hover:opacity-90 transition-opacity"
           >
             <Plus size={16} />
             Crear primera cuenta

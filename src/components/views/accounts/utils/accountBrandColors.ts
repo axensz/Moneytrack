@@ -128,3 +128,40 @@ export function getAccountBrand(name: string): AccountBrand {
 export function getBrandByKey(key: AccountBrandKey): AccountBrand {
   return BRANDS[key];
 }
+
+/* ─── Colores del ANILLO de distribución (AvailableDistributionRing) ─────────
+ *
+ * A diferencia de las tarjetas billetera —donde el color ES la marca de la
+ * tarjeta y puede quedar fuera del violet—, el anillo es un gráfico del
+ * producto y DEBE usar colores DENTRO del sistema de diseño. Por eso NO reusa
+ * `brand.accent` (que incluye ámbar/naranja para Bancolombia, rosa, etc.) sino
+ * una rampa de tokens semánticos definidos en `theme.css`
+ * (`--ring-seg-1..6`: violet, azul, teal-info, verde, índigo, violet claro).
+ * Son mode-aware (claro/oscuro) y se eligieron con suficiente salto de hue/
+ * lightness para distinguirse entre sí y contra la pista `--muted`.
+ *
+ * La asignación es POSICIONAL y estable: el i-ésimo segmento (ya filtrado a
+ * saldos > 0 y ordenado por el dominio) toma el i-ésimo token, con wrap-around
+ * si hubiera más de seis cuentas. Así dos cuentas contiguas nunca comparten
+ * color salvo que se superen los seis tonos, y el color no depende del nombre
+ * (el nombre sigue mandando SOLO en las tarjetas billetera). */
+const RING_SEGMENT_VARS = [
+  'var(--ring-seg-1)',
+  'var(--ring-seg-2)',
+  'var(--ring-seg-3)',
+  'var(--ring-seg-4)',
+  'var(--ring-seg-5)',
+  'var(--ring-seg-6)',
+] as const;
+
+/** Nº de tonos del anillo disponibles en el sistema. */
+export const RING_SEGMENT_COUNT = RING_SEGMENT_VARS.length;
+
+/**
+ * Devuelve el color (token CSS) del segmento `index` del anillo. Posicional y
+ * con wrap-around; siempre un color del sistema, nunca una marca cruda.
+ */
+export function getRingSegmentColor(index: number): string {
+  const safe = ((index % RING_SEGMENT_COUNT) + RING_SEGMENT_COUNT) % RING_SEGMENT_COUNT;
+  return RING_SEGMENT_VARS[safe];
+}

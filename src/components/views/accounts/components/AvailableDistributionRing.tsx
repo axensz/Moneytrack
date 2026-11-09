@@ -1,7 +1,7 @@
 'use client';
 
 import React, { memo, useMemo } from 'react';
-import { getAccountBrand } from '../utils/accountBrandColors';
+import { getRingSegmentColor } from '../utils/accountBrandColors';
 
 export interface DistributionSegment {
   /** id de la cuenta (clave estable del segmento). */
@@ -34,13 +34,14 @@ const CENTER = SIZE / 2;
  * Anillo (donut SVG) de distribución del dinero disponible — ancla visual de
  * la pantalla MÓVIL de Cuentas.
  *
- * - El total va al centro; cada cuenta de ahorro/efectivo es un segmento con su
- *   color de marca (ver `accountBrandColors`).
+ * - El total va al centro; cada cuenta de ahorro/efectivo es un segmento con un
+ *   color de la rampa DEL SISTEMA (`getRingSegmentColor`, tokens `--ring-seg-*`
+ *   en theme.css). No usa colores de marca (naranja/ámbar/rosa): el anillo es
+ *   un gráfico del producto y se mantiene dentro del violet/azul/verde/índigo.
  * - Solo recibe saldos ya calculados: no toca `balanceCalculator` ni el modelo.
- * - Las cuentas con saldo ≤ 0 no dibujan segmento (no aportan al disponible)
- *   pero sí aparecen en la leyenda para no "desaparecer" de la vista.
- * - El color comunica identidad de cuenta, no estado; es una de las dos
- *   excepciones móviles donde se permite color fuera del violet de marca.
+ * - Las cuentas con saldo ≤ 0 se OCULTAN por completo (ni segmento ni leyenda):
+ *   no aportan al disponible y "Efectivo $0 · 0%" solo añadía ruido. Si tras
+ *   filtrar queda una sola cuenta, el anillo se dibuja completo de su color.
  */
 export const AvailableDistributionRing: React.FC<AvailableDistributionRingProps> = memo(({
   segments,
@@ -48,34 +49,42 @@ export const AvailableDistributionRing: React.FC<AvailableDistributionRingProps>
   formatCurrency,
   hideBalances,
 }) => {
-  // Solo los saldos positivos aportan arco; el resto queda en la leyenda.
-  const positiveTotal = useMemo(
-    () => segments.reduce((sum, s) => sum + Math.max(0, s.value), 0),
+  // Solo los saldos POSITIVOS existen en el anillo: las cuentas con saldo ≤ 0
+  // se ocultan tanto del donut como de la leyenda (no aportan al disponible).
+  // Cada visible recibe un color POSICIONAL del sistema (índice en la lista
+  // filtrada), estable entre renders mientras no cambie el orden del dominio.
+  const visibleSegments = useMemo(
+    () =>
+      segments
+        .filter((s) => s.value > 0)
+        .map((s, index) => ({ ...s, color: getRingSegmentColor(index) })),
     [segments]
+  );
+
+  const positiveTotal = useMemo(
+    () => visibleSegments.reduce((sum, s) => sum + s.value, 0),
+    [visibleSegments]
   );
 
   // Arcos acumulados: cada segmento ocupa su fracción del total positivo.
   const arcs = useMemo(() => {
     if (positiveTotal <= 0) return [];
     let offset = 0;
-    return segments
-      .filter((s) => s.value > 0)
-      .map((s) => {
-        const fraction = s.value / positiveTotal;
-        const length = fraction * CIRCUMFERENCE;
-        const brand = getAccountBrand(s.name);
-        const arc = {
-          id: s.id,
-          color: brand.accent,
-          // dasharray: longitud visible + resto en blanco.
-          dash: `${length} ${CIRCUMFERENCE - length}`,
-          // dashoffset negativo desplaza el arco al punto de inicio acumulado.
-          offset: -offset,
-        };
-        offset += length;
-        return arc;
-      });
-  }, [segments, positiveTotal]);
+    return visibleSegments.map((s) => {
+      const fraction = s.value / positiveTotal;
+      const length = fraction * CIRCUMFERENCE;
+      const arc = {
+        id: s.id,
+        color: s.color,
+        // dasharray: longitud visible + resto en blanco.
+        dash: `${length} ${CIRCUMFERENCE - length}`,
+        // dashoffset negativo desplaza el arco al punto de inicio acumulado.
+        offset: -offset,
+      };
+      offset += length;
+      return arc;
+    });
+  }, [visibleSegments, positiveTotal]);
 
   const displayAmount = (amount: number) =>
     hideBalances ? '••••••' : formatCurrency(amount);
@@ -131,16 +140,17 @@ export const AvailableDistributionRing: React.FC<AvailableDistributionRingProps>
         </div>
       </div>
 
-      {/* Leyenda: color de marca + nombre + saldo + % del total. */}
+      {/* Leyenda: punto del color del sistema + nombre + saldo + % del total.
+          Solo las cuentas con saldo > 0 (mismas que el donut); los ceros no
+          aparecen. El texto va en --foreground (AA), el punto es decorativo. */}
       <ul className="flex w-full flex-col gap-2">
-        {segments.map((segment) => {
-          const brand = getAccountBrand(segment.name);
-          const fraction = positiveTotal > 0 ? Math.max(0, segment.value) / positiveTotal : 0;
+        {visibleSegments.map((segment) => {
+          const fraction = positiveTotal > 0 ? segment.value / positiveTotal : 0;
           return (
             <li key={segment.id} className="flex items-center gap-3">
               <span
                 className="h-3 w-3 flex-shrink-0 rounded-full"
-                style={{ backgroundColor: brand.accent }}
+                style={{ backgroundColor: segment.color }}
                 aria-hidden="true"
               />
               <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">

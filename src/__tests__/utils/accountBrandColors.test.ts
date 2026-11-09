@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   getAccountBrand,
   getBrandByKey,
+  getRingSegmentColor,
+  RING_SEGMENT_COUNT,
   type AccountBrandKey,
 } from '../../components/views/accounts/utils/accountBrandColors';
 
@@ -62,5 +64,34 @@ describe('accountBrandColors — asignación por nombre', () => {
     const b = getAccountBrand('Cooperativa XYZ');
     expect(a.key).toBe(b.key);
     expect(ALL_KEYS).toContain(a.key);
+  });
+});
+
+/**
+ * El ANILLO de distribución NO usa colores de marca (naranja/ámbar/rosa) sino
+ * una rampa DENTRO del sistema de diseño (tokens `--ring-seg-*` de theme.css).
+ * Estos tests fijan ese contrato: color posicional, estable, con wrap-around y
+ * siempre un token del sistema (nunca un literal de marca).
+ */
+describe('getRingSegmentColor — rampa del anillo dentro del sistema', () => {
+  it('expone exactamente 6 tonos del sistema', () => {
+    expect(RING_SEGMENT_COUNT).toBe(6);
+  });
+
+  it('devuelve un token CSS del sistema (--ring-seg-*), no un color crudo de marca', () => {
+    for (let i = 0; i < RING_SEGMENT_COUNT; i += 1) {
+      expect(getRingSegmentColor(i)).toBe(`var(--ring-seg-${i + 1})`);
+    }
+  });
+
+  it('es posicional y estable (mismo índice → mismo color)', () => {
+    expect(getRingSegmentColor(0)).toBe(getRingSegmentColor(0));
+    expect(getRingSegmentColor(1)).not.toBe(getRingSegmentColor(0));
+  });
+
+  it('hace wrap-around para más cuentas que tonos y acepta índices negativos', () => {
+    expect(getRingSegmentColor(RING_SEGMENT_COUNT)).toBe(getRingSegmentColor(0));
+    expect(getRingSegmentColor(RING_SEGMENT_COUNT + 2)).toBe(getRingSegmentColor(2));
+    expect(getRingSegmentColor(-1)).toBe(getRingSegmentColor(RING_SEGMENT_COUNT - 1));
   });
 });

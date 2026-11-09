@@ -7,7 +7,6 @@ import { useUIPreferences } from '@/contexts/UIPreferencesContext';
 import { BalanceSettling } from '@/components/shared/BalanceSettling';
 import { getCreditAuthorityState } from '../../../../utils/creditAuthority';
 import { getAccountBalancePresentation } from '../utils/accountBalancePresentation';
-import { getAccountBrand } from '../utils/accountBrandColors';
 import { AccountActionsBar, AccountReorderButtons } from './AccountActions';
 import { UI_LABELS } from '@/config/constants';
 
@@ -60,7 +59,6 @@ export const AccountRow: React.FC<AccountRowProps> = memo(({
 }) => {
   const { hideBalances } = useUIPreferences();
   const creditAuthority = getCreditAuthorityState(account);
-  const brand = useMemo(() => getAccountBrand(account.name), [account.name]);
 
   const presentation = useMemo(
     () =>
@@ -90,11 +88,13 @@ export const AccountRow: React.FC<AccountRowProps> = memo(({
           canMoveDown={canMoveDown}
         />
 
-        {/* Icono redondeado con el color de marca de la cuenta (texto blanco
-            sobre el `accent` oscuro, legible). */}
+        {/* Icono redondeado en el violet del sistema (tinte primary/10 + icono
+            --primary), igual que el icono de la cabecera de sección. Antes usaba
+            el color de MARCA de la cuenta (incluía naranjas/ámbar fuera de
+            paleta); el color de marca queda reservado a las dos excepciones
+            móviles (gradiente de la tarjeta billetera y segmentos del anillo). */}
         <span
-          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-white"
-          style={{ backgroundColor: brand.accent }}
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
           aria-hidden="true"
         >
           <Icon size={18} />

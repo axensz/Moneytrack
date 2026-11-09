@@ -73,11 +73,21 @@ export const AccountReorderButtons: React.FC<AccountReorderButtonsProps> = ({
 // `overflow-hidden` de la card. Cierra con clic fuera / Escape (useDismissable)
 // y AHORA también al hacer scroll o redimensionar (el panel usa coordenadas de
 // viewport y se desanclaría del botón; cerrarlo lo mantiene coherente).
+/**
+ * Variante de superficie de la barra/menú:
+ * - `surface` (por defecto): sobre card/fondo claro, usa tokens del sistema.
+ * - `wallet`: integrada DENTRO de la tarjeta billetera, sobre su gradiente
+ *   oscuro. Usa blanco/translúcidos para cumplir AA sobre el gradiente (el
+ *   texto blanco ya está verificado ≥4.5:1 sobre ambos stops de marca).
+ */
+export type AccountActionsSurface = 'surface' | 'wallet';
+
 interface AccountActionsMenuProps {
   account: Account;
   isCredit: boolean;
   authorityReady: boolean;
   authorityMessageId: string;
+  surface?: AccountActionsSurface;
   onMerge?: () => void;
   onSetDefault: () => void;
   onArchive?: () => void;
@@ -90,6 +100,7 @@ export const AccountActionsMenu: React.FC<AccountActionsMenuProps> = ({
   isCredit,
   authorityReady,
   authorityMessageId,
+  surface = 'surface',
   onMerge,
   onSetDefault,
   onArchive,
@@ -152,7 +163,11 @@ export const AccountActionsMenu: React.FC<AccountActionsMenuProps> = ({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Más acciones para ${account.name}`}
-        className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-border p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        className={
+          surface === 'wallet'
+            ? 'flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-white/25 bg-black/15 p-2 text-white transition-colors hover:bg-black/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70'
+            : 'flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-border p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
+        }
       >
         <MoreHorizontal size={18} aria-hidden="true" />
       </button>
@@ -240,6 +255,8 @@ interface AccountActionsBarProps {
   isCredit: boolean;
   authorityReady: boolean;
   authorityMessageId: string;
+  /** Superficie donde vive la barra: `surface` (card) o `wallet` (gradiente). */
+  surface?: AccountActionsSurface;
   onEdit: () => void;
   onManagePaymentInstruments?: () => void;
   onMerge?: () => void;
@@ -254,6 +271,7 @@ export const AccountActionsBar: React.FC<AccountActionsBarProps> = ({
   isCredit,
   authorityReady,
   authorityMessageId,
+  surface = 'surface',
   onEdit,
   onManagePaymentInstruments,
   onMerge,
@@ -261,39 +279,51 @@ export const AccountActionsBar: React.FC<AccountActionsBarProps> = ({
   onArchive,
   onUnarchive,
   onDelete,
-}) => (
-  <div className="flex flex-wrap items-center gap-2">
-    <button
-      onClick={onEdit}
-      className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary-on-surface bg-card border border-border-accent hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-    >
-      <Edit2 size={14} />
-      Editar
-    </button>
+}) => {
+  const isWallet = surface === 'wallet';
+  // Editar: en wallet usa un fondo OSCURO translúcido (bg-black/15) con texto
+  // blanco. El overlay oscuro refuerza el contraste (blanco ≥6.4:1 sobre el
+  // stop más claro de CUALQUIER gradiente de marca; un overlay blanco bajaría
+  // a ~4:1 y fallaría AA). En surface conserva el violet-on-surface del sistema.
+  const editClass = isWallet
+    ? 'flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-white bg-black/15 border border-white/25 hover:bg-black/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70'
+    : 'flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] text-primary-on-surface bg-card border border-border-accent hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
+  const iconBtnClass = isWallet
+    ? 'flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-white/25 bg-black/15 p-2 text-white transition-colors hover:bg-black/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70'
+    : 'flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-border p-2 text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
 
-    {onManagePaymentInstruments && (
-      <button
-        type="button"
-        onClick={onManagePaymentInstruments}
-        aria-label={`Gestionar medios de pago de ${account.name}`}
-        aria-haspopup="dialog"
-        title="Medios de pago"
-        className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-border p-2 text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-      >
-        <Smartphone size={18} aria-hidden="true" />
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button onClick={onEdit} className={editClass}>
+        <Edit2 size={14} />
+        Editar
       </button>
-    )}
 
-    <AccountActionsMenu
-      account={account}
-      isCredit={isCredit}
-      authorityReady={authorityReady}
-      authorityMessageId={authorityMessageId}
-      onMerge={onMerge}
-      onSetDefault={onSetDefault}
-      onArchive={onArchive}
-      onUnarchive={onUnarchive}
-      onDelete={onDelete}
-    />
-  </div>
-);
+      {onManagePaymentInstruments && (
+        <button
+          type="button"
+          onClick={onManagePaymentInstruments}
+          aria-label={`Gestionar medios de pago de ${account.name}`}
+          aria-haspopup="dialog"
+          title="Medios de pago"
+          className={iconBtnClass}
+        >
+          <Smartphone size={18} aria-hidden="true" />
+        </button>
+      )}
+
+      <AccountActionsMenu
+        account={account}
+        isCredit={isCredit}
+        authorityReady={authorityReady}
+        authorityMessageId={authorityMessageId}
+        surface={surface}
+        onMerge={onMerge}
+        onSetDefault={onSetDefault}
+        onArchive={onArchive}
+        onUnarchive={onUnarchive}
+        onDelete={onDelete}
+      />
+    </div>
+  );
+};

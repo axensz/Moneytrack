@@ -85,16 +85,15 @@ export const WalletCreditCard: React.FC<WalletCreditCardProps> = memo(({
   const available = Math.max(0, creditLimit - creditUsed);
 
   return (
-    <div className="space-y-3">
-      <div
-        data-account-id={account.id}
-        className="card-wallet"
-        style={{
-          // Inyecta el gradiente de marca de ESTA tarjeta (texto blanco AA).
-          ['--wallet-from' as string]: brand.from,
-          ['--wallet-to' as string]: brand.to,
-        }}
-      >
+    <div
+      data-account-id={account.id}
+      className="card-wallet"
+      style={{
+        // Inyecta el gradiente de marca de ESTA tarjeta (texto blanco AA).
+        ['--wallet-from' as string]: brand.from,
+        ['--wallet-to' as string]: brand.to,
+      }}
+    >
         {/* Cabecera: reorden + nombre + badges. El texto va en blanco (sobre el
             gradiente oscuro de marca, AA verificado). */}
         <div className="flex items-start justify-between gap-3">
@@ -135,12 +134,18 @@ export const WalletCreditCard: React.FC<WalletCreditCardProps> = memo(({
             </div>
           </div>
 
-          {/* Chip + últimos 4. El chip es puramente decorativo (aria-hidden). */}
-          <div className="flex flex-shrink-0 flex-col items-end gap-2">
+          {/* Chip + últimos 4. El chip es decorativo (aria-hidden): un rectángulo
+              dorado SUTIL con contactos finos, no un bloque amarillo plano. */}
+          <div className="flex flex-shrink-0 flex-col items-end gap-1.5">
             <span
-              className="h-6 w-8 rounded-md bg-gradient-to-br from-yellow-200/90 to-yellow-400/70 ring-1 ring-white/30"
+              className="relative h-5 w-7 overflow-hidden rounded-[5px] bg-gradient-to-br from-amber-100/70 to-amber-300/50 ring-1 ring-white/25"
               aria-hidden="true"
-            />
+            >
+              {/* Líneas de contacto del chip, muy tenues, para que lea como chip
+                  real sin distraer de la cifra. */}
+              <span className="absolute inset-x-1 top-1/2 h-px -translate-y-1/2 bg-black/15" />
+              <span className="absolute inset-y-1 left-1/2 w-px -translate-x-1/2 bg-black/15" />
+            </span>
             {last4 && (
               <span className="font-mono text-xs tracking-widest text-white/80">
                 •••• {last4}
@@ -151,12 +156,14 @@ export const WalletCreditCard: React.FC<WalletCreditCardProps> = memo(({
 
         {creditAuthority.ready ? (
           <>
-            {/* Deuda grande: la cifra ancla de la tarjeta. */}
-            <div className="mt-5">
+            {/* Deuda grande: la cifra ancla de la tarjeta. Ritmo vertical más
+                apretado (mt-4) para que la cabecera no deje un vacío sobre el
+                chip. */}
+            <div className="mt-4">
               <p className="text-xs font-medium uppercase tracking-wide text-white/70">
                 Deuda actual
               </p>
-              <p className="mt-0.5 font-mono text-3xl font-bold text-white">
+              <p className="mt-1 font-mono text-3xl font-bold leading-none text-white">
                 {displayAmount(creditUsed)}
               </p>
             </div>
@@ -228,23 +235,27 @@ export const WalletCreditCard: React.FC<WalletCreditCardProps> = memo(({
             </div>
           </div>
         )}
-      </div>
 
-      {/* Acciones fuera de la tarjeta billetera: viven sobre la superficie
-          normal para conservar el contraste AA de sus textos/iconos. */}
-      <AccountActionsBar
-        account={account}
-        isCredit
-        authorityReady={creditAuthority.ready}
-        authorityMessageId={authorityMessageId}
-        onEdit={onEdit}
-        onManagePaymentInstruments={onManagePaymentInstruments}
-        onMerge={onMerge}
-        onSetDefault={onSetDefault}
-        onArchive={onArchive}
-        onUnarchive={onUnarchive}
-        onDelete={onDelete}
-      />
+        {/* Acciones INTEGRADAS en la tarjeta: barra al pie, separada por un
+            divisor translúcido, con la variante `wallet` (blanco sobre el
+            gradiente, AA verificado). Así se leen como parte de la tarjeta a la
+            que pertenecen, no sueltas sobre el fondo oscuro. */}
+        <div className="mt-4 border-t border-white/20 pt-3">
+          <AccountActionsBar
+            account={account}
+            isCredit
+            authorityReady={creditAuthority.ready}
+            authorityMessageId={authorityMessageId}
+            surface="wallet"
+            onEdit={onEdit}
+            onManagePaymentInstruments={onManagePaymentInstruments}
+            onMerge={onMerge}
+            onSetDefault={onSetDefault}
+            onArchive={onArchive}
+            onUnarchive={onUnarchive}
+            onDelete={onDelete}
+          />
+        </div>
     </div>
   );
 });

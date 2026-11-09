@@ -66,6 +66,24 @@
   --balance-foreground: #6b21a8;
   --balance-value: #7c3aed;
 
+  /* ANILLO DE DISTRIBUCIÓN (AvailableDistributionRing, SOLO móvil) ───────────
+     Rampa de segmentos DENTRO del sistema de diseño. A diferencia de las
+     tarjetas billetera (donde el color es la MARCA de cada tarjeta y puede ser
+     ajeno al violet), el anillo es un gráfico del producto y por tanto se limita
+     a derivados de los tokens de marca/estado del sistema: violet (--primary),
+     azul (--info), verde (--success), un violet claro de la rampa balance y dos
+     tonos intermedios coherentes (índigo y teal-info). NADA de naranjas/ámbar ni
+     colores crudos fuera de paleta. Los seis tonos se eligieron con suficiente
+     salto de hue/lightness para distinguirse entre sí y contra la pista
+     (--muted). El texto de la leyenda NO usa estos colores (va en --foreground),
+     así que son puramente gráficos (umbral de componente, no de texto). */
+  --ring-seg-1: #7c3aed; /* violet (marca) */
+  --ring-seg-2: #2563eb; /* azul (info) */
+  --ring-seg-3: #0e7490; /* teal-info (cian oscuro del sistema) */
+  --ring-seg-4: #047857; /* verde (success) */
+  --ring-seg-5: #4f46e5; /* índigo (puente violet↔azul) */
+  --ring-seg-6: #9333ea; /* violet claro (rampa balance) */
+
   /* TEXTO/SUPERFICIE SEMÁNTICOS — alias de la capa "*-text"/surface usada por el
      manual (HelpSection*). Apuntan a tokens YA afinados AA: los *-text son los
      mismos fg que ya cumplen AA sobre su -muted; el par de marca usa los tokens
@@ -167,6 +185,18 @@
   --balance-accent-foreground: #c4b5fd;
   --balance-foreground: #d8b4fe;
   --balance-value: #c4b5fd;
+
+  /* ANILLO DE DISTRIBUCIÓN DARK — mismos roles que en claro, aclarados para
+     que resalten sobre la pista oscura (--muted #262626) y entre sí. Siguen
+     dentro del sistema: violet, azul, cian, verde, índigo y violet claro, todos
+     tomados de los tokens *-dark de marca/estado (p. ej. --primary #8b5cf6,
+     --info #60a5fa, --success #10b981). Son gráficos, no texto. */
+  --ring-seg-1: #a78bfa; /* violet claro (marca dark) */
+  --ring-seg-2: #60a5fa; /* azul (info dark) */
+  --ring-seg-3: #22d3ee; /* cian */
+  --ring-seg-4: #34d399; /* verde (success dark) */
+  --ring-seg-5: #818cf8; /* índigo */
+  --ring-seg-6: #c084fc; /* violet claro (rampa balance) */
 
   /* BORDERS & INPUTS DARK */
   --border: #4c1d95;

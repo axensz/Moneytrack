@@ -89,9 +89,35 @@ no el cian brillante `#0891b2` (3,98:1, que fallaría). Los ratios están
 verificados en `accountBrandColors.ts` y cubiertos por
 `src/__tests__/utils/accountBrandColors.test.ts`.
 
-El color de marca solo se permite en dos lugares del layout móvil: el gradiente
-de `.card-wallet` y el segmento/leyenda del anillo de distribución
-(`AvailableDistributionRing`). El resto de la app conserva el violet único.
+El color de marca solo se permite en **un** lugar del layout móvil: el gradiente
+de `.card-wallet` (cada TC con su marca). El resto de la app —incluido el
+**anillo de distribución** (`AvailableDistributionRing`)— conserva el sistema de
+diseño: el anillo usa una rampa de tokens semánticos (`--ring-seg-1..6` en
+`theme.css`: violet, azul, teal-info, verde, índigo y violet claro), nunca
+naranjas/ámbar ni colores crudos de marca. Las filas de ahorro/efectivo
+(`AccountRow`) usan el icono en violet del sistema (`bg-primary/10 text-primary`),
+no el color de marca de la cuenta.
+
+### Anillo de distribución (`--ring-seg-*`)
+
+Rampa de 6 tonos DENTRO del sistema para los segmentos/leyenda del anillo móvil.
+Mode-aware (claro/oscuro) y con suficiente salto de hue/lightness para
+distinguirse entre sí y contra la pista (`--muted`). La asignación es posicional
+(i-ésimo segmento visible → i-ésimo token, con wrap-around); solo participan las
+cuentas con saldo > 0 (las de saldo cero se ocultan del anillo y de la leyenda).
+El texto de la leyenda va en `--foreground` (AA sobre `--card`); los puntos de
+color son decorativos (`aria-hidden`).
+
+### Acciones integradas en `.card-wallet`
+
+La barra de acciones (Editar · Medios de pago · menú `⋯`) vive DENTRO de la
+tarjeta billetera, separada por un divisor `border-white/20` al pie. Sobre el
+gradiente oscuro usa la variante `wallet` de `AccountActionsBar`: botones con
+fondo **oscuro translúcido** (`bg-black/15`), borde `white/25` y texto/iconos
+blancos. El overlay oscuro (no blanco) garantiza WCAG AA: el blanco queda ≥6,4:1
+sobre el stop más claro de cualquier gradiente de marca (un overlay blanco bajaba
+a ~4:1 y fallaba). El panel del menú `⋯` sigue en `position: fixed` sobre `--card`
+(contraste de superficie normal) y se cierra al hacer scroll/resize.
 - **Inputs:** `.input-base`, `rounded-lg`, `min-height` 48px móvil / 44px ≥sm,
   `font-size` 16px móvil (evita zoom iOS), foco anillo violet.
 - **Botones:** `.btn-primary` degradado violet (`--btn-primary-from/to`),

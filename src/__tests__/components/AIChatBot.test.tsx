@@ -2,7 +2,7 @@ import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AIChatBot } from '../../components/chat/AIChatBot';
-import { parseActionFromResponse, sendChatMessage } from '../../lib/gemini';
+import { parseActionFromResponse, sendChatMessageStream } from '../../lib/gemini';
 import type { Account, Categories, Transaction } from '../../types/finance';
 
 const financeDomainMocks = vi.hoisted(() => ({
@@ -18,6 +18,7 @@ const financeDomainMocks = vi.hoisted(() => ({
 
 vi.mock('../../lib/gemini', () => ({
   sendChatMessage: vi.fn(),
+  sendChatMessageStream: vi.fn(),
   isGeminiConfigured: () => true,
   parseActionFromResponse: vi.fn(),
 }));
@@ -37,8 +38,22 @@ vi.mock('../../hooks/useFinanceSelectors', () => ({
   }),
 }));
 
-const sendChatMessageMock = vi.mocked(sendChatMessage);
+const sendChatMessageMock = vi.mocked(sendChatMessageStream);
 const parseActionFromResponseMock = vi.mocked(parseActionFromResponse);
+
+type StreamResult = Awaited<ReturnType<typeof sendChatMessageStream>>;
+type DeltaFn = (fullText: string) => void;
+
+/**
+ * Hace que el mock de streaming invoque onTextDelta con el texto final (ejerce
+ * la ruta incremental del componente) y luego resuelva con el resultado dado.
+ */
+function resolveStream(result: StreamResult) {
+  return async (_t: string, _h: unknown, _d: unknown, onDelta: DeltaFn) => {
+    if (result.text) onDelta(result.text);
+    return result;
+  };
+}
 const decorativeAssistantClasses =
   /bg-gradient|animate-(?:shimmer|pulse|bounce)|(?:group-hover|hover|active):scale|backdrop-blur|\brotate-|ease-(?:bounce|elastic)/;
 
@@ -56,7 +71,7 @@ function sendAssistantMessage(text: string) {
 }
 
 function mockParsedCategoryAction() {
-  sendChatMessageMock.mockResolvedValue({ text: 'Respuesta con acción' });
+  sendChatMessageMock.mockImplementation(resolveStream({ text: 'Respuesta con acción' }));
   parseActionFromResponseMock.mockReturnValue({
     text: 'Crear categoría Mascotas',
     action: {
@@ -67,7 +82,7 @@ function mockParsedCategoryAction() {
 }
 
 function mockParsedTransactionAction() {
-  sendChatMessageMock.mockResolvedValue({ text: 'Respuesta con acción' });
+  sendChatMessageMock.mockImplementation(resolveStream({ text: 'Respuesta con acción' }));
   parseActionFromResponseMock.mockReturnValue({
     text: 'Registrar almuerzo',
     action: {
@@ -235,7 +250,7 @@ describe('AIChatBot shell control', () => {
   });
 
   it('keeps expanded token details free of decorative motion', async () => {
-    sendChatMessageMock.mockResolvedValue({
+    sendChatMessageMock.mockImplementation(resolveStream({
       text: 'Respuesta con tokens',
       tokenUsage: {
         promptTokens: 120,
@@ -243,7 +258,7 @@ describe('AIChatBot shell control', () => {
         thinkingTokens: 10,
         totalTokens: 170,
       },
-    });
+    }));
     parseActionFromResponseMock.mockReturnValue({ text: 'Resumen listo' });
     render(<ControlledChat />);
 
@@ -260,14 +275,14 @@ describe('AIChatBot shell control', () => {
 
   it('accumulates measured token usage across the current chat', async () => {
     sendChatMessageMock
-      .mockResolvedValueOnce({
+      .mockImplementationOnce(resolveStream({
         text: 'Primera respuesta',
         tokenUsage: { promptTokens: 80, responseTokens: 20, totalTokens: 100 },
-      })
-      .mockResolvedValueOnce({
+      }))
+      .mockImplementationOnce(resolveStream({
         text: 'Segunda respuesta',
         tokenUsage: { promptTokens: 45, responseTokens: 15, totalTokens: 60 },
-      });
+      }));
     parseActionFromResponseMock
       .mockReturnValueOnce({ text: 'Primera respuesta' })
       .mockReturnValueOnce({ text: 'Segunda respuesta' });
@@ -314,10 +329,10 @@ describe('AIChatBot shell control', () => {
   it('translates a network failure and retries the exact request without duplicating it', async () => {
     sendChatMessageMock
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-      .mockResolvedValueOnce({
+      .mockImplementationOnce(resolveStream({
         text: 'Respuesta recuperada',
         tokenUsage: { promptTokens: 30, responseTokens: 10, totalTokens: 40 },
-      });
+      }));
     parseActionFromResponseMock.mockReturnValue({ text: 'Conexión recuperada' });
     render(<ControlledChat />);
 
@@ -328,7 +343,10 @@ describe('AIChatBot shell control', () => {
 
     expect(await screen.findByText('Conexión recuperada')).toBeInTheDocument();
     expect(sendChatMessageMock).toHaveBeenCalledTimes(2);
-    expect(sendChatMessageMock.mock.calls[1]).toEqual(sendChatMessageMock.mock.calls[0]);
+    // Mismos argumentos de petición en el reintento (texto, historial, datos);
+    // el 4º argumento es el callback onTextDelta, un closure distinto por llamada.
+    expect(sendChatMessageMock.mock.calls[1].slice(0, 3))
+      .toEqual(sendChatMessageMock.mock.calls[0].slice(0, 3));
     expect(screen.getAllByText('¿Cómo voy este mes?')).toHaveLength(1);
     expect(screen.queryByText('No se pudo conectar con Gemini')).toBeNull();
   });
@@ -338,7 +356,7 @@ describe('AIChatBot shell control', () => {
     const historical = ledgerTransaction('historical', 90_000, '2025-01-01');
     financeDomainMocks.transactions = [paginated];
     financeDomainMocks.balanceTransactions = [paginated, historical];
-    sendChatMessageMock.mockResolvedValue({ text: 'Contexto completo' });
+    sendChatMessageMock.mockImplementation(resolveStream({ text: 'Contexto completo' }));
     parseActionFromResponseMock.mockReturnValue({ text: 'Contexto completo' });
     const { unmount } = render(<ControlledChat />);
 
@@ -348,6 +366,7 @@ describe('AIChatBot shell control', () => {
       '¿Cuál es mi saldo?',
       expect.any(Array),
       expect.objectContaining({ transactions: [paginated, historical] }),
+      expect.any(Function),
     );
 
     unmount();
@@ -483,6 +502,62 @@ describe('AIChatBot shell control', () => {
       await pendingRequest;
     });
     await screen.findByText('Carga terminada');
+  });
+
+  it('streams partial text into the dialog before resolution without an extra spinner', async () => {
+    let resolveRequest!: (value: { text: string }) => void;
+    const pending = new Promise<{ text: string }>((resolve) => { resolveRequest = resolve; });
+    let emitDelta!: DeltaFn;
+    sendChatMessageMock.mockImplementation((_t, _h, _d, onDelta: DeltaFn) => {
+      emitDelta = onDelta;
+      return pending;
+    });
+    parseActionFromResponseMock.mockReturnValue({ text: 'Respuesta completa streameada' });
+    render(<ControlledChat />);
+
+    sendAssistantMessage('Analiza mis gastos');
+    await screen.findByText('Pensando...');
+
+    // Llega el primer token: el texto parcial aparece y el loader desaparece.
+    act(() => emitDelta('Parcial en vivo'));
+    expect(await screen.findByText('Parcial en vivo')).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.querySelectorAll('.animate-spin')).toHaveLength(0);
+    expect(screen.queryByText('Pensando...')).toBeNull();
+
+    await act(async () => {
+      resolveRequest({ text: 'Respuesta completa streameada' });
+      await pending;
+    });
+    expect(await screen.findByText('Respuesta completa streameada')).toBeInTheDocument();
+  });
+
+  it('reinforces the wait message to "Razonando…" after the reasoning threshold', async () => {
+    vi.useFakeTimers();
+    try {
+      const pending = new Promise<{ text: string }>(() => {});
+      sendChatMessageMock.mockReturnValue(pending);
+      parseActionFromResponseMock.mockReturnValue({ text: 'nunca' });
+      render(<ControlledChat />);
+
+      fireEvent.change(screen.getByRole('textbox', { name: 'Mensaje para el asistente' }), {
+        target: { value: 'Pregunta compleja' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Enviar mensaje' }));
+
+      // Antes del umbral se ve "Pensando...".
+      expect(screen.getByText('Pensando...')).toBeInTheDocument();
+
+      act(() => { vi.advanceTimersByTime(8000); });
+
+      expect(screen.getByText('Razonando…')).toBeInTheDocument();
+      expect(screen.getByText('Esto puede tardar un poco')).toBeInTheDocument();
+
+      const classText = getClassText(screen.getByRole('dialog'));
+      expect(classText).not.toMatch(decorativeAssistantClasses);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('keeps the rendered error state free of decorative motion', async () => {

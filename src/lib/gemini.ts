@@ -606,17 +606,27 @@ export function parseActionFromResponse(response: string): { text: string; actio
  * bloquea la llamada con "failed to fetch". generateContent sí soporta CORS y
  * es la misma superficie que usa el plan financiero.
  */
-export async function sendChatMessage(
+interface ChatFinancialData {
+  transactions: Transaction[];
+  accounts: Account[];
+  categories: Categories;
+}
+
+type GenerateChatRequest = Parameters<
+  Awaited<ReturnType<typeof getGeminiClient>>['models']['generateContent']
+>[0];
+
+/**
+ * Construye el objeto de petición compartido por la llamada no-streaming
+ * (generateContent) y la de streaming (generateContentStream). Ambas usan la
+ * MISMA forma de parámetros (model, contents, config con tools/toolConfig), así
+ * que extraerlo aquí garantiza que las dos rutas queden siempre sincronizadas.
+ */
+function buildChatRequest(
   message: string,
   history: ChatMessage[],
-  financialData: {
-    transactions: Transaction[];
-    accounts: Account[];
-    categories: Categories;
-  }
-): Promise<{ text: string; action?: ChatAction; tokenUsage?: TokenUsage }> {
-  const client = await getGeminiClient();
-
+  financialData: ChatFinancialData,
+): GenerateChatRequest {
   const financialContext = buildFinancialContext(
     financialData.transactions,
     financialData.accounts,
@@ -628,33 +638,45 @@ export async function sendChatMessage(
   const systemInstruction = `${SYSTEM_PROMPT}\n\n${financialContext}`;
   const contents = buildChatContents(message, history);
 
+  return {
+    model: getGeminiModel(),
+    contents,
+    config: {
+      systemInstruction,
+      temperature: 0.7,
+      maxOutputTokens: 8192,
+      tools: [{ functionDeclarations: CHAT_ACTION_FUNCTION_DECLARATIONS }],
+      toolConfig: {
+        functionCallingConfig: {
+          // mode AUTO: el modelo decide libremente si responde texto o llama
+          // una función. NO se pasa `allowedFunctionNames`: la API de Gemini
+          // solo lo acepta con mode ANY (que forzaría SIEMPRE una llamada de
+          // función, rompiendo preguntas de texto como "¿cómo voy este mes?").
+          // Las funciones permitidas ya quedan acotadas por functionDeclarations
+          // en `tools`, así que la restricción era redundante y causaba un 400
+          // "Please set allowed_function_names only when ... mode is ANY".
+          mode: 'AUTO' as FunctionCallingConfigMode,
+        },
+      },
+    },
+  };
+}
+
+export async function sendChatMessage(
+  message: string,
+  history: ChatMessage[],
+  financialData: ChatFinancialData
+): Promise<{ text: string; action?: ChatAction; tokenUsage?: TokenUsage }> {
+  const client = await getGeminiClient();
+
+  const request = buildChatRequest(message, history, financialData);
+
   // Retry con espera progresiva: 10s, 30s, 60s
   const RETRY_DELAYS = [10_000, 30_000, 60_000];
 
   for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
     try {
-      const response = await client.models.generateContent({
-        model: getGeminiModel(),
-        contents,
-        config: {
-          systemInstruction,
-          temperature: 0.7,
-          maxOutputTokens: 8192,
-          tools: [{ functionDeclarations: CHAT_ACTION_FUNCTION_DECLARATIONS }],
-          toolConfig: {
-            functionCallingConfig: {
-              // mode AUTO: el modelo decide libremente si responde texto o llama
-              // una función. NO se pasa `allowedFunctionNames`: la API de Gemini
-              // solo lo acepta con mode ANY (que forzaría SIEMPRE una llamada de
-              // función, rompiendo preguntas de texto como "¿cómo voy este mes?").
-              // Las funciones permitidas ya quedan acotadas por functionDeclarations
-              // en `tools`, así que la restricción era redundante y causaba un 400
-              // "Please set allowed_function_names only when ... mode is ANY".
-              mode: 'AUTO' as FunctionCallingConfigMode,
-            },
-          },
-        },
-      });
+      const response = await client.models.generateContent(request);
 
       const call = response.functionCalls?.[0];
       const action = call ? parseActionFromFunctionCall(call) : undefined;
@@ -697,4 +719,79 @@ export async function sendChatMessage(
   }
 
   throw new Error('No se pudo obtener respuesta después de varios intentos');
+}
+
+/**
+ * Variante en streaming de sendChatMessage: usa models.generateContentStream
+ * (misma superficie CORS que generateContent; NO la Interactions API) para
+ * renderizar la respuesta token a token. El callback onTextDelta recibe el
+ * texto ACUMULADO (no el delta suelto) en cada chunk de texto, de modo que la
+ * UI solo tiene que reemplazar el contenido del mensaje en vivo.
+ *
+ * - Function calling se preserva intacto: las functionCall llegan completas en
+ *   un chunk (el modelo no las parte), así que tomamos el primer
+ *   functionCalls[0] visto y lo pasamos al mismo parseActionFromFunctionCall.
+ * - Token usage: usageMetadata llega (de forma acumulada) en el último chunk;
+ *   conservamos el último no nulo y lo pasamos por extractGenerateContentTokenUsage.
+ *   Si ningún chunk lo trae, tokenUsage queda undefined (la UI ya lo trata como
+ *   opcional).
+ * - Fallback fail-closed: si el stream lanza, o termina sin texto y sin
+ *   functionCall, caemos a sendChatMessage (ruta no-streaming probada, con sus
+ *   reintentos 429/503). El streaming hace un solo intento para no sacrificar el
+ *   feedback rápido que motiva esta mejora.
+ */
+export async function sendChatMessageStream(
+  message: string,
+  history: ChatMessage[],
+  financialData: ChatFinancialData,
+  onTextDelta: (fullText: string) => void,
+): Promise<{ text: string; action?: ChatAction; tokenUsage?: TokenUsage }> {
+  try {
+    const client = await getGeminiClient();
+    const request = buildChatRequest(message, history, financialData);
+
+    const stream = await client.models.generateContentStream(request);
+
+    let fullText = '';
+    let firstCall: FunctionCall | undefined;
+    let lastUsage: GenerateContentResponse['usageMetadata'] | undefined;
+
+    for await (const chunk of stream) {
+      const chunkText = chunk.text ?? '';
+      if (chunkText) {
+        fullText += chunkText;
+        onTextDelta(fullText);
+      }
+
+      if (!firstCall) {
+        const call = chunk.functionCalls?.[0];
+        if (call) firstCall = call;
+      }
+
+      if (chunk.usageMetadata) {
+        lastUsage = chunk.usageMetadata;
+      }
+    }
+
+    const action = firstCall ? parseActionFromFunctionCall(firstCall) : undefined;
+    const trimmed = fullText.trim();
+
+    // Stream vacío (ni texto ni función): no es una respuesta útil, caer al
+    // camino no-streaming que además reintenta ante sobrecarga transitoria.
+    if (!trimmed && !firstCall) {
+      return sendChatMessage(message, history, financialData);
+    }
+
+    const text = trimmed || (action ? 'Perfecto. Revisa y confirma la accion propuesta.' : '');
+    const tokenUsage = lastUsage
+      ? extractGenerateContentTokenUsage({ usageMetadata: lastUsage } as GenerateContentResponse)
+      : undefined;
+
+    return { text: text || 'No pude generar una respuesta. Intenta de nuevo.', action, tokenUsage };
+  } catch (error) {
+    logger.warn('[gemini] streaming falló, usando generateContent (fallback)', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return sendChatMessage(message, history, financialData);
+  }
 }

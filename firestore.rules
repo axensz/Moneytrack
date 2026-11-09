@@ -948,12 +948,19 @@ service cloud.firestore {
         // settings/ai — clave BYOK de Gemini + consentimiento de IA (escritura con merge).
         allow create, update: if isOwner(userId)
           && settingId == 'ai'
-          && request.resource.data.keys().hasOnly(['geminiApiKey', 'aiConsent'])
+          && request.resource.data.keys().hasOnly(['geminiApiKey', 'aiConsent', 'geminiModel'])
           && (!('geminiApiKey' in request.resource.data.keys())
               || (request.resource.data.geminiApiKey is string
                   && request.resource.data.geminiApiKey.size() <= 200))
           && (!('aiConsent' in request.resource.data.keys())
-              || request.resource.data.aiConsent is bool);
+              || request.resource.data.aiConsent is bool)
+          // geminiModel: el modelo elegido (chat/filtros/plan). String acotado;
+          // el cliente ya lo normaliza contra la lista de IDs válidos, aquí solo
+          // se valida forma/tamaño para no bloquear la sincronización entre
+          // dispositivos (antes faltaba y el setDoc fallaba con permission-denied).
+          && (!('geminiModel' in request.resource.data.keys())
+              || (request.resource.data.geminiModel is string
+                  && request.resource.data.geminiModel.size() <= 60));
 
         // settings/planConfig — configuración del plan financiero.
         allow create, update: if isOwner(userId)

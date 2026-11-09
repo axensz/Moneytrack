@@ -32,7 +32,15 @@ function getChatErrorMessage(error: unknown): string {
   if (message.includes('429') || message.includes('RATE_LIMIT') || message.includes('quota')) {
     return 'Cuota agotada temporalmente. El asistente reintentará automáticamente. Si persiste, espera 2 minutos e intenta de nuevo.';
   }
-  if (message.includes('API_KEY_INVALID') || message.includes('400')) {
+  // 503/500/UNAVAILABLE/overloaded = el MODELO está saturado (no es la key).
+  // Debe ir ANTES del chequeo de API key: un 503 de Gemini NO significa key
+  // inválida, y mostrar ese mensaje confunde al usuario (lo hacía antes).
+  if (/\b50[0-9]\b/.test(message) || /unavailable|overloaded|high demand|try again later/i.test(message)) {
+    return 'El modelo de IA está saturado en este momento. Intenta de nuevo en unos segundos o cambia de modelo en Ajustes → Asistente IA (p. ej. Flash-Lite suele estar más libre).';
+  }
+  // API key realmente inválida: exigir la señal específica de Gemini, NO un "400"
+  // genérico (muchos errores transitorios traen 400 sin ser problema de la key).
+  if (message.includes('API_KEY_INVALID') || /api key not valid|invalid api key/i.test(message)) {
     return 'API key inválida. Revísala en Ajustes → Asistente IA.';
   }
   if (message.includes('PERMISSION_DENIED') || message.includes('403')) {

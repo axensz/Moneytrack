@@ -643,8 +643,14 @@ export async function sendChatMessage(
           tools: [{ functionDeclarations: CHAT_ACTION_FUNCTION_DECLARATIONS }],
           toolConfig: {
             functionCallingConfig: {
+              // mode AUTO: el modelo decide libremente si responde texto o llama
+              // una función. NO se pasa `allowedFunctionNames`: la API de Gemini
+              // solo lo acepta con mode ANY (que forzaría SIEMPRE una llamada de
+              // función, rompiendo preguntas de texto como "¿cómo voy este mes?").
+              // Las funciones permitidas ya quedan acotadas por functionDeclarations
+              // en `tools`, así que la restricción era redundante y causaba un 400
+              // "Please set allowed_function_names only when ... mode is ANY".
               mode: 'AUTO' as FunctionCallingConfigMode,
-              allowedFunctionNames: [...ACTION_FUNCTION_NAMES],
             },
           },
         },
@@ -661,13 +667,27 @@ export async function sendChatMessage(
     } catch (error: unknown) {
       const errMsg = error instanceof Error ? error.message : String(error);
       const is429 = errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('RATE_LIMIT');
+      // 503/500/UNAVAILABLE/overloaded = el modelo está saturado (transitorio),
+      // igual de reintentable que un 429. Antes solo se reintentaba el 429 y un
+      // 503 se propagaba al instante como "error" (la UI lo mostraba como "API
+      // key inválida"). Backoff más corto: la sobrecarga suele ceder en segundos.
+      const isOverloaded = /\b50[0-9]\b/.test(errMsg)
+        || /unavailable|overloaded|high demand/i.test(errMsg);
 
-      if (is429 && attempt < RETRY_DELAYS.length) {
+      if ((is429 || isOverloaded) && attempt < RETRY_DELAYS.length) {
         const retryMatch = errMsg.match(/retryDelay[":]+(\d+)/);
         const suggestedDelay = retryMatch ? parseInt(retryMatch[1]) * 1000 : RETRY_DELAYS[attempt];
-        const waitMs = Math.max(suggestedDelay, RETRY_DELAYS[attempt]);
+        // Para sobrecarga usamos un backoff corto fijo (2s, 4s, 8s); para 429
+        // respetamos el retryDelay sugerido por Google o la tabla progresiva.
+        const overloadDelays = [2_000, 4_000, 8_000];
+        const waitMs = isOverloaded && !is429
+          ? overloadDelays[Math.min(attempt, overloadDelays.length - 1)]
+          : Math.max(suggestedDelay, RETRY_DELAYS[attempt]);
 
-        logger.warn(`Gemini rate limit (429). Waiting ${Math.round(waitMs / 1000)}s...`, { attempt: attempt + 1, maxRetries: RETRY_DELAYS.length });
+        logger.warn(
+          `Gemini ${isOverloaded && !is429 ? 'sobrecargado (503)' : 'rate limit (429)'}. Esperando ${Math.round(waitMs / 1000)}s...`,
+          { attempt: attempt + 1, maxRetries: RETRY_DELAYS.length },
+        );
         await new Promise(r => setTimeout(r, waitMs));
         continue;
       }

@@ -51,19 +51,19 @@ export function buildPlanPrompt(plan: FinancialPlan, config: PlanConfig): string
       : `- Fondo de emergencia: a ${ef.monthsTo3m} meses del mínimo (cubres ${ef.coverageMonths.toFixed(1)} de 3 meses)`;
 
   const accountLines: string[] = [];
-  if (plan.accountInsights.liquidityRisks.length > 0) {
+  if (plan.accountInsights?.liquidityRisks?.length) {
     const risk = plan.accountInsights.liquidityRisks[0];
     accountLines.push(
       `- Riesgo de liquidez en ${risk.accountName}: faltan ${formatCurrency(risk.shortfall)} para cubrir pagos próximos (${risk.paymentNames.join(', ')})`,
     );
   }
-  if (plan.accountInsights.topWantsLeakAccount) {
+  if (plan.accountInsights?.topWantsLeakAccount) {
     const leak = plan.accountInsights.topWantsLeakAccount;
     accountLines.push(
       `- Cuenta con mayor fuga en gustos: ${leak.accountName} (${formatCurrency(leak.wantsSpent)}/mes, ${leak.shareOfWantsPct}% de tus gustos, principalmente en ${leak.topCategory})`,
     );
   }
-  if (plan.accountInsights.priorityCreditCard) {
+  if (plan.accountInsights?.priorityCreditCard) {
     const card = plan.accountInsights.priorityCreditCard;
     accountLines.push(
       `- Tarjeta prioritaria: ${card.accountName} al ${Math.round(card.utilizationRatio * 100)}% de cupo${card.interestRate > 0 ? ` (${card.interestRate}% E.A.)` : ''}`,

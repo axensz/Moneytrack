@@ -88,11 +88,12 @@ describe('useAccounts.deleteAccount — modo invitado (#accounts-1)', () => {
     await waitFor(() => expect(accountsHook.result.current.accounts).toHaveLength(2));
 
     await act(async () => {
+      const paymentDate = new Date();
       await transactionStore.result.current.mutate(draft => {
         draft.transactions = [
-          { id: 'card-payment', linkedTransactionId: 'bank-payment', type: 'income', amount: 100, category: 'Pago Crédito', description: '', date: new Date(), paid: true, accountId: 'card' },
-          { id: 'bank-payment', linkedTransactionId: 'card-payment', type: 'expense', amount: 100, category: 'Pago Crédito', description: '', date: new Date(), paid: true, accountId: 'bank' },
-          { id: 'bank-income', type: 'income', amount: 500, category: 'x', description: '', date: new Date(), paid: true, accountId: 'bank' },
+          { id: 'card-payment', linkedTransactionId: 'bank-payment', type: 'income', amount: 100, category: 'Pago Crédito', description: '', date: paymentDate, paid: true, accountId: 'card' },
+          { id: 'bank-payment', linkedTransactionId: 'card-payment', type: 'expense', amount: 100, category: 'Pago Crédito', description: '', date: paymentDate, paid: true, accountId: 'bank' },
+          { id: 'bank-income', type: 'income', amount: 500, category: 'x', description: '', date: paymentDate, paid: true, accountId: 'bank' },
         ];
       }, { operationId: 'seed-concurrent-transactions' });
     });

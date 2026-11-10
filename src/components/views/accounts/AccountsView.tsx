@@ -18,6 +18,7 @@ import { CreditCardsConsolidatedSummary } from './components/CreditCardsConsolid
 import { CreditCardOptimizerModal } from './components/CreditCardOptimizerModal';
 import { AccountCard } from './components/AccountCard';
 import { AccountRow } from './components/AccountRow';
+import { ArchivedAccountRow } from './components/ArchivedAccountRow';
 import { WalletCreditCard } from './components/WalletCreditCard';
 import { AvailableDistributionRing } from './components/AvailableDistributionRing';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
@@ -179,16 +180,29 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
   // Sección colapsable de cuentas archivadas (colapsada por defecto: no estorban).
   const [showArchived, setShowArchived] = useState(false);
 
-  // Inicializar order si no existe
-  // AUDIT-FIX (MEDIO-01): deps correctas para evitar stale closures
+  const orderInitializedRef = useRef<Set<string>>(new Set());
+
+  // Inicializar order si no existe cuando la cuenta ya tiene autoridad válida
+  // AUDIT-FIX (MEDIO-01): evita escrituras paralelas repetidas o rechazos por reglas en TC sin migrar
   useEffect(() => {
+    if (accountsLoading || !balancesReady) return;
     accounts.forEach((account, index) => {
-      if (account.order === undefined) {
-        updateAccount(account.id!, { order: index });
+      if (!account.id || account.order !== undefined) return;
+      if (orderInitializedRef.current.has(account.id)) return;
+      if (
+        account.type === 'credit' &&
+        (typeof account.usedCredit !== 'number' ||
+          !Number.isFinite(account.usedCredit) ||
+          account.usedCredit < 0)
+      ) {
+        return;
       }
+      orderInitializedRef.current.add(account.id);
+      void updateAccount(account.id, { order: index }).catch(() => {
+        orderInitializedRef.current.delete(account.id!);
+      });
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accounts.length]);
+  }, [accounts, accountsLoading, balancesReady, updateAccount]);
 
   // Filtrar cuentas de ahorro para asociación con TC. Se EXCLUYEN las archivadas:
   // al crear/editar una TC no debe poder asociarse a un banco archivado.
@@ -921,7 +935,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
                   formatCurrency={formatCurrency}
                 />
 
-                <div className="space-y-5">
+                <div className="divide-y divide-border">
                   {creditMainAccounts.map((account, index) =>
                     renderMobileWalletCard(account, index, creditMainAccounts.length)
                   )}
@@ -1031,26 +1045,18 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
 
           {showArchived && (
             <>
-              <p className="mt-1 mb-3 px-1 text-sm text-muted-foreground">
-                No aparecen en la lista principal ni en los selectores, pero su
-                historial sigue contando en saldos y estadísticas.
-              </p>
-              <div className="space-y-3">
+              <ul className="mt-1 divide-y divide-border">
                 {archivedAccounts.map((account) => (
-                  <AccountCard
+                  <ArchivedAccountRow
                     key={account.id}
                     account={account}
-                    balance={getAccountBalance(account.id!)}
-                    balanceSettling={!balancesReady}
-                    creditUsed={getCreditUsed(account.id!)}
-                    nextCutoff={getNextCutoffDate(account)}
-                    nextPayment={getNextPaymentDate(account)}
-                    isDragging={false}
-                    isDragOver={false}
+                    amount={
+                      account.type === 'credit'
+                        ? getCreditUsed(account.id!)
+                        : getAccountBalance(account.id!)
+                    }
                     formatCurrency={formatCurrency}
-                    onEdit={() => accountForm.openEditForm(account)}
                     onUnarchive={() => handleUnarchiveAccount(account)}
-                    onSetDefault={() => setDefaultAccount(account.id!)}
                     onDelete={() =>
                       setDeleteConfirm({
                         accountId: account.id!,
@@ -1059,17 +1065,9 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ userId = null }) => 
                         confirmTransactions: false,
                       })
                     }
-                    onDragStart={() => {}}
-                    onDragOver={() => {}}
-                    onDragLeave={() => {}}
-                    onDrop={() => {}}
-                    onDragEnd={() => {}}
-                    onTouchStart={() => {}}
-                    onTouchMove={() => {}}
-                    onTouchEnd={() => {}}
                   />
                 ))}
-              </div>
+              </ul>
             </>
           )}
         </div>

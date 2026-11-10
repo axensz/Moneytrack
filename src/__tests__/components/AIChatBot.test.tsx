@@ -141,6 +141,7 @@ function ControlledChat() {
 
 describe('AIChatBot shell control', () => {
   beforeEach(() => {
+    window.localStorage.clear();
     sendChatMessageMock.mockReset();
     parseActionFromResponseMock.mockReset();
     financeDomainMocks.addTransaction.mockReset();
@@ -571,5 +572,99 @@ describe('AIChatBot shell control', () => {
     const classText = getClassText(screen.getByRole('dialog'));
     expect(classText).not.toMatch(decorativeAssistantClasses);
     expect(classText).not.toContain('animate-spin');
+  });
+
+  it('allows inline editing of a proposed transaction action before confirming', async () => {
+    const secondAccount: Account = {
+      id: 'nequi',
+      name: 'Nequi',
+      type: 'savings',
+      isDefault: false,
+      initialBalance: 50_000,
+    };
+    financeDomainMocks.accounts = [savingsAccount, secondAccount];
+    financeDomainMocks.categories = { income: [], expense: ['Alimentación', 'Transporte'] };
+    mockParsedTransactionAction();
+    financeDomainMocks.addTransaction.mockResolvedValue(undefined);
+    render(<ControlledChat />);
+
+    sendAssistantMessage('Gasté 35 mil en almuerzo');
+    const editBtn = await screen.findByRole('button', { name: 'Editar' });
+    fireEvent.click(editBtn);
+
+    fireEvent.change(screen.getByLabelText('Editar monto de la acción'), { target: { value: '48000' } });
+    fireEvent.change(screen.getByLabelText('Editar categoría de la acción'), { target: { value: 'Transporte' } });
+    fireEvent.change(screen.getByLabelText('Editar cuenta de la acción'), { target: { value: 'nequi' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+
+    await waitFor(() => {
+      expect(financeDomainMocks.addTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          amount: 48_000,
+          category: 'Transporte',
+          accountId: 'nequi',
+        }),
+      );
+    });
+  });
+
+  it('executes a proposed transfer action between two accounts', async () => {
+    const secondAccount: Account = {
+      id: 'nequi',
+      name: 'Nequi',
+      type: 'savings',
+      isDefault: false,
+      initialBalance: 50_000,
+    };
+    financeDomainMocks.accounts = [savingsAccount, secondAccount];
+    sendChatMessageMock.mockImplementation(resolveStream({ text: 'Propuesta de transferencia' }));
+    parseActionFromResponseMock.mockReturnValue({
+      text: 'Te propongo transferir a Nequi',
+      action: {
+        type: 'add_transfer',
+        data: {
+          fromAccountId: 'savings',
+          fromAccountName: 'Ahorros',
+          toAccountId: 'nequi',
+          toAccountName: 'Nequi',
+          amount: 80_000,
+          description: 'Recarga Nequi',
+        },
+      },
+    });
+    financeDomainMocks.addTransaction.mockResolvedValue(undefined);
+    render(<ControlledChat />);
+
+    sendAssistantMessage('Pasa 80 mil a Nequi');
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar' }));
+
+    await waitFor(() => {
+      expect(financeDomainMocks.addTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'transfer',
+          amount: 80_000,
+          accountId: 'savings',
+          toAccountId: 'nequi',
+        }),
+      );
+    });
+  });
+
+  it('persists conversation history in localStorage and clears it on reset', async () => {
+    sendChatMessageMock.mockImplementation(resolveStream({ text: 'Respuesta persistida' }));
+    parseActionFromResponseMock.mockReturnValue({ text: 'Respuesta persistida' });
+    const { unmount } = render(<ControlledChat />);
+
+    sendAssistantMessage('Guarda esta charla');
+    await screen.findByText('Respuesta persistida');
+    unmount();
+
+    render(<ControlledChat />);
+    expect(screen.getByText('Guarda esta charla')).toBeInTheDocument();
+    expect(screen.getByText('Respuesta persistida')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Limpiar conversación' }));
+    expect(screen.queryByText('Guarda esta charla')).toBeNull();
   });
 });

@@ -19,8 +19,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import * as firestore from 'firebase/firestore';
-import type { Transaction, Account } from '../../types/finance';
+import type { Transaction, Account, Debt } from '../../types/finance';
 import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../../config/constants';
+import { getMonthlyInterestAccrual } from '../../../functions/src/shared/debtMonthlyInterest';
 
 // Estado compartido entre el mock (hoisted) y los tests.
 const mockState = vi.hoisted(() => ({
@@ -242,6 +243,7 @@ beforeEach(() => {
 
 afterEach(() => {
   unsubscribeCacheMutations();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -836,11 +838,12 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
       expect(cacheMutations).toHaveLength(0);
     });
 
-    it('restores a debt payment and debt state atomically', async () => {
+    it.each(['sav', 'cc'])('restores a debt payment and debt state atomically (origin: %s)', async originAccountId => {
       seedAccount(savings);
+      seedAccount(credit);
       mockState.store.set(debtKey('debt-1'), {
         personName: 'Ana', type: 'lent', originalAmount: 1_000,
-        remainingAmount: 500, isSettled: false, accountId: 'sav',
+        remainingAmount: 500, isSettled: false, accountId: originAccountId,
         createdAt: new Date('2026-01-01'),
       });
       const crud = renderCRUD([]);
@@ -989,6 +992,27 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
       personName: 'Ana', type: 'lent', originalAmount: 1_000, remainingAmount,
       isSettled: remainingAmount === 0, accountId: 'sav',
       ...(remainingAmount === 0 ? { settledAt: new Date('2026-06-01') } : {}),
+    });
+
+    it('reanuda el interés tras editar un pago saldado sin recuperar cortes de meses cerrados', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-11-20T12:00:00-05:00'));
+      seedAccount(savings);
+      seedDebt(0);
+      mockState.store.set(debtKey('debt-1'), {
+        ...mockState.store.get(debtKey('debt-1')), totalInterestAmount: 100,
+        interestAccrual: 'monthly', interestMode: 'percentage', interestRate: 2,
+        interestCutoffDay: 15, nextInterestDate: new Date('2026-09-15T00:00:00-05:00'),
+      });
+      seedTx('debt-row', { type: 'income', category: LOAN_PAYMENT_CATEGORY, amount: 1_100, debtId: 'debt-1' });
+
+      await renderCRUD([]).current.updateTransaction('debt-row', { amount: 1_000 });
+
+      const reopened = mockState.store.get(debtKey('debt-1')) as unknown as Debt;
+      expect(reopened).toMatchObject({ remainingAmount: 100, isSettled: false, totalInterestAmount: 100, nextInterestDate: new Date('2026-12-15T00:00:00-05:00') });
+      expect(getMonthlyInterestAccrual(reopened, new Date())).toBeNull();
+      expect(updatesOn(debtKey('debt-1'))).toHaveLength(1);
+      expect(mockState.batchCommits).toBe(1);
     });
 
     it.each([
@@ -1360,6 +1384,30 @@ describe('useTransactionsCRUD — ruta de escritura de dinero (A2)', () => {
         isSettled: false,
       });
       expect(debtUpdates[0].data!.settledAt).toEqual({ __deleteField: true });
+    });
+
+    it('borrar y restaurar un pago mensual saldado conserva el importe y reinicia sólo el corte futuro', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-11-20T12:00:00-05:00'));
+      seedAccount(savings);
+      seedTx('monthly-payment', { type: 'income', category: LOAN_PAYMENT_CATEGORY, amount: 1_100, debtId: 'debt-1' });
+      mockState.store.set(debtKey('debt-1'), {
+        personName: 'Ana', type: 'lent', originalAmount: 1_000, remainingAmount: 0,
+        accountId: 'sav', isSettled: true, settledAt: new Date('2026-08-24'),
+        totalInterestAmount: 100, interestAccrual: 'monthly', interestMode: 'percentage',
+        interestRate: 2, interestCutoffDay: 15, nextInterestDate: new Date('2026-09-15T00:00:00-05:00'),
+      });
+      const crud = renderCRUD([savings]);
+
+      const payment = await crud.current.deleteTransaction('monthly-payment');
+
+      const reopened = mockState.store.get(debtKey('debt-1')) as unknown as Debt;
+      expect(reopened).toMatchObject({ remainingAmount: 1_100, isSettled: false, totalInterestAmount: 100, nextInterestDate: new Date('2026-12-15T00:00:00-05:00') });
+      expect(getMonthlyInterestAccrual(reopened, new Date())).toBeNull();
+      expect(updatesOn(debtKey('debt-1'))).toHaveLength(1);
+      await crud.current.restoreTransaction(payment!);
+      expect(mockState.store.get(debtKey('debt-1'))).toMatchObject({ remainingAmount: 0, isSettled: true, totalInterestAmount: 100 });
+      expect(mockState.batchCommits).toBe(2);
     });
 
     it('si la transacción no existe es un no-op (no borra ni actualiza)', async () => {

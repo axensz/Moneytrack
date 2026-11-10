@@ -38,6 +38,7 @@ export const GoalsView: React.FC = () => {
   const [goalToDelete, setGoalToDelete] = useState<SavingsGoal | null>(null);
   const [isSubmittingGoal, setIsSubmittingGoal] = useState(false);
   const submittingGoalRef = useRef(false);
+  const submittingSavingsRef = useRef(false);
 
   const [formData, setFormData] = useState(createEmptyGoalForm);
   const [formErrors, setFormErrors] = useState<{ name?: string; targetAmount?: string }>({});
@@ -103,6 +104,8 @@ export const GoalsView: React.FC = () => {
 
   const handleAddSavings = async (event: React.FormEvent<HTMLFormElement>, goalId: string) => {
     event.preventDefault();
+    if (submittingSavingsRef.current) return;
+
     setSavingsError(null);
     const amount = parseCurrency(savingsAmount);
     if (isNaN(amount) || amount <= 0) {
@@ -112,11 +115,18 @@ export const GoalsView: React.FC = () => {
       return;
     }
 
-    await addSavings(goalId, amount);
-    showToast.success('Ahorro registrado');
-    setSavingsAmount('');
-    setSavingsError(null);
-    setShowAddSavings(null);
+    submittingSavingsRef.current = true;
+    try {
+      await addSavings(goalId, amount);
+      showToast.success('Ahorro registrado');
+      setSavingsAmount('');
+      setSavingsError(null);
+      setShowAddSavings(null);
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : 'No se pudo registrar el ahorro');
+    } finally {
+      submittingSavingsRef.current = false;
+    }
   };
 
   const handleDelete = (goal: SavingsGoal) => {
@@ -125,9 +135,13 @@ export const GoalsView: React.FC = () => {
 
   const confirmDeleteGoal = async () => {
     if (!goalToDelete) return;
-    await deleteGoal(goalToDelete.id!);
-    setGoalToDelete(null);
-    showToast.success('Meta eliminada');
+    try {
+      await deleteGoal(goalToDelete.id!);
+      setGoalToDelete(null);
+      showToast.success('Meta eliminada');
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : 'No se pudo eliminar la meta');
+    }
   };
 
   const activeGoals = goalStatuses.filter(gs => !gs.goal.isCompleted);

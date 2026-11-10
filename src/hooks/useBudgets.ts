@@ -13,8 +13,8 @@ import { collection, onSnapshot, query, addDoc, updateDoc, deleteDoc, doc } from
 import { db } from '../lib/firebaseDb';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
-import { generateId } from '../utils/formatters';
-import { stripUndefined } from '../utils/firestoreHelpers';
+import { generateId, roundMoney } from '../utils/formatters';
+import { checkNetworkConnection, safeFirestoreOperation, stripUndefined } from '../utils/firestoreHelpers';
 import type { Budget, Transaction } from '../types/finance';
 import { SPECIAL_CATEGORIES } from '../config/constants';
 
@@ -72,21 +72,36 @@ export function useBudgets(userId: string | null, transactions: Transaction[], e
 
   // CRUD
   const addBudget = useCallback(async (budget: Omit<Budget, 'id' | 'createdAt'>) => {
+    if (budgets.some(existing => existing.category === budget.category)) {
+      throw new Error('Ya existe un presupuesto para esta categoría');
+    }
+
+    const cleanBudget = stripUndefined(budget);
     if (userId) {
-      await addDoc(collection(db, `users/${userId}/budgets`), {
-        ...budget,
-        createdAt: new Date(),
-      });
+      if (!checkNetworkConnection()) throw new Error('Sin conexión a internet');
+      await safeFirestoreOperation(
+        () => addDoc(collection(db, `users/${userId}/budgets`), {
+          ...cleanBudget,
+          createdAt: new Date(),
+        }),
+        'addBudget',
+        { maxRetries: 2, retryRecoverableErrors: true }
+      );
     } else {
       const newBudget: Budget = { ...budget, id: generateId(), createdAt: new Date() };
       setLocalBudgets(prev => [...prev, newBudget]);
     }
-  }, [userId, setLocalBudgets]);
+  }, [userId, budgets, setLocalBudgets]);
 
   const updateBudget = useCallback(async (id: string, updates: Partial<Budget>) => {
     if (userId) {
+      if (!checkNetworkConnection()) throw new Error('Sin conexión a internet');
       const cleanUpdates = stripUndefined(updates);
-      await updateDoc(doc(db, `users/${userId}/budgets`, id), cleanUpdates);
+      await safeFirestoreOperation(
+        () => updateDoc(doc(db, `users/${userId}/budgets`, id), cleanUpdates),
+        'updateBudget',
+        { maxRetries: 2, retryRecoverableErrors: true }
+      );
     } else {
       setLocalBudgets(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
     }
@@ -94,7 +109,12 @@ export function useBudgets(userId: string | null, transactions: Transaction[], e
 
   const deleteBudget = useCallback(async (id: string) => {
     if (userId) {
-      await deleteDoc(doc(db, `users/${userId}/budgets`, id));
+      if (!checkNetworkConnection()) throw new Error('Sin conexión a internet');
+      await safeFirestoreOperation(
+        () => deleteDoc(doc(db, `users/${userId}/budgets`, id)),
+        'deleteBudget',
+        { maxRetries: 2, retryRecoverableErrors: true }
+      );
     } else {
       setLocalBudgets(prev => prev.filter(b => b.id !== id));
     }
@@ -121,11 +141,13 @@ export function useBudgets(userId: string | null, transactions: Transaction[], e
     return budgets
       .filter(b => b.isActive)
       .map(budget => {
-        const spent = monthlyExpenses
-          .filter(t => t.category === budget.category)
-          .reduce((sum, t) => sum + t.amount, 0);
+        const spent = roundMoney(
+          monthlyExpenses
+            .filter(t => t.category === budget.category)
+            .reduce((sum, t) => sum + t.amount, 0)
+        );
 
-        const remaining = Math.max(0, budget.monthlyLimit - spent);
+        const remaining = Math.max(0, roundMoney(budget.monthlyLimit - spent));
         const percentage = budget.monthlyLimit > 0
           ? Math.round((spent / budget.monthlyLimit) * 100)
           : 0;

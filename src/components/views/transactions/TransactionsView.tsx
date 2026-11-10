@@ -166,6 +166,21 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     return filters.join(' - ');
   }, [customEndDate, customStartDate, dateRangePreset, filterCategory, searchQuery, selectedAccount]);
 
+  const displayedTransactions = useMemo(
+    () =>
+      isMetadataFiltersActive && balancesReady && balanceTransactions.length > transactions.length
+        ? filteredBalanceTransactions
+        : filteredTransactions,
+    [
+      isMetadataFiltersActive,
+      balancesReady,
+      balanceTransactions.length,
+      transactions.length,
+      filteredBalanceTransactions,
+      filteredTransactions,
+    ]
+  );
+
   const handleClearFilters = () => {
     clearFilters(setFilterAccount, setFilterCategory);
   };
@@ -226,7 +241,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
             Transacciones
             <span className="text-xs font-medium text-[var(--balance-accent-foreground)] bg-[var(--balance-accent)] px-2 py-0.5 rounded-full">
-              {filteredTransactions.length}
+              {displayedTransactions.length}
             </span>
           </h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
@@ -238,7 +253,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
       {/* Contenido principal */}
       {loading ? (
         <TransactionsListSkeleton />
-      ) : filteredTransactions.length === 0 ? (
+      ) : displayedTransactions.length === 0 ? (
         <TransactionsEmptyState
           hasFilters={isMetadataFiltersActive}
           onClearFilters={handleClearFilters}
@@ -249,7 +264,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
         />
       ) : (
         <TransactionsList
-          transactions={filteredTransactions}
+          transactions={displayedTransactions}
           editingTransaction={editingTransaction}
           editForm={editForm}
           expandedTransaction={expandedTransaction}

@@ -19,7 +19,39 @@ export type CreditEffect = {
   accountId: string;
   toAccountId?: string;
   totalInterestAmount?: number;
+  date?: Date | string | number | { toDate?: () => Date } | unknown;
+  createdAt?: Date | string | number | { toDate?: () => Date } | unknown;
+  mutationKind?: string;
+  expectedBefore?: number;
+  targetBalance?: number;
 };
+
+function toSortableTimestamp(value: unknown): number {
+  if (value instanceof Date) {
+    const time = value.getTime();
+    return Number.isFinite(time) ? time : 0;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (
+    value &&
+    typeof value === 'object' &&
+    'toDate' in value &&
+    typeof (value as { toDate?: unknown }).toDate === 'function'
+  ) {
+    try {
+      const date = (value as { toDate: () => Date }).toDate();
+      const time = date.getTime();
+      return Number.isFinite(time) ? time : 0;
+    } catch {
+      return 0;
+    }
+  }
+  return 0;
+}
 
 /** Deuda contractual que origina una compra financiada (principal + interés). */
 export function getCreditChargeAmount(tx: Pick<CreditEffect, 'amount' | 'totalInterestAmount'>): number {
@@ -82,8 +114,48 @@ export function reconcileUsedCredit(
   survivors: ReadonlyArray<CreditEffect>
 ): number {
   const referenceIdSet = new Set(referenceIds);
+  const relevant = survivors.filter(
+    tx =>
+      Boolean(tx.accountId && referenceIdSet.has(tx.accountId)) ||
+      Boolean(tx.toAccountId && referenceIdSet.has(tx.toAccountId))
+  );
+
+  const hasBalanceAdjustment = relevant.some(
+    tx =>
+      tx.mutationKind === 'balance-adjustment' &&
+      typeof tx.targetBalance === 'number' &&
+      Number.isFinite(tx.targetBalance) &&
+      Boolean(tx.accountId && referenceIdSet.has(tx.accountId))
+  );
+
+  const ordered = hasBalanceAdjustment
+    ? relevant
+        .map((tx, index) => ({
+          tx,
+          index,
+          dateMs: toSortableTimestamp(tx.date),
+          createdMs: toSortableTimestamp(tx.createdAt),
+        }))
+        .sort((a, b) => {
+          if (a.dateMs !== b.dateMs) return a.dateMs - b.dateMs;
+          if (a.createdMs !== b.createdMs) return a.createdMs - b.createdMs;
+          return a.index - b.index;
+        })
+        .map(entry => entry.tx)
+    : relevant;
+
   let usedCredit = 0;
-  for (const tx of survivors) {
+  for (const tx of ordered) {
+    if (
+      tx.mutationKind === 'balance-adjustment' &&
+      typeof tx.targetBalance === 'number' &&
+      Number.isFinite(tx.targetBalance) &&
+      tx.accountId &&
+      referenceIdSet.has(tx.accountId)
+    ) {
+      usedCredit = Math.max(0, roundMoney(tx.targetBalance));
+      continue;
+    }
     // getCreditDelta espera el id concreto referenciado por la transacción
     // (origen para gasto/ingreso, destino para transferencia). Probamos ambas
     // referencias para sumar el delta correcto aunque la tx use un id fusionado.

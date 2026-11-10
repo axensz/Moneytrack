@@ -1,11 +1,15 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
-import { X, Send, Bot, User, Loader2, Trash2, Check, XCircle, Info, RefreshCw } from 'lucide-react';
+import { X, Send, Bot, User, Loader2, Trash2, Check, XCircle, Info, RefreshCw, Edit2 } from 'lucide-react';
 import { sendChatMessageStream, isGeminiConfigured, parseActionFromResponse, type ChatMessage, type ChatAction, type TokenUsage } from '../../lib/gemini';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, formatNumberForInput, unformatNumber, parseCurrency } from '../../utils/formatters';
+import { TRANSFER_CATEGORY } from '../../config/constants';
 import { logger } from '../../utils/logger';
-import { useTransactionDomain, useAccountDomain, useCategoryDomain } from '../../hooks/useFinanceSelectors';
+import * as financeSelectors from '../../hooks/useFinanceSelectors';
+import type { Account, Categories } from '../../types/finance';
+
+export const AI_CHAT_STORAGE_KEY = 'moneytrack_ai_chat_history_v1';
 
 // Unique ID generator for chat messages
 let _msgIdCounter = 0;
@@ -119,6 +123,50 @@ function renderMarkdown(text: string): React.ReactNode {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+
+    // Markdown table support (| col1 | col2 |)
+    if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
+      flushList();
+      const tableLines: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
+        tableLines.push(lines[i].trim());
+        i++;
+      }
+      i--; // compensate outer loop increment
+
+      const rows = tableLines
+        .filter(row => !/^\|[\s:-]+(\|[\s:-]+)*\|$/.test(row))
+        .map(row => row.slice(1, -1).split('|').map(cell => cell.trim()));
+
+      if (rows.length > 0) {
+        const [header, ...body] = rows;
+        elements.push(
+          <div key={`tbl-${i}`} className="my-2 overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-muted text-muted-foreground border-b border-border">
+                <tr>
+                  {header.map((cell, idx) => (
+                    <th key={idx} className="px-2 py-1.5 font-semibold">{formatInline(cell)}</th>
+                  ))}
+                </tr>
+              </thead>
+              {body.length > 0 && (
+                <tbody className="divide-y divide-border">
+                  {body.map((row, rIdx) => (
+                    <tr key={rIdx} className="bg-card">
+                      {row.map((cell, cIdx) => (
+                        <td key={cIdx} className="px-2 py-1.5">{formatInline(cell)}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              )}
+            </table>
+          </div>
+        );
+      }
+      continue;
+    }
 
     // Unordered list
     const ulMatch = line.match(/^\s*[-*+]\s+(.+)/);
@@ -236,30 +284,306 @@ const TokenBadge: React.FC<{ tokenUsage: TokenUsage }> = ({ tokenUsage }) => {
   );
 };
 
-// Action confirmation card component
+// Action confirmation card component (supports inline editing before confirming)
 const ActionCard: React.FC<{
   action: ChatAction;
+  accounts: Account[];
+  categories: Categories;
   isExecuting: boolean;
+  onActionChange?: (updated: ChatAction) => void;
   onConfirm: () => void;
   onReject: () => void;
-}> = ({ action, isExecuting, onConfirm, onReject }) => {
+}> = ({ action, accounts, categories, isExecuting, onActionChange, onConfirm, onReject }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const selectableAccounts = useMemo(() => accounts.filter(a => !a.archived), [accounts]);
+  const canInlineEdit =
+    action.type === 'add_transaction' ||
+    action.type === 'add_transfer' ||
+    action.type === 'upsert_budget' ||
+    action.type === 'add_recurring_payment';
+
   const getActionSummary = () => {
     switch (action.type) {
       case 'add_transaction': {
         const d = action.data;
         const icon = d.txType === 'income' ? '📈' : '📉';
+        const catOptions = d.txType === 'income' ? categories.income : categories.expense;
+        const allCategories = catOptions.includes(d.category) ? catOptions : [d.category, ...catOptions];
+        return (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-semibold text-sm flex items-center gap-2">
+                <span className="text-lg">{icon}</span>
+                {d.txType === 'income' ? 'Agregar ingreso' : 'Agregar gasto'}
+              </p>
+              {canInlineEdit && onActionChange && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(prev => !prev)}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-primary hover:bg-surface-primary rounded-md transition-colors"
+                >
+                  <Edit2 size={11} />
+                  {isEditing ? 'Listo' : 'Editar'}
+                </button>
+              )}
+            </div>
+            {isEditing && onActionChange ? (
+              <div className="text-xs space-y-2 text-foreground bg-card rounded-lg p-2.5 border border-border">
+                <div>
+                  <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">Monto</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    aria-label="Editar monto de la acción"
+                    value={formatNumberForInput(d.amount)}
+                    onChange={(e) => {
+                      const nextAmount = parseCurrency(unformatNumber(e.target.value));
+                      onActionChange({
+                        ...action,
+                        data: { ...d, amount: Number.isFinite(nextAmount) && nextAmount > 0 ? nextAmount : d.amount },
+                      });
+                    }}
+                    className="w-full px-2 py-1 rounded border border-border bg-input text-foreground text-xs"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">Categoría</label>
+                    <select
+                      aria-label="Editar categoría de la acción"
+                      value={d.category}
+                      onChange={(e) =>
+                        onActionChange({
+                          ...action,
+                          data: { ...d, category: e.target.value },
+                        })
+                      }
+                      className="w-full px-2 py-1 rounded border border-border bg-input text-foreground text-xs"
+                    >
+                      {allCategories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">Cuenta</label>
+                    <select
+                      aria-label="Editar cuenta de la acción"
+                      value={d.accountId}
+                      onChange={(e) => {
+                        const acc = selectableAccounts.find(a => a.id === e.target.value);
+                        if (!acc?.id) return;
+                        onActionChange({
+                          ...action,
+                          data: { ...d, accountId: acc.id, accountName: acc.name },
+                        });
+                      }}
+                      className="w-full px-2 py-1 rounded border border-border bg-input text-foreground text-xs"
+                    >
+                      {selectableAccounts.map(acc => (
+                        <option key={acc.id} value={acc.id}>{acc.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">Descripción</label>
+                  <input
+                    type="text"
+                    aria-label="Editar descripción de la acción"
+                    value={d.description}
+                    onChange={(e) =>
+                      onActionChange({
+                        ...action,
+                        data: { ...d, description: e.target.value },
+                      })
+                    }
+                    className="w-full px-2 py-1 rounded border border-border bg-input text-foreground text-xs"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs space-y-1 text-foreground bg-card rounded-lg p-2 border border-border">
+                <p className="flex justify-between"><span className="font-medium">Monto:</span> <span className="font-semibold text-primary">{formatCurrency(d.amount)}</span></p>
+                <p className="flex justify-between"><span className="font-medium">Categoría:</span> <span className="font-medium">{d.category}</span></p>
+                <p className="flex justify-between"><span className="font-medium">Descripción:</span> <span>{d.description}</span></p>
+                <p className="flex justify-between"><span className="font-medium">Cuenta:</span> <span>{d.accountName}</span></p>
+                <p className="flex justify-between"><span className="font-medium">Estado:</span> <span className={d.paid ? 'text-success' : 'text-warning'}>{d.paid ? '✓ Pagado' : '⏳ Pendiente'}</span></p>
+              </div>
+            )}
+          </div>
+        );
+      }
+      case 'add_transfer': {
+        const d = action.data;
+        return (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-semibold text-sm flex items-center gap-2">
+                <span className="text-lg">🔄</span>
+                Transferir entre cuentas
+              </p>
+              {canInlineEdit && onActionChange && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(prev => !prev)}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-primary hover:bg-surface-primary rounded-md transition-colors"
+                >
+                  <Edit2 size={11} />
+                  {isEditing ? 'Listo' : 'Editar'}
+                </button>
+              )}
+            </div>
+            {isEditing && onActionChange ? (
+              <div className="text-xs space-y-2 text-foreground bg-card rounded-lg p-2.5 border border-border">
+                <div>
+                  <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">Monto</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    aria-label="Editar monto de transferencia"
+                    value={formatNumberForInput(d.amount)}
+                    onChange={(e) => {
+                      const nextAmount = parseCurrency(unformatNumber(e.target.value));
+                      onActionChange({
+                        ...action,
+                        data: { ...d, amount: Number.isFinite(nextAmount) && nextAmount > 0 ? nextAmount : d.amount },
+                      });
+                    }}
+                    className="w-full px-2 py-1 rounded border border-border bg-input text-foreground text-xs"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">Origen</label>
+                    <select
+                      value={d.fromAccountId}
+                      onChange={(e) => {
+                        const acc = selectableAccounts.find(a => a.id === e.target.value);
+                        if (!acc?.id) return;
+                        onActionChange({
+                          ...action,
+                          data: { ...d, fromAccountId: acc.id, fromAccountName: acc.name },
+                        });
+                      }}
+                      className="w-full px-2 py-1 rounded border border-border bg-input text-foreground text-xs"
+                    >
+                      {selectableAccounts.filter(a => a.type !== 'credit').map(acc => (
+                        <option key={acc.id} value={acc.id}>{acc.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">Destino</label>
+                    <select
+                      value={d.toAccountId}
+                      onChange={(e) => {
+                        const acc = selectableAccounts.find(a => a.id === e.target.value);
+                        if (!acc?.id) return;
+                        onActionChange({
+                          ...action,
+                          data: { ...d, toAccountId: acc.id, toAccountName: acc.name },
+                        });
+                      }}
+                      className="w-full px-2 py-1 rounded border border-border bg-input text-foreground text-xs"
+                    >
+                      {selectableAccounts.filter(a => a.id !== d.fromAccountId).map(acc => (
+                        <option key={acc.id} value={acc.id}>{acc.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs space-y-1 text-foreground bg-card rounded-lg p-2 border border-border">
+                <p className="flex justify-between"><span className="font-medium">Monto:</span> <span className="font-semibold text-primary">{formatCurrency(d.amount)}</span></p>
+                <p className="flex justify-between"><span className="font-medium">Desde:</span> <span>{d.fromAccountName}</span></p>
+                <p className="flex justify-between"><span className="font-medium">Hacia:</span> <span>{d.toAccountName}</span></p>
+                <p className="flex justify-between"><span className="font-medium">Descripción:</span> <span>{d.description}</span></p>
+              </div>
+            )}
+          </div>
+        );
+      }
+      case 'upsert_budget': {
+        const d = action.data;
+        const allCategories = categories.expense.includes(d.category)
+          ? categories.expense
+          : [d.category, ...categories.expense];
+        return (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-semibold text-sm flex items-center gap-2">
+                <span className="text-lg">🎯</span>
+                Configurar presupuesto mensual
+              </p>
+              {canInlineEdit && onActionChange && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(prev => !prev)}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-primary hover:bg-surface-primary rounded-md transition-colors"
+                >
+                  <Edit2 size={11} />
+                  {isEditing ? 'Listo' : 'Editar'}
+                </button>
+              )}
+            </div>
+            {isEditing && onActionChange ? (
+              <div className="text-xs space-y-2 text-foreground bg-card rounded-lg p-2.5 border border-border">
+                <div>
+                  <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">Categoría</label>
+                  <select
+                    value={d.category}
+                    onChange={(e) => onActionChange({ ...action, data: { ...d, category: e.target.value } })}
+                    className="w-full px-2 py-1 rounded border border-border bg-input text-foreground text-xs"
+                  >
+                    {allCategories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">Tope mensual</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={formatNumberForInput(d.amount)}
+                    onChange={(e) => {
+                      const nextAmount = parseCurrency(unformatNumber(e.target.value));
+                      onActionChange({
+                        ...action,
+                        data: { ...d, amount: Number.isFinite(nextAmount) && nextAmount > 0 ? nextAmount : d.amount },
+                      });
+                    }}
+                    className="w-full px-2 py-1 rounded border border-border bg-input text-foreground text-xs"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs space-y-1 text-foreground bg-card rounded-lg p-2 border border-border">
+                <p className="flex justify-between"><span className="font-medium">Categoría:</span> <span className="font-semibold">{d.category}</span></p>
+                <p className="flex justify-between"><span className="font-medium">Límite mensual:</span> <span className="font-semibold text-primary">{formatCurrency(d.amount)}</span></p>
+              </div>
+            )}
+          </div>
+        );
+      }
+      case 'add_recurring_payment': {
+        const d = action.data;
         return (
           <div className="space-y-1.5">
             <p className="font-semibold text-sm flex items-center gap-2">
-              <span className="text-lg">{icon}</span>
-              {d.txType === 'income' ? 'Agregar ingreso' : 'Agregar gasto'}
+              <span className="text-lg">🔁</span>
+              Crear pago periódico
             </p>
             <div className="text-xs space-y-1 text-foreground bg-card rounded-lg p-2 border border-border">
+              <p className="flex justify-between"><span className="font-medium">Nombre:</span> <span className="font-semibold">{d.name}</span></p>
               <p className="flex justify-between"><span className="font-medium">Monto:</span> <span className="font-semibold text-primary">{formatCurrency(d.amount)}</span></p>
-              <p className="flex justify-between"><span className="font-medium">Categoría:</span> <span className="font-medium">{d.category}</span></p>
-              <p className="flex justify-between"><span className="font-medium">Descripción:</span> <span>{d.description}</span></p>
-              <p className="flex justify-between"><span className="font-medium">Cuenta:</span> <span>{d.accountName}</span></p>
-              <p className="flex justify-between"><span className="font-medium">Estado:</span> <span className={d.paid ? 'text-success' : 'text-warning'}>{d.paid ? '✓ Pagado' : '⏳ Pendiente'}</span></p>
+              <p className="flex justify-between"><span className="font-medium">Categoría:</span> <span>{d.category}</span></p>
+              <p className="flex justify-between"><span className="font-medium">Día de pago:</span> <span>Día {d.dueDay} ({d.frequency === 'yearly' ? 'Anual' : 'Mensual'})</span></p>
+              {d.accountName && (
+                <p className="flex justify-between"><span className="font-medium">Cuenta:</span> <span>{d.accountName}</span></p>
+              )}
             </div>
           </div>
         );
@@ -357,10 +681,45 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
     balancesReady,
     addTransaction: onAddTransaction,
     updateTransaction: onUpdateTransaction,
-  } = useTransactionDomain();
-  const { accounts } = useAccountDomain();
-  const { categories, addCategory: onAddCategory } = useCategoryDomain();
-  const [messages, setMessages] = useState<UIChatMessage[]>([WELCOME_MESSAGE]);
+  } = financeSelectors.useTransactionDomain();
+  const { accounts } = financeSelectors.useAccountDomain();
+  const { categories, addCategory: onAddCategory } = financeSelectors.useCategoryDomain();
+  const budgetsDomain = 'useBudgetsDomain' in financeSelectors
+    ? financeSelectors.useBudgetsDomain()
+    : undefined;
+  const recurringDomain = 'useRecurringDomain' in financeSelectors
+    ? financeSelectors.useRecurringDomain()
+    : undefined;
+  const debtsDomain = 'useDebtsDomain' in financeSelectors
+    ? financeSelectors.useDebtsDomain()
+    : undefined;
+  const goalsDomain = 'useGoalsDomain' in financeSelectors
+    ? financeSelectors.useGoalsDomain()
+    : undefined;
+
+  const budgets = budgetsDomain?.budgets;
+  const onAddBudget = budgetsDomain?.addBudget;
+  const onUpdateBudget = budgetsDomain?.updateBudget;
+  const recurringPayments = recurringDomain?.recurringPayments;
+  const onAddRecurringPayment = recurringDomain?.addRecurringPayment;
+  const debts = debtsDomain?.debts;
+  const savingsGoals = goalsDomain?.savingsGoals;
+
+  const [messages, setMessages] = useState<UIChatMessage[]>(() => {
+    if (typeof window === 'undefined') return [WELCOME_MESSAGE];
+    try {
+      const saved = window.localStorage.getItem(AI_CHAT_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as UIChatMessage[];
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.role === 'model') {
+          return parsed;
+        }
+      }
+    } catch {
+      // Fallback to default welcome message
+    }
+    return [WELCOME_MESSAGE];
+  });
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   // Fase de espera: 'thinking' muestra "Pensando..." (respuestas rápidas);
@@ -382,6 +741,21 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
 
   const configured = isGeminiConfigured();
 
+  // Persistir historial reciente en localStorage cuando no está en streaming activo
+  useEffect(() => {
+    if (typeof window === 'undefined' || isLoading) return;
+    try {
+      if (messages.length <= 1) {
+        window.localStorage.removeItem(AI_CHAT_STORAGE_KEY);
+      } else {
+        const serializable = messages.slice(-24);
+        window.localStorage.setItem(AI_CHAT_STORAGE_KEY, JSON.stringify(serializable));
+      }
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [messages, isLoading]);
+
   // Auto scroll al último mensaje
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -401,12 +775,40 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
     (composer && !composer.disabled ? composer : fallback)?.focus();
   }, [isOpen]);
 
-  // Memoizar el contexto financiero para evitar recalcular en cada render
+  // Memoizar el contexto financiero 360° para evitar recalcular en cada render
   const financialData = useMemo(() => ({
     transactions: balanceTransactions,
     accounts,
     categories,
-  }), [balanceTransactions, accounts, categories]);
+    budgets,
+    recurringPayments,
+    debts,
+    savingsGoals,
+  }), [balanceTransactions, accounts, categories, budgets, recurringPayments, debts, savingsGoals]);
+
+  // Sugerencias dinámicas adaptadas al estado financiero actual
+  const dynamicSuggestions = useMemo(() => {
+    const items: string[] = [];
+    const uncategorizedCount = balanceTransactions.filter(t => t.category === 'Otros').length;
+    if (uncategorizedCount > 0) {
+      items.push('Categoriza mis gastos en "Otros"');
+    }
+    const activeBudgets = budgets?.filter(b => b.isActive) ?? [];
+    if (activeBudgets.length > 0) {
+      items.push('¿Cómo van mis presupuestos este mes?');
+    }
+    const activeDebts = debts?.filter(d => !d.isSettled && d.remainingAmount > 0) ?? [];
+    if (activeDebts.length > 0) {
+      items.push('¿Cuánto me deben y qué préstamos tengo pendientes?');
+    }
+    for (const fallback of SUGGESTIONS) {
+      if (items.length >= 4) break;
+      if (!items.includes(fallback)) {
+        items.push(fallback);
+      }
+    }
+    return items.slice(0, 4);
+  }, [balanceTransactions, budgets, debts]);
 
   const clearReasoningTimer = useCallback(() => {
     if (reasoningTimerRef.current !== null) {
@@ -423,7 +825,7 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
     setStreamingHasContent(false);
 
     // Tras el umbral, refuerza el mensaje de espera (B): modelos de razonamiento
-    // tardan en emitir texto y "Pensando..." se sentía colgado.
+    // tardan en emitir texto y "Pensando..." se sentía colgados.
     clearReasoningTimer();
     reasoningTimerRef.current = setTimeout(() => setWaitPhase('reasoning'), REASONING_THRESHOLD_MS);
 
@@ -515,9 +917,20 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
   }, [sendMessage]);
 
   const handleClearChat = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem(AI_CHAT_STORAGE_KEY);
+      } catch {
+        // Ignore storage errors
+      }
+    }
     setMessages([WELCOME_MESSAGE]);
     setError(null);
     setFailedRequest(null);
+  }, []);
+
+  const handleUpdateAction = useCallback((msgIndex: number, updatedAction: ChatAction) => {
+    setMessages(prev => prev.map((m, idx) => (idx === msgIndex ? { ...m, action: updatedAction } : m)));
   }, []);
 
   const requestClose = useCallback(() => {
@@ -634,6 +1047,89 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
           markActionExecuted(`✅ ¡Listo! Se agregó el ${d.txType === 'income' ? 'ingreso' : 'gasto'} de **${formatCurrency(d.amount)}** en **${d.category}** (${d.accountName}).`);
           break;
         }
+        case 'add_transfer': {
+          const d = action.data;
+          if (typeof d.amount !== 'number' || isNaN(d.amount) || d.amount <= 0 || d.amount > 999999999999) {
+            throw new Error(`Monto inválido: ${d.amount}`);
+          }
+          if (!d.fromAccountId || !accounts.find(a => a.id === d.fromAccountId)) {
+            throw new Error('Cuenta origen no encontrada.');
+          }
+          if (!d.toAccountId || !accounts.find(a => a.id === d.toAccountId)) {
+            throw new Error('Cuenta destino no encontrada.');
+          }
+          if (d.fromAccountId === d.toAccountId) {
+            throw new Error('La cuenta origen y destino deben ser distintas.');
+          }
+          const safeDesc = (d.description || `Transferencia a ${d.toAccountName}`).toString().slice(0, 500).trim();
+          const transferDate = d.date
+            ? new Date(d.date)
+            : new Date(msg.proposedAt ?? Date.now());
+          if (!Number.isFinite(transferDate.getTime())) {
+            throw new Error('Fecha de transferencia inválida');
+          }
+
+          await onAddTransaction({
+            type: 'transfer',
+            amount: d.amount,
+            category: TRANSFER_CATEGORY,
+            description: safeDesc,
+            date: transferDate,
+            paid: true,
+            accountId: d.fromAccountId,
+            toAccountId: d.toAccountId,
+            operationId: operationIdFor('transfer'),
+            mutationSource: 'ai',
+          });
+          markActionExecuted(`✅ ¡Listo! Se registró la transferencia de **${formatCurrency(d.amount)}** desde **${d.fromAccountName}** hacia **${d.toAccountName}**.`);
+          break;
+        }
+        case 'upsert_budget': {
+          const d = action.data;
+          if (typeof d.amount !== 'number' || isNaN(d.amount) || d.amount <= 0 || d.amount > 999999999999) {
+            throw new Error(`Monto de presupuesto inválido: ${d.amount}`);
+          }
+          if (!d.category || typeof d.category !== 'string' || d.category.length > 100) {
+            throw new Error('Categoría de presupuesto inválida');
+          }
+          if (!onAddBudget && !onUpdateBudget) {
+            throw new Error('El módulo de presupuestos no está disponible en este momento.');
+          }
+          const existingBudget = budgets?.find(b => b.category.toLowerCase() === d.category.toLowerCase());
+          if (existingBudget?.id && onUpdateBudget) {
+            await onUpdateBudget(existingBudget.id, { monthlyLimit: d.amount, isActive: true });
+            markActionExecuted(`✅ ¡Listo! Se actualizó el presupuesto mensual de **${existingBudget.category}** a **${formatCurrency(d.amount)}**.`);
+          } else if (onAddBudget) {
+            await onAddBudget({ category: d.category, monthlyLimit: d.amount, isActive: true });
+            markActionExecuted(`✅ ¡Listo! Se creó el presupuesto mensual de **${formatCurrency(d.amount)}** para **${d.category}**.`);
+          }
+          break;
+        }
+        case 'add_recurring_payment': {
+          const d = action.data;
+          if (typeof d.amount !== 'number' || isNaN(d.amount) || d.amount <= 0 || d.amount > 999999999999) {
+            throw new Error(`Monto inválido: ${d.amount}`);
+          }
+          if (!d.name || typeof d.name !== 'string') {
+            throw new Error('Nombre de pago periódico inválido');
+          }
+          if (!onAddRecurringPayment) {
+            throw new Error('El módulo de pagos periódicos no está disponible en este momento.');
+          }
+          const dueDay = Math.min(31, Math.max(1, Math.round(d.dueDay || 1)));
+          const validAccount = d.accountId && accounts.some(a => a.id === d.accountId) ? d.accountId : undefined;
+          await onAddRecurringPayment({
+            name: d.name.trim(),
+            amount: d.amount,
+            category: d.category || 'Suscripciones',
+            dueDay,
+            frequency: d.frequency === 'yearly' ? 'yearly' : 'monthly',
+            isActive: true,
+            ...(validAccount ? { accountId: validAccount } : {}),
+          });
+          markActionExecuted(`✅ ¡Listo! Se creó el pago periódico **${d.name}** por **${formatCurrency(d.amount)}** (día ${dueDay} de cada ${d.frequency === 'yearly' ? 'año' : 'mes'}).`);
+          break;
+        }
         case 'update_category': {
           const d = action.data;
           // AUDIT-FIX: Validar que la transacción exista antes de actualizar
@@ -715,11 +1211,15 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
     }
   }, [
     accounts,
+    budgets,
     categories.expense,
     categories.income,
     messages,
+    onAddBudget,
     onAddCategory,
+    onAddRecurringPayment,
     onAddTransaction,
+    onUpdateBudget,
     onUpdateTransaction,
     balanceTransactions,
   ]);
@@ -829,6 +1329,9 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
                 <ActionCard
                   action={msg.action}
                   isExecuting={executingAction === i}
+                  accounts={accounts}
+                  categories={categories}
+                  onActionChange={(updated) => handleUpdateAction(i, updated)}
                   onConfirm={() => handleConfirmAction(i)}
                   onReject={() => handleRejectAction(i)}
                 />
@@ -885,10 +1388,10 @@ export const AIChatBot: React.FC<AIChatBotProps> = memo(({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Sugerencias (solo al inicio) */}
+      {/* Sugerencias dinámicas (solo al inicio) */}
       {messages.length <= 1 && !isLoading && configured && (
         <div className="px-3 sm:px-4 pb-2 flex flex-wrap gap-1.5 shrink-0 animate-in fade-in duration-200">
-          {SUGGESTIONS.map((s) => (
+          {dynamicSuggestions.map((s) => (
             <button
               key={s}
               onClick={() => handleSuggestion(s)}

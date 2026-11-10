@@ -1,6 +1,8 @@
 import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../config/constants';
 import type { Debt, Transaction } from '../types/finance';
 import { roundMoney } from './formatters';
+import { getDebtTotalAmount } from './debtInterest';
+import { reopenedDebtInterest } from './reopenedDebtInterest';
 import { LedgerMutationValidationError, normalizeLedgerAmount } from './ledgerMutation';
 
 function rejectDebtEdit(message: string): never {
@@ -12,7 +14,7 @@ export function planDebtTransactionEdit(
   before: Transaction,
   after: Transaction,
   debt: Debt | undefined,
-): (Pick<Debt, 'originalAmount' | 'remainingAmount' | 'isSettled'> & { settledAt: Date | null }) | null {
+): (Pick<Debt, 'originalAmount' | 'remainingAmount' | 'isSettled' | 'nextInterestDate'> & { settledAt: Date | null }) | null {
   if (!before.debtId && !after.debtId) return null;
   for (const field of [
     'debtId', 'type', 'category', 'paid', 'accountId', 'toAccountId', 'linkedTransactionId',
@@ -36,6 +38,7 @@ export function planDebtTransactionEdit(
     rejectDebtEdit('El préstamo tiene cuotas o intereses que requieren reconciliación antes de cambiar su monto.');
   }
   const isPrincipal = before.category === LOAN_CATEGORY;
+  if (isPrincipal && debt.interestAccrual === 'monthly') rejectDebtEdit('El interés mensual requiere conservar el capital original del préstamo.');
   const expectedType = (debt.type === 'lent') === isPrincipal ? 'expense' : 'income';
   if (
     !['lent', 'borrowed'].includes(debt.type)
@@ -44,7 +47,7 @@ export function planDebtTransactionEdit(
     || debt.forgivenReason
     || (isPrincipal && (debt.accountId !== before.accountId || debt.originalAmount !== amountBefore))
     || !Number.isFinite(debt.remainingAmount) || debt.remainingAmount < 0
-    || debt.remainingAmount > debt.originalAmount
+    || debt.remainingAmount > getDebtTotalAmount(debt)
     || debt.isSettled !== (debt.remainingAmount === 0)
   ) {
     rejectDebtEdit('El movimiento del préstamo requiere reconciliación antes de cambiar su monto.');
@@ -53,9 +56,9 @@ export function planDebtTransactionEdit(
   const delta = roundMoney(amountAfter - amountBefore);
   const originalAmount = isPrincipal ? amountAfter : originalBefore;
   const remainingAmount = roundMoney(debt.remainingAmount + (isPrincipal ? delta : -delta));
-  if (remainingAmount < 0 || remainingAmount > originalAmount) {
+  if (remainingAmount < 0 || remainingAmount > getDebtTotalAmount({ ...debt, originalAmount })) {
     rejectDebtEdit('El monto no puede exceder el préstamo ni los pagos ya registrados.');
   }
   const isSettled = remainingAmount === 0;
-  return { originalAmount, remainingAmount, isSettled, settledAt: isSettled ? after.date : null };
+  return { originalAmount, remainingAmount, isSettled, settledAt: isSettled ? after.date : null, ...(!isSettled ? reopenedDebtInterest(debt) : {}) };
 }

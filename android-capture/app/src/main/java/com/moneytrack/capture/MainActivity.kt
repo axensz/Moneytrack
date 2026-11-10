@@ -3,6 +3,8 @@ package com.moneytrack.capture
 import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
@@ -24,6 +26,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnLayout
 import androidx.core.view.updatePadding
+import androidx.lifecycle.Lifecycle
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.moneytrack.capture.auth.AuthenticationResult
@@ -75,6 +78,8 @@ class MainActivity : AppCompatActivity() {
     private var firebaseAuth: FirebaseAuth? = null
     private var authenticationUiState = AuthenticationUiState()
     private var rendering = false
+    private val connectionHandler = Handler(Looper.getMainLooper())
+    private val refreshConnection = Runnable { render() }
     private val authStateListener = FirebaseAuth.AuthStateListener {
         render()
         reconcilePendingCandidates()
@@ -130,6 +135,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        connectionHandler.removeCallbacks(refreshConnection)
         updateUiController.onStop()
         NotificationAccess.observeConnection(null)
         preferences.unregisterOnChangeListener(preferenceChangeListener)
@@ -234,12 +240,8 @@ class MainActivity : AppCompatActivity() {
         val allowedPackages = AvailableCaptureSourceCatalog.productAllowedPackages(
             preferences.allowedPackages(),
         )
-        // Bandera cruda en memoria (referencia; el estado resuelto manda). Se usa como
-        // fast-path: si la bandera ya está en true, evitamos consultar el estado resuelto.
-        val rawConnected = NotificationAccess.listenerConnected
-        // El estado resuelto (CONNECTED o CONNECTING) mapea a activo; DISCONNECTED a inactivo.
-        val listenerActive = rawConnected ||
-            NotificationAccess.connectionState(this) != NotificationAccess.ConnectionState.DISCONNECTED
+        val connectionState = NotificationAccess.connectionState(this)
+        val listenerActive = connectionState == NotificationAccess.ConnectionState.CONNECTED
         val step = CaptureSetupFlow.resolve(
             signedIn = signedIn,
             notificationAccessGranted = accessGranted,
@@ -249,6 +251,22 @@ class MainActivity : AppCompatActivity() {
         )
 
         renderStep(step)
+        val connecting = connectionState == NotificationAccess.ConnectionState.CONNECTING
+        findViewById<TextView>(R.id.listener_connection_heading).setText(
+            if (connecting) R.string.listener_connecting_heading else R.string.listener_connection_heading,
+        )
+        findViewById<TextView>(R.id.listener_connection_explanation).setText(
+            if (connecting) R.string.listener_connecting_explanation else R.string.listener_connection_explanation,
+        )
+        findViewById<Button>(R.id.open_app_settings_button).visibility =
+            if (connecting) View.GONE else View.VISIBLE
+        connectionHandler.removeCallbacks(refreshConnection)
+        if (connecting && step == CaptureSetupStep.LISTENER_CONNECTION &&
+            lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        ) {
+            // Refresh the bounded wait even if Android never calls back. No rebind here.
+            connectionHandler.postDelayed(refreshConnection, 1_000L)
+        }
         captureSwitch.isChecked = preferences.captureEnabled
         renderAuthentication(signedIn)
         renderSources(allowedPackages)

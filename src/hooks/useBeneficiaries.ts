@@ -74,16 +74,17 @@ export function useBeneficiaries(transactions: Transaction[], userId?: string | 
   }, [beneficiaries, localBeneficiaries, persist, transactionBeneficiaries, userId]);
 
   const deleteBeneficiary = useCallback(async (name: string) => {
-    if ((DEFAULT_TRANSACTION_BENEFICIARIES as readonly string[]).includes(name)) {
+    const normalizedTarget = normalizeName(name);
+    if ((DEFAULT_TRANSACTION_BENEFICIARIES as readonly string[]).some((beneficiary) => normalizeName(beneficiary) === normalizedTarget)) {
       throw new Error('Esta persona es predeterminada y no se puede eliminar');
     }
 
-    if (transactions.some((transaction) => transaction.beneficiary === name)) {
+    if (transactions.some((transaction) => transaction.beneficiary && normalizeName(transaction.beneficiary) === normalizedTarget)) {
       throw new Error('No puedes eliminar una persona usada en transacciones');
     }
 
     const currentCustom = userId ? transactionBeneficiaries : localBeneficiaries;
-    await persist(currentCustom.filter((beneficiary) => beneficiary !== name));
+    await persist(currentCustom.filter((beneficiary) => normalizeName(beneficiary) !== normalizedTarget));
   }, [localBeneficiaries, persist, transactionBeneficiaries, transactions, userId]);
 
   return {

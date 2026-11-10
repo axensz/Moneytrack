@@ -50,6 +50,29 @@ export function buildPlanPrompt(plan: FinancialPlan, config: PlanConfig): string
       ? '- Fondo de emergencia: sin ahorro mensual para construirlo'
       : `- Fondo de emergencia: a ${ef.monthsTo3m} meses del mínimo (cubres ${ef.coverageMonths.toFixed(1)} de 3 meses)`;
 
+  const accountLines: string[] = [];
+  if (plan.accountInsights.liquidityRisks.length > 0) {
+    const risk = plan.accountInsights.liquidityRisks[0];
+    accountLines.push(
+      `- Riesgo de liquidez en ${risk.accountName}: faltan ${formatCurrency(risk.shortfall)} para cubrir pagos próximos (${risk.paymentNames.join(', ')})`,
+    );
+  }
+  if (plan.accountInsights.topWantsLeakAccount) {
+    const leak = plan.accountInsights.topWantsLeakAccount;
+    accountLines.push(
+      `- Cuenta con mayor fuga en gustos: ${leak.accountName} (${formatCurrency(leak.wantsSpent)}/mes, ${leak.shareOfWantsPct}% de tus gustos, principalmente en ${leak.topCategory})`,
+    );
+  }
+  if (plan.accountInsights.priorityCreditCard) {
+    const card = plan.accountInsights.priorityCreditCard;
+    accountLines.push(
+      `- Tarjeta prioritaria: ${card.accountName} al ${Math.round(card.utilizationRatio * 100)}% de cupo${card.interestRate > 0 ? ` (${card.interestRate}% E.A.)` : ''}`,
+    );
+  }
+  const accountSection = accountLines.length > 0
+    ? `\nINTELIGENCIA POR CUENTA:\n${accountLines.join('\n')}\n`
+    : '';
+
   return `Eres un asesor financiero colombiano amigable. Da exactamente 3 consejos CORTOS, CONCRETOS y ACCIONABLES basados en estos datos.
 
 REGLAS:
@@ -84,7 +107,7 @@ ${drivers}
 
 PAGOS PROGRAMADOS DEL MES:
 ${recurring}
-
+${accountSection}
 HISTÓRICO:
 ${months}`;
 }

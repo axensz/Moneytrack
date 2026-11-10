@@ -65,6 +65,18 @@ const input = (
 });
 
 describe('buildLedgerReconciliationReport', () => {
+  it('incluye el interés acordado al contrastar el saldo pendiente con los pagos', () => {
+    const report = buildLedgerReconciliationReport(input({
+      accounts: [account({ initialBalance: 1000 })],
+      debts: [debt({ originalAmount: 100, totalInterestAmount: 20, remainingAmount: 110 })],
+      transactions: [
+        transaction({ id: 'principal', amount: 100, category: 'Préstamo', debtId: 'debt-1' }),
+        transaction({ id: 'payment', type: 'income', amount: 10, category: 'Cobro Préstamo', debtId: 'debt-1' }),
+      ],
+    }));
+    expect(report.issues).not.toContainEqual(expect.objectContaining({ code: 'dependent-debt-mismatch' }));
+  });
+
   it('explica el saldo con movimientos pagados ordenados y cruces por cero', () => {
     const report = buildLedgerReconciliationReport(input({
       accounts: [

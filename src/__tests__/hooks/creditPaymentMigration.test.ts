@@ -243,4 +243,26 @@ describe('useCreditMigration — autoridad y pares históricos autenticados', ()
     expect(state.updates).toHaveLength(0);
     expect(state.accounts.get('card')?.paymentPairModelVersion).toBeUndefined();
   });
+
+  it('conserva usedCredit inicial válido cuando la tarjeta aún no tiene transacciones', async () => {
+    state.accounts.set('card', {
+      ...card,
+      id: undefined,
+      usedCredit: 420_000,
+      creditDebtModelVersion: 1,
+      paymentPairModelVersion: 1,
+    });
+    state.documents = new Map();
+
+    const result = await migrateServerCreditAccount('user-1', 'card');
+
+    expect(result.usedCredit).toBe(420_000);
+    expect(state.updates).toContainEqual({
+      path: 'users/user-1/accounts/card',
+      data: {
+        usedCredit: 420_000,
+        creditDebtModelVersion: 2,
+      },
+    });
+  });
 });

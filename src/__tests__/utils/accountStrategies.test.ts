@@ -386,6 +386,35 @@ describe('CreditCardStrategy', () => {
     const result = strategy.validateTransaction(acc, 150_000, [], 'expense');
     expect(result.valid).toBe(true);
   });
+
+  it('respeta checkpoints de balance-adjustment al recalcular cupo desde transacciones', () => {
+    // La tarjeta se creó con deuda inicial de 500,000 (sin transacciones previas)
+    // y luego se ajustó manualmente a 200,000 con un balance-adjustment de 300,000.
+    // Posteriormente se hizo una compra de 50,000 → deuda real = 250,000.
+    const acc = makeCredit({ creditLimit: 1_000_000, usedCredit: undefined });
+    const txs = [
+      makeTx({
+        id: 'tx-adj',
+        accountId: acc.id!,
+        type: 'income',
+        amount: 300_000,
+        category: 'Ajuste de Saldo',
+        date: new Date('2026-04-01T10:00:00Z'),
+        mutationKind: 'balance-adjustment',
+        mutationSource: 'account',
+        targetBalance: 200_000,
+      }),
+      makeTx({
+        id: 'tx-after',
+        accountId: acc.id!,
+        type: 'expense',
+        amount: 50_000,
+        date: new Date('2026-04-02T10:00:00Z'),
+      }),
+    ];
+    expect(strategy.getUsedCredit(acc, txs)).toBe(250_000);
+    expect(strategy.calculateBalance(acc, txs)).toBe(750_000);
+  });
 });
 
 // ─── AccountStrategyFactory ────────────────────────────────────────

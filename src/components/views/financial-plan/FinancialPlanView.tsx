@@ -49,8 +49,8 @@ export const FinancialPlanView: React.FC<FinancialPlanViewProps> = ({ onUseBudge
   const planTransactions = balanceTransactions.length > 0 ? balanceTransactions : transactions;
 
   // Datos vivos para el plan: saldo liquido (efectivo + ahorros, NO credito) para
-  // medir el fondo de emergencia contra lo que el usuario YA tiene, y utilizacion
-  // de tarjetas (used/limit). Memoizado: solo cambia con las cuentas/saldos.
+  // medir el fondo de emergencia contra lo que el usuario YA tiene, utilizacion
+  // de tarjetas (used/limit) y snapshot de cada cuenta para analisis por cuenta.
   const planLiveContext = useMemo(() => {
     const liquidBalance = accounts
       .filter(a => a.type !== 'credit')
@@ -58,10 +58,23 @@ export const FinancialPlanView: React.FC<FinancialPlanViewProps> = ({ onUseBudge
     const creditAccounts = accounts.filter(a => a.type === 'credit');
     const limit = creditAccounts.reduce((s, a) => s + (a.creditLimit || 0), 0);
     const used = creditAccounts.reduce((s, a) => s + getCreditUsed(a.id!), 0);
+    const accountSnapshots = accounts
+      .filter(a => Boolean(a.id))
+      .map(a => ({
+        id: a.id!,
+        name: a.name,
+        type: a.type,
+        balance: a.type !== 'credit' ? getAccountBalance(a.id!) : 0,
+        creditLimit: a.creditLimit,
+        creditUsed: a.type === 'credit' ? getCreditUsed(a.id!) : 0,
+        interestRate: a.interestRate,
+        archived: a.archived,
+      }));
     return {
       liquidBalance,
       creditUtilization: limit > 0 ? { used, limit, ratio: used / limit } : null,
       recurringPayments,
+      accounts: accountSnapshots,
     };
   }, [accounts, getAccountBalance, getCreditUsed, recurringPayments]);
 
@@ -173,6 +186,17 @@ export const FinancialPlanView: React.FC<FinancialPlanViewProps> = ({ onUseBudge
       if (!await saveConfig({ ...planConfig, declaredIncome: income })) return;
       setShowIncomeEditor(false);
       showToast.success('Sueldo mensual actualizado');
+    } catch {
+      showToast.error('No se pudo actualizar el sueldo. Intenta de nuevo.');
+    }
+  };
+
+  const handleApplyDetectedIncome = async (detectedIncome: number) => {
+    if (!planConfig || detectedIncome <= 0) return;
+    try {
+      if (!await saveConfig({ ...planConfig, declaredIncome: detectedIncome })) return;
+      setShowIncomeEditor(false);
+      showToast.success('Sueldo mensual actualizado según tus ingresos reales');
     } catch {
       showToast.error('No se pudo actualizar el sueldo. Intenta de nuevo.');
     }
@@ -429,6 +453,25 @@ export const FinancialPlanView: React.FC<FinancialPlanViewProps> = ({ onUseBudge
               </div>
             </div>
             {incomeEditor}
+            {!showIncomeEditor && plan.incomeInsight && (
+              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-primary/20 bg-primary/5 p-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-gray-900 dark:text-gray-100">
+                    Ingreso real detectado: {displayAmount(plan.incomeInsight.detectedMonthlyIncome)}/mes
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Un {plan.incomeInsight.deltaPct}% {plan.incomeInsight.direction === 'higher' ? 'por encima' : 'por debajo'} de tu sueldo declarado ({plan.incomeInsight.basisLabel}).
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleApplyDetectedIncome(plan.incomeInsight!.detectedMonthlyIncome)}
+                  className="shrink-0 rounded-lg bg-primary-solid px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
+                >
+                  Actualizar a {displayAmount(plan.incomeInsight.detectedMonthlyIncome)}
+                </button>
+              </div>
+            )}
             <div className="space-y-5">
               {[
                 { label: 'Necesidades', pct: plan.rule503020.needsPct, target: 50, amount: plan.rule503020.needs, targetAmount: plan.needsGap.target, gap: plan.needsGap, Icon: Home },
@@ -550,6 +593,108 @@ export const FinancialPlanView: React.FC<FinancialPlanViewProps> = ({ onUseBudge
                     +{plan.recurringForecast.items.length - 3} pagos más este mes
                   </p>
                 )}
+              </div>
+            </div>
+          )}
+
+          {(plan.accountInsights.liquidityRisks.length > 0
+            || plan.accountInsights.topWantsLeakAccount
+            || plan.accountInsights.priorityCreditCard) && (
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">Inteligencia por cuenta</h3>
+                <span className="text-[10px] text-muted-foreground font-medium">aprendizaje de saldos y hábitos</span>
+              </div>
+
+              <div className="space-y-2.5">
+                {plan.accountInsights.liquidityRisks.map(risk => (
+                  <div
+                    key={risk.accountId}
+                    className="flex items-start justify-between gap-3 rounded-xl border border-destructive/25 bg-destructive-muted/40 p-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <AlertTriangle size={13} className="text-destructive shrink-0" />
+                        <p className="text-xs font-bold text-gray-900 dark:text-gray-100">
+                          Riesgo de liquidez en {risk.accountName}
+                        </p>
+                      </div>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground leading-relaxed">
+                        Tienes {displayAmount(risk.availableBalance)} disponibles y vienen pagos por {displayAmount(risk.pendingRecurringAmount)} ({risk.paymentNames.join(', ')}).
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-xs font-black text-destructive">
+                      Faltan {displayAmount(risk.shortfall)}
+                    </span>
+                  </div>
+                ))}
+
+                {plan.accountInsights.topWantsLeakAccount && (
+                  <div className="flex items-start justify-between gap-3 rounded-xl bg-gray-50 dark:bg-gray-800/50 p-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-gray-900 dark:text-gray-100">
+                        Mayor salida en gustos: {plan.accountInsights.topWantsLeakAccount.accountName}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground leading-relaxed">
+                        Concentra el {plan.accountInsights.topWantsLeakAccount.shareOfWantsPct}% de tus gastos discrecionales ({plan.accountInsights.topWantsLeakAccount.txCount} compras, sobre todo en {plan.accountInsights.topWantsLeakAccount.topCategory}).
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-xs font-black text-gray-900 dark:text-gray-100">
+                      {displayAmount(plan.accountInsights.topWantsLeakAccount.wantsSpent)}/mes
+                    </span>
+                  </div>
+                )}
+
+                {plan.accountInsights.priorityCreditCard && (
+                  <div className="flex items-start justify-between gap-3 rounded-xl bg-gray-50 dark:bg-gray-800/50 p-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <CreditCard size={13} className="text-gray-400 shrink-0" />
+                        <p className="text-xs font-bold text-gray-900 dark:text-gray-100">
+                          Tarjeta prioritaria: {plan.accountInsights.priorityCreditCard.accountName}
+                        </p>
+                      </div>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground leading-relaxed">
+                        Uso del {Math.round(plan.accountInsights.priorityCreditCard.utilizationRatio * 100)}%
+                        {plan.accountInsights.priorityCreditCard.interestRate > 0
+                          ? ` · ${plan.accountInsights.priorityCreditCard.interestRate}% E.A.`
+                          : ''}
+                        {plan.accountInsights.priorityCreditCard.suggestedPaydownToHealthy > 0
+                          ? ` · Abona ${displayAmount(plan.accountInsights.priorityCreditCard.suggestedPaydownToHealthy)} para bajar al 30% sano.`
+                          : ' · Dentro del rango saludable (<30%).'}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-xs font-black text-gray-900 dark:text-gray-100">
+                      {displayAmount(plan.accountInsights.priorityCreditCard.used)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {plan.detectedSubscriptions.length > 0 && (
+            <div className="card">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">Cobros repetidos detectados</h3>
+                <span className="text-[10px] text-muted-foreground font-medium">posibles suscripciones no agendadas</span>
+              </div>
+              <div className="space-y-2">
+                {plan.detectedSubscriptions.map(sub => (
+                  <div key={sub.key} className="flex items-center justify-between gap-3 rounded-xl bg-gray-50 dark:bg-gray-800/50 p-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-bold text-gray-900 dark:text-gray-100">{sub.merchant}</p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        {sub.category}
+                        {sub.accountName ? ` · ${sub.accountName}` : ''}
+                        {` · Día ~${sub.typicalDayOfMonth} (${sub.monthsDetected} meses seguidos)`}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-xs font-black text-gray-900 dark:text-gray-100">
+                      {displayAmount(sub.estimatedAmount)}/mes
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           )}

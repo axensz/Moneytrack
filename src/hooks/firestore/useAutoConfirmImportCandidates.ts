@@ -5,6 +5,7 @@ import type {
   PendingTransactionImportCandidate,
 } from '../../types/transactionImport';
 import {
+  buildMerchantAccountHistory,
   buildMerchantCategoryHistory,
   evaluateAutoConfirmCandidate,
   type AutoConfirmReason,
@@ -60,10 +61,14 @@ export function useAutoConfirmImportCandidates(
     categories,
   } = input;
 
-  // Historial de categorías por comercio: se calcula una sola vez por cambio de
-  // transacciones y se reutiliza para evaluar todos los candidatos.
+  // Historial de categorías y cuentas por comercio: se calculan una sola vez por
+  // cambio de transacciones y se reutilizan para evaluar todos los candidatos.
   const history = useMemo(
     () => buildMerchantCategoryHistory(transactions),
+    [transactions],
+  );
+  const accountHistory = useMemo(
+    () => buildMerchantAccountHistory(transactions),
     [transactions],
   );
 
@@ -83,11 +88,12 @@ export function useAutoConfirmImportCandidates(
           accounts,
           expenseCategories: categories.expense,
           history,
+          accountHistory,
         }),
       );
     }
     return map;
-  }, [candidates, instruments, accounts, categories.expense, history]);
+  }, [candidates, instruments, accounts, categories.expense, history, accountHistory]);
 
   // Candidatos ya intentados en esta sesión (anti-carreras / anti-doble-disparo).
   const attemptedRef = useRef<Set<string>>(new Set());
@@ -139,6 +145,7 @@ export function useAutoConfirmImportCandidates(
         accounts,
         expenseCategories: categories.expense,
         history,
+        accountHistory,
       });
     return evaluation.autoConfirm ? null : evaluation.reason;
   };

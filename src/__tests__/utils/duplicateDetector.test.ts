@@ -123,4 +123,27 @@ describe('detectDuplicates', () => {
     expect(result.length).toBe(1);
     expect(result[0].reasons).toContain('Descripción similar');
   });
+
+  it('should not match transactions from a different source account', () => {
+    const existing = [makeTransaction({ accountId: 'other-account' })];
+    const result = detectDuplicates(baseTx, existing);
+    expect(result.length).toBe(0);
+  });
+
+  it('should not match transfers with a different destination account', () => {
+    const transferTx: NewTransaction = {
+      ...baseTx,
+      type: 'transfer',
+      toAccountId: 'acc-dest-1',
+    };
+    const existing = [
+      makeTransaction({
+        type: 'transfer',
+        accountId: 'acc1',
+        toAccountId: 'acc-dest-2',
+      }),
+    ];
+    const result = detectDuplicates(transferTx, existing);
+    expect(result.length).toBe(0);
+  });
 });

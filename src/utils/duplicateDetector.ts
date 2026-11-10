@@ -51,6 +51,19 @@ export function detectDuplicates(
     // Only compare same type
     if (tx.type !== newTx.type) continue;
 
+    // Only compare same source account when both specify an account
+    if (newTx.accountId && tx.accountId && tx.accountId !== newTx.accountId) continue;
+
+    // For transfers, also require matching destination account
+    if (
+      newTx.type === 'transfer' &&
+      newTx.toAccountId &&
+      tx.toAccountId &&
+      tx.toAccountId !== newTx.toAccountId
+    ) {
+      continue;
+    }
+
     // Fecha es requisito: si está a más de 5 días, no puede ser duplicado
     const txDate = ensureDate(tx.date);
     const timeDiff = Math.abs(newDate.getTime() - txDate.getTime());

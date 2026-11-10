@@ -137,9 +137,13 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
 
   const confirmDeleteBudget = async () => {
     if (!budgetToDelete) return;
-    await deleteBudget(budgetToDelete.id);
-    setBudgetToDelete(null);
-    showToast.success('Presupuesto eliminado');
+    try {
+      await deleteBudget(budgetToDelete.id);
+      setBudgetToDelete(null);
+      showToast.success('Presupuesto eliminado');
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : 'No se pudo eliminar el presupuesto');
+    }
   };
 
   const getStatusIcon = (status: string) => {

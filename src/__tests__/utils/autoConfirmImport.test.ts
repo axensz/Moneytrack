@@ -5,7 +5,9 @@ import type {
   PendingTransactionImportCandidate,
 } from '../../types/transactionImport';
 import {
+  buildMerchantAccountHistory,
   buildMerchantCategoryHistory,
+  cleanMerchantForAnalysis,
   evaluateAutoConfirmCandidate,
   normalizeMerchant,
 } from '../../utils/autoConfirmImport';
@@ -101,9 +103,15 @@ const transaction = (overrides: Partial<Transaction> = {}): Transaction => ({
   ...overrides,
 });
 
-describe('normalizeMerchant', () => {
+describe('normalizeMerchant & cleanMerchantForAnalysis', () => {
   it('quita acentos, baja a minúsculas y colapsa espacios', () => {
     expect(normalizeMerchant('  ÉXITO   Vecino  ')).toBe('exito vecino');
+  });
+
+  it('limpia prefijos de pasarelas de pago y sufijos societarios', () => {
+    expect(cleanMerchantForAnalysis('BOLD*JUAN VALDEZ 104')).toBe('juan valdez 104');
+    expect(cleanMerchantForAnalysis('DL*RAPPI COLOMBIA S.A.S. #12')).toBe('rappi colombia');
+    expect(cleanMerchantForAnalysis('Compra en TIENDAS D1 SUC 45')).toBe('tiendas d1');
   });
 });
 
@@ -212,7 +220,7 @@ describe('evaluateAutoConfirmCandidate', () => {
     expect(result).toEqual({ autoConfirm: false, reason: 'cuenta-sin-match' });
   });
 
-  it('deja en revisión los atajos (sin cardLast4) aunque sugieran cuenta/categoría', () => {
+  it('auto-confirma los atajos cuando la cuenta y la categoría sugeridas son válidas', () => {
     const result = evaluateAutoConfirmCandidate({
       candidate: shortcutCandidate(),
       instruments: [instrument({ accountId: 'savings' })],
@@ -220,7 +228,70 @@ describe('evaluateAutoConfirmCandidate', () => {
       expenseCategories: EXPENSE_CATEGORIES,
       history: new Map(),
     });
+    expect(result).toEqual({
+      autoConfirm: true,
+      accountId: 'savings',
+      category: 'Alimentación',
+    });
+  });
+
+  it('deja en revisión los atajos cuando la cuenta sugerida ya no existe', () => {
+    const result = evaluateAutoConfirmCandidate({
+      candidate: shortcutCandidate({ suggestedAccountId: 'deleted-account' }),
+      instruments: [],
+      accounts: [account({ id: 'savings', type: 'savings' })],
+      expenseCategories: EXPENSE_CATEGORIES,
+      history: new Map(),
+    });
     expect(result).toEqual({ autoConfirm: false, reason: 'cuenta-sin-match' });
+  });
+
+  it('infiere cuenta por paquete bancario y categoría con prefijo de pasarela', () => {
+    const result = evaluateAutoConfirmCandidate({
+      candidate: notificationCandidate({
+        sourcePackage: 'com.nequi.MobileApp',
+        cardLast4: undefined,
+        merchant: 'BOLD*JUAN VALDEZ CAFE',
+      }),
+      instruments: [],
+      accounts: [account({ id: 'nequi-1', name: 'Nequi', type: 'savings' })],
+      expenseCategories: EXPENSE_CATEGORIES,
+      history: new Map(),
+    });
+    expect(result).toEqual({
+      autoConfirm: true,
+      accountId: 'nequi-1',
+      category: 'Alimentación',
+    });
+  });
+
+  it('infiere cuenta por historial de comercio cuando la notificación no trae últimos 4 dígitos', () => {
+    const previousTx = [
+      transaction({
+        description: 'Panadería del Parque',
+        category: 'Alimentación',
+        accountId: 'savings',
+      }),
+    ];
+    const result = evaluateAutoConfirmCandidate({
+      candidate: notificationCandidate({
+        cardLast4: undefined,
+        merchant: 'BOLD*PANADERIA DEL PARQUE',
+      }),
+      instruments: [],
+      accounts: [
+        account({ id: 'savings', name: 'Ahorros', type: 'savings' }),
+        account({ id: 'card', name: 'TC principal', type: 'credit' }),
+      ],
+      expenseCategories: EXPENSE_CATEGORIES,
+      history: buildMerchantCategoryHistory(previousTx),
+      accountHistory: buildMerchantAccountHistory(previousTx),
+    });
+    expect(result).toEqual({
+      autoConfirm: true,
+      accountId: 'savings',
+      category: 'Alimentación',
+    });
   });
 
   it('deja en revisión por cuenta archivada', () => {

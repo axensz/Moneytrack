@@ -4,8 +4,10 @@
  */
 
 import { useMemo } from 'react';
+import { SPECIAL_CATEGORIES } from '../config/constants';
 import type { Transaction, Account } from '../types/finance';
 import { transactionAccountIs, transactionDestinationIs } from '../utils/accountTransactions';
+import { roundMoney } from '../utils/formatters';
 
 export interface CreditCardStatement {
   account: Account;
@@ -100,13 +102,27 @@ export function useCreditCardStatement(
         account.paymentDay!
       );
 
-      // 1. Regular expenses + payments within this cycle date range.
+      // 1. Regular expenses + payments within this cycle date range (excluding manual balance adjustments).
       const inCycleTransactions = transactions.filter(t => {
         const tDate = new Date(t.date);
         const inRange = tDate >= cycleStart && tDate <= cycleEnd;
-        const isCharge = transactionAccountIs(t, account);
-        const isIncomingPayment = t.type === 'transfer' && transactionDestinationIs(t, account);
-        return inRange && (isCharge || isIncomingPayment);
+        if (!inRange) return false;
+        const isCharge = (
+          t.type === 'expense' &&
+          transactionAccountIs(t, account) &&
+          !SPECIAL_CATEGORIES.adjustmentCategories.includes(t.category)
+        );
+        const isDirectPayment = (
+          t.type === 'income' &&
+          transactionAccountIs(t, account) &&
+          !SPECIAL_CATEGORIES.groupedAdjustmentCategories.includes(t.category)
+        );
+        const isIncomingPayment = (
+          t.type === 'transfer' &&
+          transactionDestinationIs(t, account) &&
+          !SPECIAL_CATEGORIES.groupedAdjustmentCategories.includes(t.category)
+        );
+        return isCharge || isDirectPayment || isIncomingPayment;
       });
 
       // 2. Installment transactions from ANY previous cycle that are still active.
@@ -116,6 +132,7 @@ export function useCreditCardStatement(
       const activeInstallmentTransactions = transactions.filter(t => {
         if (!transactionAccountIs(t, account)) return false;
         if (t.type !== 'expense') return false;
+        if (SPECIAL_CATEGORIES.adjustmentCategories.includes(t.category)) return false;
         if (!t.installments || t.installments <= 1) return false;
         const tDate = new Date(t.date);
         if (tDate >= cycleStart) return false; // Already covered by inCycleTransactions
@@ -128,28 +145,39 @@ export function useCreditCardStatement(
       // Combine: regular cycle transactions + active installments from past cycles.
       const cycleTransactions = [...inCycleTransactions, ...activeInstallmentTransactions];
 
+      const getInstallmentMonthlyCharge = (t: Transaction): number =>
+        roundMoney(t.monthlyInstallmentAmount ?? t.amount / (t.installments || 1));
+
       // Calculate totals.
       // For installment expenses, use the monthly installment amount (not the full purchase amount).
-      const totalCharges = cycleTransactions
-        .filter(t => t.type === 'expense')
-        .reduce((sum, t) => {
-          if (t.installments && t.installments > 1) {
-            return sum + (t.monthlyInstallmentAmount ?? t.amount);
-          }
-          return sum + t.amount;
-        }, 0);
+      const totalCharges = roundMoney(
+        cycleTransactions
+          .filter(t => t.type === 'expense')
+          .reduce((sum, t) => {
+            if (t.installments && t.installments > 1) {
+              return sum + getInstallmentMonthlyCharge(t);
+            }
+            return sum + t.amount;
+          }, 0)
+      );
 
-      const totalPayments = inCycleTransactions
-        .filter(t => t.type === 'income' || (t.type === 'transfer' && transactionDestinationIs(t, account)))
-        .reduce((sum, t) => sum + t.amount, 0);
+      const totalPayments = roundMoney(
+        inCycleTransactions
+          .filter(t => t.type === 'income' || (t.type === 'transfer' && transactionDestinationIs(t, account)))
+          .reduce((sum, t) => sum + t.amount, 0)
+      );
 
-      const installmentCharges = cycleTransactions
-        .filter(t => t.type === 'expense' && t.installments && t.installments > 1)
-        .reduce((sum, t) => sum + (t.monthlyInstallmentAmount ?? t.amount), 0);
+      const installmentCharges = roundMoney(
+        cycleTransactions
+          .filter(t => t.type === 'expense' && t.installments && t.installments > 1)
+          .reduce((sum, t) => sum + getInstallmentMonthlyCharge(t), 0)
+      );
 
-      const regularCharges = inCycleTransactions
-        .filter(t => t.type === 'expense' && !(t.installments && t.installments > 1))
-        .reduce((sum, t) => sum + t.amount, 0);
+      const regularCharges = roundMoney(
+        inCycleTransactions
+          .filter(t => t.type === 'expense' && !(t.installments && t.installments > 1))
+          .reduce((sum, t) => sum + t.amount, 0)
+      );
 
       return {
         account,
@@ -158,7 +186,7 @@ export function useCreditCardStatement(
         paymentDueDate,
         totalCharges,
         totalPayments,
-        balance: totalCharges - totalPayments,
+        balance: roundMoney(totalCharges - totalPayments),
         cycleTransactions,
         installmentCharges,
         regularCharges,

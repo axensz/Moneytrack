@@ -117,6 +117,14 @@ export interface Debt {
   type: 'lent' | 'borrowed'; // 'lent' = yo presté, 'borrowed' = me prestaron
   originalAmount: number; // Monto original del préstamo
   remainingAmount: number; // Monto pendiente por cobrar/pagar
+  totalInterestAmount?: number; // Interés agregado al préstamo, incluido en remainingAmount
+  interestMode?: 'fixed' | 'percentage' | 'card';
+  interestRate?: number; // Porcentaje total/mensual o tasa E.A. de tarjeta, congelado
+  interestAccrual?: 'upfront' | 'monthly'; // Ausente = interés completo al registrar
+  interestCutoffDay?: number; // Día del cargo mensual sobre capital original (1-31)
+  nextInterestDate?: Date; // Próximo corte de interés pendiente de agregar
+  installments?: number; // Cuotas del financiamiento original
+  monthlyInstallmentAmount?: number; // Cuota de referencia del financiamiento
   description?: string; // Notas opcionales
   accountId?: string; // Cuenta desde la que se prestó
   isSettled: boolean; // Si la deuda está completamente saldada

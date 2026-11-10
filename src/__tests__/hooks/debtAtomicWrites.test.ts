@@ -1,4 +1,4 @@
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Account, Debt } from '../../types/finance';
 
@@ -133,7 +133,7 @@ vi.mock('firebase/firestore', () => ({
   },
   getDocFromServer: async (ref: MockRef) => {
     const data = collectionStore(ref.__path).get(ref.__id);
-    return { exists: () => Boolean(data), data: () => data ?? {} };
+    return { id: ref.id, exists: () => Boolean(data), data: () => data ?? {} };
   },
   writeBatch: () => {
     const staged: Array<{
@@ -223,6 +223,60 @@ beforeEach(() => {
 });
 
 describe('useDebts authenticated atomic writes', () => {
+  it('applies the monthly cutoff before a payment using the persisted original capital', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-10T05:00:00Z'));
+    try {
+      M.accounts.set('savings', { ...savingsAccount });
+      const debt = existingDebt({ originalAmount: 1000, remainingAmount: 1000, totalInterestAmount: 0, interestAccrual: 'monthly', interestMode: 'percentage', interestRate: 10, interestCutoffDay: 10, nextInterestDate: new Date('2026-11-10T05:00:00Z') });
+      M.debts.set('debt-1', { ...debt });
+      const { result } = renderHook(() => useDebts(UID, [], [debt], {}));
+      await act(async () => { await result.current.registerDebtPayment('debt-1', 1000, 'savings'); });
+      expect(M.debts.get('debt-1')).toMatchObject({ originalAmount: 1000, remainingAmount: 100, totalInterestAmount: 100, isSettled: false });
+      expect(M.debts.get('debt-1')?.nextInterestDate).toEqual(new Date('2026-12-10T05:00:00Z'));
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('collects agreed interest into savings without overpaying the originating card', async () => {
+    M.accounts.set('savings', { ...savingsAccount });
+    M.accounts.set('credit', { ...creditAccount, usedCredit: 1000, creditDebtModelVersion: 2 });
+    const debt = existingDebt({ originalAmount: 1000, remainingAmount: 1200, totalInterestAmount: 200, interestMode: 'fixed' });
+    M.debts.set('debt-1', { ...debt });
+    const { result } = renderHook(() => useDebts(UID, [], [debt], {}));
+    await act(async () => { await result.current.registerDebtPayment('debt-1', 1200, 'savings'); });
+    expect(M.debts.get('debt-1')).toMatchObject({ remainingAmount: 0, isSettled: true });
+    expect([...M.transactions.values()][0]).toMatchObject({ type: 'income', accountId: 'savings', amount: 1200 });
+    expect(M.accounts.get('credit')?.usedCredit).toBe(1000);
+  });
+
+  it.each([false, true])('associates an existing financed purchase once, including recovery after a lost acknowledgement (%s)', async lostAck => {
+    M.accounts.set('credit', { ...creditAccount, usedCredit: 1_050_000, creditDebtModelVersion: 2 });
+    M.transactions.set('purchase', {
+      type: 'expense', amount: 1_000_000, category: 'Otros', description: 'Compra para Isabella',
+      accountId: 'credit', paid: true, date: new Date(), createdAt: new Date(),
+      installments: 3, hasInterest: true, interestRate: 24, totalInterestAmount: 50_000,
+      monthlyInstallmentAmount: 350_000,
+    });
+    M.failAfterCommitOnce = lostAck;
+    const { result } = renderHook(() => useDebts(UID, [], [], {}));
+    await act(async () => { await result.current.addDebt(newDebt(), 'purchase'); });
+    expect(M.debts.size).toBe(1);
+    expect(M.transactions.size).toBe(1);
+    expect(M.transactions.get('purchase')).toMatchObject({ debtId: [...M.debts.keys()][0], category: 'Préstamo', installments: 3 });
+    expect([...M.debts.values()][0]).toMatchObject({ originalAmount: 1_000_000, remainingAmount: 1_050_000, totalInterestAmount: 50_000, interestRate: 24 });
+    expect(M.accounts.get('credit')?.usedCredit).toBe(1_050_000);
+    expect(M.transactionCommits).toBe(1);
+  });
+
+  it('does not leave an associated transaction or a new debt after a rejected commit', async () => {
+    M.transactions.set('purchase', { type: 'expense', amount: 100, category: 'Otros', description: 'Compra', accountId: 'credit', paid: true, date: new Date(), createdAt: new Date() });
+    M.failCommit = true;
+    const { result } = renderHook(() => useDebts(UID, [], [], {}));
+    await act(async () => { await expect(result.current.addDebt(newDebt(), 'purchase')).rejects.toThrow('commit rejected'); });
+    expect(M.debts.size).toBe(0);
+    expect(M.transactions.get('purchase')?.debtId).toBeUndefined();
+  });
+
   it('rejects lent origination that would overdraw persisted savings', async () => {
     M.accounts.set('savings', { ...savingsAccount });
     const { result } = renderHook(() => useDebts(UID, [], [], {}));

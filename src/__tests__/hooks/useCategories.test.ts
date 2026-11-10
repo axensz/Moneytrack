@@ -104,4 +104,26 @@ describe('useCategories — dedup normalizado (#22)', () => {
     rerender();
     expect(result.current.categories.income).toContain('Arriendo Recibido');
   });
+
+  it('impide eliminar una categoría usada en transacciones aunque difiera en acentos o mayúsculas', async () => {
+    const txWithVariantCategory: Transaction[] = [
+      {
+        id: 'tx-1',
+        type: 'expense',
+        amount: 25_000,
+        category: 'cafe',
+        description: 'Expreso',
+        date: new Date('2026-04-10'),
+        paid: true,
+        accountId: 'acc-1',
+      },
+    ];
+    const { result } = renderHook(() => useCategories(txWithVariantCategory, null));
+
+    await expect(
+      act(async () => {
+        await result.current.deleteCategory('expense', 'Café');
+      }),
+    ).rejects.toThrow(ERROR_MESSAGES.DELETE_CATEGORY_WITH_TRANSACTIONS);
+  });
 });

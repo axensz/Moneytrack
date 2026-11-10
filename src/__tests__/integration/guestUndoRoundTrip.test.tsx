@@ -1,8 +1,9 @@
 import type { PropsWithChildren } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { Account, Debt, Transaction } from '../../types/finance';
 import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../../config/constants';
+import { ensureDate } from '../../utils/dateUtils';
 
 const remote = vi.hoisted(() => ({
   addTransaction: vi.fn(),
@@ -91,6 +92,8 @@ beforeEach(() => {
   Object.values(remote).forEach(mock => mock.mockReset().mockResolvedValue(undefined));
 });
 
+afterEach(() => vi.useRealTimers());
+
 describe('FinanceProvider — delete → undo invitado', () => {
   it.each(['expense', 'income'] as const)(
     'restaura una fila %s independiente con su identidad original',
@@ -138,6 +141,43 @@ describe('FinanceProvider — delete → undo invitado', () => {
       expect(result.current.transactions[0]?.id).toBe(payment.id);
       expect(result.current.debts[0]).toMatchObject({ remainingAmount: 700, isSettled: false });
     });
+  });
+
+  it('borrar y deshacer un pago mensual no cobra los cortes transcurridos mientras estaba saldado', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-20T12:00:00-05:00'));
+    const payment = row({ id: 'monthly-payment', type: 'income', amount: 1_100, category: LOAN_PAYMENT_CATEGORY, debtId: 'debt-1' });
+    seed('accounts', [savings]);
+    seed('transactions', [payment]);
+    seed('debts', [debt({ remainingAmount: 0, isSettled: true, settledAt: payment.date, totalInterestAmount: 100, interestAccrual: 'monthly', interestMode: 'percentage', interestRate: 2, interestCutoffDay: 15, nextInterestDate: new Date('2026-09-15T00:00:00-05:00') })]);
+    const { result } = renderGuest();
+
+    await act(async () => result.current.deleteTransaction(payment.id!));
+    await waitFor(() => expect(result.current.debts[0]).toMatchObject({
+      remainingAmount: 1_100, isSettled: false, totalInterestAmount: 100,
+    }));
+    expect(ensureDate(result.current.debts[0].nextInterestDate)).toEqual(new Date('2026-12-15T00:00:00-05:00'));
+    await act(async () => result.current.restoreTransaction(payment));
+    await waitFor(() => expect(result.current.debts[0]).toMatchObject({ remainingAmount: 0, isSettled: true, totalInterestAmount: 100 }));
+    expect(result.current.transactions).toHaveLength(1);
+  });
+
+  it('al reducir un pago que saldó el préstamo mensual reanuda desde el corte posterior a hoy', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-20T12:00:00-05:00'));
+    const payment = row({ id: 'monthly-payment', type: 'income', amount: 1_100, category: LOAN_PAYMENT_CATEGORY, debtId: 'debt-1' });
+    seed('accounts', [savings]);
+    seed('transactions', [payment]);
+    seed('debts', [debt({ remainingAmount: 0, isSettled: true, settledAt: payment.date, totalInterestAmount: 100, interestAccrual: 'monthly', interestMode: 'percentage', interestRate: 2, interestCutoffDay: 15, nextInterestDate: new Date('2026-09-15T00:00:00-05:00') })]);
+    const { result } = renderGuest();
+
+    await act(async () => result.current.updateTransaction(payment.id!, { amount: 1_000 }));
+    await waitFor(() => expect(result.current.debts[0]).toMatchObject({
+      remainingAmount: 100, isSettled: false, totalInterestAmount: 100,
+    }));
+    expect(ensureDate(result.current.debts[0].nextInterestDate)).toEqual(new Date('2026-12-15T00:00:00-05:00'));
+    await act(async () => result.current.updateTransaction(payment.id!, { amount: 1_100 }));
+    await waitFor(() => expect(result.current.debts[0]).toMatchObject({ remainingAmount: 0, isSettled: true, totalInterestAmount: 100 }));
   });
 
   it('borra el principal y la deuda, pero no permite recrear un debtId huérfano', async () => {

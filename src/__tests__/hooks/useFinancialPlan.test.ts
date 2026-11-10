@@ -253,4 +253,113 @@ describe('useFinancialPlan — base accionable 50/30/20', () => {
     expect(result.current!.recurringForecast.items).toHaveLength(0);
     expect(result.current!.recurringForecast.projectedExpenses).toBe(120_000);
   });
+
+  it('pondera con mayor peso el mes más reciente (EWMA) y detecta cambios en ingreso real', () => {
+    const threeMonthConfig: PlanConfig = {
+      startMonth: ym(monthsAgo(2)),
+      declaredIncome: 1_000_000,
+    };
+    const txs: Transaction[] = [
+      makeTx({ id: 'inc-2', type: 'income', date: monthsAgo(2), amount: 1_300_000, category: 'Salario' }),
+      makeTx({ id: 'inc-1', type: 'income', date: monthsAgo(1), amount: 1_500_000, category: 'Salario' }),
+      makeTx({ id: 'exp-2', date: monthsAgo(2), amount: 400_000, category: 'Alimentación' }),
+      makeTx({ id: 'exp-1', date: monthsAgo(1), amount: 600_000, category: 'Alimentación' }),
+    ];
+
+    const { result } = renderHook(() => useFinancialPlan(txs, threeMonthConfig));
+    const plan = result.current!;
+
+    // Con EWMA (alpha=0.4), el mes más reciente (600k) pesa más que el anterior (400k),
+    // por lo que el gasto mensual ponderado supera el promedio simple (500k).
+    expect(plan.avgMonthlyExpenses).toBeGreaterThan(500_000);
+    expect(plan.incomeInsight).toMatchObject({
+      direction: 'higher',
+      declaredIncome: 1_000_000,
+    });
+    expect(plan.incomeInsight!.detectedMonthlyIncome).toBeGreaterThan(1_350_000);
+  });
+
+  it('calcula inteligencia por cuenta (riesgo de liquidez, fuga en gustos y tarjeta prioritaria) y suscripciones ocultas', () => {
+    const now = new Date();
+    const recurring = makeRecurring({
+      id: 'rp-rent',
+      name: 'Arriendo',
+      amount: 800_000,
+      category: 'Vivienda',
+      accountId: 'acc-nequi',
+      dueDay: now.getDate() + 2,
+    });
+    const txs: Transaction[] = [
+      makeTx({
+        id: 'sub-2',
+        date: monthsAgo(2),
+        amount: 29_900,
+        category: 'Entretenimiento',
+        description: 'BOLD*SPOTIFY COLOMBIA',
+        accountId: 'acc-nequi',
+      }),
+      makeTx({
+        id: 'sub-1',
+        date: monthsAgo(1),
+        amount: 29_900,
+        category: 'Entretenimiento',
+        description: 'BOLD*SPOTIFY COLOMBIA',
+        accountId: 'acc-nequi',
+      }),
+      makeTx({
+        id: 'want-1',
+        date: monthsAgo(1),
+        amount: 320_000,
+        category: 'Compras Personales',
+        description: 'Zara',
+        accountId: 'acc-nequi',
+      }),
+    ];
+
+    const { result } = renderHook(() =>
+      useFinancialPlan(txs, config, {
+        liquidBalance: 200_000,
+        recurringPayments: [recurring],
+        accounts: [
+          {
+            id: 'acc-nequi',
+            name: 'Nequi',
+            type: 'savings',
+            balance: 200_000,
+          },
+          {
+            id: 'acc-visa',
+            name: 'Visa Gold',
+            type: 'credit',
+            balance: 0,
+            creditLimit: 2_000_000,
+            creditUsed: 1_000_000,
+            interestRate: 28.5,
+          },
+        ],
+      }),
+    );
+
+    const plan = result.current!;
+    expect(plan.accountInsights.liquidityRisks).toHaveLength(1);
+    expect(plan.accountInsights.liquidityRisks[0]).toMatchObject({
+      accountName: 'Nequi',
+      shortfall: 600_000,
+    });
+    expect(plan.accountInsights.topWantsLeakAccount).toMatchObject({
+      accountName: 'Nequi',
+      shareOfWantsPct: 100,
+    });
+    expect(plan.accountInsights.priorityCreditCard).toMatchObject({
+      accountName: 'Visa Gold',
+      suggestedPaydownToHealthy: 400_000,
+      reason: 'high-utilization',
+    });
+    expect(plan.detectedSubscriptions).toHaveLength(1);
+    expect(plan.detectedSubscriptions[0]).toMatchObject({
+      category: 'Entretenimiento',
+      estimatedAmount: 29_900,
+      monthsDetected: 2,
+    });
+  });
 });

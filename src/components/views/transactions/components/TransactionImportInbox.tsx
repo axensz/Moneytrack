@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
   ChevronUp,
@@ -14,9 +14,14 @@ import { usePaymentInstruments } from '../../../../hooks/firestore/usePaymentIns
 import { useTransactionImportCandidates } from '../../../../hooks/firestore/useTransactionImportCandidates';
 import { useAutoConfirmImportCandidates } from '../../../../hooks/firestore/useAutoConfirmImportCandidates';
 import { useAutoConfirmPreference } from '../../../../hooks/useAutoConfirmImportPreference';
-import type { AutoConfirmReason } from '../../../../utils/autoConfirmImport';
+import {
+  buildMerchantAccountHistory,
+  buildMerchantCategoryHistory,
+  inferMerchantCategory,
+  resolveCandidateAccount,
+  type AutoConfirmReason,
+} from '../../../../utils/autoConfirmImport';
 import { formatCurrency, formatDate } from '../../../../utils/formatters';
-import { matchPaymentInstrument } from '../../../../utils/paymentInstrumentMatching';
 import {
   clearAndroidReviewRequest,
   readAndroidReviewRequest,
@@ -84,6 +89,14 @@ export function TransactionImportInbox({
     transactions,
     categories,
   });
+  const categoryHistory = useMemo(
+    () => buildMerchantCategoryHistory(transactions),
+    [transactions],
+  );
+  const accountHistory = useMemo(
+    () => buildMerchantAccountHistory(transactions),
+    [transactions],
+  );
   const [expanded, setExpanded] = useState(false);
   const [reviewSelection, setReviewSelection] = useState<OwnedReviewCandidate | null>(null);
   const [dismissingId, setDismissingId] = useState<string | null>(null);
@@ -276,17 +289,24 @@ export function TransactionImportInbox({
           ) : (
             <div className="mt-4 divide-y divide-border rounded-xl border border-border">
               {candidates.map(candidate => {
-                const match = candidate.source === 'android-notification'
-                  ? matchPaymentInstrument({
-                    cardLast4: candidate.cardLast4,
-                    observedInstrumentLabel: candidate.observedInstrumentLabel,
-                  }, instruments)
-                  : { status: 'none' as const };
-                const account = candidate.source === 'android-shortcut'
-                  ? accounts.find(current => current.id === candidate.suggestedAccountId)
-                  : match.status === 'matched'
-                    ? accounts.find(current => current.id === match.accountId)
-                    : undefined;
+                const resolvedAccount = resolveCandidateAccount({
+                  candidate,
+                  instruments,
+                  accounts,
+                  accountHistory,
+                });
+                const account = resolvedAccount.status === 'matched'
+                  ? accounts.find(current => current.id === resolvedAccount.accountId)
+                  : undefined;
+                const suggestedCategory = inferMerchantCategory({
+                  merchant: candidate.merchant,
+                  expenseCategories: categories.expense,
+                  history: categoryHistory,
+                  suggestedCategory:
+                    candidate.source === 'android-shortcut'
+                      ? candidate.suggestedCategory
+                      : undefined,
+                });
                 // Si la auto-confirmación está activa, mostrar por qué este
                 // candidato sigue aquí (no calificó para entrar solo al libro).
                 const reviewReason = autoConfirmEnabled
@@ -309,6 +329,7 @@ export function TransactionImportInbox({
                       <p className="mt-1 text-xs text-muted-foreground">
                         <span>Android</span>
                         {account && <><span aria-hidden="true"> · </span><span>{account.name}</span></>}
+                        {suggestedCategory && <><span aria-hidden="true"> · </span><span>{suggestedCategory}</span></>}
                       </p>
                       {reviewReason && (
                         <p className="mt-1 text-xs font-medium text-warning">
@@ -352,6 +373,7 @@ export function TransactionImportInbox({
           accounts={accounts}
           expenseCategories={categories.expense}
           instruments={instruments}
+          transactions={transactions}
           isOnline={isOnline}
           onClose={() => setReviewSelection(null)}
           onConfirmed={() => toggleRef.current?.focus()}

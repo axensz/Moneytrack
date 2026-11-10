@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type { Transaction, Budget } from '../types/finance';
 import { ensureDate } from '../utils/dateUtils';
 import { classifyBudgetCategory, isFixedBudgetCategory, isRealBudgetTransaction } from '../utils/budgetPlanning';
+import { computeNormalizedEwma, dampenOutliers } from '../utils/financialPlanIntelligence';
 
 export interface BudgetRecommendation {
     category: string;
@@ -229,18 +230,56 @@ export function useBudgetRecommendations(
             savingsTarget: Math.round(base * 0.2),
         };
 
+        // Calcular serie histórica de hasta 6 meses cerrados para ponderar con EWMA
+        const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+        const historicalExpenseTx = transactions.filter(t => {
+            const d = ensureDate(t.date);
+            return d >= sixMonthsAgo && d <= lastMonthEnd && isRealBudgetTransaction(t) && t.type === 'expense';
+        });
+        const historicalMonthKeys = Array.from(
+            new Set(
+                historicalExpenseTx.map(t => {
+                    const d = ensureDate(t.date);
+                    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                }),
+            ),
+        ).sort();
+        const ewmaByCategory = new Map<string, number>();
+        byCategory.forEach((lastSpent, cat) => {
+            if (historicalMonthKeys.length <= 1) {
+                ewmaByCategory.set(cat, lastSpent);
+                return;
+            }
+            const series = historicalMonthKeys.map(ymKey =>
+                historicalExpenseTx
+                    .filter(t => {
+                        const d = ensureDate(t.date);
+                        const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                        return k === ymKey && t.category === cat;
+                    })
+                    .reduce((sum, t) => sum + t.amount, 0),
+            );
+            ewmaByCategory.set(cat, computeNormalizedEwma(dampenOutliers(series)));
+        });
+
         // Recomendaciones por categoría. En la vista de presupuestos se
         // conserva el comportamiento histórico; el plan financiero puede pasar
-        // el sueldo declarado para que los topes salgan de la regla 50/30/20 y
-        // no del gasto de un mes concreto.
+        // el sueldo declarado para que los topes salgan de la regla 50/30/20
+        // ponderados por peso histórico (EWMA) y rigidez de la categoría.
         const recommendations: BudgetRecommendation[] = [];
         const recommendationCandidates = Array.from(byCategory.entries())
             .filter(([category]) => !existingCategories.has(category))
-            .map(([category, spent]) => ({
-                category,
-                spent,
-                group: classifyBudgetCategory(category),
-            }));
+            .map(([category, spent]) => {
+                const ewmaSpent = ewmaByCategory.get(category) ?? spent;
+                const rigidity = isFixedBudgetCategory(category) ? 1.15 : 1.0;
+                return {
+                    category,
+                    spent,
+                    ewmaSpent,
+                    weightedDemand: ewmaSpent * rigidity,
+                    group: classifyBudgetCategory(category),
+                };
+            });
         const usesDeclaredIncome = typeof declaredIncome === 'number' && declaredIncome > 0;
         const candidatesByGroup = {
             need: recommendationCandidates.filter(candidate => candidate.group === 'need'),
@@ -253,22 +292,46 @@ export function useBudgetRecommendations(
                 return totals;
             }, { need: 0, want: 0 });
 
-        recommendationCandidates.forEach(({ category, spent, group }) => {
+        recommendationCandidates.forEach(({ category, spent, weightedDemand, group }) => {
             let suggestedLimit: number;
             let reason: string;
 
             if (usesDeclaredIncome) {
                 const target = declaredIncome * (group === 'need' ? 0.5 : 0.3);
                 const available = Math.max(0, target - activeBudgetedByGroup[group]);
-                const categoryCount = candidatesByGroup[group].length;
+                const groupCandidates = candidatesByGroup[group];
+                const categoryCount = groupCandidates.length;
 
                 // Si los presupuestos existentes ya consumen toda la bolsa, no
                 // ofrecemos un tope artificial que la sobrepase.
                 if (available <= 0 || categoryCount === 0) return;
 
-                suggestedLimit = Math.round((available / categoryCount) / 1000) * 1000;
-                const percentage = group === 'need' ? 50 : 30;
-                reason = `${percentage}% de tu sueldo, distribuido entre ${categoryCount} ${categoryCount === 1 ? 'categoría' : 'categorías'} de ${group === 'need' ? 'necesidades' : 'gustos'}`;
+                // Si hay un único mes y alguna categoría tuvo un pico extremo que
+                // supera toda la bolsa disponible, repartir en partes iguales para
+                // no desproteger el resto de categorías esenciales.
+                const hasSingleMonthExtremeOutlier =
+                    historicalMonthKeys.length <= 1
+                    && groupCandidates.some(c => c.spent > available);
+
+                const totalGroupDemand = groupCandidates.reduce(
+                    (sum, c) => sum + c.weightedDemand,
+                    0,
+                );
+
+                if (categoryCount === 1 || hasSingleMonthExtremeOutlier || totalGroupDemand <= 0) {
+                    suggestedLimit = Math.round((available / categoryCount) / 1000) * 1000;
+                    const percentage = group === 'need' ? 50 : 30;
+                    reason = `${percentage}% de tu sueldo, distribuido entre ${categoryCount} ${categoryCount === 1 ? 'categoría' : 'categorías'} de ${group === 'need' ? 'necesidades' : 'gustos'}`;
+                } else {
+                    const demandShare = weightedDemand / totalGroupDemand;
+                    const equalShare = 1 / categoryCount;
+                    // Mezcla 75% proporcional por EWMA+rigidez y 25% piso equitativo
+                    const blendedShare = demandShare * 0.75 + equalShare * 0.25;
+                    suggestedLimit = Math.round((available * blendedShare) / 1000) * 1000;
+                    const percentage = group === 'need' ? 50 : 30;
+                    const sharePct = Math.round(blendedShare * 100);
+                    reason = `${sharePct}% de tu bolsa de ${group === 'need' ? 'necesidades' : 'gustos'} (${percentage}% del sueldo), ponderado según tu hábito reciente`;
+                }
             } else if (isFixedBudgetCategory(category)) {
                 suggestedLimit = Math.ceil(spent * 1.05 / 1000) * 1000;
                 reason = 'Gasto fijo — margen del 5%';

@@ -1,6 +1,7 @@
 import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../config/constants';
 import type { Debt, Transaction } from '../types/finance';
 import { roundMoney } from './formatters';
+import { reopenedDebtInterest } from './reopenedDebtInterest';
 
 interface DebtAwareTransactionDeleteDeps {
   userId: string | null;
@@ -43,12 +44,14 @@ export const executeDebtAwareTransactionDelete = async (
     transaction?.debtId
     && transaction.category === LOAN_PAYMENT_CATEGORY
   ) {
+    const interestUpdates = !userId && debt ? reopenedDebtInterest(debt) : {};
     const deleted = await deleteTransaction(id);
     if (!userId && debt && deleted) {
       await updateDebt(debt.id!, {
         remainingAmount: roundMoney(debt.remainingAmount + deleted.amount),
         isSettled: false,
         settledAt: undefined,
+        ...interestUpdates,
       });
     }
     return deleted;

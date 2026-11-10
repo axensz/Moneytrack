@@ -5,7 +5,7 @@ import { PlusCircle, Link2, ChevronLeft } from 'lucide-react';
 import { showToast } from '../../../../utils/toastHelpers';
 import { logger } from '../../../../utils/logger';
 import { formatNumberForInput, parseCurrency, unformatNumber } from '../../../../utils/formatters';
-import type { Debt, Transaction } from '../../../../types/finance';
+import type { Account, Debt, Transaction } from '../../../../types/finance';
 import { getDebtLinkCandidates } from '../../../../utils/debtPaymentLink';
 import { BaseModal } from '../../../modals/BaseModal';
 
@@ -14,10 +14,11 @@ interface LinkDebtPaymentModalProps {
   debt: Debt | null;
   /** Historial completo confirmado (movimientos pagados para enlazar). */
   transactions: Transaction[];
+  accounts?: Account[];
   formatCurrency: (amount: number) => string;
   onClose: () => void;
   /** Crea un pago nuevo y reduce el saldo (camino de hoy). */
-  onRegister: (debtId: string, amount: number) => Promise<void>;
+  onRegister: (debtId: string, amount: number, paymentAccountId?: string) => Promise<void>;
   /** Enlaza una transacción existente como el pago del préstamo. */
   onLinkExisting: (debtId: string, transactionId: string, recurringCycle?: string) => Promise<void>;
   /**
@@ -28,7 +29,7 @@ interface LinkDebtPaymentModalProps {
   recurringCycle?: string | null;
   recurringPaymentAmount?: number;
   /** Paga la cuota del ciclo en un paso (crea movimiento + reduce saldo). */
-  onPayCycle?: (debtId: string, recurringCycle: string) => Promise<void>;
+  onPayCycle?: (debtId: string, recurringCycle: string, paymentAccountId?: string) => Promise<void>;
 }
 
 type Mode = 'choose' | 'register' | 'link';
@@ -45,6 +46,7 @@ export const LinkDebtPaymentModal: React.FC<LinkDebtPaymentModalProps> = ({
   isOpen,
   debt,
   transactions,
+  accounts = [],
   formatCurrency,
   onClose,
   onRegister,
@@ -56,6 +58,7 @@ export const LinkDebtPaymentModal: React.FC<LinkDebtPaymentModalProps> = ({
   const isRecurringMode = Boolean(recurringCycle && onPayCycle);
   const [mode, setMode] = useState<Mode>('choose');
   const [amount, setAmount] = useState('');
+  const [paymentAccountId, setPaymentAccountId] = useState('');
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
 
@@ -64,6 +67,7 @@ export const LinkDebtPaymentModal: React.FC<LinkDebtPaymentModalProps> = ({
     if (isOpen) {
       setMode('choose');
       setAmount('');
+      setPaymentAccountId(debt?.accountId ?? '');
       setBusy(false);
       busyRef.current = false;
     }
@@ -94,7 +98,7 @@ export const LinkDebtPaymentModal: React.FC<LinkDebtPaymentModalProps> = ({
     if (!debt?.id) return;
     // Modo cuota: paga la cuota del ciclo en un paso (monto = cuota fija).
     if (isRecurringMode && recurringCycle && onPayCycle) {
-      run(() => onPayCycle(debt.id!, recurringCycle), 'Cuota registrada');
+      run(() => paymentAccountId && paymentAccountId !== debt.accountId ? onPayCycle(debt.id!, recurringCycle, paymentAccountId) : onPayCycle(debt.id!, recurringCycle), 'Cuota registrada');
       return;
     }
     const parsed = parseCurrency(amount);
@@ -106,7 +110,7 @@ export const LinkDebtPaymentModal: React.FC<LinkDebtPaymentModalProps> = ({
       showToast.error(`El pago no puede superar el saldo pendiente (${formatCurrency(debt.remainingAmount)})`);
       return;
     }
-    run(() => onRegister(debt.id!, parsed), 'Pago registrado');
+    run(() => paymentAccountId && paymentAccountId !== debt.accountId ? onRegister(debt.id!, parsed, paymentAccountId) : onRegister(debt.id!, parsed), 'Pago registrado');
   };
 
   return (
@@ -159,6 +163,16 @@ export const LinkDebtPaymentModal: React.FC<LinkDebtPaymentModalProps> = ({
           {/* ── Registrar pago nuevo ── */}
           {mode === 'register' && (
             <div className="mt-5 space-y-4">
+              {accounts.length > 0 && (
+                <div>
+                  <label htmlFor="debt-payment-account" className="label-base">{debt.type === 'lent' ? 'Recibir el pago en' : 'Pagar desde'}</label>
+                  <select id="debt-payment-account" className="input-base" value={paymentAccountId} onChange={event => setPaymentAccountId(event.target.value)} disabled={busy}>
+                    {!debt.accountId && <option value="">Solo seguimiento</option>}
+                    {accounts.filter(account => !account.archived || account.id === debt.accountId).map(account => <option key={account.id} value={account.id}>{account.name}{account.type === 'credit' ? ' · Tarjeta de crédito' : ''}</option>)}
+                  </select>
+                  <p className="mt-1 text-xs text-muted-foreground">Elige la cuenta donde ocurre el pago. La tarjeta usada al prestar conserva su propio saldo.</p>
+                </div>
+              )}
               {isRecurringMode ? (
                 <div className="rounded-lg border border-border bg-muted p-3">
                   <span className="block text-xs text-muted-foreground">Cuota a registrar</span>

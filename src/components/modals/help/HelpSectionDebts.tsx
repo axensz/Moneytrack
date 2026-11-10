@@ -49,7 +49,7 @@ export const HelpSectionDebts: React.FC = () => (
                </div>
                <div className="p-2 bg-muted rounded-lg">
                   <span className="font-medium text-foreground">Cuenta:</span>
-                  <span className="text-muted-foreground ml-1">Desde cuál cuenta</span>
+                  <span className="text-muted-foreground ml-1">Cuenta o tarjeta usada</span>
                </div>
                <div className="p-2 bg-muted rounded-lg sm:col-span-2">
                   <span className="font-medium text-foreground">Próximo pago:</span>
@@ -59,6 +59,9 @@ export const HelpSectionDebts: React.FC = () => (
             <p className="text-xs text-muted-foreground">
                Opcional: Descripción o motivo del préstamo.
             </p>
+            <p className="text-sm text-muted-foreground">Puedes tomar una transacción ya pagada para conservar su tarjeta, cuotas e intereses sin duplicar el movimiento. Los gastos corresponden a «Yo presté» y los ingresos a «Me prestaron».</p>
+            <p className="text-sm text-muted-foreground">El interés puede ser un monto fijo, un porcentaje total o una estimación con la tasa E.A. guardada de la tarjeta y sus cuotas. Se guarda una sola vez; el saldo pendiente incluye capital más interés.</p>
+            <p className="text-sm text-muted-foreground">Al registrar un pago puedes elegir la cuenta donde entra o sale el dinero, aunque el préstamo se haya hecho con otra tarjeta.</p>
          </div>
       </div>
 
@@ -106,6 +109,21 @@ export const HelpSectionDebts: React.FC = () => (
          <p className="text-sm text-muted-foreground">
             Puedes marcar un día mensual aproximado, una fecha específica o una cantidad de meses.
             Si hay un día mensual y cambias solo la próxima fecha, el siguiente mes vuelve al día habitual.
+         </p>
+      </div>
+
+      <div className="p-4 bg-muted rounded-xl border border-border">
+         <h4 className="font-semibold text-foreground mb-2">Interés del préstamo</h4>
+         <p className="text-sm text-muted-foreground">
+            Puedes agregar todo el interés al registrar o sumarlo cada mes en el día de corte.
+            En la modalidad mensual, cada cargo se calcula sobre el capital original, sin interés compuesto;
+            los abonos no cambian esa base. La tarjeta aporta su tasa E.A. y día de corte; con un porcentaje
+            mensual eliges el día. Los días 29 a 31 se ajustan al último día del mes cuando sea necesario.
+         </p>
+         <p className="mt-2 text-sm text-muted-foreground">
+            Solo se agrega interés desde el primer corte posterior al préstamo. Si registras una fecha pasada,
+            se incluyen los cortes ya vencidos. Los cargos aumentan el saldo del préstamo sin crear movimientos
+            de dinero ni cambiar la financiación original de la tarjeta. Al saldarlo se detienen los cargos.
          </p>
       </div>
 

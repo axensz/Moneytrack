@@ -58,6 +58,14 @@ export function useCategories(transactions: Transaction[], userId?: string | nul
       else if (t.type === 'income') transactionIncomeCategories.add(t.category);
     });
 
+    const pushUniqueCategory = (target: string[], candidate: string) => {
+      const normalizedCandidate = normalizeCategoryName(candidate);
+      if (!normalizedCandidate) return;
+      if (!target.some(existing => normalizeCategoryName(existing) === normalizedCandidate)) {
+        target.push(candidate);
+      }
+    };
+
     if (userId) {
       const firestoreExpense = firestoreCategories
         .filter(c => c.type === 'expense')
@@ -66,35 +74,26 @@ export function useCategories(transactions: Transaction[], userId?: string | nul
         .filter(c => c.type === 'income')
         .map(c => c.name);
 
-      // Merge: defaults + firestore + transacciones (sin duplicados)
+      // Merge: defaults + firestore + transacciones (sin duplicados normalizados)
       const expense: string[] = [...DEFAULT_CATEGORIES.expense];
-      firestoreExpense.forEach(name => {
-        if (!expense.includes(name)) expense.push(name);
-      });
-      transactionExpenseCategories.forEach(name => {
-        if (!expense.includes(name)) expense.push(name);
-      });
+      firestoreExpense.forEach(name => pushUniqueCategory(expense, name));
+      transactionExpenseCategories.forEach(name => pushUniqueCategory(expense, name));
 
       const income: string[] = [...DEFAULT_CATEGORIES.income];
-      firestoreIncome.forEach(name => {
-        if (!income.includes(name)) income.push(name);
-      });
-      transactionIncomeCategories.forEach(name => {
-        if (!income.includes(name)) income.push(name);
-      });
+      firestoreIncome.forEach(name => pushUniqueCategory(income, name));
+      transactionIncomeCategories.forEach(name => pushUniqueCategory(income, name));
 
       return { expense, income };
     }
 
     // Modo local: también incluir categorías de transacciones
-    const expense = [...localCategories.expense];
-    transactionExpenseCategories.forEach(name => {
-      if (!expense.includes(name)) expense.push(name);
-    });
-    const income = [...localCategories.income];
-    transactionIncomeCategories.forEach(name => {
-      if (!income.includes(name)) income.push(name);
-    });
+    const expense: string[] = [];
+    localCategories.expense.forEach(name => pushUniqueCategory(expense, name));
+    transactionExpenseCategories.forEach(name => pushUniqueCategory(expense, name));
+
+    const income: string[] = [];
+    localCategories.income.forEach(name => pushUniqueCategory(income, name));
+    transactionIncomeCategories.forEach(name => pushUniqueCategory(income, name));
 
     return { expense, income };
   }, [userId, firestoreCategories, localCategories, transactions]);
@@ -125,14 +124,15 @@ export function useCategories(transactions: Transaction[], userId?: string | nul
   }, [userId, categories, firestoreAddCategory, setLocalCategories]);
 
   const deleteCategory = useCallback(async (type: 'expense' | 'income', category: string) => {
-    if (transactions.some(t => t.category === category)) {
+    const normalizedTarget = normalizeCategoryName(category);
+    if (transactions.some(t => normalizeCategoryName(t.category) === normalizedTarget)) {
       throw new Error(ERROR_MESSAGES.DELETE_CATEGORY_WITH_TRANSACTIONS);
     }
 
     if (userId) {
       // Encontrar el ID de la categoría en Firestore
       const categoryToDelete = firestoreCategories.find(
-        c => c.type === type && c.name === category
+        c => c.type === type && normalizeCategoryName(c.name) === normalizedTarget
       );
       if (categoryToDelete?.id) {
         await firestoreDeleteCategory(categoryToDelete.id);
@@ -140,7 +140,7 @@ export function useCategories(transactions: Transaction[], userId?: string | nul
     } else {
       setLocalCategories(prev => ({
         ...prev,
-        [type]: prev[type].filter(c => c !== category)
+        [type]: prev[type].filter(c => normalizeCategoryName(c) !== normalizedTarget)
       }));
     }
   }, [userId, transactions, firestoreCategories, firestoreDeleteCategory, setLocalCategories]);

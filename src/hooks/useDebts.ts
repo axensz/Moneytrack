@@ -14,7 +14,7 @@
  * afectar saldos (comportamiento histórico).
  */
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   collection,
   onSnapshot,
@@ -44,6 +44,9 @@ import { getCreditAuthorityState } from '../utils/creditAuthority';
 import { BalanceCalculator } from '../utils/balanceCalculator';
 import { getAccountReferenceIds } from '../utils/accountTransactions';
 import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../config/constants';
+import { debtFromPrincipalTransaction, getDebtTotalAmount, initializeMonthlyDebtInterest, validateDebtInterest, validateDebtPrincipalAdjustment } from '../utils/debtInterest';
+import { getMonthlyInterestAccrual } from '../../functions/src/shared/debtMonthlyInterest';
+import { ensureDate } from '../utils/dateUtils';
 import type {
   Account,
   Debt,
@@ -178,6 +181,7 @@ export function useDebts(
           lentDate: doc.data().lentDate?.toDate() || undefined,
           dueDate: doc.data().dueDate?.toDate() || undefined,
           nextPaymentDate: doc.data().nextPaymentDate?.toDate() || undefined,
+          nextInterestDate: doc.data().nextInterestDate?.toDate() || undefined,
         })) as Debt[];
         setFirestoreDebts(data);
         setLoading(false);
@@ -192,6 +196,50 @@ export function useDebts(
   }, [userId, hasExternalDebts]);
 
   const debts = externalDebts ?? (userId ? firestoreDebts : localDebts);
+  const interestQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  const refreshDebtInterest = useCallback((debtId: string): Promise<void> => {
+    const targetDebt = debts.find(debt => debt.id === debtId && debt.interestAccrual === 'monthly' && !debt.isSettled);
+    if (!targetDebt || !getMonthlyInterestAccrual(targetDebt, new Date())) return Promise.resolve();
+    const task = interestQueueRef.current.catch(() => undefined).then(async () => {
+      if (!userId) {
+        await mutateGuestLedger(draft => {
+          draft.debts = draft.debts.map(debt => debt.id === debtId ? { ...debt, ...getMonthlyInterestAccrual(debt, new Date()) } : debt);
+        }, { operationId: `guest-loan-interest:${debtId}:${generateId()}` });
+        return;
+      }
+      const operationId = createAccountOperationId('ledger-mutation');
+      await safeFirestoreOperation(() => executeAuthenticatedLedgerMutation(userId, async ({ loadContext }) => {
+        const debtRef = doc(db, `users/${userId}/debts`, debtId);
+        const snapshot = await getDocFromServer(debtRef);
+        const debt = snapshot.exists() ? snapshot.data() as Debt : null;
+        const updates = debt ? getMonthlyInterestAccrual(debt, new Date()) : null;
+        const context = await loadContext([]);
+        return {
+          intent: { kind: 'edit' as const, before: [], after: [], metadata: { operationId, mutationSource: 'debt' as const } },
+          context, writeCount: updates ? 1 : 0,
+          stage: batch => { if (updates) batch.update(debtRef, updates); }, result: undefined,
+        };
+      }, { operationId }), 'refreshDebtInterest', { maxRetries: 2, retryRecoverableErrors: true });
+    });
+    interestQueueRef.current = task.catch(() => undefined);
+    return task;
+  }, [debts, userId, mutateGuestLedger]);
+
+  useEffect(() => {
+    let active = true;
+    const sync = async () => {
+      for (const debt of debts) {
+        if (!active) return;
+        if (!debt.id || debt.isSettled || debt.interestAccrual !== 'monthly' || !debt.nextInterestDate || ensureDate(debt.nextInterestDate) > new Date()) continue;
+        try { await refreshDebtInterest(debt.id); }
+        catch (error) { logger.warn('No se pudo actualizar el interés mensual del préstamo', { error: error instanceof Error ? error.message : 'Error desconocido' }); }
+      }
+    };
+    void sync();
+    const timer = setInterval(() => { void sync(); }, 60_000);
+    return () => { active = false; clearInterval(timer); };
+  }, [debts, refreshDebtInterest]);
 
   const assertGuestLedgerMutation = useCallback((
     transaction: Omit<Transaction, 'id' | 'createdAt'>,
@@ -230,7 +278,63 @@ export function useDebts(
   }, [operationAccounts, transactions]);
 
   // CRUD Operations
-  const addDebt = useCallback(async (debt: Omit<Debt, 'id' | 'createdAt'>) => {
+  const addDebt = useCallback(async (debt: Omit<Debt, 'id' | 'createdAt'>, existingTransactionId?: string) => {
+    if (!existingTransactionId) debt = initializeMonthlyDebtInterest(debt);
+    const validateAmounts = (value: typeof debt) => {
+      validateDebtInterest(value);
+      normalizeLedgerAmount(value.originalAmount);
+      const total = getDebtTotalAmount(value);
+      if (total > 1_000_000_000 || !Number.isFinite(value.remainingAmount) || value.remainingAmount < 0 || value.remainingAmount > total) {
+        throw new Error('El saldo pendiente debe estar entre 0 y el capital más intereses (máximo 1.000.000.000)');
+      }
+    };
+    if (existingTransactionId) {
+      const createdAt = new Date();
+      if (!userId) {
+        const debtId = generateId();
+        await mutateGuestLedger(draft => {
+          const transaction = draft.transactions.find(t => t.id === existingTransactionId);
+          if (!transaction) throw new Error('La transacción ya no existe. Actualiza e intenta de nuevo.');
+          const linkedDebt = debtFromPrincipalTransaction(debt, transaction);
+          validateAmounts(linkedDebt);
+          draft.debts.unshift({ ...linkedDebt, id: debtId, createdAt });
+          draft.transactions = draft.transactions.map(t => t.id === existingTransactionId
+            ? { ...t, debtId, category: LOAN_CATEGORY } : t);
+        }, { operationId: `guest-link-principal:${debtId}` });
+        return;
+      }
+      if (!checkNetworkConnection()) throw new Error('Sin conexión a internet');
+      const operationId = createAccountOperationId('ledger-mutation');
+      const debtRef = doc(collection(db, `users/${userId}/debts`));
+      const linkedTransaction = await safeFirestoreOperation(async () => {
+        const committed = await getDocFromServer(debtRef);
+        if (committed.exists()) {
+          if (committed.data().creationOperationId !== operationId) throw new Error('La identidad de creación no coincide.');
+          return loadServerLedgerTransaction(userId, existingTransactionId);
+        }
+        return executeAuthenticatedLedgerMutation(userId, async ({ loadContext }) => {
+          const before = await loadServerLedgerTransaction(userId, existingTransactionId);
+          if (!before) throw new Error('La transacción ya no existe. Actualiza e intenta de nuevo.');
+          const linkedDebt = debtFromPrincipalTransaction(debt, before);
+          validateAmounts(linkedDebt);
+          const context = await loadContext([before.accountId]);
+          const after = { ...before, debtId: debtRef.id, category: LOAN_CATEGORY };
+          return {
+            intent: { kind: 'edit' as const, before: [before], after: [after], metadata: { operationId, mutationSource: 'debt' as const } },
+            context,
+            writeCount: 2,
+            stage: batch => {
+              batch.set(debtRef, stripUndefined({ ...linkedDebt, createdAt, creationOperationId: operationId }));
+              batch.update(doc(db, `users/${userId}/transactions`, existingTransactionId), { debtId: debtRef.id, category: LOAN_CATEGORY });
+            },
+            result: after,
+          };
+        }, { operationId });
+      }, 'addDebtFromTransaction', { maxRetries: 2, retryRecoverableErrors: true });
+      if (linkedTransaction) publishTransactionCacheMutation({ userId, type: 'update', transactions: [linkedTransaction] });
+      return;
+    }
+    validateAmounts(debt);
     let debtId: string;
     if (userId) {
       if (!checkNetworkConnection()) {
@@ -263,6 +367,13 @@ export function useDebts(
             operationId,
             mutationKind: 'create' as const,
             mutationSource: 'debt' as const,
+            ...(debt.interestMode === 'card' && debt.interestAccrual !== 'monthly' ? {
+              hasInterest: (debt.totalInterestAmount ?? 0) > 0,
+              totalInterestAmount: debt.totalInterestAmount ?? 0,
+              interestRate: debt.interestRate ?? 0,
+              installments: debt.installments ?? 1,
+              monthlyInstallmentAmount: debt.monthlyInstallmentAmount ?? originalAmount,
+            } : {}),
           }
         : null;
       const transactionRef = transactionData
@@ -377,6 +488,13 @@ export function useDebts(
           operationId,
           mutationKind: 'create',
           mutationSource: 'debt',
+          ...(debt.interestMode === 'card' && debt.interestAccrual !== 'monthly' ? {
+            hasInterest: (debt.totalInterestAmount ?? 0) > 0,
+            totalInterestAmount: debt.totalInterestAmount ?? 0,
+            interestRate: debt.interestRate ?? 0,
+            installments: debt.installments ?? 1,
+            monthlyInstallmentAmount: debt.monthlyInstallmentAmount ?? originalAmount,
+          } : {}),
         }, draft.accounts, draft.transactions);
         draft.transactions.unshift({
           ...transaction,
@@ -405,6 +523,7 @@ export function useDebts(
         'nextPaymentDate',
         'isRecurringPayment',
         'recurringPaymentAmount',
+        'nextInterestDate',
       ] as const;
       const deletedPaymentFields = Object.fromEntries(
         clearablePaymentFields
@@ -418,16 +537,23 @@ export function useDebts(
           ...deletedPaymentFields,
         }),
         'updateDebt',
-        { maxRetries: 2 }
+        { maxRetries: 2, retryRecoverableErrors: true }
       );
     } else {
       await mutateGuestLedger(draft => {
         if (!draft.debts.some(debt => debt.id === id)) {
           throw new Error('Préstamo no encontrado');
         }
-        draft.debts = draft.debts.map(debt => (
-          debt.id === id ? { ...debt, ...updates } : debt
-        ));
+        draft.debts = draft.debts.map(debt => {
+          if (debt.id !== id) return debt;
+          const nextDebt = { ...debt, ...updates };
+          for (const key of Object.keys(updates) as Array<keyof Debt>) {
+            if (updates[key] === undefined) {
+              delete nextDebt[key];
+            }
+          }
+          return nextDebt;
+        });
       }, { operationId: `guest-update-debt:${id}:${generateId()}` });
     }
   }, [userId, mutateGuestLedger]);
@@ -698,8 +824,9 @@ export function useDebts(
   ]);
 
   // Register a payment against a debt
-  const registerDebtPayment = useCallback(async (debtId: string, amount: number) => {
+  const registerDebtPayment = useCallback(async (debtId: string, amount: number, paymentAccountId?: string) => {
     if (!Number.isFinite(amount) || amount <= 0) return;
+    await refreshDebtInterest(debtId);
 
     if (userId) {
       if (!checkNetworkConnection()) {
@@ -791,7 +918,7 @@ export function useDebts(
 
           const newRemaining = Math.max(0, persistedRemaining - effectiveAmount);
           const isSettled = newRemaining === 0;
-          const transactionData = persistedDebt.accountId
+          const transactionData = (paymentAccountId ?? persistedDebt.accountId)
             ? {
                 type: persistedDebt.type === 'lent' ? 'income' as const : 'expense' as const,
                 amount: effectiveAmount,
@@ -801,7 +928,7 @@ export function useDebts(
                   : `Pago a ${persistedDebt.personName}`,
                 date: createdAt,
                 paid: true,
-                accountId: persistedDebt.accountId,
+                accountId: (paymentAccountId ?? persistedDebt.accountId)!,
                 debtId,
                 operationId,
                 mutationKind: 'create' as const,
@@ -888,7 +1015,8 @@ export function useDebts(
       const effectiveAmount = Math.min(requestedAmount, remainingAmount);
       const newRemaining = Math.max(0, remainingAmount - effectiveAmount);
       const isSettled = newRemaining === 0;
-      if (debt.accountId && effectiveAmount > 0) {
+      const accountId = paymentAccountId ?? debt.accountId;
+      if (accountId && effectiveAmount > 0) {
         const isLent = debt.type === 'lent';
         const transaction = assertGuestLedgerMutation({
           type: isLent ? 'income' : 'expense',
@@ -899,7 +1027,7 @@ export function useDebts(
             : `Pago a ${debt.personName}`,
           date: paidAt,
           paid: true,
-          accountId: debt.accountId,
+          accountId,
           debtId,
           operationId,
           mutationKind: 'create',
@@ -923,7 +1051,7 @@ export function useDebts(
           : candidate
       ));
     }, { operationId });
-  }, [userId, mutateGuestLedger, assertGuestLedgerMutation]);
+  }, [userId, mutateGuestLedger, assertGuestLedgerMutation, refreshDebtInterest]);
 
   // Enlaza una transacción EXISTENTE como el pago de un préstamo, SIN crear un
   // movimiento nuevo (evita duplicar el gasto/ingreso que el usuario ya registró
@@ -937,6 +1065,7 @@ export function useDebts(
     recurringCycle?: string,
   ) => {
     if (!debtId || !transactionId) return;
+    await refreshDebtInterest(debtId);
 
     if (userId) {
       if (!checkNetworkConnection()) {
@@ -1211,7 +1340,7 @@ export function useDebts(
           : candidate
       ));
     }, { operationId });
-  }, [userId, mutateGuestLedger]);
+  }, [userId, mutateGuestLedger, refreshDebtInterest]);
 
   // Marca la cuota periódica de un préstamo como pagada EN UN PASO: crea el
   // movimiento de la cuota (acotado al saldo pendiente) y reduce remainingAmount,
@@ -1219,8 +1348,9 @@ export function useDebts(
   // duplicar. Idempotente por ciclo: si ya existe una transacción del préstamo
   // con ese recurringCycle, es no-op (devuelve esa transacción). El operationId
   // determinista ('ledger-mutation:debt:<debtId>:<cycle>') protege ante reintentos.
-  const payDebtCycle = useCallback(async (debtId: string, recurringCycle: string) => {
+  const payDebtCycle = useCallback(async (debtId: string, recurringCycle: string, paymentAccountId?: string) => {
     if (!debtId || !recurringCycle) return;
+    await refreshDebtInterest(debtId);
 
     if (userId) {
       if (!checkNetworkConnection()) {
@@ -1294,7 +1424,7 @@ export function useDebts(
               const newRemaining = Math.max(0, roundMoney(persistedRemaining - effectiveAmount));
               const isSettled = newRemaining === 0;
 
-              const transactionData = persistedDebt.accountId
+              const transactionData = (paymentAccountId ?? persistedDebt.accountId)
                 ? {
                     type: persistedDebt.type === 'lent' ? 'income' as const : 'expense' as const,
                     amount: effectiveAmount,
@@ -1304,7 +1434,7 @@ export function useDebts(
                       : `Pago a ${persistedDebt.personName}`,
                     date: createdAt,
                     paid: true,
-                    accountId: persistedDebt.accountId,
+                    accountId: (paymentAccountId ?? persistedDebt.accountId)!,
                     debtId,
                     recurringCycle,
                     operationId,
@@ -1415,7 +1545,8 @@ export function useDebts(
       const newRemaining = Math.max(0, roundMoney(remainingAmount - effectiveAmount));
       const isSettled = newRemaining === 0;
 
-      if (debt.accountId && effectiveAmount > 0) {
+      const accountId = paymentAccountId ?? debt.accountId;
+      if (accountId && effectiveAmount > 0) {
         const isLent = debt.type === 'lent';
         const transaction = assertGuestLedgerMutation({
           type: isLent ? 'income' : 'expense',
@@ -1426,7 +1557,7 @@ export function useDebts(
             : `Pago a ${debt.personName}`,
           date: paidAt,
           paid: true,
-          accountId: debt.accountId,
+          accountId,
           debtId,
           recurringCycle,
           operationId,
@@ -1451,7 +1582,7 @@ export function useDebts(
           : candidate
       ));
     }, { operationId });
-  }, [userId, mutateGuestLedger, assertGuestLedgerMutation]);
+  }, [userId, mutateGuestLedger, assertGuestLedgerMutation, refreshDebtInterest]);
 
   const restoreDebtPayment = useCallback(async (transaction: Transaction) => {
     if (
@@ -1490,7 +1621,7 @@ export function useDebts(
       if (
         !debt
         || expectedType !== transaction.type
-        || debt.accountId !== transaction.accountId
+        || !draft.accounts.some(account => getAccountReferenceIds(account).includes(transaction.accountId))
         || remainingAmount < amount
       ) {
         throw new Error('No se puede restaurar el pago con el saldo pendiente actual.');
@@ -1549,6 +1680,7 @@ export function useDebts(
         const debt = draft.debts.find(candidate => candidate.id === debtId);
         if (!debt) throw new Error('Préstamo no encontrado');
         if (debt.isSettled) throw new Error('No puedes modificar un préstamo ya saldado');
+        validateDebtPrincipalAdjustment(debt, amount, operation);
         if (operation === 'subtract' && amount > debt.remainingAmount) {
           throw new Error('No puedes restar más del saldo pendiente');
         }
@@ -1572,9 +1704,31 @@ export function useDebts(
           ) {
             throw new Error('El historial principal del préstamo requiere reconciliación.');
           }
+          const nextPrincipal: Transaction = { ...principal, amount: originalAmount };
+          const availableAccounts = draft.accounts.length > 0 ? draft.accounts : operationAccounts;
+          const account = availableAccounts.find(candidate =>
+            getAccountReferenceIds(candidate).includes(debt.accountId!)
+          );
+          if (account?.id) {
+            planLedgerMutation(
+              {
+                kind: 'edit',
+                before: [principal],
+                after: [nextPrincipal],
+                metadata: { mutationSource: 'debt' },
+              },
+              [{
+                account: {
+                  id: account.id,
+                  type: account.type,
+                },
+                currentBalance: BalanceCalculator.calculateAccountBalance(account, draft.transactions),
+              }]
+            );
+          }
           draft.transactions = draft.transactions.map(transaction => (
             transaction.id === principal.id
-              ? { ...transaction, amount: originalAmount }
+              ? nextPrincipal
               : transaction
           ));
         }
@@ -1599,6 +1753,7 @@ export function useDebts(
     if (debt.isSettled) {
       throw new Error('No puedes modificar un préstamo ya saldado');
     }
+    validateDebtPrincipalAdjustment(debt, amount, operation);
 
     if (!checkNetworkConnection()) {
       throw new Error('Sin conexión a internet');
@@ -1611,15 +1766,15 @@ export function useDebts(
     let newRemainingAmount: number;
 
     if (operation === 'add') {
-      newOriginalAmount = debt.originalAmount + amount;
-      newRemainingAmount = debt.remainingAmount + amount;
+      newOriginalAmount = roundMoney(debt.originalAmount + amount);
+      newRemainingAmount = roundMoney(debt.remainingAmount + amount);
     } else {
       // Subtract
       if (amount > debt.remainingAmount) {
         throw new Error('No puedes restar más del saldo pendiente');
       }
-      newOriginalAmount = debt.originalAmount - amount;
-      newRemainingAmount = debt.remainingAmount - amount;
+      newOriginalAmount = roundMoney(debt.originalAmount - amount);
+      newRemainingAmount = roundMoney(debt.remainingAmount - amount);
     }
 
     // Check if debt becomes settled
@@ -1778,7 +1933,7 @@ export function useDebts(
         transactions: [updatedPrincipal],
       });
     }
-  }, [userId, mutateGuestLedger, debts]);
+  }, [userId, mutateGuestLedger, debts, operationAccounts]);
 
   // Condonar una deuda: marcarla saldada con motivo, SIN mover dinero. El dinero
   // ya se movió al prestar/recibir; condonar solo deja de esperarlo (no revierte
@@ -1792,6 +1947,11 @@ export function useDebts(
       isSettled: true,
       settledAt: new Date(),
       forgivenReason: reason,
+      expectedPaymentDay: undefined,
+      nextPaymentDate: undefined,
+      isRecurringPayment: undefined,
+      recurringPaymentAmount: undefined,
+      nextInterestDate: undefined,
     });
   }, [updateDebt]);
 

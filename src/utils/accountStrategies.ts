@@ -18,7 +18,7 @@
 
 import type { Account, Transaction } from '../types/finance';
 import { getAccountReferenceIds } from './accountTransactions';
-import { getCreditDelta } from './creditDeltas';
+import { reconcileUsedCredit } from './creditDeltas';
 import { roundMoney } from './formatters';
 
 /**
@@ -142,23 +142,7 @@ export class CreditCardStrategy {
    * de balance sigue usando el campo persistido, que sí es completo.
    */
   private recomputeUsedCreditFromTransactions(account: Account, transactions: Transaction[]): number {
-    const accountIds = new Set(getAccountReferenceIds(account));
-
-    const usedCredit = transactions.reduce((sum, t) => {
-      // getCreditDelta espera el id de cuenta concreto; probamos contra cada
-      // referencia (origen para gasto/ingreso, destino para transferencia).
-      let delta = 0;
-      if (t.accountId && accountIds.has(t.accountId)) {
-        delta += getCreditDelta(t, t.accountId);
-      }
-      if (t.toAccountId && accountIds.has(t.toAccountId)) {
-        delta += getCreditDelta(t, t.toAccountId);
-      }
-      return sum + delta;
-    }, 0);
-
-    // Redondear a centavos: la suma de deltas float puede dejar residuos IEEE-754.
-    return Math.max(0, roundMoney(usedCredit));
+    return reconcileUsedCredit(getAccountReferenceIds(account), transactions);
   }
 
   calculateBalance(account: Account, transactions: Transaction[]): number {

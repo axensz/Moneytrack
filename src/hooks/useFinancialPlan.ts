@@ -9,6 +9,18 @@
 import { useMemo } from 'react';
 import type { RecurringPayment, Transaction } from '../types/finance';
 import { classifyBudgetCategory, type BudgetCategoryGroup, isRealBudgetTransaction } from '../utils/budgetPlanning';
+import {
+  buildAccountPlanInsights,
+  buildCategoryTrendInsights,
+  computeNormalizedEwma,
+  dampenOutliers,
+  detectHiddenSubscriptions,
+  detectIncomeInsight,
+  type AccountPlanInsights,
+  type AccountPlanSnapshot,
+  type DetectedSubscription,
+  type IncomeInsight,
+} from '../utils/financialPlanIntelligence';
 import { cycleKey, effectiveDueDay, getCycleWindow, getYearlyAnchorMonth } from '../utils/recurringDates';
 
 // ============ TIPOS ============
@@ -69,6 +81,8 @@ export interface PlanTopDriver {
   spent: number;
   pctOfIncome: number;
   suggestedReduction: number;
+  trend?: 'rising' | 'stable' | 'falling';
+  trendSlopePct?: number;
 }
 
 export interface PlanActionItem {
@@ -88,6 +102,7 @@ export interface RecurringForecastItem {
   dueDate: Date;
   daysUntilDue: number;
   status: 'overdue' | 'soon' | 'scheduled';
+  accountId?: string;
 }
 
 export interface RecurringMonthForecast {
@@ -103,6 +118,9 @@ export interface RecurringMonthForecast {
   projectedNeedsPct: number;
   projectedWantsPct: number;
   projectedSavingsGap: PlanGap;
+  /** Proyección realista que suma el ritmo diario de gasto variable restante del mes. */
+  realisticProjectedExpenses: number;
+  realisticProjectedSavings: number;
   items: RecurringForecastItem[];
 }
 
@@ -134,6 +152,7 @@ export interface PlanContext {
   liquidBalance?: number; // efectivo + ahorros (NO crédito)
   creditUtilization?: CreditUtilization | null;
   recurringPayments?: RecurringPayment[];
+  accounts?: readonly AccountPlanSnapshot[];
 }
 
 export interface FinancialPlan {
@@ -148,6 +167,9 @@ export interface FinancialPlan {
   topDrivers: PlanTopDriver[];
   actionItems: PlanActionItem[];
   recurringForecast: RecurringMonthForecast;
+  incomeInsight: IncomeInsight | null;
+  accountInsights: AccountPlanInsights;
+  detectedSubscriptions: DetectedSubscription[];
   analysisIsEstimated: boolean;
   analysisLabel: string;
   emergencyFund: EmergencyFund;
@@ -187,6 +209,7 @@ function buildSavingsGap(current: number, target: number): PlanGap {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const EMPTY_RECURRING_PAYMENTS: RecurringPayment[] = [];
+const EMPTY_ACCOUNTS: readonly AccountPlanSnapshot[] = [];
 
 function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -222,7 +245,12 @@ export function useFinancialPlan(
   config: PlanConfig | null,
   context: PlanContext = {},
 ): FinancialPlan | null {
-  const { liquidBalance = 0, creditUtilization = null, recurringPayments = EMPTY_RECURRING_PAYMENTS } = context;
+  const {
+    liquidBalance = 0,
+    creditUtilization = null,
+    recurringPayments = EMPTY_RECURRING_PAYMENTS,
+    accounts = EMPTY_ACCOUNTS,
+  } = context;
   return useMemo(() => {
     if (!config || !config.declaredIncome || config.declaredIncome <= 0) return null;
 
@@ -291,28 +319,34 @@ export function useFinancialPlan(
       ? completedMonths
       : (currentMonth && currentMonth.expenses > 0 ? [currentMonth] : []);
     if (analysisMonths.length === 0) return null;
-    const analysisMonthKeys = new Set(analysisMonths.map(m => m.key));
+    const analysisMonthKeyList = analysisMonths.map(m => m.key);
+    const analysisMonthKeys = new Set(analysisMonthKeyList);
     const analysisIsEstimated = numCompleted === 0;
     const analysisLabel = analysisIsEstimated
       ? 'Mes actual (estimado)'
       : `${numCompleted} ${numCompleted === 1 ? 'mes completo' : 'meses completos'}`;
     const monthsForAvg = Math.max(1, analysisMonths.length);
 
-    const avgMonthlyExpenses = analysisMonths.reduce((s, m) => s + m.expenses, 0) / monthsForAvg;
+    // Media Móvil Exponencial (EWMA) con atenuación de picos: da mayor peso a los
+    // meses recientes para que el plan aprenda cuando cambian los hábitos, y coincide
+    // exactamente con el promedio simple cuando el gasto es uniforme.
+    const expenseSeries = dampenOutliers(analysisMonths.map(m => m.expenses));
+    const avgMonthlyExpenses = computeNormalizedEwma(expenseSeries);
 
-    const avgMonthlySavings = analysisMonths.reduce((s, m) => s + m.savings, 0) / monthsForAvg;
+    const savingsSeries = analysisMonths.map((m, idx) => m.income - expenseSeries[idx]);
+    const avgMonthlySavings = computeNormalizedEwma(savingsSeries);
 
-    // Regla 50/30/20 (basado en meses completados o actual)
-    const totalNeeds = Array.from(monthsMap.entries())
-      .filter(([k]) => analysisMonthKeys.has(k))
-      .reduce((s, [, d]) => s + d.needs, 0);
-    const totalWants = Array.from(monthsMap.entries())
-      .filter(([k]) => analysisMonthKeys.has(k))
-      .reduce((s, [, d]) => s + d.wants, 0);
+    // Regla 50/30/20 (ponderada por EWMA sobre los meses analizados)
+    const needsSeries = dampenOutliers(
+      analysisMonthKeyList.map(k => monthsMap.get(k)?.needs ?? 0),
+    );
+    const wantsSeries = dampenOutliers(
+      analysisMonthKeyList.map(k => monthsMap.get(k)?.wants ?? 0),
+    );
 
     // Para porcentajes, usar siempre declaredIncome como referencia
-    const avgNeeds = totalNeeds / monthsForAvg;
-    const avgWants = totalWants / monthsForAvg;
+    const avgNeeds = computeNormalizedEwma(needsSeries);
+    const avgWants = computeNormalizedEwma(wantsSeries);
 
     const rule503020: Rule503020 = {
       needs: avgNeeds,
@@ -355,6 +389,7 @@ export function useFinancialPlan(
           dueDate,
           daysUntilDue,
           status,
+          accountId: payment.accountId,
         };
       })
       .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime() || b.amount - a.amount);
@@ -373,9 +408,32 @@ export function useFinancialPlan(
     const projectedNeeds = currentMonthData.needs + pendingNeeds;
     const projectedWants = currentMonthData.wants + pendingWants;
     const projectedSavings = declaredIncome - projectedExpenses;
+
+    // Proyección con burn-rate diario para los días restantes del mes
+    const daysInCurrentMonth = new Date(currentYear, currentMonthIndex + 1, 0).getDate();
+    const elapsedDays = Math.max(1, now.getDate());
+    const remainingDays = Math.max(0, daysInCurrentMonth - elapsedDays);
+    const scheduledMonthlyTotal = dueRecurringPayments.reduce((sum, { payment }) => sum + payment.amount, 0);
+    const historicalVariableMonthly = Math.max(0, avgMonthlyExpenses - scheduledMonthlyTotal);
+    const currentVariablePaid = relevantTx
+      .filter(
+        t =>
+          t.type === 'expense'
+          && monthKeyOf(new Date(t.date)) === currentKey
+          && !t.recurringPaymentId,
+      )
+      .reduce((sum, t) => sum + t.amount, 0);
+    const dailyVariableRate = currentVariablePaid > 0
+      ? (currentVariablePaid / elapsedDays) * 0.6 + (historicalVariableMonthly / daysInCurrentMonth) * 0.4
+      : historicalVariableMonthly / daysInCurrentMonth;
+    const realisticProjectedExpenses = Math.round(
+      projectedExpenses + dailyVariableRate * remainingDays,
+    );
+    const realisticProjectedSavings = declaredIncome - realisticProjectedExpenses;
+
     const recurringForecast: RecurringMonthForecast = {
       monthLabel: now.toLocaleDateString('es-CO', { month: 'long', year: 'numeric' }),
-      scheduledAmount: dueRecurringPayments.reduce((sum, { payment }) => sum + payment.amount, 0),
+      scheduledAmount: scheduledMonthlyTotal,
       pendingAmount,
       overdueAmount,
       projectedExpenses,
@@ -386,30 +444,30 @@ export function useFinancialPlan(
       projectedNeedsPct: declaredIncome > 0 ? Math.round((projectedNeeds / declaredIncome) * 100) : 0,
       projectedWantsPct: declaredIncome > 0 ? Math.round((projectedWants / declaredIncome) * 100) : 0,
       projectedSavingsGap: buildSavingsGap(projectedSavings, savingsTarget),
+      realisticProjectedExpenses,
+      realisticProjectedSavings,
       items: recurringItems,
     };
 
-    const categoryTotals = new Map<string, { spent: number; group: BudgetCategoryGroup }>();
-    relevantTx
-      .filter(t => t.type === 'expense' && analysisMonthKeys.has(monthKeyOf(new Date(t.date))))
-      .forEach(t => {
-        const group = classifyBudgetCategory(t.category);
-        const current = categoryTotals.get(t.category) || { spent: 0, group };
-        categoryTotals.set(t.category, { spent: current.spent + t.amount, group });
-      });
+    const categoryTrends = buildCategoryTrendInsights({
+      monthKeys: analysisMonthKeyList,
+      transactions: relevantTx,
+    });
 
     const gapForGroup = (group: BudgetCategoryGroup) =>
       group === 'need'
         ? (needsGap.status === 'over' ? needsGap.difference : 0)
         : (wantsGap.status === 'over' ? wantsGap.difference : 0);
 
-    const categorySummaries: PlanTopDriver[] = Array.from(categoryTotals.entries())
-      .map(([category, data]) => ({
-        category,
+    const categorySummaries: PlanTopDriver[] = Array.from(categoryTrends.values())
+      .map(data => ({
+        category: data.category,
         group: data.group,
-        spent: data.spent / monthsForAvg,
-        pctOfIncome: declaredIncome > 0 ? Math.round(((data.spent / monthsForAvg) / declaredIncome) * 100) : 0,
-        suggestedReduction: Math.min(data.spent / monthsForAvg, gapForGroup(data.group)),
+        spent: data.ewmaSpent,
+        pctOfIncome: declaredIncome > 0 ? Math.round((data.ewmaSpent / declaredIncome) * 100) : 0,
+        suggestedReduction: Math.min(data.ewmaSpent, gapForGroup(data.group)),
+        trend: data.trend,
+        trendSlopePct: data.trendSlopePct,
       }))
       .sort((a, b) => b.spent - a.spent);
 
@@ -557,6 +615,31 @@ export function useFinancialPlan(
       ? null
       : { dimension: weakest.dimension, ...NEXT_STEP[weakest.dimension] };
 
+    const completedRealIncomes = completedMonths.map(
+      m => monthsMap.get(m.key)?.income ?? 0,
+    );
+    const incomeInsight = detectIncomeInsight({
+      declaredIncome,
+      completedRealIncomes,
+      currentMonthRealIncome: currentMonthData.income,
+    });
+
+    const analysisExpenseTx = relevantTx.filter(
+      t => t.type === 'expense' && analysisMonthKeys.has(monthKeyOf(new Date(t.date))),
+    );
+    const accountInsights = buildAccountPlanInsights({
+      accounts,
+      pendingRecurringItems: recurringItems,
+      expenseTransactions: analysisExpenseTx,
+      monthsForAvg,
+    });
+
+    const detectedSubscriptions = detectHiddenSubscriptions({
+      transactions: relevantTx,
+      recurringPayments,
+      accounts,
+    });
+
     return {
       months,
       currentMonth,
@@ -569,6 +652,9 @@ export function useFinancialPlan(
       topDrivers,
       actionItems: actionItems.slice(0, 3),
       recurringForecast,
+      incomeInsight,
+      accountInsights,
+      detectedSubscriptions,
       analysisIsEstimated,
       analysisLabel,
       emergencyFund,
@@ -579,5 +665,5 @@ export function useFinancialPlan(
       avgMonthlySavings,
       trend,
     };
-  }, [transactions, config, liquidBalance, creditUtilization, recurringPayments]);
+  }, [transactions, config, liquidBalance, creditUtilization, recurringPayments, accounts]);
 }

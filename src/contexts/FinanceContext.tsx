@@ -156,13 +156,13 @@ export interface FinanceContextValue {
 
   // ── Debts CRUD ──
   debts: Debt[];
-  addDebt: (debt: Omit<Debt, 'id' | 'createdAt'>) => Promise<void>;
+  addDebt: (debt: Omit<Debt, 'id' | 'createdAt'>, existingTransactionId?: string) => Promise<void>;
   updateDebt: (id: string, updates: Partial<Debt>) => Promise<void>;
   deleteDebt: (id: string) => Promise<void>;
   reassignDebtAccount: (debtId: string, nextAccountId?: string) => Promise<void>;
-  registerDebtPayment: (debtId: string, amount: number) => Promise<void>;
+  registerDebtPayment: (debtId: string, amount: number, paymentAccountId?: string) => Promise<void>;
   linkDebtPayment: (debtId: string, transactionId: string, recurringCycle?: string) => Promise<void>;
-  payDebtCycle: (debtId: string, recurringCycle: string) => Promise<void>;
+  payDebtCycle: (debtId: string, recurringCycle: string, paymentAccountId?: string) => Promise<void>;
   modifyDebtBalance: (debtId: string, amount: number, operation: 'add' | 'subtract') => Promise<void>;
   forgiveDebt: (debtId: string, reason: 'unpaid' | 'gift' | 'other') => Promise<void>;
   getDebtTransactions: (debtId: string) => Transaction[];
@@ -316,13 +316,16 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     userId ? firestoreData.recurringPayments : undefined
   );
 
-  // 4. Categorías (depende de transactions)
-  const { categories, addCategory, deleteCategory } = useCategories(transactions, userId);
+  // 4. Categorías y beneficiarios (usan historial completo para proteger borrados)
+  const fullLedgerTransactions = balanceTransactions.length >= transactions.length
+    ? balanceTransactions
+    : transactions;
+  const { categories, addCategory, deleteCategory } = useCategories(fullLedgerTransactions, userId);
   const {
     beneficiaries: transactionBeneficiaries,
     addBeneficiary: addTransactionBeneficiary,
     deleteBeneficiary: deleteTransactionBeneficiary,
-  } = useBeneficiaries(transactions, userId);
+  } = useBeneficiaries(fullLedgerTransactions, userId);
 
   // 5. Deudas/Préstamos — uses centralized data when authenticated
   const {
@@ -339,7 +342,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     forgiveDebt,
     getDebtTransactions,
     stats: debtStats,
-  } = useDebts(userId, transactions, userId ? firestoreData.debts : undefined, {
+  } = useDebts(userId, fullLedgerTransactions, userId ? firestoreData.debts : undefined, {
     addTransaction,
     restoreTransaction,
     deleteTransaction,
@@ -361,13 +364,13 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
   const deleteTransactionWithDebtSync = useCallback(
     (id: string) => executeDebtAwareTransactionDelete(id, {
       userId,
-      transactions,
+      transactions: fullLedgerTransactions,
       debts,
       deleteTransaction,
       deleteDebt,
       updateDebt,
     }),
-    [transactions, debts, userId, deleteTransaction, deleteDebt, updateDebt]
+    [fullLedgerTransactions, debts, userId, deleteTransaction, deleteDebt, updateDebt]
   );
 
   const restoreTransactionWithDebtSync = useCallback(
@@ -389,7 +392,7 @@ export function FinanceProvider({ userId, children }: FinanceProviderProps) {
     deleteBudget,
     budgetStatuses,
     stats: budgetStats,
-  } = useBudgets(userId, transactions, userId ? firestoreData.budgets : undefined);
+  } = useBudgets(userId, fullLedgerTransactions, userId ? firestoreData.budgets : undefined);
 
   // 7. Metas de ahorro — uses centralized data when authenticated
   const {

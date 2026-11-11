@@ -16,7 +16,8 @@ import { LinkDebtPaymentModal } from './components/LinkDebtPaymentModal';
 import { DebtAccountDialog } from './components/DebtAccountDialog';
 import { NewDebtForm, type DebtFormErrors } from './components/NewDebtForm';
 import { FORGIVEN_LABELS } from './constants';
-import { createInitialDebtFormData } from './utils/debtForm';
+import { createInitialDebtFormData, getDebtFormFinancials } from './utils/debtForm';
+import { DebtFinancialDetails } from './components/DebtFinancialDetails';
 import {
   buildPaymentScheduleUpdates,
   createEmptyPaymentScheduleForm,
@@ -88,6 +89,16 @@ export const DebtsView: React.FC = () => {
       return;
     }
 
+    let financials;
+    try {
+      financials = getDebtFormFinancials(formData, accounts, balanceTransactions);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Revisa el interés del préstamo';
+      setNewDebtFormErrors({ interest: message });
+      showToast.error(message);
+      return;
+    }
+
     const paymentSchedule = buildPaymentScheduleUpdates(newDebtPaymentSchedule);
     if (paymentSchedule.error || !paymentSchedule.updates) {
       const message = paymentSchedule.error || 'Revisa la próxima fecha de pago';
@@ -102,15 +113,13 @@ export const DebtsView: React.FC = () => {
       await addDebt({
       personName: formData.personName.trim(),
       type: formData.type,
-      originalAmount: amount,
-      remainingAmount: amount,
+      ...financials,
       description: formData.description.trim() || undefined,
-      accountId: formData.accountId || undefined, // Convert empty string to undefined
       isSettled: false,
       lentDate: formData.lentDate ? parseDateFromInput(formData.lentDate) : undefined,
       dueDate: formData.dueDate ? parseDateFromInput(formData.dueDate) : undefined,
       ...paymentSchedule.updates,
-    });
+    }, formData.existingTransactionId || undefined);
 
     showToast.success(formData.type === 'lent' ? 'Préstamo registrado' : 'Deuda registrada');
     setFormData(createInitialDebtFormData());
@@ -314,6 +323,7 @@ export const DebtsView: React.FC = () => {
         {showForm && (
           <NewDebtForm
             accounts={accounts}
+            transactions={balanceTransactions}
             errors={newDebtFormErrors}
             formData={formData}
             isSubmitting={isSubmittingDebt}
@@ -337,7 +347,8 @@ export const DebtsView: React.FC = () => {
                 <DebtCard
                   key={debt.id}
                   debt={debt}
-                  formatCurrency={formatCurrency}
+                  account={accounts.find(account => account.id === debt.accountId)}
+                  formatCurrency={displayAmount}
                   onOpenPayment={setDebtToPay}
                   onDelete={handleDelete}
                   onChangeAccount={setDebtToReassign}
@@ -375,7 +386,8 @@ export const DebtsView: React.FC = () => {
                 <DebtCard
                   key={debt.id}
                   debt={debt}
-                  formatCurrency={formatCurrency}
+                  account={accounts.find(account => account.id === debt.accountId)}
+                  formatCurrency={displayAmount}
                   onOpenPayment={setDebtToPay}
                   onDelete={handleDelete}
                   onChangeAccount={setDebtToReassign}
@@ -424,7 +436,7 @@ export const DebtsView: React.FC = () => {
               <div className="mt-2 space-y-2">
                 {settledDebts.map(debt => (
                   <div key={debt.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                    <div>
+                    <div className="min-w-0">
                       <span className="text-sm font-medium text-gray-700 dark:text-gray-300 line-through">
                         {debt.personName}
                       </span>
@@ -434,6 +446,8 @@ export const DebtsView: React.FC = () => {
                           Condonada · {FORGIVEN_LABELS[debt.forgivenReason]}
                         </span>
                       )}
+                      <p className="mt-1 text-xs text-muted-foreground">{debt.type === 'lent' ? 'Yo presté' : 'Me prestaron'}</p>
+                      <DebtFinancialDetails debt={debt} account={accounts.find(account => account.id === debt.accountId)} formatAmount={displayAmount} />
                     </div>
                     <div className="flex items-center gap-1">
                       {debt.forgivenReason ? (
@@ -474,6 +488,7 @@ export const DebtsView: React.FC = () => {
         isOpen={!!debtToPay}
         debt={debtToPay}
         transactions={balanceTransactions}
+        accounts={accounts}
         formatCurrency={formatCurrency}
         onClose={() => setDebtToPay(null)}
         onRegister={registerDebtPayment}

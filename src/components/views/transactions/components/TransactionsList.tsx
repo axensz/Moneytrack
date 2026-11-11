@@ -5,6 +5,8 @@ import { ChevronDown, Loader2, AlertTriangle } from 'lucide-react';
 import { TransactionItem } from './TransactionItem';
 import { AdjustmentGroup } from './AdjustmentGroup';
 import { SPECIAL_CATEGORIES } from '../../../../config/constants';
+import { ensureDate } from '../../../../utils/dateUtils';
+import { formatDateForInput } from '../../../../utils/formatters';
 import type { Transaction, Account, Categories, TransactionBeneficiary } from '../../../../types/finance';
 
 const INITIAL_BATCH = 30;
@@ -112,14 +114,14 @@ export function TransactionsList({
         let i = 0;
         while (i < visible.length) {
             const t = visible[i];
-            const dateKey = new Date(t.date).toDateString();
+            const dateKey = formatDateForInput(ensureDate(t.date));
             if (SPECIAL_CATEGORIES.groupedAdjustmentCategories.includes(t.category)) {
                 // Collect all consecutive adjustments of the same day
                 const group: Transaction[] = [t];
                 let j = i + 1;
                 while (j < visible.length) {
                     const next = visible[j];
-                    if (new Date(next.date).toDateString() === dateKey && SPECIAL_CATEGORIES.groupedAdjustmentCategories.includes(next.category)) {
+                    if (formatDateForInput(ensureDate(next.date)) === dateKey && SPECIAL_CATEGORIES.groupedAdjustmentCategories.includes(next.category)) {
                         group.push(next);
                         j++;
                     } else {
@@ -141,13 +143,16 @@ export function TransactionsList({
         // Cabeceras de fecha + key, calculadas una sola vez por (transactions, count).
         let prevDateKey: string | null = null;
         return items.map((item) => {
+            const rawDate = item.type === 'transaction'
+                ? ensureDate(item.transaction.date)
+                : ensureDate(item.transactions[0].date);
             const currentDate = item.type === 'transaction'
-                ? new Date(item.transaction.date).toDateString()
+                ? formatDateForInput(rawDate)
                 : item.dateKey;
             const showDateHeader = currentDate !== prevDateKey;
             prevDateKey = currentDate;
             const headerLabel = showDateHeader
-                ? new Date(currentDate).toLocaleDateString('es-CO', {
+                ? rawDate.toLocaleDateString('es-CO', {
                     weekday: 'short',
                     year: 'numeric',
                     month: 'short',

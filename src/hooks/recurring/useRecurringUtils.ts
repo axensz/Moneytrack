@@ -135,14 +135,31 @@ export function useRecurringUtils(
   }, [transactions]);
 
   /**
-   * Obtener la transacción asociada a un pago para un mes
+   * Obtener la transacción asociada a un pago para el ciclo de facturación que
+   * contiene la fecha de referencia (consistente con isPaidForMonth).
+   * Si no se puede resolver el pago por id, cae al mes calendario.
    */
   const getPaymentTransactionForMonth = useCallback(
     (paymentId: string, month: Date = new Date()): Transaction | undefined => {
-      const key = `${month.getFullYear()}-${month.getMonth()}`;
-      return paymentTransactionsByMonth.get(key)?.get(paymentId);
+      const payment = paymentsById.get(paymentId);
+      if (!payment) {
+        const key = `${month.getFullYear()}-${month.getMonth()}`;
+        return paymentTransactionsByMonth.get(key)?.get(paymentId);
+      }
+
+      const list = transactionsByPaymentId.get(paymentId);
+      if (!list || list.length === 0) return undefined;
+
+      for (let i = list.length - 1; i >= 0; i -= 1) {
+        const transaction = list[i];
+        if (recurringTransactionSatisfiesCycle(payment, transaction, month)) {
+          return transaction;
+        }
+      }
+
+      return undefined;
     },
-    [paymentTransactionsByMonth]
+    [paymentsById, transactionsByPaymentId, paymentTransactionsByMonth]
   );
 
   /**

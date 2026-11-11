@@ -4,7 +4,9 @@ import { ACTION_ICONS } from '../../../../config/ui';
 import { ensureDate } from '../../../../utils/dateUtils';
 import { getDebtNextPaymentInfo } from '../../../../utils/debtPaymentSchedule';
 import { formatDate, formatNumberForInput, formatRelativeTime, unformatNumber } from '../../../../utils/formatters';
-import type { Debt } from '../../../../types/finance';
+import type { Account, Debt } from '../../../../types/finance';
+import { getDebtTotalAmount } from '../../../../utils/debtInterest';
+import { DebtFinancialDetails } from './DebtFinancialDetails';
 import { FORGIVEN_LABELS } from '../constants';
 import { PaymentScheduleFields } from './PaymentScheduleFields';
 import type { PaymentScheduleFormState } from '../utils/paymentScheduleForm';
@@ -13,6 +15,7 @@ const EditIcon = ACTION_ICONS.edit;
 
 export interface DebtCardProps {
   debt: Debt;
+  account?: Account;
   formatCurrency: (n: number) => string;
   onOpenPayment: (debt: Debt) => void;
   onDelete: (debt: Debt) => void;
@@ -37,6 +40,7 @@ export interface DebtCardProps {
 
 export const DebtCard: React.FC<DebtCardProps> = React.memo(({
   debt,
+  account,
   formatCurrency,
   onOpenPayment,
   onDelete,
@@ -58,8 +62,9 @@ export const DebtCard: React.FC<DebtCardProps> = React.memo(({
   onSavePaymentSchedule,
   setShowPaymentScheduleForm,
 }) => {
-  const progress = debt.originalAmount > 0
-    ? Math.round(((debt.originalAmount - debt.remainingAmount) / debt.originalAmount) * 100)
+  const totalAmount = getDebtTotalAmount(debt);
+  const progress = totalAmount > 0
+    ? Math.min(100, Math.max(0, Math.round(((totalAmount - debt.remainingAmount) / totalAmount) * 100)))
     : 0;
 
   const isLent = debt.type === 'lent';
@@ -98,15 +103,17 @@ export const DebtCard: React.FC<DebtCardProps> = React.memo(({
             <span className="text-lg font-bold text-gray-900 dark:text-gray-100">
               {formatCurrency(debt.remainingAmount)}
             </span>
-            {debt.remainingAmount !== debt.originalAmount && (
+            {debt.remainingAmount !== totalAmount && (
               <span className="text-xs text-muted-foreground line-through">
-                {formatCurrency(debt.originalAmount)}
+                {formatCurrency(totalAmount)}
               </span>
             )}
           </div>
 
+          <DebtFinancialDetails debt={debt} account={account} formatAmount={formatCurrency} />
+
           {/* Progress bar */}
-          {progress > 0 && (
+          {totalAmount > 0 && (
             <div className="mt-2">
               <div className="flex justify-between text-xs text-muted-foreground mb-1">
                 <span>{progress}% pagado</span>
@@ -139,6 +146,12 @@ export const DebtCard: React.FC<DebtCardProps> = React.memo(({
                   Vence el {formatDate(dueDate)}
                 </span>
               )
+            )}
+            {!debt.isSettled && debt.nextInterestDate && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md font-medium bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300">
+                <CalendarClock size={11} />
+                Próximo corte: {formatDate(ensureDate(debt.nextInterestDate))}
+              </span>
             )}
             {paymentInfo && paymentLabel && (
               <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md font-medium ${isPaymentOverdue

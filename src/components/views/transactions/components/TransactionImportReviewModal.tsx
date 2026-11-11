@@ -2,12 +2,18 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Smartphone } from 'lucide-react';
-import type { Account } from '../../../../types/finance';
+import type { Account, Transaction } from '../../../../types/finance';
 import type {
   PaymentInstrument,
   PendingTransactionImportCandidate,
 } from '../../../../types/transactionImport';
 import { confirmTransactionImport } from '../../../../hooks/firestore/transactionImportOrchestration';
+import {
+  buildMerchantAccountHistory,
+  buildMerchantCategoryHistory,
+  inferMerchantCategory,
+  resolveCandidateAccount,
+} from '../../../../utils/autoConfirmImport';
 import {
   formatCurrency,
   formatDateForInput,
@@ -31,10 +37,13 @@ interface TransactionImportReviewModalProps {
   accounts: readonly Account[];
   expenseCategories: readonly string[];
   instruments: readonly PaymentInstrument[];
+  transactions?: readonly Transaction[];
   isOnline: boolean;
   onClose: () => void;
   onConfirmed: () => void;
 }
+
+const EMPTY_TRANSACTIONS: readonly Transaction[] = [];
 
 export function TransactionImportReviewModal({
   isOpen,
@@ -43,6 +52,7 @@ export function TransactionImportReviewModal({
   accounts,
   expenseCategories,
   instruments,
+  transactions = EMPTY_TRANSACTIONS,
   isOnline,
   onClose,
   onConfirmed,
@@ -54,6 +64,14 @@ export function TransactionImportReviewModal({
     && expenseCategories.includes(candidate.suggestedCategory);
   const shortcutSuggestionIsStale = isShortcutCandidate
     && (!shortcutAccountExists || !shortcutCategoryExists);
+  const categoryHistory = useMemo(
+    () => buildMerchantCategoryHistory(transactions),
+    [transactions],
+  );
+  const accountHistory = useMemo(
+    () => buildMerchantAccountHistory(transactions),
+    [transactions],
+  );
   const match = useMemo<PaymentInstrumentMatch>(
     () => candidate.source === 'android-notification'
       ? matchPaymentInstrument({
@@ -62,6 +80,25 @@ export function TransactionImportReviewModal({
       }, instruments)
       : { status: 'none' },
     [candidate, instruments],
+  );
+  const resolvedAccount = useMemo(
+    () => resolveCandidateAccount({
+      candidate,
+      instruments,
+      accounts,
+      accountHistory,
+    }),
+    [candidate, instruments, accounts, accountHistory],
+  );
+  const inferredCategory = useMemo(
+    () => isShortcutCandidate
+      ? null
+      : inferMerchantCategory({
+        merchant: candidate.merchant,
+        expenseCategories,
+        history: categoryHistory,
+      }),
+    [candidate.merchant, categoryHistory, expenseCategories, isShortcutCandidate],
   );
   const [accountId, setAccountId] = useState('');
   const [category, setCategory] = useState('');
@@ -77,6 +114,7 @@ export function TransactionImportReviewModal({
   const submittingRef = useRef(false);
   const openCandidateIdRef = useRef<string | null>(null);
   const accountDirtyRef = useRef(false);
+  const categoryDirtyRef = useRef(false);
 
   useEffect(() => {
     if (!isOpen) {
@@ -87,16 +125,25 @@ export function TransactionImportReviewModal({
 
     openCandidateIdRef.current = candidate.id;
     accountDirtyRef.current = false;
+    categoryDirtyRef.current = false;
     setAccountId(
       shortcutAccountExists && candidate.source === 'android-shortcut'
         ? candidate.suggestedAccountId
-        : '',
+        : !isShortcutCandidate && resolvedAccount.status === 'matched'
+          ? resolvedAccount.accountId
+          : '',
     );
-    setPaymentInstrumentId(undefined);
+    setPaymentInstrumentId(
+      !isShortcutCandidate && resolvedAccount.status === 'matched'
+        ? resolvedAccount.instrumentId
+        : undefined,
+    );
     setCategory(
       shortcutCategoryExists && candidate.source === 'android-shortcut'
         ? candidate.suggestedCategory
-        : '',
+        : !isShortcutCandidate && inferredCategory
+          ? inferredCategory
+          : '',
     );
     setAmount(unformatNumber(formatNumberForInput(candidate.amountMinor / 100)));
     setMerchant(candidate.merchant);
@@ -107,7 +154,15 @@ export function TransactionImportReviewModal({
     setError(null);
     setSubmitting(false);
     submittingRef.current = false;
-  }, [candidate, isOpen, shortcutAccountExists, shortcutCategoryExists]);
+  }, [
+    candidate,
+    inferredCategory,
+    isOpen,
+    isShortcutCandidate,
+    resolvedAccount,
+    shortcutAccountExists,
+    shortcutCategoryExists,
+  ]);
 
   useEffect(() => {
     if (
@@ -117,11 +172,26 @@ export function TransactionImportReviewModal({
       || candidate.source === 'android-shortcut'
     ) return;
 
-    setAccountId(match.status === 'matched' ? match.accountId : '');
-    setPaymentInstrumentId(
-      match.status === 'matched' ? match.instrumentId : undefined,
+    setAccountId(
+      resolvedAccount.status === 'matched' ? resolvedAccount.accountId : '',
     );
-  }, [candidate.id, candidate.source, isOpen, match]);
+    setPaymentInstrumentId(
+      resolvedAccount.status === 'matched'
+        ? resolvedAccount.instrumentId
+        : undefined,
+    );
+  }, [candidate.id, candidate.source, isOpen, resolvedAccount]);
+
+  useEffect(() => {
+    if (
+      !isOpen
+      || openCandidateIdRef.current !== candidate.id
+      || categoryDirtyRef.current
+      || candidate.source === 'android-shortcut'
+    ) return;
+
+    setCategory(inferredCategory ?? '');
+  }, [candidate.id, candidate.source, inferredCategory, isOpen]);
 
   const selectedAccount = accounts.find(account => account.id === accountId);
   const parsedAmount = parseCurrency(amount);
@@ -243,12 +313,12 @@ export function TransactionImportReviewModal({
               Cuenta y categoría traídas desde Android. Revísalas antes de confirmar.
             </p>
           )}
-          {!isShortcutCandidate && match.status === 'matched' && (
+          {!isShortcutCandidate && resolvedAccount.status === 'matched' && (
             <p className="mt-1.5 text-xs text-success">
               Cuenta sugerida automáticamente.
             </p>
           )}
-          {!isShortcutCandidate && match.status === 'ambiguous' && (
+          {!isShortcutCandidate && (match.status === 'ambiguous' || resolvedAccount.status === 'ambiguous') && (
             <p className="mt-1.5 text-xs text-warning">
               Más de un medio activo coincide con los datos de Wallet. Elige la cuenta.
             </p>
@@ -258,7 +328,7 @@ export function TransactionImportReviewModal({
               Los datos de Wallet no coinciden con un único medio. Elige la cuenta.
             </p>
           )}
-          {!isShortcutCandidate && match.status === 'none' && (
+          {!isShortcutCandidate && match.status === 'none' && resolvedAccount.status === 'none' && (
             <p className="mt-1.5 text-xs text-muted-foreground">
               Elige la cuenta que realmente pagó la compra.
             </p>
@@ -273,13 +343,21 @@ export function TransactionImportReviewModal({
             id="import-category"
             className="input-base w-full"
             value={category}
-            onChange={event => setCategory(event.target.value)}
+            onChange={event => {
+              categoryDirtyRef.current = true;
+              setCategory(event.target.value);
+            }}
           >
             <option value="">Selecciona una categoría</option>
             {expenseCategories.map(expenseCategory => (
               <option key={expenseCategory} value={expenseCategory}>{expenseCategory}</option>
             ))}
           </select>
+          {!isShortcutCandidate && inferredCategory && category === inferredCategory && (
+            <p className="mt-1.5 text-xs text-success">
+              Categoría sugerida según el comercio.
+            </p>
+          )}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">

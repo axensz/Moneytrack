@@ -72,4 +72,27 @@ describe('reconcileUsedCredit', () => {
     expect(first).toBe(100000);
     expect(second).toBe(first);
   });
+
+  it('respeta checkpoints de balance-adjustment cuando la deuda previa no provenía de transacciones y suma movimientos posteriores', () => {
+    const survivors: CreditEffect[] = [
+      // Ajuste desde usedCredit inicial 400k a 250k (sin gastos previos en transacciones)
+      tx({
+        type: 'income',
+        amount: 150000,
+        accountId: 'tc1',
+        mutationKind: 'balance-adjustment',
+        expectedBefore: 400000,
+        targetBalance: 250000,
+        date: new Date('2026-06-10T10:00:00.000Z'),
+      }),
+      // Compra posterior al ajuste
+      tx({
+        type: 'expense',
+        amount: 80000,
+        accountId: 'tc1',
+        date: new Date('2026-06-11T10:00:00.000Z'),
+      }),
+    ];
+    expect(reconcileUsedCredit(['tc1'], survivors)).toBe(330000);
+  });
 });

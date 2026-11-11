@@ -58,7 +58,8 @@ export const AdjustmentGroup: React.FC<AdjustmentGroupProps> = ({
   return (
     <div className="border rounded-xl overflow-hidden border-[var(--border)] bg-card shadow-sm">
       <button
-        onClick={() => setExpanded(!isExpanded)}
+        type="button"
+        onClick={() => setExpanded(prev => !prev)}
         className="w-full flex items-center gap-3 p-3.5 hover:bg-[var(--muted)] transition-colors"
       >
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">

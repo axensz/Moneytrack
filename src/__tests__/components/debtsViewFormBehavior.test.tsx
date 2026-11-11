@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   debts: [] as Debt[],
   accounts: [] as Account[],
+  transactions: [] as import('../../types/finance').Transaction[],
 }));
 
 vi.mock('../../hooks/useFinanceSelectors', () => ({
@@ -37,7 +38,7 @@ vi.mock('../../hooks/useFinanceSelectors', () => ({
     accounts: mocks.accounts,
   }),
   useTransactionDomain: () => ({
-    balanceTransactions: [],
+    balanceTransactions: mocks.transactions,
   }),
 }));
 
@@ -56,6 +57,32 @@ describe('DebtsView - formulario nuevo', () => {
     vi.clearAllMocks();
     mocks.debts = [];
     mocks.accounts = [];
+    mocks.transactions = [];
+  });
+
+  it('convierte un porcentaje total en interés fijo y lo suma al saldo', async () => {
+    render(<DebtsView />);
+    fireEvent.click(screen.getByRole('button', { name: /nuevo/i }));
+    fireEvent.change(screen.getByPlaceholderText('Nombre de la persona'), { target: { value: 'Ana' } });
+    fireEvent.change(screen.getByPlaceholderText('Monto'), { target: { value: '100000' } });
+    fireEvent.change(screen.getByLabelText('Interés'), { target: { value: 'percentage' } });
+    fireEvent.change(screen.getByLabelText('Porcentaje total (%)'), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: /^registrar$/i }));
+    await waitFor(() => expect(mocks.addDebt).toHaveBeenCalledWith(expect.objectContaining({ originalAmount: 100000, remainingAmount: 110000, totalInterestAmount: 10000, interestRate: 10 }), undefined));
+  });
+
+  it('toma tarjeta, capital y cuotas de una transacción existente', async () => {
+    mocks.accounts = [{ id: 'card', name: 'Nu', type: 'credit', isDefault: false, initialBalance: 0 }];
+    mocks.transactions = [{ id: 'purchase', type: 'expense', amount: 100000, category: 'Otros', description: 'Compra Ana', date: new Date().toISOString() as unknown as Date, paid: true, accountId: 'card', installments: 3, hasInterest: true, totalInterestAmount: 3000, interestRate: 24 }];
+    render(<DebtsView />);
+    fireEvent.click(screen.getByRole('button', { name: /nuevo/i }));
+    fireEvent.change(screen.getByPlaceholderText('Nombre de la persona'), { target: { value: 'Ana' } });
+    fireEvent.change(screen.getByLabelText('Transacción existente (opcional)'), { target: { value: 'purchase' } });
+    expect(screen.getByLabelText(/Cuenta asociada/)).toHaveValue('card');
+    expect(screen.getByPlaceholderText('Monto')).toBeDisabled();
+    expect(screen.getByText(/3 cuotas/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^registrar$/i }));
+    await waitFor(() => expect(mocks.addDebt).toHaveBeenCalledWith(expect.objectContaining({ accountId: 'card', originalAmount: 100000, remainingAmount: 103000, totalInterestAmount: 3000, installments: 3 }), 'purchase'));
   });
 
   it('descarta el borrador al cancelar una deuda nueva', () => {

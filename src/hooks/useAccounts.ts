@@ -150,13 +150,13 @@ export function useAccounts(
         await safeFirestoreOperation(
           () => firestoreUpdateAccount(id, updates),
           'updateAccount',
-          { maxRetries: 2 }
+          { maxRetries: 2, retryRecoverableErrors: true }
         );
       } else {
         await safeFirestoreOperation(
           () => updateAccountWithBalanceTarget(userId, id, updates, targetBalance),
           'updateAccountWithBalanceTarget',
-          { maxRetries: 2 }
+          { maxRetries: 2, retryRecoverableErrors: true }
         );
       }
     } else {
@@ -382,6 +382,11 @@ export function useAccounts(
       )).filter(referenceId => referenceId !== destinationId),
       usedCredit: normalizedDesiredDebt ?? mergedUsedCredit,
       creditDebtModelVersion: CURRENT_CREDIT_DEBT_MODEL_VERSION,
+      ...(existingDestination
+        ? (existingDestination.paymentPairModelVersion !== undefined
+            ? { paymentPairModelVersion: existingDestination.paymentPairModelVersion }
+            : {})
+        : { paymentPairModelVersion: CURRENT_PAYMENT_PAIR_MODEL_VERSION }),
     };
 
     const migrateAccountReference = (accountId?: string): string | undefined => (
@@ -462,6 +467,8 @@ export function useAccounts(
           )).filter(referenceId => referenceId !== destinationId),
           usedCredit: normalizedDesiredDebt ?? localMergedUsedCredit,
           creditDebtModelVersion: CURRENT_CREDIT_DEBT_MODEL_VERSION,
+          paymentPairModelVersion: existingLocalDestination?.paymentPairModelVersion
+            ?? CURRENT_PAYMENT_PAIR_MODEL_VERSION,
         };
         const localDesiredDebtAdjustment = normalizedDesiredDebt === undefined
           ? null

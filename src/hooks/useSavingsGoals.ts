@@ -14,8 +14,8 @@ import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, d
 import { db } from '../lib/firebaseDb';
 import { useLocalStorage } from './useLocalStorage';
 import { logger } from '../utils/logger';
-import { generateId } from '../utils/formatters';
-import { stripUndefined } from '../utils/firestoreHelpers';
+import { generateId, roundMoney } from '../utils/formatters';
+import { checkNetworkConnection, safeFirestoreOperation, stripUndefined } from '../utils/firestoreHelpers';
 import type { SavingsGoal } from '../types/finance';
 
 export interface GoalStatus {
@@ -81,10 +81,15 @@ export function useSavingsGoals(userId: string | null, externalGoals?: SavingsGo
     const cleanGoal = stripUndefined(goal);
 
     if (userId) {
-      await addDoc(collection(db, `users/${userId}/savingsGoals`), {
-        ...cleanGoal,
-        createdAt: new Date(),
-      });
+      if (!checkNetworkConnection()) throw new Error('Sin conexión a internet');
+      await safeFirestoreOperation(
+        () => addDoc(collection(db, `users/${userId}/savingsGoals`), {
+          ...cleanGoal,
+          createdAt: new Date(),
+        }),
+        'addGoal',
+        { maxRetries: 2, retryRecoverableErrors: true }
+      );
     } else {
       const newGoal: SavingsGoal = { ...goal, id: generateId(), createdAt: new Date() };
       setLocalGoals(prev => [newGoal, ...prev]);
@@ -93,8 +98,13 @@ export function useSavingsGoals(userId: string | null, externalGoals?: SavingsGo
 
   const updateGoal = useCallback(async (id: string, updates: Partial<SavingsGoal>) => {
     if (userId) {
+      if (!checkNetworkConnection()) throw new Error('Sin conexión a internet');
       const cleanUpdates = stripUndefined(updates);
-      await updateDoc(doc(db, `users/${userId}/savingsGoals`, id), cleanUpdates);
+      await safeFirestoreOperation(
+        () => updateDoc(doc(db, `users/${userId}/savingsGoals`, id), cleanUpdates),
+        'updateGoal',
+        { maxRetries: 2, retryRecoverableErrors: true }
+      );
     } else {
       setLocalGoals(prev => prev.map(g => g.id === id ? { ...g, ...updates } : g));
     }
@@ -102,7 +112,12 @@ export function useSavingsGoals(userId: string | null, externalGoals?: SavingsGo
 
   const deleteGoal = useCallback(async (id: string) => {
     if (userId) {
-      await deleteDoc(doc(db, `users/${userId}/savingsGoals`, id));
+      if (!checkNetworkConnection()) throw new Error('Sin conexión a internet');
+      await safeFirestoreOperation(
+        () => deleteDoc(doc(db, `users/${userId}/savingsGoals`, id)),
+        'deleteGoal',
+        { maxRetries: 2, retryRecoverableErrors: true }
+      );
     } else {
       setLocalGoals(prev => prev.filter(g => g.id !== id));
     }
@@ -117,7 +132,7 @@ export function useSavingsGoals(userId: string | null, externalGoals?: SavingsGo
     const goal = goals.find(g => g.id === goalId);
     if (!goal) return;
 
-    const newCurrent = goal.currentAmount + amount;
+    const newCurrent = roundMoney(goal.currentAmount + amount);
     const isCompleted = newCurrent >= goal.targetAmount;
 
     await updateGoal(goalId, {
@@ -135,7 +150,7 @@ export function useSavingsGoals(userId: string | null, externalGoals?: SavingsGo
       const percentage = goal.targetAmount > 0
         ? Math.min(100, Math.round((goal.currentAmount / goal.targetAmount) * 100))
         : 0;
-      const remaining = Math.max(0, goal.targetAmount - goal.currentAmount);
+      const remaining = Math.max(0, roundMoney(goal.targetAmount - goal.currentAmount));
 
       let suggestedMonthly: number | null = null;
       let daysRemaining: number | null = null;

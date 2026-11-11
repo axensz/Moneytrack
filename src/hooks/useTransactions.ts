@@ -56,6 +56,21 @@ const safePaymentUpdates = (updates: Partial<Transaction>): Partial<Transaction>
   return safe;
 };
 
+const applyGuestTransactionPatch = (
+  transaction: Transaction,
+  updates: Partial<Transaction>
+): Transaction => {
+  const next: Record<string, unknown> = { ...transaction };
+  for (const [key, value] of Object.entries(updates)) {
+    if (value === null || value === undefined) {
+      delete next[key];
+    } else {
+      next[key] = value;
+    }
+  }
+  return next as unknown as Transaction;
+};
+
 /**
  * Orden de la lista de transacciones: fecha descendente y, como DESEMPATE,
  * createdAt descendente (lo recién creado primero).
@@ -387,8 +402,9 @@ export function useTransactions(userId: string | null) {
       await mutateGuestLedger(draft => {
         const transaction = draft.transactions.find(t => t.id === id);
         if (!transaction) return;
+        const patchedTarget = applyGuestTransactionPatch(transaction, updates);
         const debtUpdate = planDebtTransactionEdit(
-          transaction, { ...transaction, ...updates },
+          transaction, patchedTarget,
           draft.debts.find(debt => debt.id === transaction.debtId),
         );
         if (debtUpdate) {
@@ -397,15 +413,20 @@ export function useTransactions(userId: string | null) {
             : debt);
         }
         if (!transaction?.linkedTransactionId) {
-          draft.transactions = draft.transactions.map(t => t.id === id ? { ...t, ...updates } : t);
+          const safeTargetUpdates = transaction.type === 'transfer'
+            ? { ...updates, category: transaction.category }
+            : updates;
+          draft.transactions = draft.transactions.map(t =>
+            t.id === id ? applyGuestTransactionPatch(t, safeTargetUpdates) : t
+          );
           return;
         }
 
         const safeUpdates = safePaymentUpdates(updates);
         const linkedUpdates = linkedPaymentUpdates(safeUpdates);
         draft.transactions = draft.transactions.map(t => {
-          if (t.id === id) return { ...t, ...safeUpdates };
-          if (t.id === transaction.linkedTransactionId) return { ...t, ...linkedUpdates };
+          if (t.id === id) return applyGuestTransactionPatch(t, safeUpdates);
+          if (t.id === transaction.linkedTransactionId) return applyGuestTransactionPatch(t, linkedUpdates);
           return t;
         });
       }, { operationId: `guest-update:${id}:${generateId()}` });

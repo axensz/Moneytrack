@@ -409,4 +409,24 @@ describe('useBalanceTransactions — fuente de saldos bajo paginación', () => {
     expect(result.current.transactions).toEqual([recent]);
     expect(result.current.ready).toBe(true);
   });
+
+  it('mantiene ready=true en un head exhaustivo confirmado mientras una escritura local está pendiente', () => {
+    const recent = tx('t1');
+    const localAdjustment = tx('adj-1', { amount: 500 });
+    const { result, rerender } = renderHook(
+      ({ live, serverSettled, headExhaustive }) =>
+        useBalanceTransactions('user1', live, serverSettled, headExhaustive),
+      { initialProps: { live: [recent], serverSettled: true, headExhaustive: true } },
+    );
+
+    expect(result.current.ready).toBe(true);
+    expect(result.current.currentServerSettled).toBe(true);
+
+    rerender({ live: [recent, localAdjustment], serverSettled: false, headExhaustive: false });
+
+    expect(result.current.ready).toBe(true);
+    expect(result.current.currentServerSettled).toBe(false);
+    expect(subscriptionCount).toBe(0);
+    expect(result.current.transactions).toEqual([recent, localAdjustment]);
+  });
 });

@@ -486,6 +486,28 @@ service cloud.firestore {
         && (!('exchangeRate' in data.keys()) || (data.exchangeRate is number && data.exchangeRate > 0));
     }
 
+    function debtTotalAmount(data) {
+      return data.originalAmount + data.get('totalInterestAmount', 0);
+    }
+
+    function hasValidDebtInterest(data) {
+      return (!('totalInterestAmount' in data.keys())
+          || (data.totalInterestAmount is number && data.totalInterestAmount >= 0 && data.totalInterestAmount <= 1000000000))
+        && (!('interestMode' in data.keys()) || data.interestMode in ['fixed', 'percentage', 'card'])
+        && (!('interestRate' in data.keys()) || (data.interestRate is number && data.interestRate >= 0 && data.interestRate <= 200))
+        && (!('installments' in data.keys()) || (data.installments is int && data.installments >= 1 && data.installments <= 36))
+        && (!('monthlyInstallmentAmount' in data.keys()) || (data.monthlyInstallmentAmount is number && data.monthlyInstallmentAmount >= 0 && data.monthlyInstallmentAmount <= 1000000000))
+        && (!('interestAccrual' in data.keys()) || data.interestAccrual in ['upfront', 'monthly'])
+        && (!('interestCutoffDay' in data.keys()) || (data.interestCutoffDay is int && data.interestCutoffDay >= 1 && data.interestCutoffDay <= 31))
+        && (!('nextInterestDate' in data.keys()) || data.nextInterestDate is timestamp)
+        && (data.get('interestAccrual', 'upfront') != 'monthly'
+          || (data.get('interestMode', 'fixed') in ['percentage', 'card']
+            && 'interestRate' in data.keys()
+            && 'interestCutoffDay' in data.keys()
+            && 'nextInterestDate' in data.keys()))
+        && debtTotalAmount(data) <= 1000000000;
+    }
+
     // Helper: validate optional payment mapping fields on debts/loans
     function hasValidDebtPaymentSchedule(data) {
       return (!('expectedPaymentDay' in data.keys())
@@ -750,7 +772,8 @@ service cloud.firestore {
           && isValidAmount(request.resource.data.originalAmount)
           && request.resource.data.remainingAmount is number
           && request.resource.data.remainingAmount >= 0
-          && request.resource.data.remainingAmount <= request.resource.data.originalAmount
+          && hasValidDebtInterest(request.resource.data)
+          && request.resource.data.remainingAmount <= debtTotalAmount(request.resource.data)
           && request.resource.data.isSettled is bool
           && request.resource.data.createdAt is timestamp
           && hasValidOptionalAccountReference(
@@ -768,7 +791,8 @@ service cloud.firestore {
           && isValidAmount(request.resource.data.originalAmount)
           && request.resource.data.remainingAmount is number
           && request.resource.data.remainingAmount >= 0
-          && request.resource.data.remainingAmount <= request.resource.data.originalAmount
+          && hasValidDebtInterest(request.resource.data)
+          && request.resource.data.remainingAmount <= debtTotalAmount(request.resource.data)
           && updatedAccountReferenceIsValid(userId, 'accountId')
           && hasValidDebtPaymentSchedule(request.resource.data);
 
@@ -832,6 +856,30 @@ service cloud.firestore {
             && data.revision is int;
         }
 
+        // A versioned event authored by the CLIENT foreground writer. The writer
+        // namespaces are reserved (see functions/src/notifications/authority.ts):
+        // `foreground:guest:`, `foreground:compat:` and `foreground:vN:`. Backend
+        // (durable) events use the bare canonical prefixes, so a client can never
+        // create, overwrite or advance a server-authored event through this path.
+        function isForegroundEvent(data) {
+          return isVersionedResource(data)
+            && data.eventKey.size() <= 300
+            && data.eventKey.matches('foreground:(guest|compat|v[0-9]+):.+');
+        }
+
+        // Shape every client-authored (legacy or foreground) event must keep.
+        function clientEventShapeValid(data) {
+          return data.type in ['budget', 'recurring', 'unusual_spending', 'low_balance', 'debt', 'info']
+            && data.title is string
+            && data.title.size() > 0
+            && data.title.size() <= 200
+            && data.message is string
+            && data.message.size() > 0
+            && data.message.size() <= 500
+            && data.severity in ['info', 'warning', 'error', 'success']
+            && data.isRead is bool;
+        }
+
         // A client update on a versioned event may only change read-state and
         // dismissal fields, and only to the CURRENT revision. Every other field
         // (including the immutable backend marker) must stay unchanged.
@@ -850,18 +898,15 @@ service cloud.firestore {
 
         allow read: if isOwner(userId);
 
-        // Only legacy (non-versioned) events may be client-created.
+        // Legacy (non-versioned) events, or versioned events in the reserved
+        // client `foreground:` namespace, may be client-created. Any other
+        // versioned event is backend-authored and denied.
         allow create: if isOwner(userId)
-          && !isVersionedResource(request.resource.data)
-          && request.resource.data.type in ['budget', 'recurring', 'unusual_spending', 'low_balance', 'debt', 'info']
-          && request.resource.data.title is string
-          && request.resource.data.title.size() > 0
-          && request.resource.data.title.size() <= 200
-          && request.resource.data.message is string
-          && request.resource.data.message.size() > 0
-          && request.resource.data.message.size() <= 500
-          && request.resource.data.severity in ['info', 'warning', 'error', 'success']
-          && request.resource.data.isRead is bool
+          && (
+            !isVersionedResource(request.resource.data)
+            || isForegroundEvent(request.resource.data)
+          )
+          && clientEventShapeValid(request.resource.data)
           && request.resource.data.createdAt is timestamp;
 
         // AUDIT-FIX (#30): update endurecido (espeja create). En la práctica la app
@@ -877,6 +922,18 @@ service cloud.firestore {
           && (
             // Versioned events: only read/dismissal at the current revision.
             (isVersionedResource(resource.data) && versionedReadDismissUpdateAllowed())
+            // Client foreground-namespace events: the writer may advance or
+            // resolve its OWN event. Identity (eventKey, schemaVersion, type)
+            // is immutable and the revision can only move forward.
+            || (
+              isForegroundEvent(resource.data)
+              && isForegroundEvent(request.resource.data)
+              && request.resource.data.eventKey == resource.data.eventKey
+              && request.resource.data.schemaVersion == resource.data.schemaVersion
+              && request.resource.data.type == resource.data.type
+              && request.resource.data.revision >= resource.data.revision
+              && clientEventShapeValid(request.resource.data)
+            )
             // Legacy events keep the existing hardened field validation.
             || (
               !isVersionedResource(resource.data)
@@ -933,7 +990,8 @@ service cloud.firestore {
       }
       // Server-owned runtime authority state (generation, activation).
       match /notificationRuntime/{docId} {
-        allow read, write: if false;
+        allow get: if isOwner(userId) && docId == 'state';
+        allow list, write: if false;
       }
 
       // Ajustes del usuario. Validados ESTRICTAMENTE por documento; cualquier otro

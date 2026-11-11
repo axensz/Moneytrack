@@ -88,4 +88,22 @@ describe('useBudgetRecommendations', () => {
       reason: '30% de tu sueldo, distribuido entre 1 categoría de gustos',
     });
   });
+
+  it('distribuye proporcionalmente según peso histórico EWMA y rigidez cuando los gastos son normales', () => {
+    const transactions: Transaction[] = [
+      tx({ date: new Date('2026-05-10'), amount: 1_400_000, category: 'Vivienda' }),
+      tx({ date: new Date('2026-05-10'), amount: 400_000, category: 'Transporte' }),
+      tx({ date: new Date('2026-06-10'), amount: 1_500_000, category: 'Vivienda' }),
+      tx({ date: new Date('2026-06-10'), amount: 400_000, category: 'Transporte' }),
+    ];
+
+    const { result } = renderHook(() => useBudgetRecommendations(transactions, budgets, 4_000_000));
+    const byCategory = new Map(result.current!.recommendations.map(r => [r.category, r]));
+
+    const vivienda = byCategory.get('Vivienda')!;
+    const transporte = byCategory.get('Transporte')!;
+    expect(vivienda.suggestedLimit).toBeGreaterThan(transporte.suggestedLimit);
+    expect(vivienda.suggestedLimit + transporte.suggestedLimit).toBeLessThanOrEqual(2_000_000);
+    expect(vivienda.reason).toContain('ponderado según tu hábito reciente');
+  });
 });

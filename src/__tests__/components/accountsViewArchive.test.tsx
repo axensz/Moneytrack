@@ -126,6 +126,23 @@ vi.mock('../../components/views/accounts/components/AccountCard', () => ({
   ),
 }));
 
+// Las archivadas usan la fila resumida (no AccountCard): mismo contrato para el
+// test, nombre + acción de desarchivar.
+vi.mock('../../components/views/accounts/components/ArchivedAccountRow', () => ({
+  ArchivedAccountRow: ({
+    account,
+    onUnarchive,
+  }: {
+    account: Account;
+    onUnarchive: () => void;
+  }) => (
+    <li data-testid={`card-${account.id}`}>
+      <span>{account.name}</span>
+      <button type="button" onClick={onUnarchive}>unarchive-{account.id}</button>
+    </li>
+  ),
+}));
+
 vi.mock('../../components/views/accounts/components/PaymentInstrumentsSection', () => ({
   PaymentInstrumentsSection: () => null,
 }));

@@ -27,17 +27,6 @@ class CaptureSetupFlowTest {
         )
     }
 
-    /**
-     * Insumo RESUELTO (tarea 3.2 / 4): el parámetro que consume `resolve` representa el estado de
-     * conexión resuelto (`listenerActive`), derivado por el caller desde
-     * `NotificationAccess.connectionState(...)` con el mapeo CONNECTED/CONNECTING -> true y
-     * DISCONNECTED -> false. Con todo lo demás en orden:
-     *  - `listenerActive = true` (CONNECTED/CONNECTING) -> READY (un reciclado transitorio cubierto
-     *    por la ventana de gracia NO fuerza LISTENER_CONNECTION).
-     *  - `listenerActive = false` (DISCONNECTED genuino tras la gracia) -> LISTENER_CONNECTION como
-     *    señal genuina.
-     * La prioridad de pasos y la cláusula `when` no cambian; solo cambia el SIGNIFICADO del insumo.
-     */
     @Test
     fun `insumo resuelto activo resuelve READY y no muestra LISTENER_CONNECTION`() {
         assertEquals(
@@ -47,7 +36,7 @@ class CaptureSetupFlowTest {
                 access = true,
                 enabled = true,
                 sources = setOf("wallet"),
-                listenerConnected = true, // CONNECTED/CONNECTING -> listenerActive = true
+                listenerConnected = true, // Confirmed CONNECTED callback
             ),
         )
     }

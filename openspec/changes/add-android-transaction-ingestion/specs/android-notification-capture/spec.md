@@ -148,8 +148,22 @@ El compañero MUST persistir un estado local por candidato antes de iniciar la e
 El compañero MUST comunicar sesión, acceso a notificaciones, captura activa y fuentes seleccionadas en la etapa o resumen correspondiente, y MUST ofrecer las acciones aplicables para iniciar/cerrar sesión, abrir ajustes y abrir la PWA; MUST NOT exponer códigos técnicos ni un bloque de último resultado en la interfaz normal.
 
 #### Scenario: Configuración lista
-- **WHEN** existe sesión, permiso y al menos una fuente seleccionada
+- **WHEN** existe sesión, permiso vigente, captura habilitada, al menos una fuente seleccionada y Android confirmó la conexión del listener sin una desconexión posterior
 - **THEN** la pantalla indica “Configuración completa” y “Captura activa”, muestra qué aplicaciones están habilitadas y ofrece administrarlas
+
+#### Scenario: Reconexión sin confirmar
+- **WHEN** existe permiso y se solicita reconectar un listener desconectado
+- **THEN** la pantalla muestra `Conectando la captura` durante un máximo de nueve segundos y nunca declara `Captura activa` antes del callback de conexión
+- **AND** consultar o volver a dibujar el estado no solicita ni prolonga la reconexión
+
+#### Scenario: Android no confirma la reconexión
+- **WHEN** vence la espera sin callback de conexión o Android rechaza la solicitud
+- **THEN** la pantalla visible cambia automáticamente a `Reactiva la captura`, ofrece abrir los ajustes y explica cómo reactivar el acceso
+- **AND** una nueva solicitud explícita al reanudar la Activity puede iniciar otro intento acotado
+
+#### Scenario: Permiso revocado con conexión recordada
+- **WHEN** el permiso actual está desactivado aunque la memoria del proceso conserve una conexión anterior
+- **THEN** el estado es desconectado y la pantalla solicita acceso sin declarar captura activa
 
 #### Scenario: Administrar fuentes desde el estado listo
 - **WHEN** la persona abre `Administrar aplicaciones`, activa o desactiva fuentes descubiertas y guarda

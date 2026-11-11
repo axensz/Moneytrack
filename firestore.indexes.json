@@ -1,6 +1,20 @@
 {
     "indexes": [
         {
+            "collectionGroup": "debts",
+            "queryScope": "COLLECTION_GROUP",
+            "fields": [
+                {
+                    "fieldPath": "interestAccrual",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "nextInterestDate",
+                    "order": "ASCENDING"
+                }
+            ]
+        },
+        {
             "collectionGroup": "notifications",
             "queryScope": "COLLECTION",
             "fields": [

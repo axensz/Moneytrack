@@ -391,7 +391,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
           decoded.issues,
         ));
 
-        if (paginationStartedRef.current) {
+        if (paginationStartedRef.current || realtimeTransactionsRef.current.length >= PAGE_SIZE) {
           const previousRealtimeTransactions = realtimeTransactionsRef.current;
           setOlderTransactions(previous => reconcileRealtimeHeadCache(
             previous,
@@ -488,6 +488,7 @@ export function useFirestoreSubscriptions(userId: string | null): FirestoreData 
           lentDate: d.data().lentDate?.toDate() || undefined,
           dueDate: d.data().dueDate?.toDate() || undefined,
           nextPaymentDate: d.data().nextPaymentDate?.toDate() || undefined,
+          nextInterestDate: d.data().nextInterestDate?.toDate() || undefined,
         })) as Debt[]);
         loadedCollections.current.debts = true;
         markNotificationSource('debts', userId);

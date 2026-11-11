@@ -6,11 +6,21 @@
 import { getGeminiClient, isAiEnabled } from './geminiClient';
 import { getGeminiModel } from './geminiConfig';
 import type { Content, FunctionCall, FunctionCallingConfigMode, GenerateContentResponse } from '@google/genai';
-import type { Transaction, Account, Categories } from '../types/finance';
+import type {
+  Transaction,
+  Account,
+  Categories,
+  Budget,
+  RecurringPayment,
+  Debt,
+  SavingsGoal,
+} from '../types/finance';
 import { formatCurrency } from '../utils/formatters';
+import { ensureDate } from '../utils/dateUtils';
 import { BalanceCalculator } from '../utils/balanceCalculator';
 import { getCreditCardUsedCredit } from '../utils/accountStrategies';
 import { findAccountForTransaction } from '../utils/accountTransactions';
+import { detectHiddenSubscriptions } from '../utils/financialPlanIntelligence';
 import { logger } from '../utils/logger';
 import { SPECIAL_CATEGORIES } from '../config/constants';
 
@@ -28,6 +38,37 @@ export type ChatAction =
         accountName: string;
         paid: boolean;
         date?: string; // ISO string, defaults to today
+      };
+    }
+  | {
+      type: 'add_transfer';
+      data: {
+        fromAccountId: string;
+        fromAccountName: string;
+        toAccountId: string;
+        toAccountName: string;
+        amount: number;
+        description: string;
+        date?: string;
+      };
+    }
+  | {
+      type: 'upsert_budget';
+      data: {
+        category: string;
+        amount: number;
+      };
+    }
+  | {
+      type: 'add_recurring_payment';
+      data: {
+        name: string;
+        amount: number;
+        category: string;
+        dueDay: number;
+        frequency: 'monthly' | 'yearly';
+        accountId?: string;
+        accountName?: string;
       };
     }
   | {
@@ -73,8 +114,12 @@ export interface ChatMessage {
   tokenUsage?: TokenUsage;
 }
 
-interface FinancialContextOptions {
+export interface FinancialContextOptions {
   includeRecentTransactions?: boolean;
+  budgets?: Budget[];
+  recurringPayments?: RecurringPayment[];
+  debts?: Debt[];
+  savingsGoals?: SavingsGoal[];
 }
 
 export function isGeminiConfigured(): boolean {
@@ -239,6 +284,65 @@ export function buildFinancialContext(
   // --- CATEGORÍAS DISPONIBLES ---
   const cats = `Gastos: ${categories.expense.join(', ')}\nIngresos: ${categories.income.join(', ')}`;
 
+  // --- 🎯 PRESUPUESTOS MENSUALES ---
+  const activeBudgets = (options.budgets ?? []).filter(b => b.isActive);
+  const budgetsSummary = activeBudgets
+    .map(b => {
+      const catData = expensesByCategory[b.category];
+      const spent = catData ? catData.paid + catData.pending : 0;
+      const pct = b.monthlyLimit > 0 ? Math.round((spent / b.monthlyLimit) * 100) : 0;
+      const alert = pct >= 100 ? ' [⚠️ EXCEDIDO]' : pct >= 85 ? ' [⚡ CERCA DEL LÍMITE]' : '';
+      return `  - ${b.category}: ${formatCurrency(spent)} / ${formatCurrency(b.monthlyLimit)} (${pct}%)${alert}`;
+    })
+    .join('\n');
+
+  // --- 🔄 PAGOS PERIÓDICOS Y SUSCRIPCIONES ---
+  const activeRecurring = (options.recurringPayments ?? []).filter(r => r.isActive);
+  const recurringSummary = activeRecurring
+    .map(r => {
+      const account = r.accountId ? findAccountForTransaction(accounts, r.accountId) : undefined;
+      const paidThisMonth = monthlyTransactions.some(
+        t => t.recurringPaymentId === r.id || (t.category === r.category && t.description.toLowerCase().includes(r.name.toLowerCase()))
+      );
+      const status = paidThisMonth ? '✓ Pagado este mes' : `⏳ Vence día ${r.dueDay}`;
+      const freqLabel = r.frequency === 'yearly' ? 'Anual' : 'Mensual';
+      return `  - ${r.name}: ${formatCurrency(r.amount)} (${freqLabel}, ${r.category}${account ? `, ${account.name}` : ''}) — ${status}`;
+    })
+    .join('\n');
+
+  // --- 🤝 PRÉSTAMOS Y DEUDAS PERSONALES ---
+  const activeDebts = (options.debts ?? []).filter(d => !d.isSettled && d.remainingAmount > 0);
+  const debtsSummary = activeDebts
+    .map(d => {
+      const kind = d.type === 'lent' ? 'Me deben' : 'Yo debo';
+      const dueNote = d.dueDate
+        ? ` | Vence: ${ensureDate(d.dueDate).toLocaleDateString('es-CO')}`
+        : d.expectedPaymentDay
+          ? ` | Pago esperado: día ${d.expectedPaymentDay}`
+          : '';
+      return `  - [${kind}] ${d.personName}: ${formatCurrency(d.remainingAmount)} pendiente de ${formatCurrency(d.originalAmount)}${d.description ? ` (${d.description})` : ''}${dueNote}`;
+    })
+    .join('\n');
+
+  // --- 🏆 METAS DE AHORRO ---
+  const activeGoals = (options.savingsGoals ?? []).filter(g => !g.isCompleted);
+  const goalsSummary = activeGoals
+    .map(g => {
+      const pct = g.targetAmount > 0 ? Math.round((g.currentAmount / g.targetAmount) * 100) : 0;
+      return `  - ${g.name}: ${formatCurrency(g.currentAmount)} / ${formatCurrency(g.targetAmount)} (${pct}%)`;
+    })
+    .join('\n');
+
+  // --- 🧠 DETECCIÓN DE CARGOS REPETIDOS / SUSCRIPCIONES OCULTAS ---
+  const hiddenSubs = detectHiddenSubscriptions({
+    transactions: realTransactions,
+    recurringPayments: options.recurringPayments ?? [],
+  });
+  const hiddenSubsSummary = hiddenSubs
+    .slice(0, 5)
+    .map(s => `  - ${s.merchant}: ~${formatCurrency(s.estimatedAmount)}/mes (${s.monthsDetected} meses en ${s.category})`)
+    .join('\n');
+
   return `
 CONTEXTO FINANCIERO DEL USUARIO (${now.toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })}):
 Fecha actual: ${now.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
@@ -273,6 +377,19 @@ ${categoryBreakdown || '  (Sin gastos este mes)'}
 🏦 CUENTAS:
 ${accountsSummary || '  (Sin cuentas)'}
 
+🎯 PRESUPUESTOS ACTIVOS ESTE MES:
+${budgetsSummary || '  (Sin presupuestos configurados)'}
+
+🔄 PAGOS PERIÓDICOS Y SUSCRIPCIONES:
+${recurringSummary || '  (Sin pagos periódicos registrados)'}
+${hiddenSubsSummary ? `\n🔍 CARGOS REPETIDOS DETECTADOS (posibles suscripciones sin registrar):\n${hiddenSubsSummary}` : ''}
+
+🤝 PRÉSTAMOS Y DEUDAS ACTIVAS:
+${debtsSummary || '  (Sin préstamos ni deudas pendientes)'}
+
+🏆 METAS DE AHORRO ACTIVAS:
+${goalsSummary || '  (Sin metas de ahorro activas)'}
+
 📋 ÚLTIMAS 20 TRANSACCIONES:
 ${recentTx || '  (Sin transacciones)'}
 
@@ -285,6 +402,9 @@ Total de transacciones históricas: ${transactions.length} (reales: ${realTransa
 
 const ACTION_FUNCTION_NAMES = [
   'add_transaction',
+  'add_transfer',
+  'upsert_budget',
+  'add_recurring_payment',
   'update_category',
   'bulk_update_category',
   'add_category',
@@ -316,6 +436,55 @@ const CHAT_ACTION_FUNCTION_DEFINITIONS = [
         date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
       },
       required: ['txType', 'amount', 'category', 'description', 'accountId', 'accountName', 'paid'],
+    },
+  },
+  {
+    name: 'add_transfer',
+    description: 'Prepare a transfer between two user accounts for the user to confirm in MoneyTrack.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        fromAccountId: { type: 'string', minLength: 1 },
+        fromAccountName: { type: 'string', minLength: 1 },
+        toAccountId: { type: 'string', minLength: 1 },
+        toAccountName: { type: 'string', minLength: 1 },
+        amount: { type: 'number', minimum: 1 },
+        description: { type: 'string', minLength: 1, maxLength: 500 },
+        date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+      },
+      required: ['fromAccountId', 'fromAccountName', 'toAccountId', 'toAccountName', 'amount', 'description'],
+    },
+  },
+  {
+    name: 'upsert_budget',
+    description: 'Prepare creating or updating a monthly spending budget for a specific expense category.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        category: { type: 'string', minLength: 1, maxLength: 100 },
+        amount: { type: 'number', minimum: 1 },
+      },
+      required: ['category', 'amount'],
+    },
+  },
+  {
+    name: 'add_recurring_payment',
+    description: 'Prepare a new recurring payment or subscription (monthly or yearly) for the user to confirm.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        name: { type: 'string', minLength: 1, maxLength: 120 },
+        amount: { type: 'number', minimum: 1 },
+        category: { type: 'string', minLength: 1, maxLength: 100 },
+        dueDay: { type: 'number', minimum: 1, maximum: 31 },
+        frequency: { type: 'string', enum: ['monthly', 'yearly'] },
+        accountId: { type: 'string', minLength: 1 },
+        accountName: { type: 'string', minLength: 1 },
+      },
+      required: ['name', 'amount', 'category', 'dueDay', 'frequency'],
     },
   },
   {
@@ -441,6 +610,82 @@ export function parseActionFromFunctionCall(call: FunctionCall): ChatAction | un
         },
       };
     }
+    case 'add_transfer': {
+      const fromAccountId = stringValue(args.fromAccountId);
+      const fromAccountName = stringValue(args.fromAccountName);
+      const toAccountId = stringValue(args.toAccountId);
+      const toAccountName = stringValue(args.toAccountName);
+      const amount = numberValue(args.amount);
+      const description = stringValue(args.description);
+      const date = stringValue(args.date);
+      if (
+        !fromAccountId ||
+        !fromAccountName ||
+        !toAccountId ||
+        !toAccountName ||
+        fromAccountId === toAccountId ||
+        !amount ||
+        amount <= 0 ||
+        !description
+      ) {
+        return undefined;
+      }
+      return {
+        type: 'add_transfer',
+        data: {
+          fromAccountId,
+          fromAccountName,
+          toAccountId,
+          toAccountName,
+          amount,
+          description,
+          ...(date ? { date } : {}),
+        },
+      };
+    }
+    case 'upsert_budget': {
+      const category = stringValue(args.category);
+      const amount = numberValue(args.amount);
+      if (!category || !amount || amount <= 0) return undefined;
+      return {
+        type: 'upsert_budget',
+        data: { category, amount },
+      };
+    }
+    case 'add_recurring_payment': {
+      const name = stringValue(args.name);
+      const amount = numberValue(args.amount);
+      const category = stringValue(args.category);
+      const dueDay = numberValue(args.dueDay);
+      const frequency = args.frequency === 'monthly' || args.frequency === 'yearly' ? args.frequency : null;
+      const accountId = stringValue(args.accountId);
+      const accountName = stringValue(args.accountName);
+      if (
+        !name ||
+        !amount ||
+        amount <= 0 ||
+        !category ||
+        !dueDay ||
+        !Number.isInteger(dueDay) ||
+        dueDay < 1 ||
+        dueDay > 31 ||
+        !frequency
+      ) {
+        return undefined;
+      }
+      return {
+        type: 'add_recurring_payment',
+        data: {
+          name,
+          amount,
+          category,
+          dueDay,
+          frequency,
+          ...(accountId ? { accountId } : {}),
+          ...(accountName ? { accountName } : {}),
+        },
+      };
+    }
     case 'update_category': {
       const transactionId = stringValue(args.transactionId);
       const oldCategory = stringValue(args.oldCategory);
@@ -540,18 +785,18 @@ TU PERSONALIDAD:
 - Eres CONCISO pero con datos concretos
 
 TUS CAPACIDADES:
-1. ANALIZAR las finanzas del usuario con datos concretos (montos, porcentajes, tendencias)
-2. COMPARAR meses y detectar patrones de gasto
+1. ANALIZAR las finanzas 360° del usuario (transacciones, cuentas, presupuestos, pagos periódicos, préstamos/deudas y metas de ahorro)
+2. COMPARAR meses, detectar patrones de gasto y alertar sobre cargos repetidos o suscripciones ocultas
 3. DAR CONSEJOS financieros personalizados basados en los datos reales
 4. CALCULAR proyecciones, promedios y métricas útiles
-5. ALERTAR sobre gastos excesivos, categorías que crecen, o riesgos financieros
-6. RESPONDER preguntas específicas sobre transacciones, cuentas y categorías
+5. ALERTAR sobre presupuestos cerca del límite, vencimientos próximos o préstamos por cobrar/pagar
+6. PREPARAR ACCIONES interactivas para agregar gastos/ingresos, transferencias entre cuentas, presupuestos, pagos periódicos y recategorizar movimientos
 
 CÓMO RESPONDER:
 - MÁXIMO 2-3 párrafos cortos por respuesta. Sé directo y ve al grano.
 - Si hay más para decir, cierra con algo como "¿Quieres que profundice en algún punto?" o "¿Te cuento más sobre X?"
 - Usa **negritas** para resaltar montos importantes
-- Puedes usar listas cortas (máximo 4-5 items) si es necesario
+- Puedes usar listas cortas (máximo 4-5 items) o tablas pequeñas si comparas varias categorías
 - Incluye porcentajes y comparaciones cuando sea relevante
 - No seas genérico, usa los datos reales del usuario
 - NO hagas análisis extenso a menos que el usuario pida "más detalle" o "profundiza"
@@ -566,16 +811,16 @@ REGLAS:
 - Si ves transacciones en "Otros" cuya descripción claramente pertenece a otra categoría, sugiérele al usuario recategorizarlas (ej: "Transporte" en Otros → debería estar en Transporte). Sé breve: solo menciona las más obvias.
 
 ACCIONES EN LA APP:
-Cuando el usuario pida agregar una transacción, recategorizar o crear categorías, usa una llamada de herramienta disponible. No escribas JSON ni bloques <<<ACTION>>> en el texto.
+Cuando el usuario pida agregar una transacción, hacer una transferencia, crear/ajustar un presupuesto, registrar un pago periódico, recategorizar o crear categorías, usa una llamada de herramienta disponible. No escribas JSON ni bloques <<<ACTION>>> en el texto.
 
 REGLAS DE ACCIONES:
-- Explica brevemente que prepararas la accion y que el usuario debe confirmarla en la tarjeta de MoneyTrack.
+- Explica brevemente que prepararás la acción y que el usuario puede editar cualquier campo o confirmarla en la tarjeta de MoneyTrack.
 - Si el usuario no especifica cuenta, usa la cuenta por defecto si aparece en el contexto; si no, pregunta.
 - Si el usuario no especifica categoría, infiere la más lógica por la descripción.
-- Si el monto usa "mil" o "k", conviertelo (35mil = 35000, 150k = 150000).
-- Para recategorizacion, usa solo transactionId exactos de las ULTIMAS TRANSACCIONES incluidas en el contexto.
+- Si el monto usa "mil", "k" o "millón", conviértelo (35mil = 35000, 150k = 150000, 1.5M = 1500000).
+- Para recategorización, usa solo transactionId exactos de las ÚLTIMAS TRANSACCIONES incluidas en el contexto.
 - No inventes IDs. Si las últimas transacciones fueron omitidas o no tienes el ID, pide al usuario que solicite detalle.
-- Solo prepara UNA accion por mensaje.
+- Solo prepara UNA acción por mensaje.
 - Si necesitas datos que no tienes, pregunta en vez de adivinar`;
 
 /**
@@ -606,10 +851,14 @@ export function parseActionFromResponse(response: string): { text: string; actio
  * bloquea la llamada con "failed to fetch". generateContent sí soporta CORS y
  * es la misma superficie que usa el plan financiero.
  */
-interface ChatFinancialData {
+export interface ChatFinancialData {
   transactions: Transaction[];
   accounts: Account[];
   categories: Categories;
+  budgets?: Budget[];
+  recurringPayments?: RecurringPayment[];
+  debts?: Debt[];
+  savingsGoals?: SavingsGoal[];
 }
 
 type GenerateChatRequest = Parameters<
@@ -631,7 +880,13 @@ function buildChatRequest(
     financialData.transactions,
     financialData.accounts,
     financialData.categories,
-    { includeRecentTransactions: shouldIncludeRecentTransactions(message) },
+    {
+      includeRecentTransactions: shouldIncludeRecentTransactions(message),
+      budgets: financialData.budgets,
+      recurringPayments: financialData.recurringPayments,
+      debts: financialData.debts,
+      savingsGoals: financialData.savingsGoals,
+    },
   );
 
   // System instruction + contexto financiero, y el historial como contents.

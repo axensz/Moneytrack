@@ -45,6 +45,7 @@ import {
   createCandidateStore,
   resolveApiKey,
 } from './ingest/ingestAdapters.js';
+import { runMonthlyInterestPass } from './debts/monthlyInterestWorker.js';
 
 setGlobalOptions({ region: FUNCTIONS_REGION });
 
@@ -73,6 +74,18 @@ const mapError = (error: unknown): never => {
   }
   throw new HttpsError('internal', 'Unexpected error');
 };
+
+export const monthlyDebtInterestWorker = onSchedule(
+  {
+    schedule: '0 * * * *',
+    timeZone: 'America/Bogota',
+    maxInstances: 1,
+    concurrency: 1,
+    timeoutSeconds: 240,
+    retryCount: 3,
+  },
+  async () => { await runMonthlyInterestPass(db(), systemClock.now()); },
+);
 
 // ── Device callables ─────────────────────────────────────────────────────────
 export const registerDevice = onCall(async (request) => {

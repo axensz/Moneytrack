@@ -71,7 +71,15 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
     transaction.type === 'transfer'
       ? `${account?.name || 'Cuenta origen'} -> ${destinationAccount?.name || 'Cuenta destino'}`
       : account?.name || 'Cuenta no encontrada';
-  const categoryOptions = transaction.type === 'income' ? categories.income : categories.expense;
+  const isCategoryLocked =
+    transaction.type === 'transfer' ||
+    Boolean(transaction.linkedTransactionId) ||
+    Boolean(transaction.debtId);
+  const categoryOptions = isCategoryLocked
+    ? [transaction.category]
+    : transaction.type === 'income'
+      ? categories.income
+      : categories.expense;
   const visibleCategories = categoryOptions.includes(transaction.category)
     ? categoryOptions
     : [transaction.category, ...categoryOptions];
@@ -118,10 +126,11 @@ export const TransactionItem: React.FC<TransactionItemProps> = memo(({
               <select
                 id={categoryId}
                 value={editForm.category}
+                disabled={isCategoryLocked}
                 onChange={(e) =>
                   onEditFormChange({ ...editForm, category: e.target.value })
                 }
-                className="input-base"
+                className="input-base disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {visibleCategories.map(cat => (
                   <option key={cat} value={cat}>{cat}</option>

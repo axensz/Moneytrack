@@ -8,8 +8,8 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, setDoc, updateDoc } from 'firebase/firestore';
-import { afterAll, afterEach, beforeAll, describe, it } from 'vitest';
+import { doc, getDoc, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 const PROJECT_ID = 'demo-moneytrack';
 const OWNER_ID = 'owner';
@@ -54,7 +54,7 @@ describeWithFirestoreEmulator('debts recurring payment schedule rules contract',
     testEnv = await initializeTestEnvironment({
       projectId: PROJECT_ID,
       firestore: {
-        rules: readFileSync(resolve(process.cwd(), 'firestore.rules'), 'utf8'),
+        rules: readFileSync(process.env.MONEYTRACK_FIRESTORE_RULES_TEST_FILE ?? resolve(process.cwd(), 'firestore.rules'), 'utf8'),
       },
     });
   });
@@ -74,6 +74,63 @@ describeWithFirestoreEmulator('debts recurring payment schedule rules contract',
         baseDebt({ isRecurringPayment: true, recurringPaymentAmount: 300_000 })
       )
     );
+  });
+
+  it('permite capital más interés como saldo pendiente y pagos sobre ese total', async () => {
+    await assertSucceeds(setDoc(ownerDebtRef('interest'), baseDebt({ totalInterestAmount: 100_000, interestMode: 'fixed', remainingAmount: 1_100_000 })));
+    await assertSucceeds(updateDoc(ownerDebtRef('interest'), { remainingAmount: 50_000 }));
+  });
+
+  it.each([
+    ['lent', 0], ['lent', 50_000], ['borrowed', 0], ['borrowed', 50_000],
+  ] as const)('asocia la transacción original sin duplicar dinero y libera el bloqueo (%s, interés %s)', async (type, interest) => {
+    const db = testEnv.authenticatedContext(OWNER_ID).firestore();
+    const accountRef = doc(db, 'users', OWNER_ID, 'accounts', 'card');
+    const transactionRef = doc(db, 'users', OWNER_ID, 'transactions', 'purchase');
+    const debtRef = doc(db, 'users', OWNER_ID, 'debts', 'linked-debt');
+    const userRef = doc(db, 'users', OWNER_ID);
+    const usedCredit = type === 'lent' ? 1_000_000 + interest : 0;
+    await testEnv.withSecurityRulesDisabled(async context => {
+      await setDoc(doc(context.firestore(), accountRef.path), { name: 'Nu', type: 'credit', initialBalance: 0, isDefault: false, usedCredit, creditLimit: 5_000_000, creditDebtModelVersion: 2 });
+      await setDoc(doc(context.firestore(), transactionRef.path), {
+        type: type === 'lent' ? 'expense' : 'income', amount: 1_000_000,
+        category: 'Otros', description: 'Compra original', accountId: 'card', paid: true,
+        createdAt: new Date(), date: new Date(),
+        ...(type === 'lent' && interest > 0 ? { hasInterest: true, installments: 3, totalInterestAmount: interest, interestRate: 24, monthlyInstallmentAmount: 350_000 } : {}),
+      });
+    });
+    const leaseId = 'ledger-mutation:associate-loan';
+    await assertSucceeds(setDoc(userRef, { accountOperationLock: { id: leaseId, kind: 'ledger-mutation', acquiredAt: serverTimestamp() } }, { mergeFields: ['accountOperationLock'] }));
+    const batch = writeBatch(db);
+    batch.set(debtRef, baseDebt({ type, accountId: 'card', totalInterestAmount: interest, interestMode: 'fixed', remainingAmount: 1_000_000 + interest, creationOperationId: 'ledger-mutation:create-loan' }));
+    batch.update(transactionRef, { debtId: 'linked-debt', category: 'Préstamo' });
+    batch.set(userRef, { accountOperationLock: { id: leaseId, kind: 'ledger-mutation', releasedAt: serverTimestamp() } }, { mergeFields: ['accountOperationLock'] });
+    await assertSucceeds(batch.commit());
+    expect((await getDoc(debtRef)).data()?.remainingAmount).toBe(1_000_000 + interest);
+    expect((await getDoc(transactionRef)).data()).toMatchObject({ amount: 1_000_000, debtId: 'linked-debt', category: 'Préstamo' });
+    expect((await getDoc(accountRef)).data()?.usedCredit).toBe(usedCredit);
+    expect((await getDoc(userRef)).data()?.accountOperationLock.releasedAt).toBeDefined();
+  });
+
+  it.each([
+    { totalInterestAmount: -1 }, { totalInterestAmount: '100' }, { interestRate: 201 },
+    { installments: 1.5 }, { interestMode: 'monthly' }, { remainingAmount: 1_100_001, totalInterestAmount: 100_000 },
+  ])('rechaza datos de interés inválidos: %j', async invalid => {
+    await assertFails(setDoc(ownerDebtRef('invalid-interest'), baseDebt(invalid)));
+  });
+
+  it('permite interés mensual y agregar un corte validado sin alterar el capital', async () => {
+    await assertSucceeds(setDoc(ownerDebtRef('monthly'), baseDebt({ interestAccrual: 'monthly', interestMode: 'percentage', interestRate: 2, interestCutoffDay: 10, nextInterestDate: new Date('2026-12-10T05:00:00Z'), totalInterestAmount: 0 })));
+    await assertSucceeds(updateDoc(ownerDebtRef('monthly'), { totalInterestAmount: 20_000, remainingAmount: 1_020_000, nextInterestDate: new Date('2027-01-10T05:00:00Z') }));
+  });
+
+  it.each([
+    { interestCutoffDay: 0 }, { interestCutoffDay: 32 }, { interestCutoffDay: 1.5 },
+    { nextInterestDate: '2026-12-10' }, { interestAccrual: 'daily' },
+    { interestAccrual: 'monthly' },
+    { interestAccrual: 'monthly', interestMode: 'fixed', interestRate: 10, interestCutoffDay: 10, nextInterestDate: new Date() },
+  ])('rechaza una programación de interés inválida: %j', async invalid => {
+    await assertFails(setDoc(ownerDebtRef('monthly-invalid'), baseDebt(invalid)));
   });
 
   it('permite activar la cuota periódica en un update', async () => {

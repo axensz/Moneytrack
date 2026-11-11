@@ -105,7 +105,11 @@ export async function migrateServerCreditAccount(
       }
 
       const usedCredit = migrateDebtAuthority
-        ? calculateCreditUsedFromTransactions(account, [...context.transactions])
+        ? (
+            context.transactions.length === 0 && hasValidCreditAuthority(account)
+              ? account.usedCredit
+              : calculateCreditUsedFromTransactions(account, [...context.transactions])
+          )
         : account.usedCredit;
       const accountUpdates: Record<string, unknown> = {};
       if (migrateDebtAuthority) {

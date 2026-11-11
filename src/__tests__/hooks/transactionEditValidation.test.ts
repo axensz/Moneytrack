@@ -243,3 +243,72 @@ describe('editar pagos vinculados valida ambas cuentas', () => {
     expect(M.toastErrors.join(' ')).toMatch(/saldo insuficiente/i);
   });
 });
+
+describe('preservación de fecha local, categoría bloqueada y guard anti doble envío', () => {
+  it('conserva la fecha calendario local en startEditTransaction aunque la transacción sea nocturna (> 19:00 local)', () => {
+    const lateNightTx: Transaction = {
+      ...expenseSav,
+      id: 'late-1',
+      date: new Date(2026, 10, 9, 22, 30, 0), // 9 nov 2026, 22:30 local (03:30 UTC del 10 nov)
+    };
+    const params = makeParams({ transactions: [lateNightTx], balanceTransactions: [lateNightTx] });
+    const { result } = renderHook(() => useTransactionsView(params));
+
+    act(() => result.current.startEditTransaction(lateNightTx));
+
+    expect(result.current.editForm.date).toBe('2026-11-09');
+  });
+
+  it('mantiene bloqueada la categoría original al editar una transferencia o movimiento de préstamo', async () => {
+    const transferTx: Transaction = {
+      id: 'tr-1',
+      type: 'transfer',
+      amount: 20_000,
+      category: 'Transferencia',
+      description: 'Paso a bolsillo',
+      date: new Date(2026, 5, 10, 12, 0, 0),
+      paid: true,
+      accountId: 'sav',
+      toAccountId: 'tc',
+    };
+    const params = makeParams({ transactions: [transferTx], balanceTransactions: [transferTx] });
+    const { result } = renderHook(() => useTransactionsView(params));
+
+    act(() => result.current.startEditTransaction(transferTx));
+    act(() => result.current.setEditForm({ ...result.current.editForm, category: 'Alimentación', description: 'Actualizada' }));
+    await act(async () => {
+      await result.current.handleSaveEdit(transferTx.id!);
+    });
+
+    expect(params.updateTransaction).toHaveBeenCalledWith('tr-1', expect.objectContaining({
+      category: 'Transferencia',
+      description: 'Actualizada',
+    }));
+  });
+
+  it('evita envíos concurrentes (doble clic) mientras una edición está guardándose', async () => {
+    let resolveSave!: () => void;
+    const slowUpdate = vi.fn(
+      () => new Promise<void>((resolve) => {
+        resolveSave = resolve;
+      })
+    );
+    const params = makeParams({ updateTransaction: slowUpdate });
+    const { result } = renderHook(() => useTransactionsView(params));
+
+    act(() => result.current.startEditTransaction(expenseSav));
+
+    let firstCall!: Promise<void>;
+    let secondCall!: Promise<void>;
+    act(() => {
+      firstCall = result.current.handleSaveEdit(expenseSav.id!);
+      secondCall = result.current.handleSaveEdit(expenseSav.id!);
+    });
+
+    expect(slowUpdate).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      resolveSave();
+      await Promise.all([firstCall, secondCall]);
+    });
+  });
+});

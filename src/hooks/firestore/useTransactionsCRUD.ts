@@ -30,6 +30,7 @@ import {
 } from '../../utils/ledgerMutation';
 import { validateTransactionUpdate } from '../../utils/transactionValidation';
 import { planDebtTransactionEdit } from '../../utils/debtTransactionEdit';
+import { reopenedDebtInterest } from '../../utils/reopenedDebtInterest';
 import {
   DEFAULT_RECURRING_TIME_ZONE,
   isRecurringCycleKeyForPayment,
@@ -962,8 +963,6 @@ export function useTransactionsCRUD(
                 || typeof debt.remainingAmount !== 'number'
                 || !Number.isFinite(debt.remainingAmount)
                 || debt.remainingAmount < normalizedAmount
-                || typeof debt.accountId !== 'string'
-                || debt.accountId !== draft.accountId
               ) {
                 throw new Error('No se puede restaurar el pago con el saldo pendiente actual.');
               }
@@ -1089,7 +1088,8 @@ export function useTransactionsCRUD(
             if (!debtSnapshot.exists()) {
               throw new Error('La deuda del pago ya no existe. Actualiza e intenta de nuevo.');
             }
-            const remainingAmount = debtSnapshot.data().remainingAmount;
+            const persistedDebt = debtSnapshot.data() as Debt;
+            const remainingAmount = persistedDebt.remainingAmount;
             if (
               typeof remainingAmount !== 'number' ||
               !Number.isFinite(remainingAmount) ||
@@ -1104,6 +1104,7 @@ export function useTransactionsCRUD(
               remainingAmount: roundMoney(remainingAmount + primary.amount),
               isSettled: false,
               settledAt: deleteField(),
+              ...reopenedDebtInterest(persistedDebt),
             };
           }
 

@@ -1,4 +1,5 @@
 import { LOAN_CATEGORY, LOAN_PAYMENT_CATEGORY } from '../config/constants';
+import { getDebtTotalAmount } from './debtInterest';
 import type { Account, Debt, RecurringPayment, Transaction } from '../types/finance';
 import { getAccountReferenceIds } from './accountTransactions';
 import { validateCreditPaymentPair } from './creditPaymentPairs';
@@ -547,10 +548,10 @@ const addDebtMismatchIssues = (
       && roundMoney(principals[0].amount) === roundMoney(debtValue.originalAmount);
     const paymentsAreValid = payments.every(transaction => (
       transaction.type === expectedPaymentType
-      && transaction.accountId === debtValue.accountId
+      && input.accounts.some(account => account.id === transaction.accountId || account.mergedAccountIds?.includes(transaction.accountId))
     ));
     const expectedRemaining = Math.max(0, roundMoney(
-      debtValue.originalAmount
+      getDebtTotalAmount(debtValue)
       - payments.reduce((sum, transaction) => sum + transaction.amount, 0),
     ));
     const wasForgiven = Boolean(debtValue.forgivenReason);

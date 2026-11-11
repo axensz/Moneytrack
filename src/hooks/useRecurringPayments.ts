@@ -89,12 +89,13 @@ export function useRecurringPayments(
   // ── CRUD: Firestore (autenticado) o localStorage (invitado) ──
   const addRecurringPayment = useCallback(
     async (payment: Omit<RecurringPayment, 'id' | 'createdAt'>) => {
+      const cleanPayment = stripUndefined(payment);
       if (userId) {
         if (!checkNetworkConnection()) throw new Error('Sin conexión a internet');
         await safeFirestoreOperation(
-          () => addDoc(collection(db, `users/${userId}/recurringPayments`), { ...payment, createdAt: new Date() }),
+          () => addDoc(collection(db, `users/${userId}/recurringPayments`), { ...cleanPayment, createdAt: new Date() }),
           'addRecurringPayment',
-          { maxRetries: 2 }
+          { maxRetries: 2, retryRecoverableErrors: true }
         );
       } else {
         const newPayment: RecurringPayment = { ...payment, id: generateId(), createdAt: new Date() };
@@ -114,13 +115,20 @@ export function useRecurringPayments(
         await safeFirestoreOperation(
           () => updateDoc(doc(db, `users/${userId}/recurringPayments`, id), cleanUpdates),
           'updateRecurringPayment',
-          { maxRetries: 2 }
+          { maxRetries: 2, retryRecoverableErrors: true }
         );
       } else {
         await mutateGuestLedger(draft => {
-          draft.recurringPayments = draft.recurringPayments.map(payment => (
-            payment.id === id ? { ...payment, ...updates } : payment
-          ));
+          draft.recurringPayments = draft.recurringPayments.map(payment => {
+            if (payment.id !== id) return payment;
+            const nextPayment = { ...payment, ...updates };
+            for (const key of Object.keys(updates) as Array<keyof RecurringPayment>) {
+              if (updates[key] === undefined) {
+                delete nextPayment[key];
+              }
+            }
+            return nextPayment;
+          });
         }, { operationId: `guest-update-recurring:${id}:${generateId()}` });
       }
     },

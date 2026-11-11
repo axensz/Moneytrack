@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { RotateCcw } from 'lucide-react';
 import type {
@@ -10,7 +10,7 @@ import type {
   NewTransaction,
   TransactionBeneficiary,
 } from '../../../../types/finance';
-import { parseDateFromInput, parseDateWithTime, parseCurrency, roundMoney } from '../../../../utils/formatters';
+import { formatDateForInput, parseDateFromInput, parseDateWithTime, parseCurrency, roundMoney } from '../../../../utils/formatters';
 import { getDateRangeFromPreset, ensureDate } from '../../../../utils/dateUtils';
 import { findAccountForTransaction, transactionUsesAccount } from '../../../../utils/accountTransactions';
 import { TransactionValidator } from '../../../../utils/validators';
@@ -116,7 +116,7 @@ export function filterTransactionsForView(
         recurringPayment?.name,
         transaction.amount.toString(),
         transaction.amount.toLocaleString('es-CO'),
-        new Date(transaction.date).toLocaleDateString('es-CO'),
+        ensureDate(transaction.date).toLocaleDateString('es-CO'),
       ]
         .filter(Boolean)
         .join(' ')
@@ -126,7 +126,7 @@ export function filterTransactionsForView(
     }
 
     if (dateRangePreset !== 'all') {
-      const transactionDate = new Date(transaction.date);
+      const transactionDate = ensureDate(transaction.date);
 
       if (dateRangePreset === 'custom') {
         if (customStartDate) {
@@ -259,13 +259,15 @@ export const useTransactionsView = ({
     [setCustomEndDate, setCustomStartDate, setDateRangePreset]
   );
 
+  const savingEditRef = useRef(false);
+
   const startEditTransaction = useCallback((transaction: Transaction) => {
     setEditingTransaction(transaction.id!);
     setExpandedTransaction(null); // al editar, cerrar el detalle de solo lectura
     setEditForm({
       description: transaction.description,
       amount: transaction.amount.toString(),
-      date: new Date(transaction.date).toISOString().split('T')[0],
+      date: formatDateForInput(ensureDate(transaction.date)),
       category: transaction.category,
       beneficiary: transaction.beneficiary || '',
     });
@@ -273,10 +275,13 @@ export const useTransactionsView = ({
 
   const handleSaveEdit = useCallback(
     async (id: string) => {
+      if (savingEditRef.current) return;
       // El input entrega formato es-CO ("88.888" o "88.888,5"); parseCurrency
       // maneja la coma decimal sin perder centavos (parseFloat la truncaría).
       const amount = parseCurrency(editForm.amount);
-      const original = transactions.find((t) => t.id === id);
+      const original =
+        transactions.find((t) => t.id === id) ??
+        balanceTransactions.find((t) => t.id === id);
       const account = original ? accountsById.get(original.accountId) : undefined;
       const readinessError = original && balanceReadinessBlock(
         balancesReady,
@@ -286,6 +291,16 @@ export const useTransactionsView = ({
         showToast.error(readinessError);
         return;
       }
+      const isCategoryLocked = Boolean(
+        original && (
+          original.type === 'transfer' ||
+          original.linkedTransactionId ||
+          original.debtId
+        )
+      );
+      const effectiveCategory = isCategoryLocked && original
+        ? original.category
+        : editForm.category;
       const amountChanged = original
         ? roundMoney(amount) !== roundMoney(original.amount)
         : false;
@@ -312,7 +327,7 @@ export const useTransactionsView = ({
         {
           type: original?.type ?? 'expense',
           amount: validationAmount.toString(),
-          category: original?.linkedTransactionId ? original.category : editForm.category,
+          category: effectiveCategory,
           description: editForm.description,
           accountId: original?.accountId ?? '',
           toAccountId: original?.toAccountId ?? '',
@@ -353,6 +368,7 @@ export const useTransactionsView = ({
         }
       }
 
+      savingEditRef.current = true;
       try {
         const updates: TransactionEditUpdates = {
           description: editForm.description.trim(),
@@ -361,7 +377,7 @@ export const useTransactionsView = ({
           date: original
             ? parseDateWithTime(editForm.date, ensureDate(original.date))
             : parseDateWithTime(editForm.date),
-          category: original?.linkedTransactionId ? original.category : editForm.category,
+          category: effectiveCategory,
           beneficiary: editForm.beneficiary.trim() || null,
         };
 
@@ -394,6 +410,8 @@ export const useTransactionsView = ({
         showToast.error(errorMessage);
         // #7: NO descartar la edición — el usuario conserva lo escrito y puede
         // reintentar (antes se cerraba el form y se perdía todo).
+      } finally {
+        savingEditRef.current = false;
       }
     },
     [editForm, updateTransaction, transactions, accountsById, balanceTransactions, balancesReady]

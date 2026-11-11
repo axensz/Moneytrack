@@ -17,14 +17,26 @@ export function useBalanceTransactions(
   transactionsHeadExhaustive = !userId,
   retryGeneration = 0,
 ): BalanceTransactionsResult {
+  const confirmedExhaustive = !!userId
+    && transactionsServerSettled
+    && transactionsHeadExhaustive;
   const confirmedNeedsFullHistory = !!userId
     && transactionsServerSettled
     && !transactionsHeadExhaustive;
+  const [exhaustiveUserId, setExhaustiveUserId] = useState<string | null>(null);
   const [fullHistoryUserId, setFullHistoryUserId] = useState<string | null>(null);
+  const hasSettledExhaustiveHead = !!userId
+    && !confirmedNeedsFullHistory
+    && liveTransactions.length < 500
+    && (confirmedExhaustive || exhaustiveUserId === userId);
   const requiresFullHistory = !!userId
-    && !(transactionsServerSettled && transactionsHeadExhaustive)
+    && !confirmedExhaustive
     && (confirmedNeedsFullHistory || fullHistoryUserId === userId);
   const historyUserId = requiresFullHistory ? userId : null;
+
+  useEffect(() => {
+    setExhaustiveUserId(hasSettledExhaustiveHead ? userId : null);
+  }, [hasSettledExhaustiveHead, userId]);
 
   useEffect(() => {
     setFullHistoryUserId(historyUserId);
@@ -39,7 +51,7 @@ export function useBalanceTransactions(
   return {
     transactions,
     ready: !userId
-      || (transactionsServerSettled && transactionsHeadExhaustive)
+      || hasSettledExhaustiveHead
       || (requiresFullHistory && settled),
     currentServerSettled: !userId || (
       transactionsServerSettled

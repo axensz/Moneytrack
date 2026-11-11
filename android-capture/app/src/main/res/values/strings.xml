@@ -41,6 +41,8 @@
     <string name="recommended_source_label">%1$s · Recomendada</string>
     <string name="observed_source_label">%1$s · No verificada</string>
     <string name="source_unnamed">Aplicación detectada</string>
+    <string name="listener_connecting_heading">Conectando la captura</string>
+    <string name="listener_connecting_explanation">Esperando que Android confirme la conexión. La captura aún no está activa.</string>
     <string name="listener_connection_heading">Reactiva la captura</string>
     <string name="listener_connection_explanation">Android pausó la captura aunque el acceso sigue concedido. Abre Acceso a notificaciones, desactiva y vuelve a activar MoneyTrack. Si vuelve a ocurrir en Xiaomi o HyperOS, permite Inicio automático y batería Sin restricciones.</string>
     <string name="open_app_settings_action">Reactivar acceso</string>

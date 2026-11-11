@@ -206,8 +206,26 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
     }
   }, [newTransaction.exchangeRate, setNewTransaction]);
 
+  // Si el usuario edita campos clave después de ver la alerta de posible duplicado,
+  // limpiamos la alerta para reevaluar con los nuevos valores al volver a enviar.
+  useEffect(() => {
+    setPendingDuplicates([]);
+    setPendingAction(null);
+  }, [
+    newTransaction.type,
+    newTransaction.amount,
+    newTransaction.currency,
+    newTransaction.exchangeRate,
+    newTransaction.category,
+    newTransaction.description,
+    newTransaction.date,
+    newTransaction.accountId,
+    newTransaction.toAccountId,
+  ]);
+
   const checkDuplicatesAndSubmit = useCallback((action: 'submit' | 'continue') => {
-    const matches = detectDuplicates(newTransaction, transactions);
+    const historyToCheck = balanceTransactions.length > 0 ? balanceTransactions : transactions;
+    const matches = detectDuplicates(newTransaction, historyToCheck);
     if (matches.length > 0) {
       setPendingDuplicates(matches);
       setPendingAction(action);
@@ -216,7 +234,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
       if (action === 'submit') onSubmit();
       else onSubmitAndContinue?.();
     }
-  }, [newTransaction, transactions, onSubmit, onSubmitAndContinue]);
+  }, [newTransaction, balanceTransactions, transactions, onSubmit, onSubmitAndContinue]);
 
   const handleConfirmDuplicate = useCallback(() => {
     setPendingDuplicates([]);
@@ -599,16 +617,26 @@ export const TransactionForm: React.FC<TransactionFormProps> = memo(({
                 onChange={(e) => {
                   const paymentId = e.target.value || undefined;
                   const payment = recurringPayments.find(p => p.id === paymentId);
+                  const paymentAccount = payment?.accountId
+                    ? selectableAccounts.find(acc => acc.id === payment.accountId)
+                    : undefined;
                   setNewTransaction({
                     ...newTransaction,
                     recurringPaymentId: paymentId,
-                    // Auto-completar campos si selecciona un pago (excepto cuenta - el usuario elige)
+                    // Auto-completar campos si selecciona un pago periódico (incluyendo su cuenta si existe y está activa)
                     ...(payment && {
                       category: payment.category,
                       description: payment.name,
                       amount: payment.amount.toString(),
                       currency: 'COP',
                       exchangeRate: '',
+                      ...(paymentAccount?.id && {
+                        accountId: paymentAccount.id,
+                        ...(paymentAccount.type !== 'credit' && {
+                          installments: 1,
+                          hasInterest: false,
+                        }),
+                      }),
                     })
                   });
                 }}

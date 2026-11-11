@@ -28,6 +28,18 @@ const SIZE = 168;
 const STROKE = 18;
 const RADIUS = (SIZE - STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+
+/**
+ * Tamaño de la cifra central según su longitud. El círculo interior mide
+ * SIZE - 2 * STROKE = 132px y la cifra va en monoespaciada (~0.6em por
+ * carácter), así que un monto largo en `text-xl` tocaba el trazo del anillo.
+ */
+const centerAmountSizeClass = (text: string): string => {
+  if (text.length <= 9) return 'text-xl';
+  if (text.length <= 12) return 'text-base';
+  if (text.length <= 14) return 'text-sm';
+  return 'text-xs';
+};
 const CENTER = SIZE / 2;
 
 /**
@@ -134,7 +146,9 @@ export const AvailableDistributionRing: React.FC<AvailableDistributionRingProps>
         {/* Cifra central: el total disponible. */}
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
           <span className="text-xs font-medium text-muted-foreground">Disponible</span>
-          <span className="mt-0.5 font-mono text-xl font-bold text-success">
+          <span
+            className={`mt-0.5 font-mono font-bold text-success ${centerAmountSizeClass(displayAmount(total))}`}
+          >
             {displayAmount(total)}
           </span>
         </div>

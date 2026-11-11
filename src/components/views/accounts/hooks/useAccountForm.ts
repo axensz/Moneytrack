@@ -263,8 +263,8 @@ export function useAccountForm({
           interestRate: parseFloat(newAccount.interestRate.toString()) || 0,
         };
 
-        closeForm();
         await addAccount(accountData);
+        closeForm();
         showToast.success(SUCCESS_MESSAGES.ACCOUNT_ADDED);
       }
     } catch (error) {

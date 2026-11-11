@@ -486,6 +486,21 @@ describe('TransactionImportReviewModal', () => {
     expect(screen.getByLabelText('Comercio')).toHaveValue('Valor preservado');
   });
 
+  it('prefills inferred category and bank-matched account for notification candidates', () => {
+    renderModal({
+      currentCandidate: {
+        ...candidate,
+        merchant: 'BOLD*UBER TRIP',
+        cardLast4: undefined,
+        sourcePackage: 'com.nequi.MobileApp',
+      },
+      instruments: [],
+    });
+
+    expect(screen.getByLabelText('Categoría')).toHaveValue('Transporte');
+    expect(screen.getByText('Categoría sugerida según el comercio.')).toBeInTheDocument();
+  });
+
   it('guards the canonical confirmation against a double submit', async () => {
     let release!: () => void;
     const pending = new Promise<{ id: string }>(resolve => {
